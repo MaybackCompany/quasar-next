@@ -1,0 +1,190 @@
+<LessonHero
+  crumbs="Bonus · Debug class"
+  title="Debug class for total beginners"
+  meta={[
+    { label: "You'll build", value: "A calm way to read errors before you start changing random code." },
+    { label: "Time", value: "~18 minutes" },
+    { label: "You need", value: "No setup. Read it before your first Lua lesson, then keep it bookmarked for later builds." },
+    { label: "You'll learn", value: "Read the first error -> spot nil -> spot wrong-side calls -> spot broken exports -> debug in a clean order" },
+  ]}
+>
+  This is the early primer shown before Lesson 01 on the scripts-from-zero path. Use it now for the error-reading habit, then revisit it later when exports, SQL, and framework errors become real in your own server. An error is **a clue, not a verdict**: Lua tried one specific thing, and one specific part was missing. You will build a tiny resource named `qu_debug_class`, break it on purpose, read the real error, and fix it with `print(type(value), value)`.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console output.",
+    "I will not edit unrelated files while checking this lesson."
+  ]}
+/>
+
+<Callout variant="fivem" title="The five-step rule">
+  Read the first red line, open the file it names, go to the line number it names, ask what value or function was missing, then fix one thing and test again. That is real debugging. The biggest beginner mistake is changing five files before understanding the first error. Do one step, read the proof, then move on.
+</Callout>
+
+## Watch: debugging in action
+
+Watch a real debugging pass first, reading the error, finding the line, and fixing one thing, then do the hands-on build below.
+
+<LessonVideo loomId="1fe6cde217bb4ac9b01192fdd5917c8e" title="Debugging FiveM scripts" caption="Reading errors and fixing scripts, step by step." />
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_debug_class
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_debug_class/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this. Lua 5.4 is the only runtime in 2026, so there is no `lua54` line to add. Leave it out.
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Break it on purpose" outcome="The resource contains one known nil bug.">
+    Open `server.lua` and paste this. The variable `player` is `nil` because nothing ever filled it, so reading `player.name` is a `nil` error waiting to happen. This is the most common error you will ever see.
+
+    ```lua
+RegisterCommand('debugclass', function()
+    local player = nil
+    print('[qu_debug_class] name is ' .. player.name)
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start it and trigger the error" outcome="The exact nil error appears in the console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_debug_class
+    ```
+
+    Save, then run this in txAdmin Live Console:
+
+    ```text
+    restart qu_debug_class
+    ```
+
+    Now run the command:
+
+    ```text
+    debugclass
+    ```
+
+    You will see a `SCRIPT ERROR`. Read only the first red line. It names the file (`server.lua`), the line number (`3`), and the missing thing (`player`).
+
+    <ExpectedOutput>
+      SCRIPT ERROR: @qu_debug_class/server.lua:3: attempt to index a nil value (local 'player')
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Translate the error into plain English" outcome="You know which of the three nil errors you have.">
+    `nil` means "there is nothing here." It becomes an error only when you use the nothing like it was real data or a real function. There are four you will meet constantly:
+
+    ```text
+    attempt to index a nil value         -> you read thing.name on an empty thing
+    attempt to call a nil value          -> you ran thing() but thing is not a function
+    attempt to concatenate a nil value   -> you glued text onto an empty value
+    attempt to perform arithmetic on nil -> you did math (+ - * /) on an empty value
+    ```
+
+    Yours says **index a nil value (local 'player')**. So stop asking "why is Lua broken?" and ask "what value did I assume existed here?" The answer is `player`.
+  </Step>
+
+  <Step num={7} title="Confirm it with the fastest debug tool" outcome="The console proves player is nil before you change anything.">
+    Before guessing, prove it. Add `print(type(value), value)` on the line before the crash. This one line answers almost every nil mystery. Edit `server.lua` to this:
+
+    ```lua
+RegisterCommand('debugclass', function()
+    local player = nil
+    print('[qu_debug_class] type check', type(player), player)
+    print('[qu_debug_class] name is ' .. tostring(player and player.name))
+end, true)
+    ```
+
+    Then `restart qu_debug_class` and run `debugclass` again.
+
+    <ExpectedOutput>
+      [qu_debug_class] type check  nil  nil
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={8} title="Fix the one thing and test again" outcome="The command prints a real name and no error.">
+    The fix is to give `player` a real table with a `name` key, instead of `nil`. Change `server.lua` to this and restart cleanly:
+
+    ```lua
+RegisterCommand('debugclass', function()
+    local player = { name = 'Los Santos' }
+    print('[qu_debug_class] type check', type(player), player)
+    print('[qu_debug_class] name is ' .. player.name)
+end, true)
+    ```
+
+    Run `restart qu_debug_class`, then `debugclass`. No red line, and the name prints. You read the first error, found the file and line, named the missing value, proved it, and fixed exactly one thing.
+
+    <ExpectedOutput>
+      [qu_debug_class] type check  table  table: 0x...
+      [qu_debug_class] name is Los Santos
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_debug_class does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_debug_class", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports. Do not add a lua54 line; it is deprecated and ignored." },
+    { symptom: "Failed to load script / unexpected symbol near '<eof>'", fix: "A syntax error: a missing end, quote, or bracket. Open the file and line the console names and balance the quotes, parentheses, and ends." },
+    { symptom: "attempt to call a nil value (global 'GetPlayerEndpoint')", fix: "That function is server-only. Read the file path in the error: a server name called from a client/ file is a wrong-side call." },
+    { symptom: "No such export in resource qb-core or ox_inventory", fix: "Check the resource name, that it is started, and that you used the right framework snippet before rewriting any logic." },
+    { symptom: "The command prints nothing in F8", fix: "This resource is a server_script, so its output goes to txAdmin Live Console, not F8. Read the right console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Read the first red error line and translate it into plain English before touching code.",
+    "Tell the three nil errors apart: index, call, and concatenate.",
+    "Use print(type(value), value) on the line before the crash to prove what is nil.",
+    "Spot a wrong-side call by reading the file path (client/ vs server/) in the error.",
+    "Know that exports errors mean a resource is missing, misnamed, or not started, not that your logic is wrong."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Break `qu_debug_class` three more ways, one at a time: misspell `player` as `playr`, call `player()` like a function, and concatenate `'hi ' .. player` while `player` is still nil. Restart and run `debugclass` after each. Confirm you get three different error messages, identify the broken line from each, and fix all three using only the console output.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM debugging guide", href: "https://docs.fivem.net/docs/scripting-manual/debugging/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "Lua 5.4 error handling (pcall, xpcall)", href: "https://www.lua.org/manual/5.4/manual.html#6.1" }
+  ]}
+/>

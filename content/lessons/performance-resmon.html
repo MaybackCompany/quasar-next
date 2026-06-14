@@ -1,0 +1,546 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Track 2 &middot; Pro Path</span></div>
+        <h1>Performance: resmon, threads, profiling</h1>
+        <p class="lede">A FiveM server has a 16.6 ms tick budget at 60 Hz. If your script eats 6 ms of it because of a runaway <code>while true do Wait(0)</code>, the whole server stutters. This lesson teaches you to read <code>resmon</code>, pick the right thread API, and tune <code>Wait</code> values like a sound engineer tunes a mixer.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>resmon</code>, <code>Citizen.CreateThread</code> vs <code>CreateThreadNow</code>, <code>Wait</code> tuning, <code>GetGameTimer</code> for hot loops</dd></div>
+          <div><dt>Time</dt><dd>~24 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lessons 13 (threads) and 14 (server vs client)</dd></div>
+          <div><dt>Outcome</dt><dd>You drop a script's resmon cost from 6 ms to under 0.05 ms without breaking it</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="p6">
+        <h2>Before you start</h2>
+        <p>Tick these before you open <code>resmon</code>.</p>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="thread-basics"> I know <code>Citizen.CreateThread</code> starts a coroutine that runs alongside the game.</label></li>
+          <li><label><input type="checkbox" data-prereq="wait"> I know <code>Wait(ms)</code> yields the thread for at least that many milliseconds.</label></li>
+          <li><label><input type="checkbox" data-prereq="resmon"> I can open <code>resmon</code> in the F8 client console (server resmon is the same).</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: a thread is a waiter doing rounds</h2>
+        <p>A waiter walks the floor every X seconds. <code>Wait(0)</code> means they sprint, never sit. <code>Wait(1000)</code> means they check tables once a second. The kitchen has a budget for waiter steps; if every waiter sprints, the kitchen melts.</p>
+        <p>Threads are the same. The default game loop runs at 60 Hz (16.6 ms a frame). <code>Wait(0)</code> on the client means "every frame", on the server means "every tick" (~5 ms). If a thread does work that costs 4 ms on every frame, that thread alone burns 24 percent of your tick budget.</p>
+        <div class="callout callout--fivem">
+          <header>Read this in resmon</header>
+          <p>Type <code>resmon</code> in the F8 console (client) or server console. The number you care about is the per-resource ms in the right column. Anything stable above 1.0 ms in idle conditions deserves a look. Anything above 5 ms is a fire.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Read resmon: the only number that matters</h2></header>
+        <p class="step-outcome">Outcome: you can name the top-3 ms hogs on a server in 30 seconds.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>F8 console: how to open resmon</span></header>
+            <pre><code class="language-bash"># client: open F8, type
+resmon 1
+
+# server: in the server console
+resmon
+
+# columns you care about:
+#   Time  - average per-tick cost (ms)
+#   ↑/↓   - whether it is climbing
+#   Memory - leaks if it climbs forever</code></pre>
+          </figure>
+          <p>A hot loop with <code>Wait(0)</code> on every frame and even mild work usually shows 1.5 to 4 ms. A pure event-driven script with no per-frame thread shows 0.00 to 0.02 ms. The gap between those two is the entire performance discipline.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Pick the right Wait value</h2></header>
+        <p class="step-outcome">Outcome: you stop using <code>Wait(0)</code> when <code>Wait(500)</code> would do.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>wait_tuning.lua: before and after</span></header>
+            <pre><code class="language-lua">-- BAD: every frame, even when player is far from any prop
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        local pos = GetEntityCoords(PlayerPedId())
+        for _, prop in pairs(PROPS) do
+            if #(pos - prop.coords) &lt; 2.0 then
+                DrawText3D(prop.coords, prop.label)
+            end
+        end
+    end
+end)
+
+-- GOOD: tiered Wait based on distance
+Citizen.CreateThread(function()
+    while true do
+        local pos = GetEntityCoords(PlayerPedId())
+        local nearest = math.huge
+        for _, prop in pairs(PROPS) do
+            local d = #(pos - prop.coords)
+            if d &lt; nearest then nearest = d end
+            if d &lt; 2.0 then DrawText3D(prop.coords, prop.label) end
+        end
+        if     nearest &lt; 2.0  then Wait(0)
+        elseif nearest &lt; 10.0 then Wait(100)
+        else                       Wait(500)
+        end
+    end
+end)</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>The 500 ms rule</header>
+            <p>If a player is more than 10 metres from any of your interaction props, sleep for at least 500 ms. They cannot interact anyway. This single change usually drops a script from 3 ms to 0.05 ms.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Halve a script's cost</h3></header>
+        <p>Pick any script in your server with a <code>while true do Wait(0)</code>. Change it to a tiered <code>Wait</code> based on distance to the nearest interest point. Restart the resource. Compare resmon before and after. Aim for at least 50 percent reduction.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2><code>CreateThread</code> vs <code>CreateThreadNow</code></h2></header>
+        <p class="step-outcome">Outcome: you know which one to use at script start.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>thread_kinds.lua</span></header>
+            <pre><code class="language-lua">-- CreateThread: scheduled to start on the next tick. Default choice.
+Citizen.CreateThread(function()
+    while true do
+        Wait(1000)
+        -- background work
+    end
+end)
+
+-- CreateThreadNow: starts synchronously, blocks the caller until the
+-- thread first yields with Wait. Use only when you must run setup code
+-- before the rest of the resource boots.
+Citizen.CreateThreadNow(function()
+    -- bootstrap sync work
+    Wait(0) -- yield, then continue async
+    -- rest runs scheduled
+end)</code></pre>
+          </figure>
+          <p>99 percent of the time you want <code>CreateThread</code>. <code>CreateThreadNow</code> exists for resource-startup ordering when one piece must run before <code>onResourceStart</code> finishes.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Profile a function with <code>GetGameTimer</code></h2></header>
+        <p class="step-outcome">Outcome: you know which line of code is slow, not just which resource.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>profile.lua</span></header>
+            <pre><code class="language-lua">local function profile(label, fn, ...)
+    local t = GetGameTimer()
+    local ok, err = pcall(fn, ...)
+    print(('[QU][prof] %s = %d ms ok=%s'):format(label, GetGameTimer() - t, tostring(ok)))
+    if not ok then print(err) end
+end
+
+profile('inventory_load', function()
+    -- the work you suspect is slow
+    LoadInventoryFromDB(playerId)
+end)</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Pro tip</header>
+            <p>If a function is under 1 ms, do not optimise it. Spend the hour on the 6 ms function instead. The distribution of cost is always 80/20: one or two functions account for most of the script's resmon footprint.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Find the slow line</h3></header>
+        <p>Wrap three suspected hot functions in <code>profile()</code>. Restart the resource. Trigger the relevant code paths. Read the console output and identify the slowest. Confirm the resmon ms drop matches the function ms you saved.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Profile under real load: production resmon, thread cost, native catalog</h2></header>
+        <p class="step-outcome">Outcome: you can read a live <code>resmon</code> graph at 64 players, name the exact thread that costs 4 ms, and rewrite it without guessing.</p>
+        <div class="step-body">
+
+          <h3 id="step-5-1">5.1 &middot; Read the resmon graph in production</h3>
+          <p>The <code>Time</code> column is an average over the last second. The number you watch in production is not the average, it is the <strong>trend</strong> arrow and the <strong>memory</strong> column. A resource sitting at 0.4 ms with a flat memory line is healthy. A resource sitting at 0.4 ms with memory rising 200 KB every minute is leaking and will kill the server in 36 hours.</p>
+          <figure class="code">
+            <header><span>F8 &middot; production resmon thresholds</span></header>
+            <pre><code class="language-bash">resmon 1
+
+# read these zones, not the absolute number:
+#   0.00 - 0.02 ms   idle event-driven script        ✓ healthy
+#   0.02 - 0.50 ms   active threads with tiered Wait ✓ acceptable
+#   0.50 - 1.50 ms   single Wait(0) loop with work   ⚠ review
+#   1.50 - 4.00 ms   hot loop on every frame         ⚠ tier or cache
+#   &gt; 5.00 ms        runaway / GetGamePool per frame ✗ fire
+
+# memory column read like this:
+#   flat                                              ✓ no leak
+#   ↑  50-500 KB / minute, monotonic                  ✗ leak, find the table that grows
+#   ↑  spikes then plateaus                           ✓ usually a one-time cache fill
+#   ↓  drops at restart only                          ✓ normal</code></pre>
+          </figure>
+          <p>The trend arrow next to <code>Time</code> matters more than the average at 64 players. A 0.6 ms resource that is climbing as players join means the cost scales with player count. That is a structural problem, usually a per-player thread that never dies, or an event handler that allocates a closure per call.</p>
+
+          <h3 id="step-5-2">5.2 &middot; Decompose thread cost: Wait(0) vs Wait(500) vs tiered</h3>
+          <p>Every <code>Wait(0)</code> thread runs ~60 times per second on the client and ~20 times per second on the server. Every <code>Wait(500)</code> thread runs twice per second. The CPU ratio between them is roughly <strong>30&times;</strong> on the client and <strong>10&times;</strong> on the server. That is the entire reason "use tiered Wait" works.</p>
+          <figure class="code">
+            <header><span>thread_cost_decomp.lua</span></header>
+            <pre><code class="language-lua">-- Distance-tiered scheduler: one helper, every interaction thread reuses it
+local function tieredWait(distance)
+    if     distance &lt; 2.0  then return 0     -- player at the prop, redraw every frame
+    elseif distance &lt; 10.0 then return 100   -- close, low-poll
+    elseif distance &lt; 50.0 then return 500   -- mid, presence check
+    else                        return 1500  -- far, basically asleep
+    end
+end
+
+Citizen.CreateThread(function()
+    while true do
+        local pos = GetEntityCoords(PlayerPedId())
+        local nearest = math.huge
+        for _, prop in pairs(PROPS) do
+            local d = #(pos - prop.coords)
+            if d &lt; nearest then nearest = d end
+            if d &lt; 2.0 then DrawText3D(prop.coords, prop.label) end
+        end
+        Wait(tieredWait(nearest))
+    end
+end)
+
+-- WHY this is the default cause of slow servers:
+--   Wait(0)   on client  ≈ 60 Hz  → 60 iterations/sec
+--   Wait(500) on client  ≈ 2 Hz   → 2 iterations/sec
+--   ratio 30× CPU. Nothing you can do inside the loop matters as much
+--   as picking the right Wait floor.</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>Wait floor, not Wait ceiling</header>
+            <p><code>Wait(ms)</code> guarantees <em>at least</em> <code>ms</code> milliseconds, not exactly <code>ms</code>. Under load the actual delay is longer. Never write logic that assumes <code>Wait(100)</code> means "exactly 100 ms", use <code>GetGameTimer()</code> deltas if you need real elapsed time.</p>
+          </div>
+
+          <h3 id="step-5-3">5.3 &middot; Native cost catalog: hoist locals, cache pools</h3>
+          <p>Natives are not free. <code>GetGamePool('CVehicle')</code> walks the engine entity list and costs ~1 ms on a busy map. <code>GetClosestVehicle</code> uses a spatial index and costs &lt;0.05 ms. Calling a native via the global table is slower than calling it via a hoisted local because Lua resolves the global on every call.</p>
+          <figure class="code">
+            <header><span>native_catalog.lua: hoist + cache</span></header>
+            <pre><code class="language-lua">-- BAD: global lookup + full pool scan every frame
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        for _, v in ipairs(GetGamePool('CVehicle')) do
+            if GetEntitySpeed(v) &gt; 30.0 then
+                -- ...
+            end
+        end
+    end
+end)
+
+-- GOOD: hoist natives into locals, refresh pool every 2 seconds
+local GetGamePool      = GetGamePool
+local GetEntitySpeed   = GetEntitySpeed
+local GetGameTimer     = GetGameTimer
+
+local cachedPool, lastRefresh = {}, 0
+local function pool()
+    local now = GetGameTimer()
+    if now - lastRefresh &gt; 2000 then
+        cachedPool   = GetGamePool('CVehicle')
+        lastRefresh  = now
+    end
+    return cachedPool
+end
+
+Citizen.CreateThread(function()
+    while true do
+        Wait(250)                     -- 4 Hz, not 60 Hz
+        for _, v in ipairs(pool()) do
+            if GetEntitySpeed(v) &gt; 30.0 then
+                -- ...
+            end
+        end
+    end
+end)
+
+-- Net: ~60 calls/sec × 1ms each → 4 calls/sec × 1ms each
+--      = 60 ms/sec to 4 ms/sec, two-line edit.</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>The server-side patterns: batch writes, state bags, targeted events</h2></header>
+        <p class="step-outcome">Outcome: you stop hammering the database and the network with work that does not need to happen on every tiny change.</p>
+        <div class="step-body">
+          <p>Everything above this point lives on the client and is mostly about <code>Wait</code> frequency. The server has its own way to burn a budget, and it usually has nothing to do with threads. It is two things: writing to the database too often, and shouting events at people who do not care. Here are the named patterns that fix both.</p>
+
+          <h3 id="step-6-1">6.1 &middot; Batch DB writes instead of one query per change</h3>
+          <p>Imagine players earn coins. The naive version writes to MySQL on every single coin. If 50 players each earn 10 coins a minute, that is 500 tiny <code>UPDATE</code> queries a minute, just for "+1". Your database is doing 500 round-trips an hour to save numbers that did not need saving that often.</p>
+          <p>The fix is the same trick a notebook uses: jot the changes down in memory, then copy them all into the ledger once in a while.</p>
+          <figure class="code">
+            <header><span class="file">server/coins.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- In-memory tally: citizenid -> coins still waiting to be saved
+local dirty = {}
+
+local function onCoinEarn(cid)
+    dirty[cid] = (dirty[cid] or 0) + 1     -- just bump the counter, no DB call
+end
+
+-- Flush the whole tally to the database every 30 seconds
+Citizen.CreateThread(function()
+    while true do
+        Wait(30000)
+        for cid, amount in pairs(dirty) do
+            MySQL.update('UPDATE players SET coins = coins + ? WHERE cid = ?', { amount, cid })
+            dirty[cid] = nil
+        end
+    end
+end)
+
+-- IMPORTANT: flush a player's pending coins when they leave, or you lose them
+AddEventHandler('playerDropped', function()
+    local cid = getCid(source)
+    if dirty[cid] then
+        MySQL.update.await('UPDATE players SET coins = coins + ? WHERE cid = ?', { dirty[cid], cid })
+        dirty[cid] = nil
+    end
+end)</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>This trades safety for speed, so pick your data carefully</header>
+            <p>If the server crashes between flushes, a player loses up to 30 seconds of coins. That is fine for coins, XP, or playtime. It is <strong>not</strong> fine for real cash or item purchases. For anything a player would be furious to lose, write it the instant it happens. Batch the stuff nobody will rage-quit over.</p>
+          </div>
+
+          <h3 id="step-6-2">6.2 &middot; State bags beat firing net events on repeat</h3>
+          <p>Say you sync fuel or stress to clients. The lazy way is to fire a net event many times a second so everyone stays up to date. That floods the network. FiveM has a purpose-built tool for "this value changes a lot and other people need to see it": <strong>state bags</strong>.</p>
+          <p>Think of a state bag as a sticky note on an entity or player. You change the note once, and the game quietly shows the new note to everyone who needs it. No event spam, and it cleans itself up when the player disconnects.</p>
+          <figure class="code">
+            <header><span class="file">server/sync.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- Set it once on the server. The `true` means "replicate to all clients".
+Entity(vehicle).state:set('fuel', 75, true)
+Player(src).state:set('stress', 42, true)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">client/read.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- Any client just reads it. The game kept it in sync for free.
+local fuel = Entity(vehicle).state.fuel</code></pre>
+          </figure>
+          <p>Reach for state bags for anything continuous: fuel, stress, ownership flags, a "is this door locked" boolean. You set, they read, the engine handles the rest.</p>
+
+          <h3 id="step-6-3">6.3 &middot; Send events to the people who care, not to everyone</h3>
+          <p><code>TriggerClientEvent('thing', -1, data)</code> sends to <em>every</em> connected player. On a full server that is 128 copies of the same message. Most events only matter to one person or to a handful of people standing nearby.</p>
+          <figure class="code">
+            <header><span class="file">server/route.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- BAD: 128 players receive a message only the buyer needed
+TriggerClientEvent('shop:updated', -1, data)
+
+-- GOOD: only the buyer
+TriggerClientEvent('shop:updated', buyerSrc, data)
+
+-- GOOD: only players near the action (e.g. a robbery, only nearby cops care)
+local nearby = lib.getNearbyPlayers(coords, 50.0)
+for _, src in ipairs(nearby) do
+    TriggerClientEvent('shop:updated', src, data)
+end</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Save the -1 broadcast for things that are truly global</header>
+            <p>A weather change or a server-wide announcement earns a <code>-1</code> broadcast. A shop update, a robbery alert, a "you got paid" toast does not. Every needless <code>-1</code> multiplies your network traffic by the player count for zero benefit.</p>
+          </div>
+
+          <h3 id="step-6-4">6.4 &middot; Only send to NUI when the value actually changed</h3>
+          <p>HUDs are a classic budget leak. A health bar does not need a fresh message every frame, it needs one when the number changes. Pushing JSON into the browser layer (CEF) on every tick is pure waste, because serializing and shipping the same "100 HP" 60 times a second helps nobody.</p>
+          <figure class="code">
+            <header><span class="file">client/hud.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local lastSent = {}
+
+Citizen.CreateThread(function()
+    while true do
+        local hp = GetEntityHealth(PlayerPedId())
+        if hp ~= lastSent.hp then          -- only when it actually moved
+            SendNUIMessage({ hp = hp })
+            lastSent.hp = hp
+        end
+        Wait(500)
+    end
+end)</code></pre>
+          </figure>
+          <p>Compare the new value to the last value you sent. If they match, do nothing. This one habit can take a HUD from a steady background cost down to almost nothing, because health, hunger, and thirst sit still most of the time.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-batch">
+        <header><span class="chip">Recap 4</span><h3>Cut the server's hidden costs</h3></header>
+        <p>Find one script that writes to the database on a value that changes often (coins, XP, playtime). Convert it to an in-memory tally with a 30-second flush, plus a <code>playerDropped</code> flush so nobody loses progress on logout. Then scan the same resource for any <code>TriggerClientEvent(name, -1, ...)</code> and ask, one by one, whether every player truly needs it. Narrow the ones that do not.</p>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Benchmark: thread &amp; native cost at 60 Hz</h2>
+        <p>Numbers below are from a Windows artifact 7290, single-thread client at 60 fps, 8 active resources, <code>profiler record 60</code>. Treat them as orders of magnitude, not gospel.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Pattern</th><th>p50 cost</th><th>p95 cost</th><th>per second @ 60 Hz</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>Wait(0)</code> empty loop</td><td>0.01 ms</td><td>0.04 ms</td><td>~0.6 ms/s</td><td>Thread-switch overhead alone.</td></tr>
+              <tr><td><code>Wait(0)</code> + GetEntityCoords</td><td>0.05 ms</td><td>0.12 ms</td><td>~3.0 ms/s</td><td>One coord read per frame.</td></tr>
+              <tr><td><code>Wait(500)</code> empty loop</td><td>0.01 ms</td><td>0.03 ms</td><td>~0.02 ms/s</td><td>30&times; cheaper baseline.</td></tr>
+              <tr><td>Tiered Wait (2/100/500/1500)</td><td>0.02 ms</td><td>0.18 ms</td><td>~0.1-2.0 ms/s</td><td>Cost scales with player position.</td></tr>
+              <tr><td><code>GetGamePool('CVehicle')</code> per frame</td><td>0.9 ms</td><td>2.4 ms</td><td>~54 ms/s</td><td>Whole-map entity walk every tick.</td></tr>
+              <tr><td>Cached pool refresh (2 s)</td><td>0.04 ms</td><td>0.11 ms</td><td>~2.4 ms/s</td><td>22&times; cheaper, same correctness.</td></tr>
+              <tr><td>String concat in hot loop</td><td>0.08 ms</td><td>0.20 ms</td><td>~4.8 ms/s</td><td>Garbage churn from rope allocation.</td></tr>
+              <tr><td>Hoisted local vs global native</td><td>~12 ns/call</td><td>~30 ns/call</td><td>~0.7-1.8 ms/s</td><td>Real signal at 1M+ calls/sec only.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="benchmark-note">Read the table top-to-bottom: the win is almost never inside the loop body, it is in the <em>frequency</em> the loop runs and whether you cache pool walks. Picking <code>Wait(500)</code> over <code>Wait(0)</code> beats every micro-optimisation in this list combined.</p>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at 64 players</h2>
+        <p>Patterns that look fine in dev with 1 client and explode under real load. Each row is something the FiveM Discord support channels see weekly.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+            <tbody>
+              <tr><td>"Script timeout exceeded; will be terminated"</td><td><code>while true do</code> with no <code>Wait</code>, or a <code>Wait</code> behind a branch that never runs.</td><td>Place <code>Wait(0)</code> as the first line of every infinite loop. Lint for <code>while true do</code> with no <code>Wait</code> in the immediate body.</td></tr>
+              <tr><td>resmon climbs after every player join</td><td>Per-player thread spawned in <code>playerSpawned</code> never dies on disconnect.</td><td>Track threads in a table keyed by <code>source</code>; flip a <code>cancelled</code> flag on <code>playerDropped</code>; the thread checks the flag and <code>return</code>s.</td></tr>
+              <tr><td>Memory rising 200 KB/min, CPU flat</td><td>Closure or table allocated inside a hot loop, never garbage-collected because of an upvalue capture.</td><td>Move the table/closure outside the loop; reuse one buffer; <code>collectgarbage('count')</code> before/after to confirm.</td></tr>
+              <tr><td>ms steady, but spike to 18 ms on stress event</td><td><code>GetGamePool</code> or full SQL <code>SELECT</code> triggered in an event handler that fires for every player at once.</td><td>Debounce the handler (1-5 s window); cache the result; cap concurrent fan-out with a token bucket.</td></tr>
+              <tr><td>Server stutters at 60+ players, fine at 30</td><td>Server thread doing per-player polling (e.g. checking armor) at <code>Wait(0)</code>.</td><td>Move per-player polling to client and replicate via state bag, or batch on server with <code>Wait(1000)</code> over the player iterator.</td></tr>
+              <tr><td>Optimisation made it worse</td><td>"Fix" added a global that is now hot, e.g. moved a value into <code>_G</code> for "cross-script access".</td><td>Never use <code>_G</code> as a cache. Use <code>exports</code> or a local module; benchmark the new shape with <code>profiler record</code> before declaring victory.</td></tr>
+              <tr><td>False regression after artifact bump</td><td>Newer artifact reports more accurate timings; old artifact under-reported by 30-40%.</td><td>Re-baseline after every artifact update. Compare same-artifact before/after, never cross-artifact.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout callout--pro">
+          <header>Pro tip: profiler record</header>
+          <p>For the rare case where <code>resmon</code> shows the cost but not the line, run <code>profiler record 60</code> in the F8 console, reproduce the load, then <code>profiler save trace.json</code>. Open it in <a href="https://ui.perfetto.dev/" target="_blank" rel="noopener">Perfetto</a>. Every Lua call is a flame-graph block. The widest block is your problem.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-3">
+        <header><span class="chip">Recap 3</span><h3>Senior depth: performance audit</h3></header>
+        <p>You can read a <code>resmon</code> graph and decide which signal matters: median is steady-state, the spike row is your incident. You know that <code>Wait(0)</code> is a per-frame budget claim, and you know which natives are cheap (<code>GetGameTimer</code>) vs expensive (<code>GetEntityCoords</code> on a vehicle pool). When a server tanks under 64 players, you start with <code>profiler record</code>, not guesses.</p>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary><code>while true do</code> with no <code>Wait</code></summary>
+          <p>The loop never yields. The whole resource hangs. FiveM kills the thread after a few seconds with "script timeout exceeded". Always have a <code>Wait</code> inside any infinite loop.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using <code>Wait(0)</code> for things that do not need a frame</summary>
+          <p>Anything UI-driven (3D text, markers, progress bars) might need <code>Wait(0)</code>. Anything check-driven (is the player still in the zone, has the timer expired) is fine at 250 ms or 500 ms.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Iterating all entities every frame</summary>
+          <p><code>GetGamePool('CVehicle')</code> on the client costs ~1 ms per call. Cache it and refresh every few seconds, or filter by distance first using <code>GetClosestVehicle</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>String concatenation inside hot loops</summary>
+          <p><code>('a' .. b .. 'c')</code> on every frame allocates. Pre-build the string outside the loop or use <code>string.format</code> once when the value actually changes.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Reading a config table on every iteration</summary>
+          <p>If the config never changes, hoist the lookup out of the loop into a local. Locals are faster than globals; globals are faster than nested table lookups.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Where do you read per-resource ms cost?</legend>
+            <label><input type="radio" name="q1" value="a"> <code>top</code> on the host machine.</label>
+            <label><input type="radio" name="q1" value="b"> <code>resmon</code> in F8 client console or server console.</label>
+            <label><input type="radio" name="q1" value="c"> <code>htop</code> on the dedicated.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. A thread that sleeps 1000 ms uses roughly how much CPU?</legend>
+            <label><input type="radio" name="q2" value="a"> The same as <code>Wait(0)</code>.</label>
+            <label><input type="radio" name="q2" value="b"> Half of <code>Wait(0)</code>.</label>
+            <label><input type="radio" name="q2" value="c"> About 1/60th of <code>Wait(0)</code>.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. <code>CreateThreadNow</code> is for...</legend>
+            <label><input type="radio" name="q3" value="a"> Resource bootstrap that must run before <code>onResourceStart</code> returns.</label>
+            <label><input type="radio" name="q3" value="b"> Faster runtime threads.</label>
+            <label><input type="radio" name="q3" value="c"> Threads that never yield.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. <code>GetGameTimer</code> returns...</legend>
+            <label><input type="radio" name="q4" value="a"> The system clock.</label>
+            <label><input type="radio" name="q4" value="b"> Milliseconds since game session start.</label>
+            <label><input type="radio" name="q4" value="c"> Seconds since the resource started.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>5. Of these natives, which is the cheapest to call inside a hot loop?</legend>
+            <label><input type="radio" name="q5" value="a"> <code>GetGameTimer()</code>.</label>
+            <label><input type="radio" name="q5" value="b"> <code>GetClosestVehicle()</code>.</label>
+            <label><input type="radio" name="q5" value="c"> <code>GetEntityCoords()</code> on every player.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt>Open resmon</dt><dd><code>resmon 1</code> in F8 (client) or <code>resmon</code> on the server.</dd></div>
+          <div><dt>Idle target</dt><dd>Each resource under 0.5 ms in normal play.</dd></div>
+          <div><dt>Default thread</dt><dd><code>Citizen.CreateThread(fn)</code>, with <code>Wait</code> inside any infinite loop.</dd></div>
+          <div><dt>Tier Wait</dt><dd>Far &rarr; 500 ms. Mid &rarr; 100 ms. Close &rarr; 0.</dd></div>
+          <div><dt>Profile</dt><dd>Wrap suspected functions with <code>GetGameTimer</code> deltas.</dd></div>
+          <div><dt>Hoist locals</dt><dd>Move repeated globals into <code>local</code> at the top of the file.</dd></div>
+          <div><dt>Cache lookups</dt><dd>Don't iterate <code>GetGamePool</code> every frame.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>resmon</code> is the single number that tells you whether a script is healthy.</li>
+          <li><code>Wait(0)</code> is the default cause of slow servers; tier it by distance or relevance.</li>
+          <li><code>CreateThread</code> for almost everything; <code>CreateThreadNow</code> only for boot-order edge cases.</li>
+          <li><code>GetGameTimer</code> deltas pinpoint the slow function inside a slow resource.</li>
+          <li>Optimise the 1 hog, not the 20 cheap functions; cost is distributed 80/20.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a client thread that draws 3D text above the nearest of 50 props, only when the player is within 5 metres of one. Use a tiered <code>Wait</code>. Confirm in <code>resmon</code> that idle cost is below 0.05 ms and active cost (player near a prop) stays below 0.5 ms.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 resmon</span></header>
+          <pre><code class="language-bash">qu_perf_demo  cpu 0.03ms  mem 1.2 MiB    (idle, far from props)
+qu_perf_demo  cpu 0.41ms  mem 1.2 MiB    (within 5m of nearest prop)</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" target="_blank" rel="noopener">CFX docs, Lua scripting reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xA4EA0691" target="_blank" rel="noopener">Native: GetGameTimer</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/CreateThread/" target="_blank" rel="noopener">CFX docs, Citizen.CreateThread</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 13, Threads &amp; Wait</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Add a debug command <code>/qu_prof on</code> that wraps every event handler in your resource with timing logs.</li>
+          <li>Compare <code>pairs</code> vs <code>ipairs</code> on a 10000-entry array; learn when each wins.</li>
+          <li>Read the source of <code>ox_target</code>: notice how it uses raycasts plus tiered <code>Wait</code> to stay under 0.1 ms.</li>
+        </ul>
+      </section>

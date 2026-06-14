@@ -1,0 +1,154 @@
+<LessonHero
+  crumbs="Module 03 · Lesson 10"
+  title="Two worlds, one resource"
+  meta={[
+    { label: "You'll learn", value: "Why a resource runs as two programs, and which code lives on each side." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "Prereqs", value: "A running server and one resource you can edit." },
+  ]}
+>
+  This is one of the first big FiveM ideas that confuses beginners. Your resource
+  folder looks like one thing, but it actually runs as **two separate programs** ,
+  one on the server, one on each player's PC. They do not share variables, and they
+  do not secretly sync.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds one resource proving server and client run as separate programs as a working FiveM resource named `qu_two_worlds`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_two_worlds
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_two_worlds/
+  fxmanifest.lua
+  config.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+shared_script 'config.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `config.lua` and paste this:
+
+    ```lua
+Config = {}
+Config.Label = 'qu_two_worlds shared config'
+    ```
+
+    Open `server.lua` and paste this:
+
+    ```lua
+print('[qu_two_worlds] server loaded ' .. Config.Label)
+
+RegisterCommand('splitproof', function(src)
+    TriggerClientEvent('qu_two_worlds:clientProof', src)
+    print('[qu_two_worlds] server handled splitproof')
+end, false)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+print('[qu_two_worlds] client loaded ' .. Config.Label)
+
+RegisterNetEvent('qu_two_worlds:clientProof', function()
+    print('[qu_two_worlds] client ped ' .. PlayerPedId())
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_two_worlds
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_two_worlds
+    ```
+
+    Run this test:
+
+    ```text
+    /splitproof
+    ```
+
+    <ExpectedOutput>
+      Server: [qu_two_worlds] server handled splitproof
+F8: [qu_two_worlds] client ped playerPedId
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_two_worlds does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_two_worlds", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_two_worlds, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_two_worlds folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for one resource proving server and client run as separate programs.",
+    "Add ensure qu_two_worlds to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_two_worlds`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

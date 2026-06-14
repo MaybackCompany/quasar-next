@@ -1,0 +1,140 @@
+<LessonHero
+  crumbs="Module 08 · Lesson 26"
+  title="Vehicles: spawn, modify, clean up"
+  meta={[
+    { label: "You'll ship", value: "A /testvehicle command that spawns a car, sets a custom plate, warps the player in, and auto-deletes after 60 seconds." },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You'll learn", value: "CreateVehicle, TaskWarpPedIntoVehicle, vehicle customization natives, network ownership basics, and timeout cleanup." },
+    { label: "Prereqs", value: "Lesson 24 (spawning entities) and Lesson 25 (cleanup discipline)." },
+  ]}
+>
+  Vehicles are the most common entity you will work with in FiveM. Garage scripts, dealerships, police cruisers, test commands -- they all start with spawning a car and putting the player in it. This lesson covers the full cycle: spawn, customize, put the player inside, and clean up when done.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds CreateVehicle, plate, colors, warp, and auto-delete as a working FiveM resource named `qu_vehicles_spawn_modify_store`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_vehicles_spawn_modify_store
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_vehicles_spawn_modify_store/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local testVehicle
+RegisterCommand('testvehicle', function()
+    if testVehicle and DoesEntityExist(testVehicle) then DeleteEntity(testVehicle) end
+    local model = joaat('sultan')
+    RequestModel(model) while not HasModelLoaded(model) do Wait(0) end
+    local ped = PlayerPedId()
+    local c = GetEntityCoords(ped)
+    testVehicle = CreateVehicle(model, c.x + 3.0, c.y, c.z, GetEntityHeading(ped), true, false)
+    SetVehicleNumberPlateText(testVehicle, 'QUCAR')
+    SetVehicleColours(testVehicle, 12, 12)
+    TaskWarpPedIntoVehicle(ped, testVehicle, -1)
+    SetModelAsNoLongerNeeded(model)
+    print('[qu_vehicles_spawn_modify_store] spawned sultan')
+    SetTimeout(60000, function() if testVehicle and DoesEntityExist(testVehicle) then DeleteEntity(testVehicle) print('[qu_vehicles_spawn_modify_store] auto-deleted') end end)
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_vehicles_spawn_modify_store
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_vehicles_spawn_modify_store
+    ```
+
+    Run this test:
+
+    ```text
+    /testvehicle
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_vehicles_spawn_modify_store] spawned sultan
+F8 after 60 seconds: [qu_vehicles_spawn_modify_store] auto-deleted
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_vehicles_spawn_modify_store does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_vehicles_spawn_modify_store", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_vehicles_spawn_modify_store, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_vehicles_spawn_modify_store folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for CreateVehicle, plate, colors, warp, and auto-delete.",
+    "Add ensure qu_vehicles_spawn_modify_store to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_vehicles_spawn_modify_store`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

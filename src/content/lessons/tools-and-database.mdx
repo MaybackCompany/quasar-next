@@ -1,0 +1,166 @@
+<LessonHero
+  crumbs="Step 02"
+  title="Install tools, account, and database"
+  meta={[
+    { label: "You'll do", value: "Install VS Code, an archive tool, WinSCP, MariaDB, and HeidiSQL. Turn on file extensions. Create a Cfx.re account and a free license key." },
+    { label: "Time", value: "~30 minutes. Most of it is installers and the account email." },
+    { label: "You need", value: "Step 01 done, admin rights on Windows, and an email you can check now." },
+    { label: "Result", value: "You are ready to install the latest FiveM artifacts and pick a txAdmin recipe in Step 03." },
+  ]}
+>
+  Keep this simple. Install the tools FiveM owners use every day, create your free **Cfx.re license key** from the **portal** (portal.cfx.re), and prepare the **MariaDB** database before txAdmin asks for it. The mental model to keep: MariaDB is the database engine, **HeidiSQL** is the window you look through it with, and `oxmysql` is the resource that lets your scripts talk to it later.
+</LessonHero>
+
+<Prereq
+  items={[
+    "My FiveM client opens and signs in (Step 01 is done).",
+    "I have admin rights to install Windows programs.",
+    "I can open my email right now to verify an account.",
+    "I have a Windows PC for the playable test (the FiveM client is Windows-only)."
+  ]}
+/>
+
+<Callout variant="fivem" title="Owner mental model">
+  MariaDB is the database engine that stores players, money, vehicles, jobs, and inventory. HeidiSQL is the visual app you use to see and edit that database safely. `oxmysql` is the FiveM resource that lets your scripts talk to MariaDB later. Install each tool, read the proof, then move to the next step.
+</Callout>
+
+## The tools you'll install
+
+Official downloads only. Use these links, not random mirrors. The editor edits your files, MariaDB stores your data, HeidiSQL is the window into that data, and oxmysql is the resource your scripts use to reach it later.
+
+<TechLinks ids={["vscode", "7zip", "winrar", "winscp", "mariadb", "heidisql", "oxmysql"]} />
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Install VS Code and turn on file extensions" outcome="Right-clicking a folder shows Open with Code, and File Explorer shows full file names.">
+    Download VS Code from [code.visualstudio.com/download](https://code.visualstudio.com/download), run the **Windows User Installer**, and accept the defaults. On the **Additional Tasks** screen, tick both **Open with Code** context-menu options.
+
+    Then open File Explorer, go to the **View** menu, and turn on **File name extensions** and **Hidden items**.
+
+    Why extensions matter: a broken file often looks like `server.cfg.txt`. FiveM needs `server.cfg`. Hidden extensions hide that mistake from you.
+
+    To prove it, create a file on your Desktop:
+
+    ```text
+    Desktop\proof.cfg
+    ```
+
+    <ExpectedOutput>
+      Right-clicking a folder shows "Open with Code", and File Explorer shows the full name proof.cfg (not proof.cfg.txt and not just proof).
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Install an archive tool" outcome="You can extract the .7z and .zip files FiveM ships artifacts in.">
+    FiveM artifacts come as compressed archives. Install **7-Zip** from [7-zip.org](https://www.7-zip.org/) (free) or **WinRAR** from [win-rar.com](https://www.win-rar.com/). Use the 64-bit Windows version and accept the defaults.
+
+    To prove it, right-click any `.7z` or `.zip` file. The menu now offers an **Extract** option from your archive tool.
+
+    <ExpectedOutput>
+      A .7z or .zip file shows an Extract option in the right-click menu.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Install WinSCP for later" outcome="WinSCP is installed and ready for VPS file transfers in a future lesson.">
+    You do not need this for a local server, but installing it now saves time later. Download WinSCP from [winscp.net/eng/download.php](https://winscp.net/eng/download.php), run the installer with default settings, and **do not connect to anything yet**.
+
+    <ExpectedOutput>
+      WinSCP opens to a login screen. Close it for now.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Create your Cfx.re account and free license key" outcome="A license-key.txt file with your free key exists on your Desktop.">
+    Every FiveM server needs a license key, **even a local test server**. The key is **free** and comes from the Cfx.re **Portal**, not from any "Keymaster" page.
+
+    1. Create or verify your account at [forum.cfx.re](https://forum.cfx.re/) and confirm the email.
+    2. Go to the portal at [portal.cfx.re](https://portal.cfx.re/).
+    3. Open **Server Management** and create a new license.
+    4. Copy the key into a new VS Code file and save it on your Desktop as `license-key.txt`.
+
+    Treat the key like a password. Never paste it in Discord, GitHub, screenshots, or videos. If it leaks, revoke it on the portal and generate a new one.
+
+    <ExpectedOutput>
+      Desktop\license-key.txt exists and contains a key that starts with cfxk_
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Install MariaDB" outcome="MariaDB runs as a Windows service on 127.0.0.1:3306.">
+    Download the latest Windows x86_64 MSI from [mariadb.org/download](https://mariadb.org/download/) and run the installer.
+
+    1. Set a **root password** and save it on your Desktop in `db-creds.txt`.
+    2. Enable **UTF8** as the default character set.
+    3. Keep port **3306** and install it as a **Windows service**.
+
+    Confirm the service is running. Open PowerShell and run:
+
+    ```bash
+    Get-Service MariaDB*
+    ```
+
+    <ExpectedOutput>
+      Status   Name      DisplayName
+      ------   ----      -----------
+      Running  MariaDB   MariaDB
+    </ExpectedOutput>
+
+    If the service has a slightly different name, open Windows **Services** and look for **MariaDB** or **MySQL**. The proof you want is the status **Running**.
+  </Step>
+
+  <Step num={6} title="Install HeidiSQL and create the database" outcome="HeidiSQL connects to MariaDB and shows a database named fivem.">
+    Download HeidiSQL from [heidisql.com/download.php](https://www.heidisql.com/download.php) and install it. Then create a new session:
+
+    1. Name the session `local FiveM`.
+    2. Host `127.0.0.1`, user `root`, password from your `db-creds.txt`, port `3306`.
+    3. Open the session, then create a database named `fivem`.
+    4. Use collation `utf8mb4_unicode_ci`.
+
+    To prove the connection, click the `fivem` database, open a query tab, and run:
+
+    ```text
+    SELECT DATABASE();
+    ```
+
+    <ExpectedOutput>
+      The result grid shows a single value: fivem
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "You saved server.cfg.txt instead of server.cfg", fix: "Turn on File name extensions in File Explorer, then rename the file so it ends in .cfg with no .txt." },
+    { symptom: "MariaDB installer says the port is already in use", fix: "MySQL, XAMPP, or Laragon is already on 3306. Stop that service or pick one database stack, then reinstall on port 3306." },
+    { symptom: "HeidiSQL says Access denied for user 'root'", fix: "The password is wrong. Reopen your db-creds.txt; if it is lost on a fresh install, reinstall MariaDB and write the password down first." },
+    { symptom: "HeidiSQL says connection refused", fix: "The MariaDB service is stopped. Run Get-Service MariaDB* and start it from Windows Services if it is not Running." },
+    { symptom: "The Cfx.re portal will not create a key", fix: "Verify your account email and sign in to portal.cfx.re with the same account; try a private window if old cookies are stuck." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Use VS Code to edit .cfg and .lua files, with real file extensions visible.",
+    "Extract FiveM artifact archives with 7-Zip or WinRAR.",
+    "Generate a free Cfx.re license key from the portal and store it safely.",
+    "Run MariaDB as a service and confirm it with Get-Service MariaDB*.",
+    "Connect HeidiSQL to MariaDB and create the fivem database for txAdmin to use in Step 03."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Create a file on your Desktop named `hello.cfg` using VS Code, then check File Explorer. Confirm it shows exactly `hello.cfg`, not `hello.cfg.txt` and not just `hello`. This proves your file extensions are visible before you ever touch a real server.cfg.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "Cfx.re portal · license keys", href: "https://portal.cfx.re/" },
+    { label: "MariaDB downloads", href: "https://mariadb.org/download/" },
+    { label: "HeidiSQL downloads", href: "https://www.heidisql.com/download.php" }
+  ]}
+/>

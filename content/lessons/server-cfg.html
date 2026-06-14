@@ -1,0 +1,318 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <a href="../index.html#server-development">Track 0</a> › <span>Step 04</span></div>
+        <h1>server.cfg, resources, and dependencies</h1>
+        <p class="lede"><code>server.cfg</code> is the startup script for your city. It names the server, sets ports, starts resources, and decides the order everything loads.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll do</dt><dd>Open <code>server.cfg</code>, read <code>ensure</code> order, map resources, and add one safe local resource line.</dd></div>
+          <div><dt>Time</dt><dd>~20 minutes.</dd></div>
+          <div><dt>You need</dt><dd>Step 03 done and the server recipe installed.</dd></div>
+          <div><dt>Result</dt><dd>You can explain why a script like a phone, inventory, or job must load after the resources it depends on.</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="00d">
+        <h2>Before you start</h2>
+        <ul>
+          <li><label><input type="checkbox" data-id="online"> txAdmin shows your server online</label></li>
+          <li><label><input type="checkbox" data-id="folder"> You know where your server-data folder is</label></li>
+          <li><label><input type="checkbox" data-id="editor"> You can open that folder in VS Code</label></li>
+        </ul>
+      </section>
+
+      <section id="mental-model">
+        <h2>The simple mental model</h2>
+        <p>FXServer reads <code>server.cfg</code> from top to bottom. If a script needs another script, that dependency must be ensured first.</p>
+        <dl class="vocab-list">
+          <div><dt>Resource</dt><dd>A script folder with an <code>fxmanifest.lua</code> file.</dd></div>
+          <div><dt>ensure</dt><dd>The command that starts a resource and keeps it started.</dd></div>
+          <div><dt>Script dependency</dt><dd>A resource another resource needs before it can work.<br>Example: Quasar Smartphone Pro needs <code>ox_lib</code> before the phone resource starts.</dd></div>
+          <div><dt>fxmanifest.lua</dt><dd>The file that tells FiveM what a resource contains and needs.</dd></div>
+        </dl>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Open <code>server.cfg</code></h2></header>
+        <p class="step-outcome">Outcome: VS Code shows the config file.</p>
+        <div class="step-body">
+          <ol>
+            <li>Open your <code>server-data</code> folder.</li>
+            <li>Right-click the folder and choose <strong>Open with Code</strong>.</li>
+            <li>Open <code>server.cfg</code>.</li>
+            <li>Find the resource lines that start with <code>ensure</code>.</li>
+          </ol>
+          <p class="expected">Expected outcome</p>
+          <p>You can point at the block where resources start.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Understand the important lines</h2></header>
+        <p class="step-outcome">Outcome: you know what the common server settings do.</p>
+        <div class="step-body">
+<pre><code class="language-bash">endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+
+sv_hostname "My QBCore Server"
+sv_maxclients 48
+sv_licenseKey "PASTE_YOUR_KEY_HERE"
+
+set mysql_connection_string "mysql://root:PASSWORD@127.0.0.1/fivem?charset=utf8mb4"
+
+ensure oxmysql
+ensure ox_lib
+ensure qb-core
+ensure ox_inventory
+ensure ox_target</code></pre>
+          <dl class="vocab-list">
+            <div><dt><code>endpoint_add_tcp</code> / <code>endpoint_add_udp</code></dt><dd>The port doors players connect through.</dd></div>
+            <div><dt><code>sv_hostname</code></dt><dd>The server name players see.</dd></div>
+            <div><dt><code>sv_licenseKey</code></dt><dd>Your private Cfx.re license key.</dd></div>
+            <div><dt><code>mysql_connection_string</code></dt><dd>The bridge information oxmysql uses to reach MariaDB.</dd></div>
+          </dl>
+          <div class="callout callout--warn">
+            <header>Secret-handling warning</header>
+            <p><code>sv_licenseKey</code> and <code>mysql_connection_string</code> contain secrets. Do not paste real values into Discord, public GitHub, screenshots, tutorial videos, or support tickets. Blur them before sharing. If they leak, revoke the Cfx.re key and rotate the database password.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Read ensure order like a script dependency map</h2></header>
+        <p class="step-outcome">Outcome: you can explain why order matters.</p>
+        <div class="step-body">
+<pre><code class="language-bash"># 1. Database bridge first
+ensure oxmysql
+
+# 2. Shared helper library second
+ensure ox_lib
+
+# 3. Framework core third
+ensure qb-core
+
+# 4. Core systems after framework
+ensure ox_inventory
+ensure ox_target
+
+# 5. Quasar scripts and gameplay scripts after their dependencies
+ensure qs-smartphone-pro
+ensure [jobs]
+ensure [cars]
+ensure [maps]</code></pre>
+          <div class="callout callout--gotcha">
+            <header>Wrong order creates confusing errors</header>
+            <p>If <code>qs-smartphone-pro</code> starts before <code>ox_lib</code>, the phone resource may not run. If a job starts before QBCore, it may print missing export errors. If a SQL script starts before <code>oxmysql</code>, saves fail.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Can you explain the order?</h3></header>
+        <p>Say this out loud: dependency first, dependent script second. For example: <code>ox_lib</code> before <code>qs-smartphone-pro</code>.</p>
+      </section>
+
+      <section class="step" id="ensure-order-test">
+        <header><span class="step-num">Test</span><h2>Run an ensure-order test with throwaway resources</h2></header>
+        <p class="step-outcome">Outcome: you prove that order changes the console result without touching a single production script.</p>
+        <div class="step-body">
+          <div class="callout callout--warn">
+            <header>Never test order on real dependencies</header>
+            <p>Do not restart <code>ox_lib</code>, a framework, or a paid script on a live server to "test" order. You can disconnect players and break every resource that depends on them. Use two tiny local resources instead: no players, no data, no risk.</p>
+          </div>
+          <p>Create <code>resources/[local]/qu_dep_provider</code> and <code>resources/[local]/qu_dep_consumer</code>. The provider exports a value; the consumer reads it and reports whether it found it.</p>
+          <figure class="code">
+            <header><span class="file">qu_dep_provider/fxmanifest.lua</span><span class="lang">Lua</span></header>
+            <pre><code>fx_version 'cerulean'
+game 'gta5'
+server_script 'server.lua'</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">qu_dep_provider/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code>exports('Ping', function() return 'pong' end)
+print('[QUIET][dep_provider] export ready')</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">qu_dep_consumer/fxmanifest.lua</span><span class="lang">Lua</span></header>
+            <pre><code>fx_version 'cerulean'
+game 'gta5'
+server_script 'server.lua'</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">qu_dep_consumer/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code>CreateThread(function()
+    local ok, result = pcall(function()
+        return exports.qu_dep_provider:Ping()
+    end)
+    if ok and result == 'pong' then
+        print('[QUIET][dep_consumer] provider found: ' .. result)
+    else
+        print('[QUIET][dep_consumer] provider MISSING (wrong ensure order)')
+    end
+end)</code></pre>
+          </figure>
+          <ol>
+            <li>Make a backup copy of <code>server.cfg</code>.</li>
+            <li>Add both resources in dependency-first order, then save:
+              <pre><code>ensure qu_dep_provider
+ensure qu_dep_consumer</code></pre>
+            </li>
+            <li>Open txAdmin &rarr; <strong>Live Console</strong>.</li>
+            <li>Run <code>restart qu_dep_provider</code>, then <code>restart qu_dep_consumer</code>.</li>
+            <li>Read the console. You want the found line, not the missing line.</li>
+          </ol>
+          <figure class="code" data-expected-output="[QUIET][dep_consumer] provider found: pong">
+            <header><span class="file">txAdmin Live Console</span><span class="lang">Expected</span></header>
+            <pre><code>[QUIET][dep_provider] export ready
+[QUIET][dep_consumer] provider found: pong</code></pre>
+          </figure>
+          <p>Now swap the two lines so <code>qu_dep_consumer</code> is ensured first, save, and restart both again. The consumer prints <code>provider MISSING</code>, the same failure a real dependency hits when its provider starts too late.</p>
+          <div class="callout callout--gotcha">
+            <header>If you see a missing export</header>
+            <p>Put the provider above the script that needs it, save <code>server.cfg</code>, restart the provider first, then the dependent script.</p>
+          </div>
+          <div class="callout callout--tip">
+            <header>Checking real dependencies without restarting</header>
+            <p>To confirm the order of live paid scripts like <code>ox_lib</code> or <code>qs-smartphone-pro</code>, do not restart them while players are connected. Read <code>server.cfg</code> top to bottom and confirm each dependency's <code>ensure</code> line sits above every script that needs it, then open each script's <code>fxmanifest.lua</code> <code>dependencies</code> block. Inspect, do not restart.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Understand the resources folder</h2></header>
+        <p class="step-outcome">Outcome: you know where scripts and assets live.</p>
+        <div class="step-body">
+<pre><code class="language-bash">server-data/
+  server.cfg
+  resources/
+    [standalone]/
+      oxmysql/
+      ox_lib/
+    [qb]/
+      qb-core/
+      qb-vehicleshop/
+    [jobs]/
+      qb-policejob/
+    [cars]/
+      police_pack/
+    [maps]/
+      legion_mlo/</code></pre>
+          <p>Bracket folders organize resources. FiveM sees the resources inside them. You can also <code>ensure [cars]</code> to start every resource in that bracket folder.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Check a script before adding it</h2></header>
+        <p class="step-outcome">Outcome: you can spot script dependencies before install.</p>
+        <div class="step-body">
+          <ol>
+            <li>Open the resource folder.</li>
+            <li>Open <code>fxmanifest.lua</code>.</li>
+            <li>Look for <code>dependencies</code> or install notes.</li>
+            <li>Look for required shared scripts like <code>@ox_lib/init.lua</code>.</li>
+            <li>Check the seller documentation for required scripts.</li>
+            <li>Start those dependencies before the script in <code>server.cfg</code>.</li>
+          </ol>
+<pre><code class="language-lua">dependencies {
+  'ox_lib',
+  'oxmysql',
+  'qb-core'
+}</code></pre>
+          <p class="expected">Expected outcome</p>
+          <p>You know the script must start after <code>ox_lib</code>, <code>oxmysql</code>, and <code>qb-core</code>.</p>
+          <div class="callout callout--fivem">
+            <header>Quasar example</header>
+            <p>If a Quasar script says it requires <code>ox_lib</code>, put <code>ensure ox_lib</code> above that Quasar script in <code>server.cfg</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Add one safe local resource line</h2></header>
+        <p class="step-outcome">Outcome: you edit <code>server.cfg</code> without breaking the server.</p>
+        <div class="step-body">
+          <ol>
+            <li>Create a bracket folder named <code>[local]</code> inside <code>resources</code>.</li>
+            <li>Add your own test resource there later.</li>
+            <li>For now, add this comment near the bottom of <code>server.cfg</code>.</li>
+          </ol>
+<pre><code class="language-bash"># Local scripts I am testing
+# ensure [local]</code></pre>
+          <p class="expected">Expected outcome</p>
+          <p>The server still restarts. Nothing new starts because the ensure line is commented.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Restart cleanly</h3></header>
+        <p>Restart from txAdmin. The server should come back online with no new red dependency errors.</p>
+      </section>
+
+      <section id="clean-restart-proof">
+        <h2>Expected console lines after a clean restart</h2>
+        <p>A clean restart does not mean zero lines. It means the important lines show startup progress and no new red blocker appears.</p>
+        <figure class="code">
+          <header><span class="file">txAdmin Live Console</span><span class="lang">Expected lines</span></header>
+          <pre><code>Started resource oxmysql
+Started resource ox_lib
+Started resource qb-core
+Started resource ox_inventory
+Started resource ox_target
+Started resource qs-smartphone-pro
+Server license key authentication succeeded
+Sending heartbeat to live-internal.fivem.net
+status
+hostname: My QBCore Server
+players: 0/48</code></pre>
+        </figure>
+        <p class="expected">Proof</p>
+        <p>Run <code>status</code>, then direct connect once. If a player can join and the console has no new red dependency errors, the restart proof passes.</p>
+      </section>
+
+      <section id="database-recap">
+        <h2>Database recap</h2>
+        <p>MariaDB stores the data. HeidiSQL lets you see it. oxmysql lets FiveM scripts read and write it.</p>
+        <div class="callout callout--fivem">
+          <header>Common chain</header>
+          <p>QBCore or ESX saves a vehicle. The framework asks oxmysql. oxmysql talks to MariaDB. HeidiSQL lets you inspect the saved row.</p>
+        </div>
+      </section>
+
+      <section class="mistakes" id="mistakes">
+        <h2>Common mistakes</h2>
+        <ul>
+          <li><code>No such export</code>: the script dependency did not start first.</li>
+          <li><code>Access denied for user</code>: MariaDB password or connection string is wrong.</li>
+          <li><code>Unknown database 'fivem'</code>: the database was not created in HeidiSQL.</li>
+          <li><code>Couldn't find resource</code>: the folder name and ensure name do not match.</li>
+          <li>The script is inside a zip folder, not an extracted resource folder.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>server.cfg</code> controls startup order.</li>
+          <li><code>ensure</code> starts resources.</li>
+          <li><code>fxmanifest.lua</code> and script docs reveal dependencies.</li>
+          <li><code>oxmysql</code> must start before scripts that save data.</li>
+          <li><code>ox_lib</code> must start before scripts that use it.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Open one installed resource and find its <code>fxmanifest.lua</code>. Then open its install docs. Write down every dependency it names.</p>
+        <p class="expected">Expected outcome</p>
+        <p>You can say which dependency must be above that resource in <code>server.cfg</code>.</p>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">Cfx.re docs · Server commands</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">Cfx.re docs · Resource manifest</a></li>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+        </ul>
+      </section>

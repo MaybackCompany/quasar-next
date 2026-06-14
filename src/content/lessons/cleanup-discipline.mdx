@@ -1,0 +1,160 @@
+<LessonHero
+  crumbs="Module 08 · Lesson 25"
+  title="Cleanup discipline"
+  meta={[
+    { label: "You'll ship", value: "Cleanup handlers for resource stop, player drop, and timed auto-delete." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You'll learn", value: "Signs of entity leaks, cleanup on resource stop, cleanup on player drop, timeout auto-delete, and the interaction-then-cleanup pattern." },
+    { label: "Prereqs", value: "Lesson 24 (spawning entities, the registry pattern)." },
+  ]}
+>
+  Spawning is easy. Cleaning up is the part that separates scripts that work from scripts that destroy servers. If you spawn entities and never delete them, the world fills up with ghost objects, entity counts climb, and eventually the server lags or crashes. This lesson teaches you when, where, and how to clean up.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds spawned object registry with manual, timeout, and stop cleanup as a working FiveM resource named `qu_cleanup_discipline`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_cleanup_discipline
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_cleanup_discipline/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local objects = {}
+
+RegisterCommand('spawnbox', function()
+    local model = joaat('prop_boxpile_07d')
+    RequestModel(model)
+    while not HasModelLoaded(model) do Wait(0) end
+
+    local coords = GetEntityCoords(PlayerPedId())
+    local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, true, true, false)
+    objects[object] = true
+    SetModelAsNoLongerNeeded(model)
+    print('[qu_cleanup_discipline] spawned object ' .. object)
+
+    SetTimeout(30000, function()
+        if DoesEntityExist(object) then
+            DeleteEntity(object)
+            objects[object] = nil
+            print('[qu_cleanup_discipline] timeout deleted object')
+        end
+    end)
+end, false)
+
+RegisterCommand('clearboxes', function()
+    for object in pairs(objects) do
+        if DoesEntityExist(object) then DeleteEntity(object) end
+        objects[object] = nil
+    end
+    print('[qu_cleanup_discipline] registry cleared')
+end, false)
+
+AddEventHandler('onResourceStop', function(name)
+    if name == GetCurrentResourceName() then
+        ExecuteCommand('clearboxes')
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_cleanup_discipline
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_cleanup_discipline
+    ```
+
+    Run this test:
+
+    ```text
+    /spawnbox then /clearboxes
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_cleanup_discipline] spawned object
+F8: [qu_cleanup_discipline] registry cleared
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_cleanup_discipline does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_cleanup_discipline", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_cleanup_discipline, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_cleanup_discipline folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for spawned object registry with manual, timeout, and stop cleanup.",
+    "Add ensure qu_cleanup_discipline to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_cleanup_discipline`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

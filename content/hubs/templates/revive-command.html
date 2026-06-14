@@ -1,0 +1,172 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Revive command</span>
+        </div>
+        <h1>Revive command</h1>
+        <p class="lede">A <code>/revive</code> command that brings a downed player back up by ID. The client registers the command, the server checks the target is real, and the target client restores its own health. A clean walk through the server and client event split.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Revive a player by ID with a single chat command.</dd></div>
+          <div><dt>Dependencies</dt><dd>None. Native calls only, no framework, no ox_lib, no oxmysql.</dd></div>
+          <div><dt>Files</dt><dd>2 sides: a client command sender and a server validator, plus the client revive handler.</dd></div>
+          <div><dt>Command</dt><dd><code>/revive 3</code> revives the player whose server ID is 3.</dd></div>
+          <div><dt>Pattern</dt><dd>client command, server validate, client act, with named net events.</dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>How to drop it in</header>
+        <p>Put the server block in a <code>server.lua</code> and the client blocks in a <code>client.lua</code>, list both in your <code>fxmanifest.lua</code> under <code>server_scripts</code> and <code>client_scripts</code>, then add <code>ensure</code> for your resource in <code>server.cfg</code>. Restart, go down in-game, and have someone run <code>/revive</code> on your ID.</p>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>Why this crosses the client and server wall</header>
+        <p>You cannot revive someone else from your own client: you do not own their ped. So the command runs on the client, hands the target ID to the server, the server confirms that player is actually connected, and then it tells that player's client to heal itself. Three hops, each on the side that has the right to act. This is the core FiveM pattern worth memorizing.</p>
+      </section>
+
+      <section id="register-command">
+        <h2>RegisterCommand</h2>
+        <p>This creates the in-game command players type to start the revive.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>RegisterCommand('revive', function(source, args)
+    -- here goes the code
+end)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>source</code>: the ID of the player who ran the command.</li>
+          <li><code>args</code>: a table of the extra words typed after the command.</li>
+        </ul>
+      </section>
+
+      <section id="player-id">
+        <h2>Read the target player ID</h2>
+        <p>The first argument after the command is the target. <code>tonumber</code> turns that text into a number you can use as a player ID.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>RegisterCommand('revive', function(source, args)
+    local target_id = tonumber(args[1]) -- Using the first argument as the player ID.
+end)</code></pre>
+        </figure>
+
+        <h3>A word on RegisterNetEvent</h3>
+        <p>The <a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/" target="_blank" rel="noopener">RegisterNetEvent</a> function lets you register custom events on the client or the server. These events are how the two sides talk to each other in FiveM. Once an event is registered you can fire it with <code>TriggerEvent</code> on the same side, or <code>TriggerClientEvent</code> and <code>TriggerServerEvent</code> to cross sides.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">example.lua</span></header>
+<pre><code>RegisterNetEvent("myCustomEvent")
+AddEventHandler("myCustomEvent", function(data)
+    print("Event received with data: " .. data)
+end)</code></pre>
+        </figure>
+        <section class="callout callout--danger">
+          <header>Validate and lock down your events</header>
+          <p>Always validate incoming data and stop unauthorized players from triggering events. A net event anyone can fire is a net event exploiters will fire. In a real server, gate <code>/revive</code> behind an admin check before you trust the caller, and never assume the data on an event is clean.</p>
+        </section>
+      </section>
+
+      <section id="server">
+        <h2>Server: validate the target</h2>
+        <p>The server receives the target ID, confirms that player is actually connected, then tells their client to revive. The ping check is a cheap way to prove the player exists: a real connected player has a ping above zero.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server.lua</span></header>
+<pre><code>RegisterNetEvent("qs-university:server:revive")
+AddEventHandler("qs-university:server:revive", function(target_id)
+    local src = source -- source is the player who executed the command
+
+    if target_id and GetPlayerPing(target_id) &gt; 0 then -- Check if the player ID is valid
+        TriggerClientEvent("qs-university:client:revive", target_id)
+
+        print(string.format("The player [%s] has been revived by [%s].", target_id, src))
+    else
+        print(string.format("The player [%s] does not exist or is not connected.", target_id))
+    end
+end)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>local src = source</code>: captures who sent the command, useful for the log line.</li>
+          <li><code>GetPlayerPing(target_id) &gt; 0</code>: confirms the target is a real, connected player before you act.</li>
+          <li><code>TriggerClientEvent("qs-university:client:revive", target_id)</code>: fires the client revive on the target only. That client event is created in the next section.</li>
+          <li>The two <code>print</code> lines are debug logs: the first prints on a valid ID, the second on an invalid one.</li>
+        </ul>
+
+        <h3>A word on string.format</h3>
+        <p>The <code>string.format</code> method returns a formatted string. It works like <code>printf</code> in C: you write placeholders such as <code>%s</code> for strings and <code>%d</code> for integers, and the values fill in. It is handy for building readable log lines out of variables.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">example.lua</span></header>
+<pre><code>string.format("Hello, %s! You have %d new messages.", "John", 5)</code></pre>
+        </figure>
+      </section>
+
+      <section id="client-event">
+        <h2>Client: do the revive</h2>
+        <p>This handler runs on the target player's client. It grabs their ped, checks they are actually dead, sets their health back up, and clears any death animation still playing.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>RegisterNetEvent("qs-university:client:revive")
+AddEventHandler("qs-university:client:revive", function()
+    local playerPed = PlayerPedId() -- Getting the player's ped
+
+    if IsEntityDead(playerPed) then -- Check if the player is dead
+        SetEntityHealth(playerPed, 200) -- Set the player's health to 200
+        ClearPedTasksImmediately(playerPed) -- Clear the player's tasks like animations
+
+        print("You have been revived.") -- Debug message in the console if the player is revived
+    end
+end)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>PlayerPedId()</code>: returns the local player entity to act on.</li>
+          <li><code>IsEntityDead(playerPed)</code>: only revives when the player is actually down.</li>
+          <li><code>SetEntityHealth(playerPed, 200)</code>: restores health. 200 is full health for a player ped.</li>
+          <li><code>ClearPedTasksImmediately(playerPed)</code>: stops the death animation so they stand straight back up.</li>
+        </ul>
+        <section class="callout callout--warn">
+          <header>Wire the command to the server event</header>
+          <p>The three blocks above are the pieces. To connect them, your <code>/revive</code> command needs to call <code>TriggerServerEvent("qs-university:server:revive", target_id)</code> after it reads <code>target_id</code>. Without that line the command reads the ID and then does nothing. The event names must match exactly across both files or the hop silently fails.</p>
+        </section>
+      </section>
+
+      <section id="testing">
+        <h2>Test it</h2>
+        <ol class="lesson-list">
+          <li>Add the resource to <code>server.cfg</code> with an <code>ensure</code> line for your folder name.</li>
+          <li>Start the server, join, and get yourself downed in-game.</li>
+          <li>Have a second player (or yourself, if you know your server ID) run <code>/revive &lt;id&gt;</code> and watch the health come back.</li>
+        </ol>
+        <section class="callout callout--tip">
+          <header>Read the console</header>
+          <p>The <code>print</code> lines tell you exactly where you are. A "has been revived" log with no health change means the client event name is mismatched. A "does not exist" log means the target ID was wrong or not connected.</p>
+        </section>
+      </section>
+
+      <section id="make-it-yours">
+        <h2>Make it yours</h2>
+        <ul class="lesson-list">
+          <li>Rename the event strings from <code>qs-university:server:revive</code> and <code>qs-university:client:revive</code> to your own prefix, and keep both sides in sync.</li>
+          <li>Add an admin or permission check at the top of the server handler before you trust the caller, so not every player can revive at will.</li>
+          <li>Change the revive health from <code>200</code> if your server uses a different max, or add a short animation and a chat confirmation on the client side.</li>
+          <li>Swap the ping check for your framework's "is player online" helper if you already run one, but keep some validation: never act on an unchecked ID.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/teleport">&larr; Teleport command</a>
+        <a class="next" href="/templates">Templates hub &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#register-command">RegisterCommand</a>
+        <a href="#player-id">Target player ID</a>
+        <a href="#server">Server: validate</a>
+        <a href="#client-event">Client: do the revive</a>
+        <a href="#testing">Test it</a>
+        <a href="#make-it-yours">Make it yours</a>
+      </nav>
+    </aside>
+  </div>

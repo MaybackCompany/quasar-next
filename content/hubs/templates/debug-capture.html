@@ -1,0 +1,105 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Debug capture</span>
+        </div>
+        <h1>Debug capture</h1>
+        <p class="lede">One <code>log</code> helper, one <code>capture</code> wrapper around <code>pcall</code>. Errors print with traceback. The shape every safe handler reuses.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Structured logs and bounded error capture.</dd></div>
+          <div><dt>Dependencies</dt><dd>none.</dd></div>
+          <div><dt>Files</dt><dd>1 server-side script.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][debug_capture][command] forced error&hellip;</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/teleport-menu">Lesson 20: debugging and error capture</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Capture, then stop</header>
+        <p>After a captured error, return early. Do not continue the path that failed. A swallowed error that keeps running is worse than a crash, it corrupts state silently.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>server.lua</strong>, <code>log</code>, <code>capture</code>, <code>quiet_capture</code> command for a forced traceback.</li>
+        </ul>
+      </section>
+
+      <section id="server-lua">
+        <h2>server.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server.lua</span></header>
+<pre><code>-- PURPOSE: Structured logs and error capture.
+-- DEPENDENCIES: none.
+-- WARNING: Capture errors, then stop unsafe work.
+-- Expand this: add Discord-free screenshot-friendly fields.
+-- SECURITY:
+--   - Never log raw player input as a log key, sanitize first.
+--   - Bound payload sizes before printing to avoid log floods.
+--   - Forward to a server-only audit channel, never echo to clients.
+
+local MODULE = 'debug_capture'
+
+local function log(action, message)
+    print(('[QUIET][%s][%s] %s'):format(MODULE, action, message))
+end
+
+local function capture(action, fn)
+    local ok, result = pcall(fn)
+    if not ok then
+        log(action, result)
+        log('trace', debug.traceback(result))
+        return nil
+    end
+    return result
+end
+
+RegisterCommand('quiet_capture', function(source)
+    capture('command', function()
+        error(('forced error source=%s'):format(source))
+    end)
+end, false)</code></pre>
+        </figure>
+        <p><a href="/templates/debug-capture/server.lua">View raw server.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_debug/</code>.</li>
+          <li>Copy <code>server.lua</code> and add a manifest with <code>server_script 'server.lua'</code>.</li>
+          <li>Add <code>ensure qu_debug</code> in <code>server.cfg</code>.</li>
+          <li>From the server console run <code>quiet_capture</code>.</li>
+          <li>Match <code>[QUIET][debug_capture][command]</code> followed by <code>[trace]</code> with the stack.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/teleport-menu">Lesson 20</a> for the full debugging flow.</li>
+          <li>Wrap every net event handler body in <code>capture('handler', function() &hellip; end)</code>.</li>
+          <li>Forward errors to a private audit channel, never echo back to the client.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/ox-target">&larr; ox_target</a>
+        <a class="next" href="/templates">Templates hub &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#server-lua">server.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

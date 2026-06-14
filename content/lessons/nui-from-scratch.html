@@ -1,0 +1,404 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 09 &middot; Bonus</span></div>
+        <h1>NUI from scratch: <code>ui_page</code>, messages, callbacks</h1>
+        <p class="lede"><strong>NUI</strong> is FiveM's name for the in-game browser layer, a real Chromium tab the client renders on top of GTA. Every menu, hud, scoreboard, F-pause UI you have ever seen in a server is NUI. So far you have used <code>ox_lib</code> and other framework UIs that wrap NUI for you. This bonus shows the layer underneath: how to declare a page in <code>fxmanifest.lua</code>, how to push state from Lua with <code>SendNUIMessage</code>, how to receive clicks with <code>RegisterNUICallback</code>, and how to capture the cursor with <code>SetNuiFocus</code>. Once you understand these four pieces, you can read any NUI resource and build your own without a framework.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>The <code>cfx-nui-&lt;resource&gt;/</code> protocol scope, the Lua&nbsp;&harr;&nbsp;JS message and callback APIs, focus capture, and how to attach Chrome devtools to a live NUI page.</dd></div>
+          <div><dt>You'll ship</dt><dd>A minimal NUI menu: <kbd>F5</kbd> opens a Chromium overlay with one button, the button sends data back to Lua, and a Lua-triggered chat message confirms the round-trip.</dd></div>
+          <div><dt>Time</dt><dd>~25 minutes</dd></div>
+          <div><dt>Why now</dt><dd>You finished the vehicle handling lesson. Knowing how NUI works under the hood lets you debug any UI bug for the rest of the course.</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="26b">
+        <h2>Before you start</h2>
+        <p>Quick check. NUI sits between Lua and a real browser, so you need both sides to be comfortable.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I am comfortable with basic HTML, CSS, and JavaScript, I can write a button, style it, and add a click listener</label></li>
+          <li><label><input type="checkbox"> I have a working resource with a <code>fxmanifest.lua</code> I can edit (<a href="../clase-2/leason2.html">Lesson 2</a>)</label></li>
+          <li><label><input type="checkbox"> I know the difference between <code>client_script</code> (Lua running in the game) and <code>ui_page</code> (HTML running in a Chromium tab)</label></li>
+          <li><label><input type="checkbox"> I understand callbacks, "I send a message, the other side answers, my code reacts to the answer" (<a href="../clase-14/leason14.html">Lesson 14</a>)</label></li>
+        </ul>
+      </section>
+
+      <section class="why-section" id="why">
+        <h2>Why learn raw NUI when frameworks exist</h2>
+        <p>Frameworks like <code>ox_lib</code>, <code>menuv</code>, and <code>nh-context</code> are great for shipping fast. They are also the reason most beginners cannot debug a broken UI: when the menu does not open, you do not know whether the bug is in your code, the framework's NUI bridge, or the focus state. After this lesson you can open the page directly, watch the message bus, and see exactly which step failed.</p>
+        <ul>
+          <li><strong>NUI is just Chromium.</strong> Same DOM, same JS, same devtools you use for any web page. There is no FiveM-specific UI runtime.</li>
+          <li><strong>Lua and JS communicate two ways.</strong> Lua-to-JS uses <code>SendNUIMessage</code> + <code>window.addEventListener('message')</code>. JS-to-Lua uses <code>fetch()</code> + <code>RegisterNUICallback</code>.</li>
+          <li><strong>Focus is a separate concern.</strong> The browser is always rendered, but it does not capture mouse/keyboard until you call <code>SetNuiFocus</code>. Forget this and your buttons will look clickable but do nothing.</li>
+        </ul>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Declare a page in <code>fxmanifest.lua</code></h2></header>
+        <p class="step-outcome">Outcome: when the resource starts, the client has a hidden Chromium tab loaded with your <code>html/index.html</code>.</p>
+
+        <details class="explain" open>
+          <summary>Folder layout and the manifest</summary>
+          <pre><code>qu_menu/
+  fxmanifest.lua
+  client.lua
+  html/
+    index.html
+    style.css
+    script.js</code></pre>
+          <pre><code class="language-lua">-- fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/style.css',
+    'html/script.js',
+}</code></pre>
+          <ul>
+            <li><code>ui_page</code> tells the client which file to load into the Chromium tab. There is exactly <strong>one</strong> per resource.</li>
+            <li><code>files {}</code> is the allowlist of everything the page is allowed to fetch. <strong>If you forget to list a file, it 404s silently</strong> and the page renders without it.</li>
+            <li>You can list images, fonts, or extra JS bundles here too. Anything fetched from the page must be in this block.</li>
+          </ul>
+        </details>
+
+        <details class="explain">
+          <summary>The <code>cfx-nui-&lt;resource&gt;/</code> protocol scope</summary>
+          <p>Inside <code>html/index.html</code>, every URL is resolved against the <code>cfx-nui-qu_menu/</code> scheme, a custom protocol that maps to the <code>files {}</code> block. So this works in the HTML:</p>
+          <pre><code class="language-html">&lt;link rel="stylesheet" href="style.css"&gt;
+&lt;script src="script.js"&gt;&lt;/script&gt;
+&lt;img src="logo.png"&gt;</code></pre>
+          <p>And the page will fetch <code>cfx-nui-qu_menu/style.css</code>, <code>cfx-nui-qu_menu/script.js</code>, and so on. You can also reference assets from a <em>different</em> resource by hard-coding the scope: <code>&lt;img src="https://cfx-nui-qu_shared/icons/coin.png"&gt;</code>. The old <code>nui://</code> scheme is deprecated, use <code>cfx-nui-</code>.</p>
+        </details>
+
+        <div class="checkpoint">
+          <h3>Recap 1</h3>
+          <p>Make a new resource called <code>qu_menu</code>. Create <code>fxmanifest.lua</code> with the manifest above and an empty <code>html/index.html</code> that just contains <code>&lt;h1&gt;hello nui&lt;/h1&gt;</code>. Start the resource. You will not see anything in-game yet (focus comes later), but pressing <kbd>F8</kbd> and typing <code>nui_devTools</code> on a focused NUI page would show the empty document. Confirm the resource starts with no errors in the F8 console.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Lua &rarr; JS: <code>SendNUIMessage</code></h2></header>
+        <p class="step-outcome">Outcome: a Lua command pushes data into the page, and the JS receives it via the standard <code>message</code> event.</p>
+
+        <details class="explain" open>
+          <summary>The Lua side</summary>
+          <pre><code class="language-lua">-- client.lua
+RegisterCommand('menu', function()
+    SendNUIMessage({
+        type    = 'open',
+        title   = 'Welcome',
+        balance = 1234,
+    })
+end, false)</code></pre>
+          <p><code>SendNUIMessage</code> takes <strong>one argument</strong>: a Lua table. The runtime serializes it to JSON and posts it into the page. Any JSON-friendly value works (strings, numbers, booleans, arrays, nested tables).</p>
+        </details>
+
+        <details class="explain">
+          <summary>The JS side</summary>
+          <pre><code class="language-js">// html/script.js
+window.addEventListener('message', (event) =&gt; {
+    const data = event.data;            // the table you sent from Lua
+    if (data.type === 'open') {
+        document.getElementById('title').textContent = data.title;
+        document.getElementById('balance').textContent = data.balance;
+        document.body.classList.add('visible');
+    }
+    if (data.type === 'close') {
+        document.body.classList.remove('visible');
+    }
+});</code></pre>
+          <p>The convention is to put a <code>type</code> key in every message and switch on it, just like a Redux action. There is exactly one message bus, so every message goes through this single listener; the <code>type</code> field is how you route.</p>
+        </details>
+
+        <div class="callout callout--tip">
+          <header>The page never unloads</header>
+          <p>Your <code>index.html</code> loads once, when the resource starts, and stays alive for the rest of the session. "Opening" and "closing" the menu is a CSS class toggle, not a page navigation. Treat the JS like a long-running app, not a request-response page.</p>
+        </div>
+
+        <div class="checkpoint">
+          <h3>Recap 2</h3>
+          <p>Add the command above to <code>client.lua</code> and the listener to <code>script.js</code>. Reload your resource, type <code>/menu</code> in the chat, and watch the F8 console for any errors. The page won't be visible yet (no CSS for <code>.visible</code>, and no focus). That is normal.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>JS &rarr; Lua: <code>RegisterNUICallback</code></h2></header>
+        <p class="step-outcome">Outcome: a button click in the page triggers a Lua function and gets a JSON response back.</p>
+
+        <details class="explain" open>
+          <summary>The JS side: <code>fetch</code> with the parent resource scope</summary>
+          <pre><code class="language-js">// html/script.js
+document.getElementById('confirmBtn').addEventListener('click', async () =&gt; {
+    const res = await fetch(`https://${GetParentResourceName()}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({ amount: 500 }),
+    });
+    const reply = await res.json();
+    console.log('lua replied:', reply);
+});</code></pre>
+          <p><code>GetParentResourceName()</code> is a function the FiveM Chromium provides on <code>window</code>. It returns the string <code>"qu_menu"</code>, or whatever the resource is called. The full URL <code>https://qu_menu/confirm</code> is what the runtime intercepts and routes to your Lua callback.</p>
+        </details>
+
+        <details class="explain">
+          <summary>The Lua side: <code>RegisterNUICallback</code></summary>
+          <pre><code class="language-lua">-- client.lua
+RegisterNUICallback('confirm', function(data, cb)
+    print(('confirm received: amount=%s'):format(tostring(data.amount)))
+
+    TriggerServerEvent('qu_menu:confirm', data.amount)
+
+    cb({ ok = true })   -- ALWAYS call cb, even with an empty object
+end)</code></pre>
+          <ul>
+            <li><code>data</code> is the parsed JSON body the JS sent. <code>data.amount</code> is <code>500</code>.</li>
+            <li><code>cb</code> is the response function. Whatever you pass becomes the body of the JS <code>fetch</code> response.</li>
+            <li>The callback name (<code>'confirm'</code>) must match the URL path (<code>/confirm</code>).</li>
+          </ul>
+        </details>
+
+        <div class="callout callout--warn">
+          <header>Always call <code>cb(...)</code>: even when you have nothing to return</header>
+          <p>If your callback returns without invoking <code>cb</code>, the JS <code>fetch</code> never resolves. Future calls to the same callback queue up and never fire. The page goes silent. The fix is to <em>always</em> call <code>cb</code>, even if it is just <code>cb({ ok = true })</code> or <code>cb('ok')</code>. Make this the first muscle memory you build.</p>
+        </div>
+
+        <div class="checkpoint">
+          <h3>Recap 3</h3>
+          <p>Add a <code>&lt;button id="confirmBtn"&gt;Confirm&lt;/button&gt;</code> to <code>index.html</code>, the click handler to <code>script.js</code>, and the <code>RegisterNUICallback</code> to <code>client.lua</code>. Trigger <code>/menu</code>, click the button, and confirm both the Lua print and the JS <code>console.log('lua replied:', { ok: true })</code> show up in F8.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Capturing the cursor: <code>SetNuiFocus</code></h2></header>
+        <p class="step-outcome">Outcome: when the menu is open, the mouse moves freely over the page; when closed, the player can drive again.</p>
+
+        <details class="explain" open>
+          <summary>The two booleans</summary>
+          <pre><code class="language-lua">-- client.lua
+local function openMenu()
+    SetNuiFocus(true, true)            -- (hasKeyboardFocus, hasCursor)
+    SendNUIMessage({ type = 'open' })
+end
+
+local function closeMenu()
+    SetNuiFocus(false, false)
+    SendNUIMessage({ type = 'close' })
+end
+
+RegisterCommand('menu', openMenu, false)
+
+-- close from the page (Esc key handled in JS, calls back here)
+RegisterNUICallback('close', function(_, cb)
+    closeMenu()
+    cb({ ok = true })
+end)</code></pre>
+          <ul>
+            <li><strong>First boolean</strong>: keyboard focus. <code>true</code> means typing in an <code>&lt;input&gt;</code> works and the chat hotkey (T) is suppressed.</li>
+            <li><strong>Second boolean</strong>: cursor. <code>true</code> shows the mouse pointer and lets you click DOM elements.</li>
+            <li>You almost always want <code>(true, true)</code> for an interactive menu and <code>(false, false)</code> when closing it.</li>
+          </ul>
+        </details>
+
+        <details class="explain">
+          <summary>Closing from the JS side: the Esc key pattern</summary>
+          <pre><code class="language-js">// html/script.js
+document.addEventListener('keyup', (e) =&gt; {
+    if (e.key === 'Escape') {
+        fetch(`https://${GetParentResourceName()}/close`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+    }
+});</code></pre>
+          <p>This is the canonical pattern. The page detects Esc, posts a callback, and Lua releases focus. <strong>Do not</strong> use Lua's <code>IsControlJustPressed</code> for Esc-to-close once focus is captured, the keyboard belongs to the browser.</p>
+        </details>
+
+        <div class="callout callout--warn">
+          <header>Forgetting to release focus is the #1 NUI bug</header>
+          <p>If you call <code>SetNuiFocus(true, true)</code> and the page errors out before reaching the close path, the player is stuck with a frozen cursor and no game input. Always wrap focus-capture work in clear open/close functions, and add a fallback admin command that calls <code>SetNuiFocus(false, false)</code> to recover.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Debugging: F8 console and Chrome devtools</h2></header>
+        <p class="step-outcome">Outcome: you can attach Chrome devtools to your running NUI page and inspect the DOM, set breakpoints, and watch <code>console.log</code> in real time.</p>
+
+        <details class="explain" open>
+          <summary>Enable the inspector once</summary>
+          <p>Add this line to your <code>citizen.cfg</code> or pass it as a command-line flag when launching FiveM:</p>
+          <pre><code>nui_devToolsUrl http://localhost:13172/</code></pre>
+          <p>Now, with FiveM running, open <strong>Chrome</strong> (the real browser) and visit:</p>
+          <pre><code>http://localhost:13172/</code></pre>
+          <p>You will see a list of every NUI page currently loaded, one entry per resource that has a <code>ui_page</code>. Click your <code>qu_menu</code> page and a full Chrome devtools window opens, attached to the live in-game browser. <code>console.log</code> from your <code>script.js</code> shows up here. You can edit DOM nodes and watch them change in-game instantly.</p>
+        </details>
+
+        <details class="explain">
+          <summary>The F8 in-game console</summary>
+          <p>Press <kbd>F8</kbd> to open the FiveM client console. This shows:</p>
+          <ul>
+            <li><code>print()</code> calls from any client-side Lua, including yours.</li>
+            <li>JS <code>console.log</code> from focused NUI pages (a subset, full output requires localhost:13172).</li>
+            <li>Resource start/stop messages and 404s for missing <code>files {}</code> entries.</li>
+          </ul>
+          <p>You will live in F8 while building. The two-window setup, F8 for Lua, localhost:13172 for the page, is how every FiveM UI dev works.</p>
+        </details>
+
+        <details class="explain">
+          <summary>The <code>nui_devTools</code> command</summary>
+          <p>If your NUI page has focus (you called <code>SetNuiFocus(true, true)</code> and the menu is open), press <kbd>F8</kbd> and type:</p>
+          <pre><code>nui_devTools</code></pre>
+          <p>This opens devtools attached to the focused page directly, without needing to navigate localhost. Convenient when you want to inspect the page that is currently capturing input.</p>
+        </details>
+
+        <div class="checkpoint">
+          <h3>Recap 4</h3>
+          <p>Open <code>http://localhost:13172/</code> in Chrome. Find the <code>qu_menu</code> page. Click it, switch to the Console tab, and type <code>document.body.style.background = 'red'</code>. Confirm the in-game NUI page turns red instantly.</p>
+        </div>
+      </section>
+
+      <section class="mistakes">
+        <h2>Mistakes &amp; gotchas</h2>
+        <details>
+          <summary>1. File loads but is missing: forgot the <code>files {}</code> entry</summary>
+          <p>Adding <code>&lt;script src="extra.js"&gt;</code> without listing <code>'extra.js'</code> in <code>files {}</code> 404s silently. The page renders without the script; nothing in your event handlers runs. Watch F8 for <code>cfx-nui-... 404</code> lines.</p>
+        </details>
+        <details>
+          <summary>2. <code>fetch</code> hangs because the callback never returned</summary>
+          <p>You forgot to call <code>cb(...)</code> in your <code>RegisterNUICallback</code>. The JS <code>await fetch</code> never resolves; subsequent fetches queue and stall. Always invoke <code>cb</code> even if it is just <code>cb({ ok = true })</code>.</p>
+        </details>
+        <details>
+          <summary>3. Menu open but clicks do nothing: forgot <code>SetNuiFocus</code></summary>
+          <p>The page is rendered but the cursor is invisible and clicks fall through to the game. Call <code>SetNuiFocus(true, true)</code> when opening, and <code>SetNuiFocus(false, false)</code> when closing.</p>
+        </details>
+        <details>
+          <summary>4. Hard-coded resource name in <code>fetch</code></summary>
+          <p>Writing <code>fetch('https://qu_menu/confirm', ...)</code> works until you rename the resource. Always use <code>GetParentResourceName()</code>, the FiveM Chromium injects it on <code>window</code> exactly so your code is portable.</p>
+        </details>
+        <details>
+          <summary>5. Calling <code>SetNuiFocus</code> from the server</summary>
+          <p>NUI is a client concept. <code>SetNuiFocus</code>, <code>SendNUIMessage</code>, and <code>RegisterNUICallback</code> all live in <strong>client</strong> Lua. From the server, trigger a client event and let the client handle the focus and message.</p>
+        </details>
+        <details>
+          <summary>6. Using deprecated <code>nui://</code> URLs</summary>
+          <p>Old tutorials use <code>nui://qu_menu/...</code>. The modern scheme is <code>https://cfx-nui-qu_menu/...</code> for asset references and <code>https://qu_menu/...</code> (resolved through <code>GetParentResourceName</code>) for callbacks. Use the new forms in any new code.</p>
+        </details>
+        <details>
+          <summary>7. Listening for messages with the wrong target</summary>
+          <p><code>window.addEventListener('message', ...)</code> is correct, the message arrives on the <code>window</code>. Code that uses <code>document.addEventListener('message')</code> never fires. Same for <code>document.body</code>. The <code>window</code> is the only valid target.</p>
+        </details>
+      </section>
+
+      <section class="quiz">
+        <h2>Quiz</h2>
+        <fieldset>
+          <legend>1. Where do you list every file the NUI page is allowed to load?</legend>
+          <label><input type="radio" name="q1" value="a"> In <code>server.cfg</code>, one <code>set</code> line per file</label>
+          <label><input type="radio" name="q1" value="b" data-answer="true"> In the <code>files {}</code> block of <code>fxmanifest.lua</code></label>
+          <label><input type="radio" name="q1" value="c"> Nowhere, FiveM auto-discovers everything in the <code>html/</code> folder</label>
+        </fieldset>
+        <fieldset>
+          <legend>2. Lua calls <code>SendNUIMessage({ type = 'open' })</code>. How does the JS receive it?</legend>
+          <label><input type="radio" name="q2" value="a"> <code>document.addEventListener('message', e =&gt; ...)</code></label>
+          <label><input type="radio" name="q2" value="b" data-answer="true"> <code>window.addEventListener('message', e =&gt; ...)</code></label>
+          <label><input type="radio" name="q2" value="c"> By polling <code>fetch('https://nui_message')</code> every frame</label>
+        </fieldset>
+        <fieldset>
+          <legend>3. You wrote a <code>RegisterNUICallback('save', ...)</code> that does its work and returns. Subsequent <code>fetch</code> calls to <code>/save</code> never resolve. Why?</legend>
+          <label><input type="radio" name="q3" value="a"> Callbacks can only fire once per session</label>
+          <label><input type="radio" name="q3" value="b" data-answer="true"> You forgot to invoke <code>cb(...)</code>, so the response never returned and future fetches queue</label>
+          <label><input type="radio" name="q3" value="c"> <code>fetch</code> is not supported in NUI, you must use XMLHttpRequest</label>
+        </fieldset>
+        <fieldset>
+          <legend>4. Your menu is rendered on screen but mouse clicks fall through to the game. The fix?</legend>
+          <label><input type="radio" name="q4" value="a"> Add <code>pointer-events: auto;</code> to the body in CSS</label>
+          <label><input type="radio" name="q4" value="b" data-answer="true"> Call <code>SetNuiFocus(true, true)</code> from client Lua when opening the menu</label>
+          <label><input type="radio" name="q4" value="c"> Restart the resource, NUI focus is sticky from the previous session</label>
+        </fieldset>
+        <fieldset>
+          <legend>5. Where does the JS Chrome devtools listing live for live NUI pages?</legend>
+          <label><input type="radio" name="q5" value="a"> In F8, type <code>chrome://inspect</code></label>
+          <label><input type="radio" name="q5" value="b" data-answer="true"> In a real Chrome browser, at <code>http://localhost:13172/</code></label>
+          <label><input type="radio" name="q5" value="c"> It is not available, NUI uses a stripped Chromium with no devtools</label>
+        </fieldset>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheatsheet</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Goal</div><div>Code</div>
+          </div>
+          <div class="cheat-row">
+            <div>Declare the page</div><div><code>ui_page 'html/index.html'</code> + <code>files { 'html/index.html', ... }</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Lua &rarr; JS</div><div><code>SendNUIMessage({ type = 'open', payload = ... })</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>JS receives</div><div><code>window.addEventListener('message', e =&gt; ...)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>JS &rarr; Lua</div><div><code>fetch(`https://${GetParentResourceName()}/confirm`, { method:'POST', body:JSON.stringify(...) })</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Lua receives</div><div><code>RegisterNUICallback('confirm', function(data, cb) cb({ ok = true }) end)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Capture cursor + keyboard</div><div><code>SetNuiFocus(true, true)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Release</div><div><code>SetNuiFocus(false, false)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Asset URL inside HTML</div><div><code>https://cfx-nui-&lt;resource&gt;/&lt;path&gt;</code> (or relative paths just work)</div>
+          </div>
+          <div class="cheat-row">
+            <div>Devtools for the page</div><div>Real Chrome &rarr; <code>http://localhost:13172/</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Devtools for focused page</div><div>F8 &rarr; <code>nui_devTools</code></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="recap">
+        <h2>Recap</h2>
+        <ul>
+          <li>NUI is a Chromium tab the client renders on top of the game. The DOM, JS, and devtools are exactly what you would expect from a web page.</li>
+          <li><code>ui_page</code> declares the entry HTML; <code>files {}</code> is the allowlist of every asset the page can fetch. Forget a file and it 404s silently.</li>
+          <li><strong>Lua &rarr; JS</strong>: <code>SendNUIMessage(table)</code> &harr; <code>window.addEventListener('message', e =&gt; ...)</code>. Use a <code>type</code> field to route.</li>
+          <li><strong>JS &rarr; Lua</strong>: <code>fetch(`https://${GetParentResourceName()}/path`)</code> &harr; <code>RegisterNUICallback('path', function(data, cb) cb(...) end)</code>. <strong>Always call <code>cb</code></strong>.</li>
+          <li><code>SetNuiFocus(keyboard, cursor)</code> is what makes the page interactive. Without it the menu is decorative.</li>
+          <li>Debug with the F8 client console (Lua + a subset of JS) and a real Chrome at <code>http://localhost:13172/</code> (full devtools per page).</li>
+          <li>NUI APIs are <strong>client-side only</strong>. From the server, trigger a client event.</li>
+        </ul>
+      </section>
+
+      <section class="exercise">
+        <h2>Exercise: confirm-purchase popover</h2>
+        <p>Build a tiny resource called <code>qu_confirm</code> that lets a server event ask the client "spend $500?" and gets back yes or no. Concretely:</p>
+        <ol>
+          <li>Resource has <code>fxmanifest.lua</code>, <code>client.lua</code>, <code>html/index.html</code>, <code>html/style.css</code>, <code>html/script.js</code>. All five HTML/CSS/JS files declared in <code>files {}</code>.</li>
+          <li>The page is hidden by default (<code>body { display: none }</code>) and shows when it receives a <code>{ type: 'ask', cost: 500 }</code> message. It has two buttons: Confirm and Cancel.</li>
+          <li>Server fires <code>TriggerClientEvent('qu_confirm:ask', target, 500)</code>. Client handler captures focus, sends the message, and waits.</li>
+          <li>Each button calls <code>fetch(...)</code> with body <code>{ choice: 'yes' }</code> or <code>{ choice: 'no' }</code>. Lua receives, releases focus, and triggers <code>TriggerServerEvent('qu_confirm:answer', choice)</code>. <strong>Always</strong> call <code>cb({ ok = true })</code>.</li>
+          <li>Server prints the answer.</li>
+        </ol>
+        <p>Stretch goal: add a 10-second timer in JS that auto-fires <code>{ choice: 'no' }</code> if the player hesitates. Open Chrome at <code>localhost:13172</code> while testing and watch the message bus in the Console tab.</p>
+      </section>
+
+      <section class="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/" target="_blank" rel="noopener">FiveM docs &middot; Fullscreen NUI (<code>ui_page</code>, focus, devtools)</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/nui-development/nui-callbacks/" target="_blank" rel="noopener">FiveM docs &middot; NUI callbacks</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xACF53D7E" target="_blank" rel="noopener">Native &middot; SendNUIMessage</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x5B98AE30" target="_blank" rel="noopener">Native &middot; SetNuiFocus</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNUICallback/" target="_blank" rel="noopener">Native &middot; RegisterNUICallback</a></li>
+        </ul>
+      </section>

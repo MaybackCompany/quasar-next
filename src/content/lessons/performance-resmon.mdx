@@ -1,0 +1,137 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="Performance: resmon, threads, profiling"
+  meta={[
+    { label: "You'll learn", value: "resmon, Citizen.CreateThread vs CreateThreadNow, Wait tuning, GetGameTimer for hot loops" },
+    { label: "Time", value: "~24 minutes" },
+    { label: "Prereqs", value: "Lessons 13 (threads) and 14 (server vs client)" },
+    { label: "Outcome", value: "You drop a script's resmon cost from 6 ms to under 0.05 ms without breaking it" },
+  ]}
+>
+  A FiveM server has a 16.6 ms tick budget at 60 Hz. If your script eats 6 ms of it because of a runaway `while true do Wait(0)`, the whole server stutters. This lesson teaches you to read `resmon`, pick the right thread API, and tune `Wait` values like a sound engineer tunes a mixer.
+</LessonHero>
+
+<YouTube id="UspWGEbsY20" title="High-performance Lua code" caption="RED: writing high-performance Lua for FiveM." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds resmon test with Wait tuning as a working FiveM resource named `qu_performance_resmon`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_performance_resmon
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_performance_resmon/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local fast = false
+RegisterCommand('resmontoggle', function() fast = not fast print('[qu_performance_resmon] fast ' .. tostring(fast)) end, false)
+CreateThread(function()
+    while true do
+        Wait(fast and 0 or 500)
+        if fast then
+            local c = GetEntityCoords(PlayerPedId())
+            DrawMarker(1, c.x, c.y, c.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.3, 0, 180, 255, 120, false, false, 2, false, nil, nil, false)
+        end
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_performance_resmon
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_performance_resmon
+    ```
+
+    Run this test:
+
+    ```text
+    F8: resmon 1, then /resmontoggle
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_performance_resmon] fast true
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_performance_resmon does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_performance_resmon", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_performance_resmon, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_performance_resmon folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for resmon test with Wait tuning.",
+    "Add ensure qu_performance_resmon to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_performance_resmon`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

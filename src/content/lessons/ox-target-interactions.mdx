@@ -1,0 +1,135 @@
+<LessonHero
+  crumbs="Module 05 · Lesson 18"
+  title="ox_target: &quot;press E to interact&quot;, done right"
+  meta={[
+    { label: "You'll learn", value: "addModel for peds and props -> addGlobalPlayer for other players -> addBoxZone for world regions -> canInteract -> the shared option schema" },
+    { label: "Time", value: "~25 minutes" },
+    { label: "Prereqs", value: "Lesson 16 (ox_lib) and Lesson 17 (Qbox). ox_target installed." },
+    { label: "Outcome", value: "A merchant ped, an ATM zone, and a \"give cash\" option on other players, all using the same target system." },
+  ]}
+>
+  Most FiveM servers have things players can interact with: NPCs, doors, trunks, registers, ATMs. Before `ox_target`, building those interactions meant lots of repeated distance checks and prompt code. With `ox_target`, most of that becomes one small options table. This lesson teaches that pattern slowly.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds ox_target box zone with canInteract and onSelect as a working FiveM resource named `qu_ox_target_interactions`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_ox_target_interactions
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_ox_target_interactions/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+
+dependency 'ox_target'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+CreateThread(function()
+    exports.ox_target:addBoxZone({
+        coords = vec3(215.76, -810.12, 30.73),
+        size = vec3(2.0, 2.0, 2.0),
+        rotation = 0.0,
+        debug = true,
+        options = { { name = 'qu_ox_target_interactions_use', icon = 'fa-solid fa-hand', label = 'Use target', canInteract = function(entity, distance) return distance <= 2.0 end, onSelect = function() print('[qu_ox_target_interactions] selected') end } }
+    })
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_ox_target_interactions
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_ox_target_interactions
+    ```
+
+    Run this test:
+
+    ```text
+    Select Use target at the debug box
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_ox_target_interactions] selected
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_ox_target_interactions does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_ox_target_interactions", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_ox_target_interactions, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_ox_target_interactions folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for ox_target box zone with canInteract and onSelect.",
+    "Add ensure qu_ox_target_interactions to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_ox_target_interactions`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

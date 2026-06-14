@@ -1,0 +1,175 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="Anti-cheat patterns"
+  meta={[
+    { label: "You'll learn", value: "Server-authoritative events, rate limit per source, sanity checks, audit logs to Discord" },
+    { label: "Time", value: "~22 minutes" },
+    { label: "Prereqs", value: "Lesson 14 (server vs client), P1 (DB), P2 (webhooks)" },
+    { label: "Outcome", value: "Your money events refuse cheats, log violations, and notify you in Discord within 1 second" },
+  ]}
+>
+  No client-side check is real security. Every "give me money" event a cheater finds is one your server should have rejected. This lesson covers the four patterns that stop 95 percent of attacks: server authority, rate limiting, sanity checks, and audit logging.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can edit server.lua inside a resource.",
+    "I have a Discord webhook URL stored privately in server.cfg.",
+    "I can run a command from the server console."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  Build a server-side reward event that rejects bad amounts, rate limits repeated calls, and logs suspicious attempts to Discord without exposing the webhook to clients.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_anticheat
+    ```
+
+    Keep the spelling exact. You will use the same name in `server.cfg` and in the restart command.
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_anticheat/
+  fxmanifest.lua
+  server.lua
+    ```
+
+    If a subfolder does not exist yet, create it before you create the file inside it.
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this exact manifest:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+
+    Add these lines near your other config values:
+
+    ```text
+set qu_ac_webhook YOUR_DISCORD_WEBHOOK_URL
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The resource contains working FiveM code for this topic.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local lastUse = {}
+local webhook = GetConvar('qu_ac_webhook', '')
+
+local function logViolation(src, reason)
+    local name = GetPlayerName(src) or 'unknown'
+    print(('[qu_anticheat] blocked %s: %s'):format(name, reason))
+
+    if webhook ~= '' then
+        PerformHttpRequest(webhook, function() end, 'POST', json.encode({
+            username = 'qu_anticheat',
+            content = ('Blocked %s: %s'):format(name, reason)
+        }), { ['Content-Type'] = 'application/json' })
+    end
+end
+
+RegisterNetEvent('qu_anticheat:claimReward', function(amount)
+    local src = source
+    local now = os.time()
+
+    if lastUse[src] and now - lastUse[src] < 10 then
+        logViolation(src, 'reward spam')
+        return
+    end
+
+    if type(amount) ~= 'number' or amount < 1 or amount > 500 then
+        logViolation(src, 'bad amount ' .. tostring(amount))
+        return
+    end
+
+    lastUse[src] = now
+    print(('[qu_anticheat] reward approved for %s: %d'):format(GetPlayerName(src), amount))
+end)
+
+RegisterCommand('actest', function(src)
+    if src == 0 then
+        print('[qu_anticheat] use /actest in game')
+        return
+    end
+
+    TriggerEvent('qu_anticheat:claimReward', 250)
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="You see the proof line in the correct console.">
+    Open `server.cfg` and add this line near your other local resources:
+
+    ```text
+    ensure qu_anticheat
+    ```
+
+    Save the file. In txAdmin Live Console or the server console, run:
+
+    ```text
+    restart qu_anticheat
+    ```
+
+    Now run this test:
+
+    ```text
+    /actest
+    ```
+
+    <ExpectedOutput>
+      [qu_anticheat] reward approved for yourName: 250
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_anticheat does not exist", fix: "The folder name and the ensure line do not match, or the folder is not inside resources." },
+    { symptom: "Could not load resource qu_anticheat", fix: "Open fxmanifest.lua and check quotes, commas, braces, and file names." },
+    { symptom: "The command prints nothing", fix: "Run restart qu_anticheat, then run the exact command from the lesson in the correct console." },
+    { symptom: "Client output is missing", fix: "Client prints appear in F8 only after you are connected to the server." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Build and restart qu_anticheat from a clean folder.",
+    "Point fxmanifest.lua at the exact files this lesson needs.",
+    "Run the test command and know which console should show the proof.",
+    "Change one line and restart only qu_anticheat to verify the change."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change the allowed maximum from 500 to 300, restart, then send 350 and confirm the server prints a blocked line.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

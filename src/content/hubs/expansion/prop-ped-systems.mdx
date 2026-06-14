@@ -1,0 +1,109 @@
+<LessonHero
+  crumbs="Module 08B"
+  title="Prop and ped systems"
+  meta={[
+    { label: "Module", value: "Module 08B" },
+    { label: "Time", value: "~35 min" },
+    { label: "Side", value: "server" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will store placed object state without trusting client labels.
+</LessonHero>
+
+## Outcome
+
+You will store placed object state without trusting client labels.
+
+<Callout variant="tip" title="Why it matters">
+  Placed props need ids. Player-provided labels need validation.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Stateful prop | A placed object with saved data. Example: stash id and coords. |
+| Ped system | Managed NPC spawn and cleanup code. Example: shop ped registry. |
+| Drop cleanup | Cleanup when a player leaves. Example: playerDropped removes temp props. |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_prop_ped" },
+    { cmd: "Side", desc: "server" },
+    { cmd: "File path", desc: "resources/qu_prop_ped/server.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_prop_ped" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'prop_ped'
+local ownedProps = {}
+
+RegisterNetEvent('quasar:props:place', function(payload)
+    local src = source
+    if type(payload) ~= 'table' or type(payload.kind) ~= 'string' then
+        print(('[QUIET][%s][reject] source=%s bad payload'):format(MODULE, src))
+        return
+    end
+    ownedProps[src] = ownedProps[src] or {}
+    print(('[QUIET][%s][place] source=%s kind=%s'):format(MODULE, src, payload.kind))
+end)
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][prop_ped][place] prints after a validated place request.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Reject unknown kinds.
+- Add playerDropped cleanup.
+- Store one validated coord.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_prop_ped' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_prop_ped' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

@@ -1,0 +1,519 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 04 · Lesson 13</span></div>
+        <h1>TriggerEvent: how scripts talk to each other</h1>
+        <p class="lede">A real FiveM server runs lots of resources at the same time. They do not share variables directly, so they need a way to talk. That is what events are. An event is just a named message. One script fires it, another script listens for it. This lesson starts with the simplest version: same-side events using <code>TriggerEvent</code>.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>TriggerEvent</code> -> <code>AddEventHandler</code> -> passing arguments -> the same-side rule for local events</dd></div>
+          <div><dt>Time</dt><dd>~22 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Module 03 complete, you understand client vs server as separate processes.</dd></div>
+          <div><dt>Outcome</dt><dd>Two resources that hold a conversation on the same side, one firing events, the other reacting.</dd></div>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 13: TriggerEvent: same-side messages</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Events let code announce that something happened.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find them by event name in client or server files.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Register a handler, then trigger it once.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Send one local message and print it.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small events example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Event</dt><dd>A named signal that runs handlers.<br><span>Example: quasar:local:ping starts a handler.</span></dd></div>
+            <div><dt tabindex="0">Handler</dt><dd>The function that receives an event.<br><span>Example: AddEventHandler attaches one.</span></dd></div>
+            <div><dt tabindex="0">Payload</dt><dd>Data sent with an event.<br><span>Example: message is a payload field.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_local_event</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_local_event/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_local_event</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][events]">
+            <header><span class="file">qu_local_event/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'events'
+
+RegisterCommand('quiet_12', function()
+    print(('[QUIET][%s][command] client ran'):format(MODULE))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][events]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_local_event</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>events_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][events_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="prereq" data-lesson="12">
+        <h2>Before you start</h2>
+        <ul>
+          <li><label><input type="checkbox" data-id="res"> I can create a FiveM resource with <code>fxmanifest.lua</code> (Lesson 7)</label></li>
+          <li><label><input type="checkbox" data-id="split"> I know where client and server code lives in a resource (Lesson 8)</label></li>
+          <li><label><input type="checkbox" data-id="authority"> I understand the server is authoritative (Lesson 12)</label></li>
+        </ul>
+      </section>
+
+      <section class="reading-panel">
+        <h3>How to read this lesson</h3>
+        <p>This is the easy event lesson. Stay on one side only. Learn the shape <code>TriggerEvent</code> → <code>AddEventHandler</code> first. The wall-crossing versions come next lesson, not on this page.</p>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: a shout and a listener</h2>
+        <p>Think of an event as a named shout. One script says <code>player:healed</code>. Any script that is listening for that exact name can react. The sender does not need to know who is listening. The listener does not need to know who fired it.</p>
+        <p>That is why events are useful in FiveM. They let separate resources work together without hard-wiring themselves together.</p>
+
+        <div class="callout callout--tip">
+          <header>The three verbs</header>
+          <p><code>TriggerEvent</code> fires the message. <code>AddEventHandler</code> listens for it. <code>RegisterNetEvent</code>, which comes next lesson, is for messages that cross the client/server wall.</p>
+        </div>
+      </section>
+
+      <section id="local-rule">
+        <h2>The one rule of <code>TriggerEvent</code>: it stays on its side</h2>
+        <p><code>TriggerEvent</code> never crosses the client/server wall. If you call it on the client, only client handlers can hear it. If you call it on the server, only server handlers can hear it. That is not a weird detail. That is the main rule.</p>
+        <p>Say it once, out loud: <strong>TriggerEvent is local to its side.</strong> Most beginner bugs with events start with forgetting that sentence.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Shout: your first <code>TriggerEvent</code></h2></header>
+        <p class="step-outcome">Outcome: a line of code that fires an event and another line that reacts to it, both on the client.</p>
+        <div class="step-body">
+          <p>We'll build a tiny resource called <code>qu_events</code>. It fires a <code>qu:client:coffee</code> event when the player types <code>/coffee</code>. A second piece of code, also on the client, handles it and prints a message. One shout, one listener, in the same file, to keep it simple.</p>
+
+          <figure class="code">
+            <header><span>qu_events/client/main.lua</span></header>
+            <pre><code class="language-lua">AddEventHandler('qu:client:coffee', function(size)
+    print('[qu_events] serving a ' .. size .. ' coffee')
+end)
+
+RegisterCommand('coffee', function()
+    TriggerEvent('qu:client:coffee', 'large')
+end, false)</code></pre>
+          </figure>
+
+          <p>Read it from top to bottom. <code>AddEventHandler</code> registers a function that should run when <code>qu:client:coffee</code> fires. <code>RegisterCommand</code> makes <code>/coffee</code> call <code>TriggerEvent</code> with one argument, the string <code>'large'</code>. That value then arrives in the handler as <code>size</code>.</p>
+
+          <div class="callout callout--fivem">
+            <header>Event names are yours to invent</header>
+          <p>There is no central list you have to register names in. <code>qu:client:coffee</code> is just a string you chose. In this course we use <code>&lt;resource&gt;:&lt;side&gt;:&lt;action&gt;</code> because it keeps names tidy and easy to search for later.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Run it: one command, two printouts</h2></header>
+        <p class="step-outcome">Outcome: you see the event fire, the handler run, and the argument arrive intact.</p>
+        <div class="step-body">
+          <p>Create a resource folder, drop a <code>fxmanifest.lua</code> beside a <code>client</code> folder holding the file above, then start it:</p>
+
+          <figure class="code">
+            <header><span>qu_events/fxmanifest.lua</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'you'
+description 'Events 101, shout and listen'
+version '0.1.0'
+
+client_scripts {
+    'client/*.lua',
+}</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>F8 console (client)</span></header>
+            <pre><code class="language-bash">coffee</code></pre>
+          </figure>
+
+          <p>You should see <code>[qu_events] serving a large coffee</code> in the F8 console. If the print didn't show up, check the three usual suspects: resource actually <code>ensure</code>d in <code>server.cfg</code>, file saved, event name spelled exactly the same in both places (case-sensitive, colons included).</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Many listeners, one shout</h2></header>
+        <p class="step-outcome">Outcome: you see that a single event can trigger several independent reactions.</p>
+        <div class="step-body">
+          <p>Add a second handler for the same event. Do not delete the first one.</p>
+
+          <figure class="code">
+            <header><span>qu_events/client/main.lua (append)</span></header>
+            <pre><code class="language-lua">AddEventHandler('qu:client:coffee', function(size)
+    print('[loyalty] +1 stamp on the card (' .. size .. ')')
+end)</code></pre>
+          </figure>
+
+          <p>Restart the resource with <code>restart qu_events</code>, run <code>/coffee</code>, and watch both handlers run:</p>
+
+          <figure class="code">
+            <header><span>F8 console</span></header>
+            <pre><code class="language-bash">[qu_events] serving a large coffee
+[loyalty] +1 stamp on the card (large)</code></pre>
+          </figure>
+
+          <p>Notice what did not change: the <code>TriggerEvent</code> line. You only added another listener. That is the main strength of events. You can grow the behavior around the event without changing the line that fires it.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Multiple arguments: the shape of a message</h2></header>
+        <p class="step-outcome">Outcome: you can pass any number of values through an event and read them in the handler.</p>
+        <div class="step-body">
+          <p>Events are not limited to one argument. You can pass several values, and the handler receives them in the same order.</p>
+
+          <figure class="code">
+            <header><span>qu_events/client/main.lua (replace the coffee block)</span></header>
+            <pre><code class="language-lua">AddEventHandler('qu:client:coffee', function(size, shots, oatMilk)
+    local milk = oatMilk and 'oat' or 'whole'
+    print(('[qu_events] %s coffee, %d shot(s), %s milk'):format(size, shots, milk))
+end)
+
+RegisterCommand('coffee', function()
+    TriggerEvent('qu:client:coffee', 'large', 2, true)
+end, false)</code></pre>
+          </figure>
+
+          <p>Three arguments leave the <code>TriggerEvent</code> call, and three parameters arrive in the handler. The types stay the same too. A string stays a string, a number stays a number, and a boolean stays a boolean.</p>
+
+          <div class="callout callout--gotcha">
+            <header>Argument order matters, argument names don't</header>
+            <p>If you swap the order in <code>TriggerEvent</code>, the handler reads the wrong values into the wrong names, no error, silent bug. When an event takes more than two arguments, consider passing a single table instead: <code>TriggerEvent('qu:client:coffee', { size='large', shots=2, oatMilk=true })</code>. You lose positional ambiguity; you gain the ability to add fields later without breaking callers.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>The silent handler</h3></header>
+        <p>This code runs without errors, but nothing prints when <code>/wave</code> is typed. Find the bug before scrolling.</p>
+
+        <figure class="code">
+          <header><span>qu_events/client/main.lua, broken</span></header>
+          <pre><code class="language-lua">AddEventHandler('qu:client:Wave', function()
+    print('waving')
+end)
+
+RegisterCommand('wave', function()
+    TriggerEvent('qu:client:wave')
+end, false)</code></pre>
+        </figure>
+
+        <div class="self-check">
+          <details>
+            <summary>The fix</summary>
+            <p>Event names are <strong>case-sensitive</strong>. The handler listens for <code>qu:client:Wave</code> (capital W); the trigger fires <code>qu:client:wave</code> (lowercase). FiveM does not warn you, it quietly looks for a listener that doesn't exist, finds none, and moves on. Match the casing exactly in both places. Adopt a rule: all-lowercase except for domain acronyms, always.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Two resources, one conversation</h2></header>
+        <p class="step-outcome">Outcome: you see the real power of events, resources that don't know each other still work together.</p>
+        <div class="step-body">
+          <p>Events become essential the moment you have more than one resource. Leave <code>qu_events</code> alone. Create a second resource, <code>qu_loyalty</code>, that adds a stamp every time the first one fires <code>qu:client:coffee</code>: without <code>qu_events</code> knowing it exists.</p>
+
+          <figure class="code">
+            <header><span>qu_loyalty/fxmanifest.lua</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+client_scripts { 'client/*.lua' }</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>qu_loyalty/client/main.lua</span></header>
+            <pre><code class="language-lua">local stamps = 0
+
+AddEventHandler('qu:client:coffee', function(size)
+    stamps = stamps + 1
+    print(('[qu_loyalty] %s coffee, stamps now: %d'):format(size, stamps))
+end)</code></pre>
+          </figure>
+
+          <p><code>ensure qu_loyalty</code> in <code>server.cfg</code>, restart the server, run <code>/coffee</code>. Both resources fire on the same event. Neither imports the other. If tomorrow you delete <code>qu_loyalty</code>, <code>qu_events</code> keeps working. That independence is the superpower.</p>
+
+          <div class="callout callout--pro">
+            <header>The decoupling dividend</header>
+            <p>This is how production FiveM codebases stay sane. A purchase event fires once; inventory, notifications, analytics, and the shopkeeper's till all listen separately. Any of them can be swapped out or restarted without touching the others.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Events FiveM fires for you, for free</h2></header>
+        <p class="step-outcome">Outcome: you can react to a player joining, leaving, or spawning without writing a loop that checks "did it happen yet?" over and over.</p>
+        <div class="step-body">
+          <p>So far every event you fired came from your own <code>TriggerEvent</code> call. Here is the nice surprise: FiveM is already firing events all the time. A player connects, a player disconnects, your resource starts up, a player respawns at the hospital. Each of those is a named event, and you can listen for it with the exact same <code>AddEventHandler</code> you already know.</p>
+          <p>This matters because the beginner instinct is to write a loop that keeps checking "is the player here yet? is the player here yet?". You almost never need that. You just add a handler for the built-in event and let FiveM tap you on the shoulder when it happens.</p>
+
+          <table>
+            <thead>
+              <tr><th>Event name</th><th>Side</th><th>Fires when</th><th>What you get</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>playerJoining</code></td><td>Server</td><td>A player is connecting, just before they are fully in</td><td><code>source</code> is the joining player's server id</td></tr>
+              <tr><td><code>playerDropped</code></td><td>Server</td><td>A player disconnects</td><td><code>source</code> plus a <code>reason</code> string (timeout, kicked, quit)</td></tr>
+              <tr><td><code>onResourceStart</code></td><td>Server</td><td>Any resource starts, including yours</td><td>The <code>resourceName</code> that started</td></tr>
+              <tr><td><code>onResourceStop</code></td><td>Server</td><td>Any resource stops</td><td>The <code>resourceName</code> that stopped</td></tr>
+              <tr><td><code>onClientResourceStart</code></td><td>Client</td><td>Your resource finishes loading on this client</td><td>The <code>resourceName</code> that started</td></tr>
+              <tr><td><code>playerSpawned</code></td><td>Client</td><td>The local player spawns or respawns</td><td>Nothing required, it just means "I am alive in the world now"</td></tr>
+            </tbody>
+          </table>
+
+          <p>Here is the server side. Notice <code>source</code> works here just like it will in net events next lesson, it is the player this event is about.</p>
+
+          <figure class="code">
+            <header><span>qu_events/server/main.lua</span></header>
+            <pre><code class="language-lua">AddEventHandler('playerJoining', function()
+    local src = source
+    print(('[qu_events] %s is joining (id %d)'):format(GetPlayerName(src), src))
+end)
+
+AddEventHandler('playerDropped', function(reason)
+    local src = source
+    print(('[qu_events] %s left, reason: %s'):format(GetPlayerName(src), reason))
+end)</code></pre>
+          </figure>
+
+          <p>The two resource lifecycle events fire for <em>every</em> resource on the server, not only yours. So the first thing you do inside the handler is check whether the name matches your own resource. If you skip that check, your startup code runs every time any other resource restarts, which is almost never what you want.</p>
+
+          <figure class="code">
+            <header><span>qu_events/server/main.lua (append)</span></header>
+            <pre><code class="language-lua">AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end  -- only react to OUR resource
+    print('[qu_events] starting up, run setup here')
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    print('[qu_events] shutting down, run cleanup here')
+end)</code></pre>
+          </figure>
+
+          <p>And the client side. <code>playerSpawned</code> is the one you will reach for constantly, it is how you give a player their gear, set their health, or teleport them after they respawn.</p>
+
+          <figure class="code">
+            <header><span>qu_events/client/main.lua (append)</span></header>
+            <pre><code class="language-lua">AddEventHandler('playerSpawned', function()
+    print('[qu_events] I just spawned')
+    -- e.g. SetEntityHealth(PlayerPedId(), 200)
+end)</code></pre>
+          </figure>
+
+          <div class="callout callout--fivem">
+            <header>The "is it mine?" guard</header>
+            <p><code>onResourceStart</code> and <code>onResourceStop</code> are noisy on purpose, they shout for every resource so any resource can react to any other. Your job is the one-line filter <code>if resourceName ~= GetCurrentResourceName() then return end</code>. Get in the habit now. You will write this guard hundreds of times.</p>
+          </div>
+
+          <div class="callout callout--pro">
+            <header>Listen, do not poll</header>
+            <p>If you ever catch yourself writing <code>while not playerLoaded do Wait(100) end</code>, stop. There is almost always a built-in event for the thing you are waiting on. Polling burns CPU every tick; a handler costs nothing until the moment it fires. The list above is a tiny slice, the FiveM docs have a full catalog of lifecycle and game events worth bookmarking.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Predict the output</h3></header>
+        <p>Given the code below (all in one client file), what prints when the player types <code>/ring</code>? Write your prediction down before opening the answer.</p>
+
+        <figure class="code">
+          <header><span>qu_events/client/main.lua</span></header>
+          <pre><code class="language-lua">AddEventHandler('qu:client:bell', function(n)
+    print('A: ' .. n)
+end)
+
+AddEventHandler('qu:client:bell', function(n)
+    print('B: ' .. (n * 2))
+end)
+
+RegisterCommand('ring', function()
+    TriggerEvent('qu:client:bell', 3)
+    print('done')
+end, false)</code></pre>
+        </figure>
+
+        <div class="self-check">
+          <details>
+            <summary>The output</summary>
+            <pre><code>A: 3
+B: 6
+done</code></pre>
+            <p>Handlers run in the order they were registered, <em>before</em> <code>TriggerEvent</code> returns. That's a Lua rule, not a FiveM one, same-side events are function calls, and function calls are synchronous. Knowing this matters the day you wonder "did my handler run before the next line?", it did.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes: spot them now, skip them later</h2>
+
+        <details class="explain">
+          <summary>Using <code>TriggerEvent</code> to talk across sides</summary>
+          <p>Client <code>TriggerEvent</code> does <em>not</em> reach the server. If you need the server to hear it, the next lesson's <code>TriggerServerEvent</code> is the tool. Using the wrong verb is the single most common events bug for new FiveM devs.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Typos in event names</summary>
+          <p><code>qu:client:coffe</code> (missing <em>e</em>) looks identical at a glance. No error, no handler, no clue. Copy event names, do not retype them.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Registering a handler inside a command</summary>
+          <p>Putting <code>AddEventHandler</code> inside a <code>RegisterCommand</code> callback adds a <em>new</em> handler every time the command runs. After ten uses, your single event fires ten listeners. Handlers go at the top level of the file, once.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting arguments exist</summary>
+          <p><code>TriggerEvent('qu:client:buy')</code> passes zero arguments. If the handler has <code>function(itemName)</code>, <code>itemName</code> is <code>nil</code>. You won't see an error; you'll see a crash two lines later when something tries <code>itemName:upper()</code>. Keep argument counts aligned.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. If you call <code>TriggerEvent</code> on the client, who hears it?</legend>
+            <label><input type="radio" name="q1" value="a"> Every resource on the server.</label>
+            <label><input type="radio" name="q1" value="b"> Every handler of that event name on the client, on that player's machine.</label>
+            <label><input type="radio" name="q1" value="c"> All players on the server.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What does <code>AddEventHandler</code> do?</legend>
+            <label><input type="radio" name="q2" value="a"> Fires an event.</label>
+            <label><input type="radio" name="q2" value="b"> Declares that an event is allowed to cross sides.</label>
+            <label><input type="radio" name="q2" value="c"> Registers a function to run whenever an event with that name fires on this side.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. How many handlers can listen to the same event name?</legend>
+            <label><input type="radio" name="q3" value="a"> Any number, across any number of resources.</label>
+            <label><input type="radio" name="q3" value="b"> Exactly one, the latest one wins.</label>
+            <label><input type="radio" name="q3" value="c"> One per resource.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. A handler silently never runs. What's the most likely cause?</legend>
+            <label><input type="radio" name="q4" value="a"> FiveM's event queue is full.</label>
+            <label><input type="radio" name="q4" value="b"> Event name typo or case mismatch between trigger and handler.</label>
+            <label><input type="radio" name="q4" value="c"> Lua garbage-collected the handler.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: events, same-side</h2>
+        <dl>
+          <div><dt>Fire an event</dt><dd><code>TriggerEvent('name', arg1, arg2, ...)</code></dd></div>
+          <div><dt>Listen for one</dt><dd><code>AddEventHandler('name', function(arg1, arg2, ...) end)</code></dd></div>
+          <div><dt>Scope</dt><dd>Same side only. Client→client, server→server.</dd></div>
+          <div><dt>Naming convention</dt><dd><code>resource:side:action</code>: e.g. <code>qu_bank:client:deposited</code>.</dd></div>
+          <div><dt>Order</dt><dd>Handlers run in registration order, synchronously, before <code>TriggerEvent</code> returns.</dd></div>
+          <div><dt>Cross-resource</dt><dd>Handlers in any resource can listen to any event name fired on the same side.</dd></div>
+          <div><dt>Many args vs one table</dt><dd>Use a table when you have &gt;2 arguments or expect the shape to evolve.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>TriggerEvent</code> fires a named message on the same side -- it never crosses the client/server wall</li>
+          <li><code>AddEventHandler</code> registers a function that runs when that event name fires</li>
+          <li>Multiple handlers can listen to the same event, and they all run in registration order</li>
+          <li>Event names are case-sensitive strings you invent -- use a clear naming convention like <code>resource:side:action</code></li>
+          <li>Separate resources can cooperate through events without importing each other</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Create a client command called <code>/greet</code> that fires an event <code>qu:client:greeted</code> with your name as a string argument. Add two separate handlers: one that prints a welcome message and one that prints a counter of how many times you have greeted. Run <code>/greet</code> three times.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console</span></header>
+          <pre><code>[greeter] hello, Alex!
+[counter] greet count: 1
+[greeter] hello, Alex!
+[counter] greet count: 2
+[greeter] hello, Alex!
+[counter] greet count: 3</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Register both <code>AddEventHandler</code> calls at the top level of the file, not inside the command. Use a local variable outside the handlers to keep the counter. The command only calls <code>TriggerEvent('qu:client:greeted', 'Alex')</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/AddEventHandler/" target="_blank" rel="noopener">AddEventHandler -- FiveM docs</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/TriggerEvent/" target="_blank" rel="noopener">TriggerEvent -- FiveM docs</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Level up: what's next</h2>
+        <p>You can now make a single side talk to itself. That's enough to split a feature into tidy resources that cooperate through shouts. But the rule so far stops at the client/server wall. Next lesson crosses it, and the moment you send a message from the client to the server, every trust rule from Lesson 12 wakes up and starts paying attention.</p>
+      </section>

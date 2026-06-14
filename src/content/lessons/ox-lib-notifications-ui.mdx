@@ -1,0 +1,139 @@
+<LessonHero
+  crumbs="Module 05 · Lesson 16"
+  title="ox_lib: the toolbox every modern FiveM script uses"
+  meta={[
+    { label: "You'll learn", value: "lib.notify -> lib.registerContext / lib.showContext -> lib.inputDialog -> lib.progressCircle -> where the ox_lib docs live" },
+    { label: "Time", value: "~25 minutes" },
+    { label: "Prereqs", value: "Module 04 complete. ox_lib installed and started before any qu_* resource." },
+    { label: "Outcome", value: "One client file that shows a notification, opens a menu, asks for input, and runs a progress bar." },
+  ]}
+>
+  So far you have built things the long way so you could see how they work. Now it is time to use the standard toolbox real FiveM servers rely on. `ox_lib` gives you ready-made pop-ups, menus, dialogs, and progress bars so you can focus on script logic instead of rebuilding UI every time.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds ox_lib notify, context menu, input dialog, and progress circle as a working FiveM resource named `qu_ox_lib_notifications_ui`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_ox_lib_notifications_ui
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_ox_lib_notifications_ui/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@ox_lib/init.lua'
+client_script 'client.lua'
+
+dependency 'ox_lib'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('oxdemo', function()
+    lib.notify({ title = 'qu_ox_lib_notifications_ui', description = 'Notification works', type = 'success' })
+    lib.registerContext({ id = 'qu_ox_lib_notifications_ui_menu', title = 'qu_ox_lib_notifications_ui', options = { { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' } } })
+    lib.showContext('qu_ox_lib_notifications_ui_menu')
+end, false)
+
+RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
+    local input = lib.inputDialog('Name', { 'Name' })
+    if not input then return end
+    lib.progressCircle({ duration = 1000, label = 'Saving' })
+    print('[qu_ox_lib_notifications_ui] saved ' .. input[1])
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_ox_lib_notifications_ui
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_ox_lib_notifications_ui
+    ```
+
+    Run this test:
+
+    ```text
+    /oxdemo
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_ox_lib_notifications_ui] saved yourName
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_ox_lib_notifications_ui does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_ox_lib_notifications_ui", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_ox_lib_notifications_ui, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_ox_lib_notifications_ui folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for ox_lib notify, context menu, input dialog, and progress circle.",
+    "Add ensure qu_ox_lib_notifications_ui to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_ox_lib_notifications_ui`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

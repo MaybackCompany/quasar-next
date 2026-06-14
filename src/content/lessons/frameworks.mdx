@@ -1,0 +1,146 @@
+<LessonHero
+  crumbs="Module 05 · Lesson 17"
+  title="Frameworks: ESX, QBCore, Qbox + ox_lib"
+  meta={[
+    { label: "You'll learn", value: "What a framework is -> how the player object looks in each one -> money and job basics -> load events -> the ox_lib tools you will use most days" },
+    { label: "Time", value: "~45 minutes" },
+    { label: "Prereqs", value: "Module 04 complete. A test server with any of ESX / QBCore / Qbox installed. ox_lib resource running." },
+    { label: "Outcome", value: "You can read and compare scripts written for ESX, QBCore, and Qbox, and you can understand where ox_lib fits in." },
+  ]}
+>
+  Real FiveM servers usually run a *framework*. A framework answers the same boring questions for every script: who is this player, how much money do they have, what job are they on, what inventory do they carry. This lesson reads like a translation guide. Learn the idea once, then see how ESX, QBCore, and Qbox spell it.
+</LessonHero>
+
+<LessonVideo loomId="759a72a2569649dd8bfc9fb30357bec5" title="Build a drug script with ox_lib" caption="Cruze builds a framework script with ox_lib, step by step." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds ESX, QBCore, Qbox, and ox_lib framework detection as a working FiveM resource named `qu_frameworks`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## The frameworks at a glance
+
+Each framework has its own docs and its own way of spelling the same ideas. Bookmark the ones you run. For a new 2026 server, start on **ESX Legacy** or **Qbox**; QBCore still works but its development has largely stalled. `ox_lib` is the shared library all three lean on.
+
+<TechLinks ids={["esx", "qbox", "qbcore", "ox"]} />
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_frameworks
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_frameworks/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@ox_lib/init.lua'
+server_script 'server.lua'
+
+dependency 'ox_lib'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local function framework()
+    if GetResourceState('qbx_core') == 'started' then return 'qbox' end
+    if GetResourceState('qb-core') == 'started' then return 'qbcore' end
+    if GetResourceState('es_extended') == 'started' then return 'esx' end
+    return 'none'
+end
+
+RegisterCommand('fwprobe', function(src)
+    print('[qu_frameworks] detected ' .. framework())
+    if src > 0 then print('[qu_frameworks] player ' .. GetPlayerName(src)) end
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_frameworks
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_frameworks
+    ```
+
+    Run this test:
+
+    ```text
+    /fwprobe
+    ```
+
+    <ExpectedOutput>
+      [qu_frameworks] detected qbox, qbcore, esx, or none
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_frameworks does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_frameworks", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_frameworks, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_frameworks folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for ESX, QBCore, Qbox, and ox_lib framework detection.",
+    "Add ensure qu_frameworks to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_frameworks`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

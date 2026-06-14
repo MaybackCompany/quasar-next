@@ -1,0 +1,580 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 09 &middot; Lesson 28</span></div>
+        <h1>Debugging like a developer</h1>
+        <p class="lede">Something will break. That is not a maybe, it is a certainty. The difference between a beginner and a developer is not that the developer writes perfect code. The difference is that the developer knows how to <em>read the error</em>, find the line, and fix it calmly. This lesson teaches you that skill.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>Structured logging in your scripts, a <code>pcall</code> wrapper for risky code, and the ability to read any FiveM error message.</dd></div>
+          <div><dt>Time</dt><dd>~30 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>Logging with tags, F8 vs server console, pcall for error recovery, stack traces, data-collection checklist, performance basics, and common error messages decoded.</dd></div>
+          <div><dt>Prereqs</dt><dd>Functions (Lesson 06), client vs server (Lesson 10).</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="27">
+        <h2>Before you start</h2>
+        <p>Quick check. Debugging is a meta skill, it only clicks once you have something to debug.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have run at least one resource end-to-end (<a href="../clase-1/leason1.html">Lesson 1</a> onwards)</label></li>
+          <li><label><input type="checkbox"> I can open the F8 client console, see <code>print()</code> output, and read errors line by line</label></li>
+          <li><label><input type="checkbox"> I know the layout of a resource folder, <code>fxmanifest.lua</code>, <code>client/</code>, <code>server/</code>, and where to drop a new <code>.lua</code> file</label></li>
+          <li><label><input type="checkbox"> I have hit at least one real error already and felt the "what now" moment, this lesson is built for that exact feeling</label></li>
+        </ul>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 28: Debugging like a developer</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Debugging is collecting facts before guessing.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find errors in F8, txAdmin, and logs.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Use structured logs and traceback.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Capture one forced error cleanly.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small debug example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">pcall</dt><dd>Runs risky code and catches errors.<br><span>Example: pcall(fn) returns ok and result.</span></dd></div>
+            <div><dt tabindex="0">Traceback</dt><dd>A stack trace showing the call path.<br><span>Example: debug.traceback(err) shows lines.</span></dd></div>
+            <div><dt tabindex="0">Structured log</dt><dd>A log with fixed tags.<br><span>Example: [QUIET][debug][load] ready.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_debug</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_debug/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_debug</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][debug]">
+            <header><span class="file">qu_debug/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'debug'
+
+local function quietLog(action, message)
+    print(('[QUIET][%s][%s] %s'):format(MODULE, action, message))
+end
+
+local ok, err = pcall(function()
+    error('forced test error')
+end)
+
+if not ok then
+    quietLog('capture', err)
+    quietLog('trace', debug.traceback(err))
+end</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][debug]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>server.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_debug</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>debug_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][debug_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_debug' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Logging with tags: stop printing mystery messages</h2></header>
+        <p class="step-outcome">Outcome: every print in your code has a tag that tells you which resource and action produced it.</p>
+        <div class="step-body">
+          <p>The <code>print()</code> function sends text to the console. But when you have 20 resources running, a bare <code>print('hello')</code> is useless. You have no idea which script said "hello" or why.</p>
+          <p>Use a consistent tag format: <code>[resource:action] what happened</code>.</p>
+          <figure class="code">
+            <header><span>Good logging (with tags)</span></header>
+            <pre><code class="language-lua">-- Good: you know exactly where this came from
+print('[qu_heal:command] Player ' .. tostring(source) .. ' used /heal')
+print('[qu_heal:cooldown] Player ' .. tostring(source) .. ' blocked, 23s remaining')
+print('[qu_bank:deposit] Player ' .. tostring(source) .. ' deposited $500')</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>Bad logging (no tags)</span></header>
+            <pre><code class="language-lua">-- Bad: when you see this in a console with 200 lines scrolling, good luck
+print('player used command')
+print('blocked')
+print('deposited money')</code></pre>
+          </figure>
+          <p>The tag format is simple:</p>
+          <ul>
+            <li><code>[resource_name:action]</code> at the start of every print</li>
+            <li>Include the player ID (<code>source</code> on server, or the player name) so you can trace who did what</li>
+            <li>Include the actual data: what amount, what item, what result</li>
+          </ul>
+          <div class="callout callout--tip">
+            <header>Why this matters at 3 AM</header>
+            <p>When your server is live and something breaks at 3 AM, you will scroll through hundreds of console lines looking for what happened. Tags let you search (Ctrl+F) for <code>[qu_heal]</code> and find every line from that resource instantly. Without tags, you are reading every single line.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>F8 console vs server console: what shows where</h2></header>
+        <p class="step-outcome">Outcome: you know which console to look at depending on where the code runs.</p>
+        <div class="step-body">
+          <p>FiveM has two consoles. Which one you see depends on where the code ran:</p>
+          <dl>
+            <div>
+              <dt>F8 console (client-side)</dt>
+              <dd>Press F8 in-game. This shows output from <strong>client scripts only</strong>. Any <code>print()</code> in a <code>client.lua</code> file appears here. The server never sees these messages. Think of it as your personal view of what is happening on your machine.</dd>
+            </div>
+            <div>
+              <dt>Server console (server-side)</dt>
+              <dd>This is the terminal window (or txAdmin live console) where your server runs. Any <code>print()</code> in a <code>server.lua</code> file appears here. All players' server events show up in this one place. This is where you look for security logs, cooldown checks, and database operations.</dd>
+            </div>
+          </dl>
+          <div class="callout callout--fivem">
+            <header>Quick rule</header>
+            <p>If the file is called <code>client.lua</code> (or is listed as <code>client_script</code>), the prints go to <strong>F8</strong>. If the file is <code>server.lua</code> (or <code>server_script</code>), the prints go to the <strong>server console</strong>. Always check the right console for the right side.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>pcall: catching errors instead of crashing</h2></header>
+        <p class="step-outcome">Outcome: you can wrap risky code in <code>pcall</code> so your script logs the error instead of dying.</p>
+        <div class="step-body">
+          <p><code>pcall</code> stands for "protected call." It runs a function, and if that function crashes, <code>pcall</code> catches the crash and gives you the error message instead of killing your entire script.</p>
+          <figure class="code">
+            <header><span>pcall pattern</span></header>
+            <pre><code class="language-lua">local ok, err = pcall(function()
+    -- risky code here
+    -- maybe it reads from a table that might be nil
+    -- maybe it calls a function that might not exist
+    local value = someTable.someKey  -- this could crash if someTable is nil
+end)
+
+if not ok then
+    print('[qu_resource] ERROR: ' .. tostring(err))
+end</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>How pcall works, step by step</summary>
+            <ul>
+              <li><code>pcall(function() ... end)</code>: runs the function you pass to it. If the function completes without errors, <code>ok</code> is <code>true</code> and <code>err</code> is <code>nil</code>.</li>
+              <li>If the function crashes (for example, trying to read a key on a nil table), <code>ok</code> is <code>false</code> and <code>err</code> is a string describing what went wrong.</li>
+              <li><code>tostring(err)</code>: converts the error to a string so you can print it safely. Sometimes the error is already a string, but <code>tostring</code> is a safe habit.</li>
+              <li>Your script keeps running after the <code>pcall</code>. Without <code>pcall</code>, the same error would kill the entire script.</li>
+            </ul>
+          </details>
+          <p>Here is a real example, wrapping a database call that might fail:</p>
+          <figure class="code">
+            <header><span>Real-world pcall usage</span></header>
+            <pre><code class="language-lua">local ok, err = pcall(function()
+    local result = MySQL.query.await('SELECT money FROM players WHERE id = ?', { playerId })
+    if result and result[1] then
+        playerMoney = result[1].money
+    end
+end)
+
+if not ok then
+    print('[qu_bank:query] ERROR: Database query failed: ' .. tostring(err))
+    -- the script keeps running, other players are not affected
+end</code></pre>
+          </figure>
+          <div class="callout callout--danger">
+            <header>Do not use pcall to hide bugs</header>
+            <p><code>pcall</code> catches the error so your script survives. But you <strong>must</strong> log the error. If you write <code>pcall</code> without printing the error, you are hiding bugs from yourself. The problem still exists; you just can't see it anymore. Always print inside the <code>if not ok</code> block.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>You have a pcall wrapper and structured logging</h3></header>
+        <p>At this point you should be able to:</p>
+        <ul>
+          <li>Wrap any function in <code>pcall</code> and handle both the success and error cases</li>
+          <li>Print tagged log messages that include the resource name, action, and player data</li>
+          <li>Know which console (F8 or server) to check based on which side the code runs on</li>
+        </ul>
+        <div class="self-check">
+          <details>
+            <summary>Test it yourself</summary>
+            <p>Write a <code>pcall</code> that deliberately accesses a nil variable. Run the resource. Check the correct console. You should see your tagged error message, not a crash.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>debug.traceback(): reading the call stack</h2></header>
+        <p class="step-outcome">Outcome: you can print a stack trace that shows exactly which functions called which.</p>
+        <div class="step-body">
+          <p>Sometimes knowing <em>what</em> crashed is not enough. You need to know the chain of calls that led to the crash. That is what a <strong>stack trace</strong> (also called a traceback) gives you.</p>
+          <figure class="code">
+            <header><span>Using debug.traceback()</span></header>
+            <pre><code class="language-lua">local ok, err = pcall(function()
+    -- some risky code
+    local value = nil
+    print(value.name)  -- this will crash: "attempt to index a nil value"
+end)
+
+if not ok then
+    print('[qu_resource] ERROR: ' .. tostring(err))
+    print('[qu_resource] TRACEBACK: ' .. debug.traceback())
+end</code></pre>
+          </figure>
+          <p>The traceback output looks something like this:</p>
+          <figure class="code">
+            <header><span>Example traceback output</span></header>
+            <pre><code class="language-lua">-- [qu_resource] ERROR: attempt to index a nil value
+-- [qu_resource] TRACEBACK: stack traceback:
+--     server.lua:15: in function 'processPayment'
+--     server.lua:28: in function 'handleDeposit'
+--     server.lua:42: in function &lt;server.lua:40&gt;</code></pre>
+          </figure>
+          <p>Read it bottom to top. The bottom line is where the chain started (line 42 called <code>handleDeposit</code>). The top line is where it crashed (line 15 inside <code>processPayment</code>). This tells you exactly where to look.</p>
+          <div class="callout callout--tip">
+            <header>When to use traceback</header>
+            <p>Use <code>debug.traceback()</code> when you have multiple functions calling each other and you need to know <em>which path</em> led to the crash. For simple scripts with one or two functions, the error message alone is usually enough.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>The "stop and collect data" checklist</h2></header>
+        <p class="step-outcome">Outcome: you have a repeatable process for diagnosing any bug, not just staring at the screen.</p>
+        <div class="step-body">
+          <p>When something goes wrong, beginners often freeze or start changing random code. Developers follow a checklist. Before you change anything, answer these five questions:</p>
+          <ol>
+            <li><strong>What event fired?</strong> Which event name triggered the code that broke? Check your tagged logs.</li>
+            <li><strong>What was the payload?</strong> What data was sent with the event? Print the arguments before the risky code runs.</li>
+            <li><strong>What was source?</strong> On the server, which player triggered this? Print <code>source</code> at the top of every handler.</li>
+            <li><strong>What was the expected result?</strong> What <em>should</em> have happened? Write it down in one sentence.</li>
+            <li><strong>What was the actual result?</strong> What <em>did</em> happen? An error? Wrong data? Nothing at all?</li>
+          </ol>
+          <figure class="code">
+            <header><span>Debugging template</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:server:deposit', function(amount)
+    local src = source
+    -- DEBUG: collect data before doing anything
+    print('[qu_bank:deposit] DEBUG event fired')
+    print('[qu_bank:deposit] DEBUG source = ' .. tostring(src))
+    print('[qu_bank:deposit] DEBUG amount = ' .. tostring(amount))
+    print('[qu_bank:deposit] DEBUG type(amount) = ' .. type(amount))
+
+    -- now the actual code...
+end)</code></pre>
+          </figure>
+          <p>Once you have answers to all five questions, the fix is usually obvious. The hard part is not the fix. The hard part is collecting the right information first.</p>
+          <div class="callout callout--tip">
+            <header>Remove debug prints before shipping</header>
+            <p>These <code>DEBUG</code> prints are for you during development. Remove them (or comment them out) before your script goes live. A production server does not need to print every player's deposit amount to the console on every transaction.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Performance basics: stop wasting ticks</h2></header>
+        <p class="step-outcome">Outcome: you understand why some code is slow and how to avoid the worst performance mistakes.</p>
+        <div class="step-body">
+          <p>FiveM runs your Lua code inside a game that also renders 3D graphics, plays audio, handles physics, and manages network traffic. If your script does too much work every frame (every "tick"), the game stutters.</p>
+          <p>Three rules to start with:</p>
+
+          <h3>Rule 1: Avoid every-tick logic</h3>
+          <p>A <code>Citizen.CreateThread</code> with <code>Wait(0)</code> runs your code every single frame. That is 60 times per second (or more). Most code does not need to run that often.</p>
+          <figure class="code">
+            <header><span>Bad: runs every frame</span></header>
+            <pre><code class="language-lua">-- This checks distance to a marker 60 times per second. Wasteful.
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        local dist = #(GetEntityCoords(PlayerPedId()) - markerCoords)
+        if dist < 2.0 then
+            -- show prompt
+        end
+    end
+end)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>Better: checks less often when far away</span></header>
+            <pre><code class="language-lua">Citizen.CreateThread(function()
+    while true do
+        local dist = #(GetEntityCoords(PlayerPedId()) - markerCoords)
+        if dist < 2.0 then
+            Wait(0)  -- close: check every frame for responsiveness
+            -- show prompt
+        elseif dist < 20.0 then
+            Wait(500)  -- nearby: check twice per second
+        else
+            Wait(2000) -- far away: check every 2 seconds
+        end
+    end
+end)</code></pre>
+          </figure>
+
+          <h3>Rule 2: Debounce with cooldown tables</h3>
+          <p>If a player spams a button or event, don't process it every time. Use the same cooldown table pattern from the /heal lesson:</p>
+          <figure class="code">
+            <header><span>Debounce pattern</span></header>
+            <pre><code class="language-lua">local lastAction = {}
+
+RegisterNetEvent('qu:server:someAction', function()
+    local src = source
+    local now = os.time()
+    if (lastAction[src] or 0) + 2 > now then return end -- ignore if within 2 seconds
+    lastAction[src] = now
+
+    -- process the action
+end)</code></pre>
+          </figure>
+
+          <h3>Rule 3: Rate-limit server events</h3>
+          <p>A cheater can fire events as fast as they want. If your server handler does database work, one cheater spamming events can slow down everyone. The debounce above also serves as rate limiting. Always have one.</p>
+
+          <div class="callout callout--danger">
+            <header>Wait(0) is not free</header>
+            <p><code>Wait(0)</code> means "run this code every frame." If you have 10 scripts each running a <code>Wait(0)</code> loop, that is 10 chunks of code running 60 times per second. Players will feel the lag. Only use <code>Wait(0)</code> when you genuinely need frame-perfect timing (drawing UI, detecting nearby objects for interaction).</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>You can read and fix errors</h3></header>
+        <p>At this point you should be comfortable with:</p>
+        <ul>
+          <li>Adding <code>pcall</code> around risky code and logging the error</li>
+          <li>Using <code>debug.traceback()</code> to see the call chain</li>
+          <li>Following the 5-question checklist when something breaks</li>
+          <li>Knowing when <code>Wait(0)</code> is appropriate vs wasteful</li>
+        </ul>
+        <div class="self-check">
+          <details>
+            <summary>Quick test</summary>
+            <p>In any of your existing scripts, add a <code>pcall</code> wrapper around the riskiest function. Add the 5-question debug prints at the top of one server event handler. Run the resource and verify the prints appear in the server console.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-7">
+        <header><span class="step-num">Step 7</span><h2>Common error messages decoded</h2></header>
+        <p class="step-outcome">Outcome: you can read the three most common Lua errors in FiveM and know exactly what to fix.</p>
+        <div class="step-body">
+          <p>These three errors account for the majority of FiveM script crashes. Learn to read them and you will fix most bugs in under a minute.</p>
+
+          <h3>"attempt to index a nil value"</h3>
+          <figure class="code">
+            <header><span>What this error looks like</span></header>
+            <pre><code class="language-lua">-- SCRIPT ERROR: @qu_bank/server.lua:12: attempt to index a nil value (local 'player')
+
+-- What happened: you tried to read a property on something that doesn't exist
+-- Example: player.money  but "player" is nil (never assigned, or the query returned nothing)
+
+-- Fix: check that the variable exists before using it
+if player then
+    print(player.money)
+else
+    print('[qu_bank] ERROR: player is nil, cannot read money')
+end</code></pre>
+          </figure>
+
+          <h3>"attempt to call a nil value"</h3>
+          <figure class="code">
+            <header><span>What this error looks like</span></header>
+            <pre><code class="language-lua">-- SCRIPT ERROR: @qu_heal/client.lua:5: attempt to call a nil value (global 'TriggerServerEven')
+
+-- What happened: you tried to call a function that doesn't exist
+-- In this case: "TriggerServerEven" is a typo. It should be "TriggerServerEvent" (with a 't')
+
+-- Fix: check the spelling. Check that the function is defined before you call it.
+-- Lua is case-sensitive: triggerServerEvent is NOT the same as TriggerServerEvent</code></pre>
+          </figure>
+
+          <h3>"SCRIPT ERROR" with a file path and line number</h3>
+          <figure class="code">
+            <header><span>What this error looks like</span></header>
+            <pre><code class="language-lua">-- SCRIPT ERROR: @qu_bank/server.lua:47: attempt to perform arithmetic on a string value
+
+-- What this tells you:
+-- 1. Which resource: qu_bank
+-- 2. Which file: server.lua
+-- 3. Which line: 47
+-- 4. What went wrong: you tried to do math on a string (like "hello" + 5)
+
+-- Fix: open server.lua, go to line 47, check the variable types
+-- Use tonumber() if the value might be a string that looks like a number</code></pre>
+          </figure>
+
+          <div class="callout callout--tip">
+            <header>The error always tells you where</header>
+            <p>Every FiveM script error includes the resource name, file name, and line number. <code>@qu_bank/server.lua:47</code> means "open the qu_bank resource, open server.lua, go to line 47." The error message after the colon tells you what went wrong. Read the whole message. Do not guess.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Using print() without tags (impossible to filter)</summary>
+          <p>A bare <code>print('something happened')</code> is useless when 15 resources are running. You will scroll through hundreds of lines with no way to tell which resource produced which message. Always use the <code>[resource:action]</code> tag format. It takes 5 extra seconds to type and saves hours of confusion.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Catching errors with pcall but not logging them</summary>
+          <p>Writing <code>local ok, err = pcall(fn)</code> and then not checking <code>ok</code> or not printing <code>err</code> is worse than not using pcall at all. Without pcall, at least the error shows in the console. With a silent pcall, the error disappears completely. Your script silently does the wrong thing and you have no idea why. Always print the error inside <code>if not ok</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>pcall hiding real bugs that should crash</summary>
+          <p>Do not wrap your entire script in one giant pcall. If a critical function fails (like loading player data), you <em>want</em> to know immediately. Use pcall around specific operations that might legitimately fail (database queries, external API calls, optional features), not around everything. A crash that you see is better than a silent failure that corrupts data.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Leaving debug prints in production code</summary>
+          <p>Debug prints that dump player data, amounts, and event payloads are great during development. But on a live server with 64 players, they flood the console and can even leak sensitive data. Clean them up before committing. A good habit: prefix debug prints with <code>DEBUG</code> so you can search and remove them easily.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What does pcall return when the wrapped function crashes?</legend>
+            <label><input type="radio" name="q1" value="a"> It returns nil.</label>
+            <label><input type="radio" name="q1" value="b"> It returns false and an error message string.</label>
+            <label><input type="radio" name="q1" value="c"> It returns the line number of the crash.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. Where do client-side print() messages appear?</legend>
+            <label><input type="radio" name="q2" value="a"> In the F8 console (in-game).</label>
+            <label><input type="radio" name="q2" value="b"> In the server console (terminal/txAdmin).</label>
+            <label><input type="radio" name="q2" value="c"> In both consoles.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. How do you read a stack trace from debug.traceback()?</legend>
+            <label><input type="radio" name="q3" value="a"> Top to bottom: the first line is where the call started.</label>
+            <label><input type="radio" name="q3" value="b"> Only the last line matters.</label>
+            <label><input type="radio" name="q3" value="c"> Bottom to top: the bottom line is where the chain started, the top line is where it crashed.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>print('[res:action] ...')</code></dt><dd>Tagged logging. Always include resource name, action, and relevant data.</dd></div>
+          <div><dt>F8 console</dt><dd>Shows client-side prints. Press F8 in-game.</dd></div>
+          <div><dt>Server console</dt><dd>Shows server-side prints. The terminal or txAdmin live console.</dd></div>
+          <div><dt><code>pcall(fn)</code></dt><dd>Protected call. Returns <code>true, result</code> on success or <code>false, error</code> on failure. Script keeps running.</dd></div>
+          <div><dt><code>debug.traceback()</code></dt><dd>Returns a string showing the chain of function calls. Read bottom to top.</dd></div>
+          <div><dt>"attempt to index a nil value"</dt><dd>You tried to read a property on something that does not exist. Check the variable is not nil.</dd></div>
+          <div><dt>"attempt to call a nil value"</dt><dd>You tried to call a function that does not exist. Check the spelling (Lua is case-sensitive).</dd></div>
+          <div><dt><code>Wait(0)</code> vs <code>Wait(n)</code></dt><dd><code>Wait(0)</code> = every frame. Use higher values when frame-perfect timing is not needed.</dd></div>
+          <div><dt>Data-collection checklist</dt><dd>Event? Payload? Source? Expected? Actual? Answer these before changing code.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Tagged logging with <code>[resource:action]</code> format makes your console searchable and useful</li>
+          <li>Client prints go to F8, server prints go to the server console (never mix them up)</li>
+          <li><code>pcall</code> catches errors so your script survives, but you must always log the error</li>
+          <li><code>debug.traceback()</code> shows the chain of function calls that led to a crash</li>
+          <li>The 5-question checklist (event, payload, source, expected, actual) is your debugging process</li>
+          <li>Avoid <code>Wait(0)</code> loops unless you need frame-perfect timing; use distance-based wait scaling</li>
+          <li>The three most common errors all tell you the file and line number; read the whole message</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Break three things on purpose and fix each one using only console output. Create a small test script with these three bugs, one at a time:</p>
+        <ol>
+          <li><strong>Nil index:</strong> Try to read <code>player.name</code> when <code>player</code> is nil. Read the error, fix it with an <code>if</code> check.</li>
+          <li><strong>Wrong function name:</strong> Call <code>TriggerServerEven()</code> (missing the 't'). Read the error, fix the typo.</li>
+          <li><strong>Missing argument:</strong> Create a function that expects two arguments, then call it with one. Read the error, add the missing argument.</li>
+        </ol>
+        <p class="expected">Expected result</p>
+        <figure class="code"><header><span>What you should see for each bug</span></header>
+          <pre><code>-- Bug 1: SCRIPT ERROR: attempt to index a nil value (local 'player')
+-- Fix: add "if player then" check before accessing player.name
+
+-- Bug 2: SCRIPT ERROR: attempt to call a nil value (global 'TriggerServerEven')
+-- Fix: correct spelling to TriggerServerEvent
+
+-- Bug 3: the function runs but produces nil where you expected a value
+-- Fix: pass both arguments when calling the function</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Create a fresh resource called <code>qu_debug_practice</code> with a single <code>server.lua</code>. Add each bug one at a time, restart, read the error in the server console, fix it, and move to the next. The goal is not to write good code. The goal is to get comfortable reading error messages.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime documentation</a></li>
+          <li><a href="https://www.lua.org/pil/8.4.html" target="_blank" rel="noopener">Lua pcall reference (Programming in Lua)</a></li>
+          <li><a href="../clase-debug/leason-debug.html">QU Debug class</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Write a helper function <code>safePrint(resource, action, message)</code> that automatically formats the tag. Use it everywhere instead of raw <code>print()</code>.</li>
+          <li>Create a <code>/debugme</code> command that intentionally triggers all three common errors and wraps each in a pcall. Print the error and the traceback for each.</li>
+          <li>Add distance-based <code>Wait()</code> scaling to an existing script that currently uses <code>Wait(0)</code>. Measure the resource usage before and after using the <code>resmon</code> command in F8.</li>
+        </ul>
+      </section>

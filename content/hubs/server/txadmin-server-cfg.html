@@ -1,0 +1,205 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/server">Server Owner Path</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Lesson 4</span></div>
+        <h1>txAdmin and server.cfg</h1>
+        <p class="lede">Learn the control room and the boot checklist. The goal is simple: back up first, edit the active config file, restart safely, then prove the server came back clean.</p>
+        <div class="hero-outcome">
+          <div><dt>Outcome</dt><dd>You can find <code>server.cfg</code>, back it up, edit an <code>ensure</code> line, restart, and read proof.</dd></div>
+          <div><dt>Analogy</dt><dd><code>server.cfg</code> is the boot checklist. <code>ensure</code> is the start switch for a resource folder.</dd></div>
+          <div><dt>Test</dt><dd>Restart one small resource from txAdmin and read the console result.</dd></div>
+          <div><dt>Duration</dt><dd>30-45 minutes.</dd></div>
+          <div><dt>Prerequisites</dt><dd>txAdmin access and a dated backup folder.</dd></div>
+          <div><dt>Pass condition</dt><dd>A backed-up config, one edited <code>ensure</code> line, and a clean restart proof are recorded.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card">
+        <span class="tldr-card__chip">Do this first</span>
+        <div class="tldr-card__body">
+          <p>Before editing <code>server.cfg</code>, copy it to a dated backup. Beginners should never make config changes without a return path.</p>
+        </div>
+      </section>
+
+      <section id="paths">
+        <h2>Where the files usually live</h2>
+        <table>
+          <thead><tr><th>Setup</th><th>Common active file path</th><th>How to confirm</th></tr></thead>
+          <tbody>
+            <tr><td>Local Windows Track 0</td><td><code>C:\FXServer\server-data\server.cfg</code></td><td>txAdmin CFG Editor opens the same file.</td></tr>
+            <tr><td>Hosted panel</td><td><code>/home/container/server.cfg</code> or provider-specific root</td><td>Panel file manager marks it as the server config.</td></tr>
+            <tr><td>VPS custom install</td><td><code>/opt/fivem/server-data/server.cfg</code> or your chosen folder</td><td>The FXServer launch command points at that folder.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Open txAdmin and find the active config</h2></header>
+        <p class="step-outcome">Outcome: you know which <code>server.cfg</code> txAdmin is actually reading.</p>
+        <div class="step-body">
+          <ol>
+            <li>Open txAdmin in your browser. Local default: <code>http://localhost:40120</code>.</li>
+            <li>Click <strong>Settings</strong>.</li>
+            <li>Open <strong>CFG Editor</strong> or the config editor label your txAdmin version uses.</li>
+            <li>Confirm it shows the same <code>server.cfg</code> you plan to edit in VS Code or the hosting panel.</li>
+            <li>If using a hosted panel, also open <strong>Files</strong> &rarr; find <code>server.cfg</code>.</li>
+          </ol>
+          <p class="expected">Expected screenshot</p>
+          <p>To confirm, the txAdmin CFG Editor shows <code>server.cfg</code> open.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Back up before editing</h2></header>
+        <p class="step-outcome">Outcome: you can undo a bad config change in under one minute.</p>
+        <div class="step-body">
+          <ol>
+            <li>Create a backup folder named with today's date, for example <code>backups\2026-06-01-before-server-cfg-edit\</code>.</li>
+            <li>Copy <code>server.cfg</code> into that folder.</li>
+            <li>Copy any resource config you are about to change.</li>
+            <li>Write a one-line reason in <code>change-log.md</code>.</li>
+          </ol>
+          <figure class="code">
+            <header><span class="file">change-log.md</span><span class="lang">Markdown</span></header>
+            <pre><code>Date: 2026-06-01
+Change: testing ensure order for qs-smartphone-pro
+Backup: backups/2026-06-01-before-server-cfg-edit/server.cfg
+Expected result: phone starts after ox_lib and framework
+Rollback: restore backed-up server.cfg and restart server</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section id="commands">
+        <h2>Core commands</h2>
+        <p>Run these in the txAdmin Live Console. The name after the command is the resource folder name, not the full folder path.</p>
+        <figure class="code"><header><span class="file">txAdmin console</span><span class="lang">Commands</span></header><pre><code>status
+refresh
+ensure resource_name
+restart resource_name
+stop resource_name</code></pre></figure>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Read a resource folder name correctly</h2></header>
+        <p class="step-outcome">Outcome: you ensure the folder name FiveM sees.</p>
+        <div class="step-body">
+          <p>If the script lives at <code>resources/[quasar]/qs-smartphone-pro</code>, the resource name is <code>qs-smartphone-pro</code>.</p>
+          <figure class="code"><header><span class="file">resources folder</span><span class="lang">Text</span></header><pre><code>resources/
+  [standalone]/
+    ox_lib/
+  [quasar]/
+    qs-smartphone-pro/
+  [jobs]/
+    qb-policejob/
+    qb-ambulancejob/</code></pre></figure>
+          <figure class="code"><header><span class="file">server.cfg</span><span class="lang">CFG</span></header><pre><code>ensure ox_lib
+ensure qs-smartphone-pro
+ensure qb-policejob
+ensure qb-ambulancejob</code></pre></figure>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Edit ensure order intentionally</h2></header>
+        <p class="step-outcome">Outcome: dependencies start before scripts that need them.</p>
+        <div class="step-body">
+          <figure class="code"><header><span class="file">server.cfg</span><span class="lang">CFG</span></header><pre><code># database first
+ensure oxmysql
+
+# shared library before scripts that use it
+ensure ox_lib
+
+# framework before framework scripts
+ensure qb-core
+# or: ensure es_extended
+
+# core systems after their dependencies
+ensure ox_inventory
+ensure ox_target
+
+# Quasar phone after ox_lib and framework
+ensure qs-smartphone-pro
+
+# gameplay and assets last
+ensure [jobs]
+ensure [garages]
+ensure [maps]</code></pre></figure>
+          <p class="expected">Expected proof</p>
+          <p>When the server restarts, console output shows <code>Started resource oxmysql</code>, then <code>ox_lib</code>, then framework, then the dependent script.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Restart and prove the server is clean</h2></header>
+        <p class="step-outcome">Outcome: the edit survived a clean restart.</p>
+        <div class="step-body">
+          <ol>
+            <li>Save <code>server.cfg</code>.</li>
+            <li>Open txAdmin &rarr; <strong>Live Console</strong>.</li>
+            <li>Click <strong>Restart Server</strong> or use your hosting panel restart button.</li>
+            <li>Wait until the server shows online.</li>
+            <li>Run <code>status</code>.</li>
+            <li>Open FiveM and direct connect.</li>
+          </ol>
+          <figure class="code">
+            <header><span class="file">txAdmin Live Console</span><span class="lang">Expected lines</span></header>
+            <pre><code>Started resource oxmysql
+Started resource ox_lib
+Started resource qb-core
+Started resource qs-smartphone-pro
+Server license key authentication succeeded
+Started map resource
+Sending heartbeat to live-internal.fivem.net
+status
+hostname: Your Server Name
+players: 0/48</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section id="common-output">
+        <h2>Common console outputs</h2>
+        <table>
+          <thead><tr><th>Console line</th><th>Meaning</th><th>Owner action</th></tr></thead>
+          <tbody>
+            <tr><td><code>Couldn't find resource</code></td><td>The folder name or path is wrong.</td><td>Check spelling, extraction depth, and run <code>refresh</code>.</td></tr>
+            <tr><td><code>No such export</code></td><td>A dependency did not start first or is missing.</td><td>Move dependency above the script and restart both.</td></tr>
+            <tr><td><code>Access denied for user</code></td><td>Database username/password/host is wrong.</td><td>Fix <code>mysql_connection_string</code> and test in HeidiSQL.</td></tr>
+            <tr><td><code>Unknown database</code></td><td>The database name in config does not exist.</td><td>Create it or correct the database name.</td></tr>
+            <tr><td><code>Started resource X</code></td><td>Resource started successfully.</td><td>Now test the feature in-game.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="rollback">
+        <h2>Rollback if the restart fails</h2>
+        <ol>
+          <li>Stop the server or keep it offline.</li>
+          <li>Copy your backed-up <code>server.cfg</code> over the active <code>server.cfg</code>.</li>
+          <li>Start the server.</li>
+          <li>Run <code>status</code>.</li>
+          <li>Connect once from FiveM.</li>
+          <li>Write the result in <code>change-log.md</code>.</li>
+        </ol>
+        <figure class="code">
+          <header><span class="file">rollback note</span><span class="lang">Markdown</span></header>
+          <pre><code>Rollback performed:
+Restored file:
+Server online after rollback: yes / no
+Direct connect after rollback: yes / no
+Remaining console error:
+Next action:</code></pre>
+        </figure>
+      </section>
+
+      <section class="callout callout--tip"><header>Full install guide</header><p>Need the complete flow for provider docs, dependencies, folder groups, txAdmin, permissions, clothes, peds, and cars? Open <a href="/resources/install-fivem-script">How to install a FiveM script</a>.</p></section>
+
+      <section>
+        <h2>Pass condition</h2>
+        <p>You are done when you have a dated backup, an edited <code>server.cfg</code>, a clean restart proof, a <code>status</code> output, and a written rollback note.</p>
+      </section>
+
+      <nav class="lesson-nav"><a class="prev" href="/server/stack-dependencies">&larr; Stack</a><a class="next" href="/server/resources-assets">Next: resources and assets &rarr;</a></nav>
+    </main>
+  </div>

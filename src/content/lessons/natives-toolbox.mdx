@@ -1,0 +1,155 @@
+<LessonHero
+  crumbs="Module 03 · Lesson 11"
+  title="FiveM natives: the toolbox"
+  meta={[
+    { label: "You'll build", value: "A reusable native practice script: print your own coordinates, read your health, and teleport yourself safely." },
+    { label: "Time", value: "~22 minutes" },
+    { label: "You need", value: "Your qu_hello mental model from Module 02, plus the FiveM native docs and cfxnatives.dev open in your browser." },
+    { label: "You'll learn", value: "What a native is -> how to find one -> how to check the side badge -> how to turn the docs into one small working script" },
+  ]}
+>
+  You already know some Lua. You already know there is a client side and a server side. Now you need the *toolbox*. FiveM gives you lots of built-in functions called natives. They let you do real game things like move a ped, draw text, spawn a vehicle, or read health. Nobody memorizes them all. Good developers look them up. This lesson teaches you how to do that calmly.
+</LessonHero>
+
+<LessonVideo loomId="d8ce78503fcc4fbcaf36d6ff15cbe7b6" title="FiveM scripting fundamentals" caption="Scripting fundamentals: natives, vectors, and debugging." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds PlayerPedId, GetEntityCoords, GetEntityHealth, and teleport as a working FiveM resource named `qu_natives_toolbox`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Find a native
+
+A **native** is a built-in game function FiveM gives you. There are thousands. Nobody memorizes them; everyone looks them up. Keep these four tabs open while you script. The first two are the native references, the third is the docs hub, the last is the Lua manual for the language around them.
+
+<TechLinks ids={["natives", "cfxnatives", "fivem-docs", "lua"]} />
+
+When you open a native, read three things before you use it:
+
+- **The side badge.** Each native is marked **CLIENT** or **SERVER**. A client native like `GetEntityCoords` will not run in a `server_script`, and the reverse is also true. Match the native's side to the file it lives in.
+- **The arguments.** The signature shows what to pass in and in what order, for example `GetEntityCoords(entity)`. Pass the wrong type and you get `nil` or a crash.
+- **The return value.** Some natives hand you something back (coords, health, a handle); some just do a thing and return nothing.
+
+<Checkpoint question="A native is marked CLIENT. Can you call it from your server.lua?">
+  No. Client natives only run in client scripts (loaded with `client_script`), and server natives only run in server scripts. The side badge in the docs tells you which file the call belongs in. Calling across the line is the single most common beginner native error.
+</Checkpoint>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_natives_toolbox
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_natives_toolbox/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('whereami', function()
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    print(('[qu_natives_toolbox] %.2f %.2f %.2f health %d'):format(coords.x, coords.y, coords.z, GetEntityHealth(ped)))
+end, false)
+
+RegisterCommand('stepforward', function()
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    SetEntityCoords(ped, coords.x + 2.0, coords.y, coords.z, false, false, false, false)
+    print('[qu_natives_toolbox] moved')
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_natives_toolbox
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_natives_toolbox
+    ```
+
+    Run this test:
+
+    ```text
+    /whereami then /stepforward
+    ```
+
+    <ExpectedOutput>
+      [qu_natives_toolbox] coords and health line
+[qu_natives_toolbox] moved
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_natives_toolbox does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_natives_toolbox", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_natives_toolbox, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_natives_toolbox folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for PlayerPedId, GetEntityCoords, GetEntityHealth, and teleport.",
+    "Add ensure qu_natives_toolbox to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_natives_toolbox`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

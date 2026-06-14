@@ -1,0 +1,90 @@
+<LessonHero
+  crumbs="Module A3 · Operate & secure"
+  title="Database backups and migrations"
+  meta={[
+    { label: "You'll build", value: "A backup routine and a safe migration habit so a bad change or a crash never costs you player data." },
+    { label: "Time", value: "~25 minutes." },
+    { label: "You need", value: "MariaDB running, HeidiSQL connected, and a database your server uses." },
+    { label: "You'll learn", value: "Why backups matter -> how to dump and restore -> safe schema migrations -> a restore test you actually run" },
+  ]}
+>
+  Your players' money, vehicles, and characters live in one database. One bad migration, one crash, one fat-fingered DELETE, and it is gone unless you have a backup you have actually tested. CRUD lessons teach you to write data; this one teaches you to never lose it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "MariaDB is running and HeidiSQL connects to it.",
+    "I know which database my server uses (often 'fivem').",
+    "I can stop and start the server safely."
+  ]}
+/>
+
+<Callout variant="danger" title="A backup you never restored is a guess">
+  The only real backup is one you have restored at least once. Untested backups fail at the worst possible moment. Run the restore test in this lesson before you need it for real.
+</Callout>
+
+## The routine
+
+<StepGroup>
+  <Step num={1} title="Take a full dump on a schedule" outcome="You have a recent, complete copy of the database.">
+    Export the whole database to a `.sql` file on a schedule (daily for an active server). In HeidiSQL: right-click the database, Export database as SQL, to a dated file. From the command line, `mysqldump` does the same.
+
+    ```bash
+    mysqldump -u root -p fivem > fivem-2026-06-12.sql
+    ```
+  </Step>
+
+  <Step num={2} title="Store backups off the server box" outcome="A server failure does not take the backups with it.">
+    Copy dumps somewhere other than the server machine (another disk, a private bucket). A backup that dies with the server is not a backup.
+  </Step>
+
+  <Step num={3} title="Migrate schema safely" outcome="Adding columns/tables never destroys existing data.">
+    Before any schema change: take a fresh dump, run the change on a copy first, and prefer additive changes (`ADD COLUMN`) over destructive ones. Never run an untested `ALTER`/`DROP` against live data.
+
+    ```sql
+    ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;
+    ```
+  </Step>
+
+  <Step num={4} title="Run a restore test" outcome="You have proven you can bring data back.">
+    Create a throwaway database, import a dump into it, and confirm the tables and rows are there. This is the step everyone skips and everyone regrets skipping.
+
+    ```bash
+    mysql -u root -p fivem_restore_test < fivem-2026-06-12.sql
+    ```
+
+    <ExpectedOutput>
+      The restore test database contains the same tables and row counts as production.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Lost data after a crash", fix: "Restore the latest dump. If you have none, this is the lesson; start daily backups now." },
+    { symptom: "A migration wiped a column", fix: "Restore from the pre-migration dump you took in step 3. Always dump before ALTER/DROP." },
+    { symptom: "Backups are on the same machine that died", fix: "Move dumps off-box (another disk or a private bucket) going forward." },
+    { symptom: "Backup file imports with errors", fix: "Run the restore test regularly. A backup proven only when needed is too late." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Dump the full database on a schedule with mysqldump or HeidiSQL.",
+    "Store backups off the server machine.",
+    "Make schema changes additive, and dump before every ALTER/DROP.",
+    "Run a restore test so a backup is proven, not assumed."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" },
+    { label: "MariaDB · mysqldump backups", href: "https://mariadb.org/download/" },
+    { label: "HeidiSQL · export and import", href: "https://www.heidisql.com/" }
+  ]}
+/>

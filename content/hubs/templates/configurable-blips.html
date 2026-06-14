@@ -1,0 +1,229 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Configurable blips</span>
+        </div>
+        <h1>Configurable blips</h1>
+        <p class="lede">Define every map marker in one config table. The client reads the table on start, draws each blip, and a command can wipe them all. Add a new location by adding a line, not by editing logic.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Spawn and manage map blips from a single config file.</dd></div>
+          <div><dt>Dependencies</dt><dd>ox_lib (optional). FiveM server runtime. No database needed.</dd></div>
+          <div><dt>Files</dt><dd>2 scripts: <code>config.lua</code>, <code>client.lua</code>.</dd></div>
+          <div><dt>First log</dt><dd><code>Blips loaded from config.</code> on resource start.</dd></div>
+          <div><dt>Command</dt><dd><code>/deleteallblips</code> clears every spawned blip.</dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>What this template builds</header>
+        <p>A config-driven blips system. You list each location once in <code>Config.Blips</code> with its coords, sprite, color, and scale. When the resource starts, a client loop reads that list and draws every blip on the map. The script keeps the blip handles in a table so a command can remove them cleanly later. Blips are a client-side concept, so all the drawing lives in <code>client.lua</code>. There is no money, job, or SQL here, so nothing needs the server wall.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <p>Drop these into a new resource folder. Add the resource to <code>server.cfg</code> after <code>ox_lib</code>.</p>
+        <ul class="lesson-list">
+          <li><strong>config.lua</strong>, the <code>Config.Blips</code> table where you define every marker.</li>
+          <li><strong>client.lua</strong>, reads the config, draws the blips, and registers the delete command.</li>
+        </ul>
+      </section>
+
+      <section id="config-lua">
+        <h2>config.lua</h2>
+        <p>The config file lets server owners predefine blips with specific properties. This keeps every location in one place and keeps the logic untouched when the map changes.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">config.lua</span></header>
+<pre><code>Config = {}
+
+-- Define blips
+Config.Blips = {
+    {
+        name = "Police Station",
+        coords = vector3(425.1, -979.5, 30.7),
+        sprite = 60,
+        color = 29,
+        scale = 1.0
+    },
+    {
+        name = "Hospital",
+        coords = vector3(295.8, -584.9, 43.1),
+        sprite = 61,
+        color = 2,
+        scale = 1.2
+    },
+    {
+        name = "Garage",
+        coords = vector3(215.8, -810.1, 30.7),
+        sprite = 50,
+        color = 3,
+        scale = 0.8
+    }
+}</code></pre>
+        </figure>
+        <p>What each field does:</p>
+        <ul class="lesson-list">
+          <li><code>Config.Blips</code>, a table holding every predefined blip and its attributes.</li>
+          <li><code>coords</code>, a <code>vector3</code> that sets the blip position in the world.</li>
+          <li><code>sprite</code>, <code>color</code>, and <code>scale</code>, the visual properties you can tune per blip.</li>
+        </ul>
+      </section>
+
+      <section id="creating-blips">
+        <h2>Creating blips dynamically</h2>
+        <p>The client reads <code>Config.Blips</code> and spawns each marker when the resource starts. The handles go into <code>createdBlips</code> so you can manage them later.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>local createdBlips = {}
+
+-- Create blips from config
+function LoadBlips()
+    for _, blipData in pairs(Config.Blips) do
+        local blip = AddBlipForCoord(blipData.coords.x, blipData.coords.y, blipData.coords.z)
+        SetBlipSprite(blip, blipData.sprite)
+        SetBlipColour(blip, blipData.color)
+        SetBlipScale(blip, blipData.scale)
+        BeginTextCommandSetBlipName("STRING")
+        AddTextComponentString(blipData.name)
+        EndTextCommandSetBlipName(blip)
+        table.insert(createdBlips, blip)
+    end
+end
+
+-- Initialize blips on resource start
+AddEventHandler('onResourceStart', function(resourceName)
+    if GetCurrentResourceName() == resourceName then
+        LoadBlips()
+        print("Blips loaded from config.")
+    end
+end)</code></pre>
+        </figure>
+        <p>What is happening:</p>
+        <ul class="lesson-list">
+          <li><code>createdBlips</code>, a table that stores the handle of every blip you create so you can find them again.</li>
+          <li><code>LoadBlips</code>, loops through <code>Config.Blips</code> to create and configure each blip.</li>
+          <li><code>onResourceStart</code>, runs once when this resource boots, then calls <code>LoadBlips</code>.</li>
+        </ul>
+      </section>
+
+      <section id="deleting-blips">
+        <h2>Deleting blips</h2>
+        <p>A command removes every blip the resource drew. Add this to the same <code>client.lua</code>.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>-- Command to delete all blips
+RegisterCommand('deleteallblips', function(source, args)
+    for _, blip in pairs(createdBlips) do
+        if DoesBlipExist(blip) then
+            RemoveBlip(blip)
+        end
+    end
+    createdBlips = {}
+    print("All blips deleted.")
+end, false)</code></pre>
+        </figure>
+        <p>What is happening:</p>
+        <ul class="lesson-list">
+          <li><code>DoesBlipExist</code>, checks the blip is still valid before you try to remove it.</li>
+          <li><code>RemoveBlip</code>, takes the blip off the game map.</li>
+          <li><code>createdBlips = {}</code>, clears the table after deleting so you never reference a stale handle.</li>
+        </ul>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Clear before you redraw</header>
+        <p>The blip handles only live for the current session. If you reload or restart the resource without removing the old blips first, you can stack duplicate markers on the same spot. Run <code>/deleteallblips</code> (or remove them in an <code>onResourceStop</code> handler) before you draw a fresh set.</p>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>Blips are client-side</header>
+        <p>Every blip function here runs on the local player's map. There is no server call, so each player draws their own blips when the resource starts for them. If you want one player to control another player's map, you would trigger a client event from the server. For a fixed set of location markers, the client-only approach in this template is all you need.</p>
+      </section>
+
+      <section id="examples">
+        <h2>Practical examples</h2>
+        <h3>Predefined blips on startup</h3>
+        <p>When the resource starts, every blip defined in <code>config.lua</code> is created automatically. No command, no setup, they appear the moment the resource boots.</p>
+
+        <h3>Deleting blips at runtime</h3>
+        <p>Run <code>/deleteallblips</code> in game to remove all created blips while you play. Useful for testing positions without restarting.</p>
+
+        <h3>Adding a new blip</h3>
+        <p>To add a new location, add one entry to the <code>Config.Blips</code> table in <code>config.lua</code>:</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">config.lua</span></header>
+<pre><code>{
+    name = "Bank",
+    coords = vector3(150.2, -1040.3, 29.3),
+    sprite = 108,
+    color = 5,
+    scale = 1.0
+}</code></pre>
+        </figure>
+        <p>After you restart the resource, the new blip appears on the map automatically. You never touch the client logic to add a location.</p>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Find your sprite and color IDs</header>
+        <p>Sprite and color values are numeric IDs from the GTA blip list. Keep a reference open while you build your config so you pick the right icon and tint. A wrong sprite still draws, it just shows the wrong picture, so check the map after each addition.</p>
+      </section>
+
+      <section id="fxmanifest">
+        <h2>fxmanifest.lua</h2>
+        <p>A minimal manifest that loads the config first, then the client script that reads it.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">fxmanifest.lua</span></header>
+<pre><code>fx_version 'cerulean'
+game 'gta5'
+
+shared_script 'config.lua'
+client_script 'client.lua'</code></pre>
+        </figure>
+        <p>The config loads as a <code>shared_script</code> so both sides can read it if you later add a server piece. For this template only the client uses it.</p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create a folder <code>resources/[local]/qu_blips/</code>.</li>
+          <li>Copy <code>config.lua</code> and <code>client.lua</code> into it.</li>
+          <li>Add the <code>fxmanifest.lua</code> above beside them.</li>
+          <li>Add <code>ensure qu_blips</code> to <code>server.cfg</code> after <code>ensure ox_lib</code>.</li>
+          <li>Restart the server and watch the console for <code>Blips loaded from config.</code></li>
+          <li>Open the map in game and confirm your blips appear where you set them.</li>
+        </ol>
+      </section>
+
+      <section id="make-it-yours">
+        <h2>Make it yours</h2>
+        <ul class="lesson-list">
+          <li>Edit <code>Config.Blips</code>: every marker on your map lives in this one table. Add, remove, or retune entries here, never in <code>client.lua</code>.</li>
+          <li>Tune <code>sprite</code>, <code>color</code>, and <code>scale</code> per location to match your server's look.</li>
+          <li>Rename the resource folder and the <code>ensure</code> line if <code>qu_blips</code> does not fit your naming.</li>
+          <li>Want toggle-able categories? Add a <code>category</code> field to each blip and check it inside <code>LoadBlips</code> before you draw.</li>
+          <li>Want clean restarts? Add an <code>onResourceStop</code> handler that loops <code>createdBlips</code> and calls <code>RemoveBlip</code> so reloads never duplicate markers.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates">&larr; Templates hub</a>
+        <a class="next" href="/templates/map-asset-qa">Next: map asset QA &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#config-lua">config.lua</a>
+        <a href="#creating-blips">Creating blips</a>
+        <a href="#deleting-blips">Deleting blips</a>
+        <a href="#examples">Practical examples</a>
+        <a href="#fxmanifest">fxmanifest.lua</a>
+        <a href="#install">Install</a>
+        <a href="#make-it-yours">Make it yours</a>
+      </nav>
+    </aside>
+  </div>

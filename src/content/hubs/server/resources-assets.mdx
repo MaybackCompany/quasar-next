@@ -1,0 +1,155 @@
+<LessonHero
+  crumbs="Lesson 5"
+  title="Resources and assets"
+  meta={[
+    { label: "Outcome", value: "You can install one script, one map, one clothing pack, and one first vehicle path in staging." },
+    { label: "Vocabulary", value: "stream/ sends models and textures to players." },
+    { label: "Test", value: "Check txAdmin, F8, reconnect saves, collision, and resmon." },
+    { label: "Duration", value: "45-75 minutes." },
+    { label: "Prerequisites", value: "Stack decision, working txAdmin, and a staging server or local test server." },
+    { label: "Pass condition", value: "Each installed asset has console/F8 proof, rollback notes, and no new red errors." },
+  ]}
+>
+  Know what you install before production sees it. Scripts, maps, clothing, and vehicles all use resource folders, but they fail in different ways.
+</LessonHero>
+
+One at a time
+
+Install one resource, test it, write proof, then install the next. If you install ten assets at once, you create ten possible causes for one error.
+
+## What each asset is
+
+| Term | Description |
+| --- | --- |
+| Script | Gameplay logic with code and config. Example: phone, garage, job, inventory, or banking. |
+| Map or MLO | A streamed world placement or interior asset. Example: restaurant interior with collision and portals. |
+| Clothing | Streamed player clothing files and metadata. Can conflict with slots or break appearance menus. |
+| Vehicle | A drivable model with handling, vehicles metadata, textures, and sometimes audio. |
+
+<StepGroup>
+  <Step num="Script" title="Install one script resource" outcome="one script starts and its first feature works for a normal player.">
+      1. Make a backup of `server.cfg` and the script config you will edit.
+      2. Read the seller documentation from top to bottom.
+      3. Extract the resource folder. The folder must contain `fxmanifest.lua` directly inside it.
+      4. Place it in a category folder, for example `resources/[quasar]/qs-smartphone-pro/`.
+      5. Open `fxmanifest.lua` and find dependencies.
+      6. Import SQL in HeidiSQL if provided.
+      7. Edit `config.lua` only where docs tell you to.
+      8. Add `ensure qs-smartphone-pro` below dependencies in `server.cfg`.
+      9. Run `refresh`, then `ensure qs-smartphone-pro` in txAdmin.
+      10. Join as a normal player and use the feature.
+
+      txAdmin prints `Started resource qs-smartphone-pro`, F8 has no repeating error, and the player can open the first visible feature.
+  </Step>
+
+  <Step num="Map" title="Install one map or MLO" outcome="a player can enter, walk, drive near, and leave without collision or texture problems.">
+      1. Create `resources/[maps]/` if it does not exist.
+      2. Extract the map resource into `resources/[maps]/resource_name/`.
+      3. Confirm it has `fxmanifest.lua` and usually a `stream/` folder.
+      4. Add `ensure resource_name` or `ensure [maps]` near the asset section of `server.cfg`.
+      5. Restart the server or run `refresh` then `ensure resource_name`.
+      6. Teleport or drive to the location.
+      7. Walk every entrance, stair, garage, elevator, and roof edge.
+      8. Check for flickering textures, invisible walls, falling through floors, and duplicated props.
+
+      To confirm, your player stands inside the MLO with no missing textures. The QA note records a collision pass or names the exact failing location.
+  </Step>
+
+  <Step num="Clothing" title="Install one clothing pack" outcome="clothing appears in the clothing menu and does not break existing outfits.">
+      1. Back up your clothing menu config and any existing clothing resource.
+      2. Read the clothing pack docs. Look for framework, menu, and slot instructions.
+      3. Place the pack in `resources/[clothing]/pack_name/`.
+      4. Confirm `fxmanifest.lua` and `stream/` exist.
+      5. Add `ensure pack_name` below your clothing menu dependency.
+      6. Restart the clothing resource and the pack, or restart the server if the docs require it.
+      7. Join as a male and female test character if your server supports both.
+      8. Open the clothing menu and test the new items, old outfits, save, reconnect, and reload.
+
+      The new item appears in the correct category, saves on the character, and does not replace unrelated clothing.
+  </Step>
+
+  <Step num="Vehicle" title="Install your first vehicle only" outcome="one vehicle spawns, drives, saves if needed, and does not spam F8.">
+      1. Create `resources/[cars]/`.
+      2. Extract the vehicle into `resources/[cars]/first_vehicle/`.
+      3. Confirm the folder has `fxmanifest.lua`, `stream/`, and metadata such as `vehicles.meta` or `handling.meta`.
+      4. Open `fxmanifest.lua` and confirm every meta file is listed.
+      5. Add `ensure first_vehicle` under the asset section of `server.cfg`.
+      6. Run `refresh` then `ensure first_vehicle`.
+      7. Spawn the vehicle using your admin menu or test command.
+      8. Drive for five minutes. Test lights, damage, repair, fuel, keys, trunk, garage storage, and despawn cleanup.
+      9. Run `resmon 1` near one vehicle and again near several copies.
+
+      ```
+      resources/[cars]/first_vehicle/
+        fxmanifest.lua
+        data/handling.meta
+        data/vehicles.meta
+        stream/police.yft
+        stream/police_hi.yft
+        stream/police.ytd
+      ```
+  </Step>
+</StepGroup>
+
+## Config files and vectors
+
+Most owner edits happen in `config.lua`, not inside the main script logic. Treat config changes like operations work: change values, keep names intact, and document the original value before editing.
+
+- **Coordinates:** `vector3(x, y, z)` places something in the world. `vector4(x, y, z, heading)` also stores facing direction.
+- **Safe edit:** prices, labels, job names, spawn points, item names, and feature toggles.
+- **Risky edit:** function bodies, exports, event names, SQL table names, or framework bridge code.
+- **Owner habit:** paste the old value, new value, reason, and test result into the asset QA note.
+
+## Copyable asset QA note
+
+```
+Resource:
+Asset type: script / map / clothing / vehicle
+Source:
+Version:
+Manifest checked: yes / no
+Dependencies:
+SQL imported:
+Config changed:
+Old value:
+New value:
+txAdmin errors:
+F8 errors:
+resmon result:
+Normal player tested: yes / no
+Reconnect tested: yes / no
+Backup or commit:
+Rollback:
+Decision: pass / blocked
+```
+
+## Failure recovery
+
+<Callout variant="info" title="Resource starts but feature does nothing">
+  <Callout variant="danger">
+    Check the framework setting in config, missing SQL import, and F8 errors. Many scripts start successfully but fail when a player uses the feature.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="Map has invisible walls or missing floors">
+  <Callout variant="danger">
+    Disable nearby map resources and retest. If the issue disappears, you have a map conflict. Keep only one resource for the same location.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="Vehicle spawns as a different car">
+  <Callout variant="danger">
+    The spawn name or `vehicles.meta` entry conflicts. Test one vehicle alone, then rename or remove the conflicting pack.
+  </Callout>
+</Callout>
+
+## Related templates
+
+- [Prop interaction template](/templates/prop-interaction)
+- [Entity registry template](/templates/entity-registry)
+- [Vehicle spawn template](/templates/vehicle-spawn)
+- [Map asset QA template](/templates/map-asset-qa)
+
+<Callout variant="warn" title="Production rule">
+  Never install unknown assets straight into production. Staging first, backup second, proof third, production last.
+</Callout>

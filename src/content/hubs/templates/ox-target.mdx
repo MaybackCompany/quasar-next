@@ -1,0 +1,70 @@
+<LessonHero
+  crumbs="ox_target"
+  title="ox_target"
+  meta={[
+    { label: "Purpose", value: "Register and clean up an ox_target option." },
+    { label: "Dependencies", value: "ox_target. ox_lib optional." },
+    { label: "Files", value: "1 client-side script." },
+    { label: "First log", value: "[QUIET][ox_target][select] entity=…" },
+    { label: "Lesson", value: "Lesson 18: ox_target and ox_lib" },
+  ]}
+>
+  Add a global vehicle target on start, remove it on stop. Target selection is the prompt only. Server still validates the action.
+</LessonHero>
+
+<Callout variant="warn" title="Selection is not permission">
+  The client can spoof a select. Always send the action through a net event and validate job, distance, and ownership on the server before doing real work.
+</Callout>
+
+## Files
+
+- **client.lua**, `addGlobalVehicle` on boot, `removeGlobalVehicle` on stop.
+
+## client.lua
+
+```
+-- PURPOSE: Add and remove ox_target interaction.
+-- DEPENDENCIES: ox_target, ox_lib optional.
+-- WARNING: Target selection is not permission validation.
+-- Expand this: validate the action on the server.
+-- SECURITY:
+--   - Target selection is presentation only, permission lives on the server.
+--   - Always send the action through a net event for server validation.
+--   - Remove options on resource stop to avoid stale interactions.
+
+local MODULE = 'ox_target'
+local targetName = 'quasar_demo_target'
+
+exports.ox_target:addGlobalVehicle({
+    name = targetName,
+    label = 'Check vehicle',
+    icon = 'fa-solid fa-car',
+    onSelect = function(data)
+        print(('[QUIET][%s][select] entity=%s'):format(MODULE, data.entity))
+        TriggerServerEvent('quasar:target:validate', { netId = VehToNet(data.entity) })
+    end
+})
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        exports.ox_target:removeGlobalVehicle(targetName)
+        print(('[QUIET][%s][cleanup] removed target'):format(MODULE))
+    end
+end)
+```
+
+[View raw client.lua](/templates/ox-target/client.lua)
+
+## Install
+
+1. Create `resources/[local]/qu_target/`.
+2. Copy `client.lua` and add a manifest with `client_script 'client.lua'` and `dependency 'ox_target'`.
+3. Add `ensure qu_target` after `ensure ox_target` in `server.cfg`.
+4. Aim at any vehicle in game and watch `[QUIET][ox_target][select]`.
+5. Add a server handler on `quasar:target:validate` from [event gateway](/templates/event-gateway).
+
+## Next steps
+
+- Read [Lesson 18](/lessons/ox-target-interactions) for ox_target and ox_lib menus.
+- Pair with [event gateway](/templates/event-gateway) so the select triggers a validated server action.
+- Swap `addGlobalVehicle` for `addBoxZone` when the target is a static spot.

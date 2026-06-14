@@ -1,0 +1,111 @@
+<LessonHero
+  crumbs="Module 11"
+  title="Structured logging discipline"
+  meta={[
+    { label: "Module", value: "Module 11" },
+    { label: "Time", value: "~30 min" },
+    { label: "Side", value: "shared" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will create one logger helper used by every script file.
+</LessonHero>
+
+## Outcome
+
+You will create one logger helper used by every script file.
+
+<Callout variant="tip" title="Why it matters">
+  One logger makes screenshots searchable. Mixed print styles hide the real failure.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Context | Extra data attached to a log. Example: source, action, amount. |
+| Stop condition | A rule that halts unsafe work. Example: missing Player stops payout. |
+| Traceback | The call path for an error. Example: debug.traceback(err). |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_logger" },
+    { cmd: "Side", desc: "shared" },
+    { cmd: "File path", desc: "resources/qu_logger/logger.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_logger" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'logger'
+
+local function log(action, message)
+    print(('[QUIET][%s][%s] %s'):format(MODULE, action, message))
+end
+
+local ok, err = pcall(function()
+    error('forced logger test')
+end)
+
+if not ok then
+    log('error', err)
+    log('trace', debug.traceback(err))
+end
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][logger][error] and [QUIET][logger][trace] print together.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Add source to the log.
+- Add payload size.
+- Use the helper in another file.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_logger' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_logger' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

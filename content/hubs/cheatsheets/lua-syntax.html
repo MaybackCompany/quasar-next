@@ -1,0 +1,181 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/">Quasar Academy</a> › <a href="/cheatsheets">Cheatsheets</a> › <span>Lua syntax</span></div>
+        <h1>Lua syntax: variables, strings, operators, scope</h1>
+        <p class="lede">The smallest Lua reference you need before writing FiveM scripts. Six rules that explain ninety percent of the syntax errors beginners hit.</p>
+
+        <div class="hero-outcome">
+          <div><dt>Always local</dt><dd>Declare variables with <code>local</code>. Globals leak across resources.</dd></div>
+          <div><dt>Strings join with ..</dt><dd>Concatenation is two dots, not <code>+</code>. Numbers auto-coerce.</dd></div>
+          <div><dt>Not equal is ~=</dt><dd>Lua uses <code>~=</code> for inequality, not <code>!=</code>.</dd></div>
+          <div><dt>Tables index from 1</dt><dd>Lua arrays start at 1, not 0. Off-by-one bugs from JS habits.</dd></div>
+        </div>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Read once, refer back</header>
+        <p>Open this card next to the editor while you write your first ten scripts. After that you will not need it.</p>
+      </section>
+
+      <section id="declarations">
+        <h2>Local declarations</h2>
+        <p>Always prefix with <code>local</code>. A bare assignment creates a global, which leaks to every other resource on the server.</p>
+        <pre><code>local name = "Maria"
+local age = 32
+local online = true
+local nothing = nil
+
+PlayerName = "leak"</code></pre>
+        <div class="callout callout--warn">
+          <header>The one-line rule</header>
+          <p>If a variable is only used inside one function, it must be <code>local</code>. No exceptions.</p>
+        </div>
+      </section>
+
+      <section id="types">
+        <h2>The five types you will use</h2>
+        <ul>
+          <li><strong>nil</strong>, absence of a value. Default for unset variables.</li>
+          <li><strong>boolean</strong>, <code>true</code> or <code>false</code>.</li>
+          <li><strong>number</strong>, both integers and decimals share one type.</li>
+          <li><strong>string</strong>, quoted with <code>"</code>, <code>'</code>, or <code>[[ ]]</code> for multi-line.</li>
+          <li><strong>table</strong>, list, map, struct, object. One container for all of them.</li>
+        </ul>
+        <pre><code>local t = type("hello")  -- "string"
+local n = type(42)        -- "number"
+local b = type(true)      -- "boolean"
+local x = type(nil)       -- "nil"
+local m = type({})        -- "table"</code></pre>
+      </section>
+
+      <section id="strings">
+        <h2>Strings and concatenation</h2>
+        <p>Lua joins strings with <code>..</code>, not <code>+</code>. Numbers coerce to strings automatically.</p>
+        <pre><code>local first = "Quasar"
+local last = "University"
+local full = first .. " " .. last       -- "Quasar Academy"
+
+local count = 5
+local message = "You have " .. count .. " items"
+
+local multiline = [[
+  This string
+  spans many lines
+  with no escape needed.
+]]</code></pre>
+        <div class="callout callout--tip">
+          <header>String formatting</header>
+          <p>For complex output use <code>string.format("Hello %s, you have %d", name, count)</code>. Same printf style as C.</p>
+        </div>
+      </section>
+
+      <section id="operators">
+        <h2>Operators</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Category</div><div>Lua</div><div>JavaScript</div><div>Note</div>
+          </div>
+          <div class="cheat-row">
+            <div>Equal</div><div><code>==</code></div><div><code>===</code></div><div>No type juggling</div>
+          </div>
+          <div class="cheat-row">
+            <div>Not equal</div><div><code>~=</code></div><div><code>!==</code></div><div>Tilde, not bang</div>
+          </div>
+          <div class="cheat-row">
+            <div>And</div><div><code>and</code></div><div><code>&amp;&amp;</code></div><div>Word, not symbol</div>
+          </div>
+          <div class="cheat-row">
+            <div>Or</div><div><code>or</code></div><div><code>||</code></div><div>Word, not symbol</div>
+          </div>
+          <div class="cheat-row">
+            <div>Not</div><div><code>not</code></div><div><code>!</code></div><div>Word, not symbol</div>
+          </div>
+          <div class="cheat-row">
+            <div>Concat</div><div><code>..</code></div><div><code>+</code></div><div>Two dots, not plus</div>
+          </div>
+          <div class="cheat-row">
+            <div>Length</div><div><code>#t</code></div><div><code>t.length</code></div><div>Hash prefix on tables and strings</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="truthy">
+        <h2>Truthy and falsy</h2>
+        <p>Only <code>false</code> and <code>nil</code> are falsy in Lua. Everything else is truthy, including <code>0</code> and the empty string.</p>
+        <pre><code>if 0 then print("yes") end          -- prints "yes"
+if "" then print("yes") end         -- prints "yes"
+if false then print("no") end       -- nothing
+if nil then print("no") end         -- nothing</code></pre>
+        <div class="callout callout--warn">
+          <header>JavaScript trap</header>
+          <p>If you check <code>if value then</code> expecting JavaScript falsiness for <code>0</code> or <code>""</code>, the branch will run. Always check explicitly with <code>== 0</code> or <code>== ""</code>.</p>
+        </div>
+      </section>
+
+      <section id="scope">
+        <h2>Scope rules</h2>
+        <p>A <code>local</code> lives only inside the block where it is declared. Functions, <code>if</code>, <code>for</code>, <code>while</code>, and <code>do ... end</code> all create blocks.</p>
+        <pre><code>local x = 1
+
+if true then
+  local x = 2     -- different x, only inside the if
+  print(x)        -- 2
+end
+
+print(x)          -- 1</code></pre>
+        <p>To share state across files in the same resource, declare at file top level (still <code>local</code>) and read across files. Globals are the wrong tool ninety-five percent of the time.</p>
+      </section>
+
+      <section id="differences">
+        <h2>Lua vs JavaScript or Python</h2>
+        <ul>
+          <li>Arrays index from <strong>1</strong>, not 0. <code>t[1]</code> is the first item.</li>
+          <li>No <code>++</code> or <code>--</code>. Use <code>i = i + 1</code>.</li>
+          <li>No ternary. Use <code>a and b or c</code> for the same effect, with the gotcha that <code>b</code> must not be falsy.</li>
+          <li>Comments are <code>--</code> for one line and <code>--[[ ... ]]</code> for blocks.</li>
+          <li>One return type per function call; multiple returns are a feature, not a tuple. Use <code>local a, b = fn()</code>.</li>
+          <li>No classes. Use tables and metatables when you need behaviour.</li>
+        </ul>
+      </section>
+
+      <section id="common-mistakes">
+        <h2>Common mistakes</h2>
+        <div class="callout callout--warn">
+          <header>Forgetting local</header>
+          <p>The variable works, but it pollutes every other resource. Hard to debug, easy to prevent.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Using + on strings</header>
+          <p><code>"a" + "b"</code> throws <em>attempt to perform arithmetic on a string value</em>. Use <code>..</code> instead.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Using != for not equal</header>
+          <p>Lua throws a syntax error. Use <code>~=</code>.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Indexing arrays from 0</header>
+          <p>The first item is at <code>t[1]</code>. <code>t[0]</code> returns <code>nil</code> and silently breaks the loop.</p>
+        </div>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/cheatsheets">← Cheatsheets index</a>
+        <a class="next" href="/cheatsheets/tables">Next: tables cheatsheet →</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#declarations">Declarations</a>
+        <a href="#types">Types</a>
+        <a href="#strings">Strings</a>
+        <a href="#operators">Operators</a>
+        <a href="#truthy">Truthy and falsy</a>
+        <a href="#scope">Scope</a>
+        <a href="#differences">Lua vs JS or Python</a>
+        <a href="#common-mistakes">Common mistakes</a>
+      </nav>
+    </aside>
+  </div>

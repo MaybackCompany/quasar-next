@@ -1,0 +1,587 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Ped system</span>
+        </div>
+        <h1>Ped system with commands and SQL</h1>
+        <p class="lede">A framework-aware ped manager and a matching animation manager. Players run chat commands, the server reads identity from ESX or QBCore, peds persist in MySQL, and the client swaps the model. Two small resources you can drop in side by side.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Add, change, list, and remove peds per player, and register and play animations.</dd></div>
+          <div><dt>Dependencies</dt><dd>oxmysql for the ped resource. ESX or QBCore for identity on both.</dd></div>
+          <div><dt>Files</dt><dd>Ped resource: manifest, config, server, client, SQL. Animation resource: manifest, config, server, client, two locales.</dd></div>
+          <div><dt>First log</dt><dd><code>Ped added successfully.</code> in the server console.</dd></div>
+          <div><dt>Lessons</dt><dd><a href="/lessons/functions">Lesson 4: ped system</a> and <a href="/lessons/tables">Lesson 5: animation system</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>What this template builds</header>
+        <p>Two resources from the same lesson pair. The ped resource stores a player's peds in a <code>test_peds</code> table keyed by framework identifier, then lets the player switch to any saved model by name. The animation resource keeps registered animations in memory and replays them on command, with English and Spanish locales. Drop them into <code>resources/[local]/</code>, set <code>Config.Framework</code>, ensure the dependencies first, and the commands work right away.</p>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Set the framework before you start</header>
+        <p>Both resources read <code>Config.Framework</code> to decide how to fetch a player. Leave it on the wrong value and identity lookups fail, so every command bails out with an error. Set it to <code>'esx'</code> or <code>'qbcore'</code> in each <code>config/config.lua</code> to match your server.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>Ped resource</strong>: <code>fxmanifest.lua</code>, <code>config/config.lua</code>, <code>server/main.lua</code>, <code>client/main.lua</code>, and the <code>test_peds</code> table.</li>
+          <li><strong>Animation resource</strong>: <code>fxmanifest.lua</code>, <code>config/config.lua</code>, <code>server/main.lua</code>, <code>client/main.lua</code>, <code>locales/en.lua</code>, and <code>locales/es.lua</code>.</li>
+        </ul>
+      </section>
+
+      <h2 id="ped-resource">Ped resource</h2>
+      <p>Four commands drive this resource. <code>AddPeds</code> writes a ped row for a target player, <code>ChangePed</code> looks up a saved model by name and swaps the caller to it, <code>GetPeds</code> lists a player's saved peds, and <code>RemovePeds</code> clears them. Identity comes from the framework, never from a name the player types, so one player cannot touch another player's row by guessing.</p>
+
+      <section class="callout callout--danger">
+        <header>These queries use the oxmysql named-parameter form</header>
+        <p>Every value is passed through the <code>@name</code> params table, never joined into the SQL string. Keep it that way. The moment you concatenate a player argument into the query you open an injection hole. If you move to the modern <code>?</code> placeholder API, keep the same rule: values go in the array, never in the string.</p>
+      </section>
+
+      <section id="ped-fxmanifest">
+        <h2>fxmanifest.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">ped/fxmanifest.lua</span></header>
+<pre><code>fx_version 'bodacious'
+game 'gta5'
+
+name "__.seerrgiioo.__"
+description "quasar university - leason 5"
+author "__.seerrgiioo.__"
+version "1.0.0"
+
+client_scripts {
+    'client/main.lua'
+}
+
+server_scripts {
+    '@oxmysql/lib/mysql.lua',
+    'server/main.lua'
+}
+
+shared_scripts {
+    'config/config.lua'
+}</code></pre>
+        </figure>
+      </section>
+
+      <section id="ped-config">
+        <h2>config/config.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">ped/config/config.lua</span></header>
+<pre><code>Config = {}
+
+Config.Framework = 'esx' -- 'esx' or 'qbcore'</code></pre>
+        </figure>
+      </section>
+
+      <section id="ped-sql">
+        <h2>Schema</h2>
+        <p>Run this once in your database client before you start the resource. It is the table every ped command reads from and writes to.</p>
+        <figure class="code">
+          <header><span class="lang">sql</span><span class="file">ped/[SQL]/Insert.sql</span></header>
+<pre><code>CREATE TABLE IF NOT EXISTS `test_peds` (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `identifier` varchar(255) NOT NULL,
+    `ped_name` varchar(255) NOT NULL,
+    `ped_model` varchar(255) NOT NULL,
+    PRIMARY KEY (`id`)
+)</code></pre>
+        </figure>
+      </section>
+
+      <section id="ped-server">
+        <h2>server/main.lua</h2>
+        <p>The framework block at the top picks the right core object. Each command validates its arguments, resolves the identifier through <code>Core.GetPlayerIdentifier</code>, then runs a parameterized query. Notice that the helper is the only place that knows the difference between ESX and QBCore identity, so the commands stay framework-agnostic.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">ped/server/main.lua</span></header>
+<pre><code>local Core = {}
+
+if Config.Framework == 'esx' then
+    ESX = exports['es_extended']:getSharedObject()
+elseif Config.Framework == 'qbcore' then
+    QBCore = exports['qb-core']:GetCoreObject()
+else
+    print("Error: Invalid Config.Framework value.")
+end
+
+RegisterCommand('ChangePed', function(source, args)
+    if source == 0 then
+        print("This command cannot be run from the console.")
+        return
+    end
+
+    local PedName = args[1]
+
+    if not PedName then
+        print("Usage: /ChangePed [PedName]")
+        return
+    end
+
+    local identifier = Core.GetPlayerIdentifier(source)
+    if not identifier then
+        print("Error: Could not retrieve identifier for TargetId.")
+        return
+    end
+
+    MySQL.Async.fetchAll('SELECT ped_model FROM test_peds WHERE identifier = @identifier AND ped_name = @ped_name', {
+        ['@identifier'] = identifier,
+        ['@ped_name'] = PedName
+    }, function(result)
+        if result and #result &gt; 0 then
+            TriggerClientEvent('test:client:ChangePlayerPed', source, result[1].ped_model)
+        else
+            print("Error: Ped not found for the given player and name.")
+        end
+    end)
+end)
+
+
+RegisterCommand('RemovePeds', function(source, args)
+    if source == 0 then
+        print("This command cannot be run from the console.")
+        return
+    end
+
+    local TargetId = tonumber(args[1])
+    if not TargetId then
+        print("Usage: /RemovePeds [TargetId]")
+        return
+    end
+
+    local identifier = Core.GetPlayerIdentifier(TargetId)
+    if not identifier then
+        print("Error: Could not retrieve identifier for TargetId.")
+        return
+    end
+
+    MySQL.Async.execute('DELETE FROM test_peds WHERE identifier = @identifier', {
+        ['@identifier'] = identifier
+    }, function(rowsChanged)
+        if rowsChanged &gt; 0 then
+            print("Peds removed successfully.")
+        else
+            print("Error: Failed to remove peds.")
+        end
+    end)
+end)
+
+RegisterCommand('AddPeds', function(source, args)
+    if source == 0 then
+        print("This command cannot be run from the console.")
+        return
+    end
+
+    local TargetId = tonumber(args[1])
+    local PedName = args[2]
+    local PedModel = args[3]
+
+    if not TargetId or not PedName or not PedModel then
+        print("Usage: /AddPeds [TargetId] [PedName] [PedModel]")
+        return
+    end
+
+    local identifier = Core.GetPlayerIdentifier(TargetId)
+    if not identifier then
+        print("Error: Could not retrieve identifier for TargetId.")
+        return
+    end
+
+    MySQL.Async.execute('INSERT INTO test_peds (identifier, ped_name, ped_model) VALUES (@identifier, @ped_name, @ped_model)', {
+        ['@identifier'] = identifier,
+        ['@ped_name'] = PedName,
+        ['@ped_model'] = PedModel
+    }, function(rowsChanged)
+        if rowsChanged &gt; 0 then
+            print("Ped added successfully.")
+        else
+            print("Error: Failed to add ped.")
+        end
+    end)
+end)
+
+RegisterCommand('GetPeds', function(source, args)
+    if source == 0 then
+        print("This command cannot be run from the console.")
+        return
+    end
+
+    local TargetId = tonumber(args[1])
+    if not TargetId then
+        print("Usage: /GetPeds [TargetId]")
+        return
+    end
+
+    local identifier = Core.GetPlayerIdentifier(TargetId)
+    if not identifier then
+        print("Error: Could not retrieve identifier for player.")
+        return
+    end
+
+    MySQL.Async.fetchAll('SELECT * FROM test_peds WHERE identifier = @identifier', {
+        ['@identifier'] = identifier
+    }, function(result)
+        local player_peds = {}
+
+        if result and #result &gt; 0 then
+            for k, v in pairs(result) do
+                table.insert(player_peds, {
+                    ped_name = v.ped_name,
+                    ped_model = v.ped_model
+                })
+            end
+            TriggerClientEvent('test:client:GetPlayerPeds', source, player_peds)
+        else
+            TriggerClientEvent('test:client:GetPlayerPeds', source, {})
+            print("No peds found for the player.")
+        end
+    end)
+end)
+
+function Core.GetPlayerIdentifier(source)
+    if Config.Framework == 'esx' then
+        local xPlayer = ESX.GetPlayerFromId(source)
+        if not xPlayer then
+            print("Error: Player not found (ESX).")
+            return nil
+        end
+        return xPlayer.identifier
+    elseif Config.Framework == 'qbcore' then
+        local xPlayer = QBCore.Functions.GetPlayer(source)
+        if not xPlayer then
+            print("Error: Player not found (QB-Core).")
+            return nil
+        end
+        return xPlayer.PlayerData.citizenid
+    else
+        print("Error: Invalid Config.Framework value.")
+        return nil
+    end
+end</code></pre>
+        </figure>
+      </section>
+
+      <section id="ped-client">
+        <h2>client/main.lua</h2>
+        <p>The client listens for two events. <code>test:client:GetPlayerPeds</code> prints the player's saved peds, and <code>test:client:ChangePlayerPed</code> swaps the model. The model swap requests the model, waits for it to load, applies it, then releases the model so it does not sit in memory. The <code>alternatemap</code> command at the bottom is a small radar toggle that shipped with the lesson resource.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">ped/client/main.lua</span></header>
+<pre><code>local Test = {
+    Peds = {}
+}
+
+RegisterNetEvent('test:client:GetPlayerPeds')
+AddEventHandler('test:client:GetPlayerPeds', function(peds)
+    if not peds or #peds == 0 then
+        print("No peds found.")
+        return
+    end
+
+    for k, v in pairs(peds) do
+        print('Ped Name:' .. v.ped_name .. ' | Ped Model:' .. v.ped_model)
+    end
+end)
+
+RegisterNetEvent('test:client:ChangePlayerPed')
+AddEventHandler('test:client:ChangePlayerPed', function(ped_model)
+    print("Changing player ped to: " .. ped_model)
+    ChangePlayerPed(ped_model)
+end)
+
+function ChangePlayerPed(ped_model)
+    local hash = GetHashKey(ped_model)
+    RequestModel(hash)
+    while not HasModelLoaded(hash) do
+        Citizen.Wait(0)
+    end
+
+    SetPlayerModel(PlayerId(), hash)
+    SetPedDefaultComponentVariation(PlayerPedId())
+    SetModelAsNoLongerNeeded(hash)
+end
+
+RegisterCommand('alternatemap', function()
+    local map = true
+
+    if not map then
+        DisplayRadar(true)
+        map = true
+    else
+        DisplayRadar(false)
+        map = false
+    end
+end, false)</code></pre>
+        </figure>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>How to test the ped resource</header>
+        <p>Run <code>/AddPeds 1 cop s_m_y_cop_01</code> to save a ped named <code>cop</code> for player id <code>1</code>, then have that player run <code>/ChangePed cop</code> to switch to it. Use <code>/GetPeds 1</code> to list saved peds and <code>/RemovePeds 1</code> to clear them.</p>
+      </section>
+
+      <h2 id="anim-resource">Animation resource</h2>
+      <p>The second resource follows the same shape: framework detection up top, commands that resolve identity through a small core helper, and a client that does the in-game work. The difference is storage. Animations live in an in-memory table keyed by identifier, so they reset when the resource restarts. Player-facing strings come from a locale file, so you get English and Spanish out of the box.</p>
+
+      <section class="callout callout--warn">
+        <header>Animations are in memory, not in the database</header>
+        <p><code>PlayerAnimations</code> is a plain Lua table. Registered animations vanish on resource restart or server shutdown. That is fine for a demo or a session-only feature. If you need them to survive a restart, save them to MySQL the same way the ped resource saves peds.</p>
+      </section>
+
+      <section id="anim-fxmanifest">
+        <h2>fxmanifest.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">anim/fxmanifest.lua</span></header>
+<pre><code>fx_version 'bodacious'
+game 'gta5'
+
+name "__.seerrgiioo.__"
+description "quasar university - leason 6"
+author "__.seerrgiioo.__"
+version "1.0.0"
+
+client_scripts {
+    'client/main.lua'
+}
+
+server_scripts {
+    'server/main.lua'
+}
+
+shared_scripts {
+    'config/config.lua',
+    'locales/*.lua'
+}</code></pre>
+        </figure>
+      </section>
+
+      <section id="anim-config">
+        <h2>config/config.lua</h2>
+        <p>The config holds the language switch and the framework switch, plus the <code>_U</code> helper that looks up a localized string and formats it. Set <code>Config.Language</code> to <code>'en'</code> or <code>'es'</code>.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">anim/config/config.lua</span></header>
+<pre><code>Config = Config or {}
+Locales = Locales or {}
+
+Config.Language = 'en' -- es or en
+
+Config.Framework = 'esx' -- esx or qbcore
+
+function _U(str, ...)
+    local lang = Config.Language
+    if Locales[lang] and Locales[lang][str] then
+        return string.format(Locales[lang][str], ...)
+    else
+        return 'Translation [' .. lang .. '][' .. str .. '] not found'
+    end
+end</code></pre>
+        </figure>
+      </section>
+
+      <section id="anim-server">
+        <h2>server/main.lua</h2>
+        <p><code>addAnim</code> stores a dictionary and clip under a name, refusing duplicates. <code>playAnim</code> looks the name up and forwards the animation to the client. Every player-facing message routes through <code>_U</code>, so changing the language changes every notification at once.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">anim/server/main.lua</span></header>
+<pre><code>Core = {}
+PlayerAnimations = {}
+
+if Config.Framework == 'esx' then
+    ESX = exports['es_extended']:getSharedObject()
+elseif Config.Framework == 'qbcore' then
+    QBCore = exports['qb-core']:GetCoreObject()
+end
+
+RegisterCommand('addAnim', function(source, args)
+    if source == 0 then
+        print(_U('console_error'))
+        return
+    end
+
+    local animName = args[1]
+    local dict = args[2]
+    local anim = args[3]
+
+    if not animName or not dict or not anim then
+        print(_U('usage_add'))
+        return
+    end
+
+    local identifier = Core.GetPlayerIdentifier(source)
+    if not identifier then
+        print("Error: Could not retrieve identifier.")
+        return
+    end
+
+    PlayerAnimations[identifier] = PlayerAnimations[identifier] or {}
+
+    if PlayerAnimations[identifier][animName] then
+        TriggerClientEvent('animation:client:notify', source, _U('anim_exists', animName))
+        return
+    end
+
+    PlayerAnimations[identifier][animName] = { dict = dict, anim = anim }
+    TriggerClientEvent('animation:client:notify', source, _U('anim_added', animName))
+end)
+
+RegisterCommand('playAnim', function(source, args)
+    local animName = args[1]
+
+    if not animName then
+        print(_U('usage_play'))
+        return
+    end
+
+    local identifier = Core.GetPlayerIdentifier(source)
+    if not identifier then
+        print("Error: Could not retrieve identifier.")
+        return
+    end
+
+    if not PlayerAnimations[identifier] then
+        TriggerClientEvent('animation:client:notify', source, _U('no_anims'))
+        return
+    end
+
+    if PlayerAnimations[identifier][animName] then
+        local animation = PlayerAnimations[identifier][animName]
+        if animation.dict and animation.anim then
+            TriggerClientEvent('animation:client:play', source, animation)
+            TriggerClientEvent('animation:client:notify', source, _U('anim_play', animName))
+        else
+            TriggerClientEvent('animation:client:notify', source, "Invalid animation data.")
+        end
+    else
+        TriggerClientEvent('animation:client:notify', source, _U('anim_not_found', animName))
+    end
+end)
+
+function Core.GetPlayerIdentifier(playerId)
+    if Config.Framework == 'esx' then
+        local player = ESX.GetPlayerFromId(playerId)
+        return player and player.identifier or nil
+    elseif Config.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(playerId)
+        return player and player.PlayerData.citizenid or nil
+    end
+end</code></pre>
+        </figure>
+      </section>
+
+      <section id="anim-client">
+        <h2>client/main.lua</h2>
+        <p>The client requests the animation dictionary, waits for it to load, clears the current tasks, then plays the clip. The notify handler draws a native GTA notification with the message the server sent.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">anim/client/main.lua</span></header>
+<pre><code>RegisterNetEvent('animation:client:play')
+AddEventHandler('animation:client:play', function(animation)
+    if not animation or not animation.dict or not animation.anim then
+        print("Invalid animation data received.")
+        return
+    end
+
+    local dict = animation.dict
+    local anim = animation.anim
+
+    RequestAnimDict(dict)
+    while not HasAnimDictLoaded(dict) do
+        Citizen.Wait(0)
+    end
+
+    ClearPedTasksImmediately(PlayerPedId())
+    TaskPlayAnim(PlayerPedId(), dict, anim, 8.0, -8.0, -1, 0, 0, false, false, false)
+    print("Playing animation: " .. dict .. " - " .. anim)
+end)
+
+RegisterNetEvent('animation:client:notify')
+AddEventHandler('animation:client:notify', function(message)
+    SetNotificationTextEntry("STRING")
+    AddTextComponentString(message)
+    DrawNotification(false, true)
+end)</code></pre>
+        </figure>
+      </section>
+
+      <section id="anim-locales">
+        <h2>Locales</h2>
+        <p>Two locale files ship with the resource. The manifest loads <code>locales/*.lua</code>, so any file you add here registers automatically. Keep the keys identical across languages so <code>_U</code> always finds a match.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">anim/locales/en.lua</span></header>
+<pre><code>Locales["en"] = {
+    ['anim_added'] = "Animation '%s' added successfully.",
+    ['anim_play'] = "Playing animation '%s'.",
+    ['anim_not_found'] = "Animation '%s' not found.",
+    ['usage_add'] = "Usage: /addAnim [AnimationName] [Dictionary] [Animation]",
+    ['usage_play'] = "Usage: /playAnim [AnimationName]",
+    ['console_error'] = "This command cannot be run from the console."
+}</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">anim/locales/es.lua</span></header>
+<pre><code>Locales['es'] = {
+    ['anim_added'] = "Animación '%s' añadida con éxito.",
+    ['anim_play'] = "Reproduciendo animación '%s'.",
+    ['anim_not_found'] = "Animación '%s' no encontrada.",
+    ['usage_add'] = "Uso: /addAnim [NombreDeAnimación] [Diccionario] [Animación]",
+    ['usage_play'] = "Uso: /playAnim [NombreDeAnimación]",
+    ['console_error'] = "Este comando no se puede ejecutar desde la consola."
+}</code></pre>
+        </figure>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>How to test the animation resource</header>
+        <p>Register a wave with <code>/addAnim wave anim@mp_player_intcelebrationmale wave</code>, then play it with <code>/playAnim wave</code>. Switch <code>Config.Language</code> to <code>'es'</code>, restart, and run the commands again to confirm the localized notifications.</p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_peds/</code> and <code>resources/[local]/qu_anims/</code>.</li>
+          <li>Copy each resource's files into its folder, keeping the <code>client</code>, <code>server</code>, <code>config</code>, and <code>locales</code> subfolders.</li>
+          <li>Run the <code>test_peds</code> schema in your database client.</li>
+          <li>Set <code>Config.Framework</code> in both configs, and set <code>Config.Language</code> in the animation config.</li>
+          <li>In <code>server.cfg</code>, add <code>ensure oxmysql</code> and your framework first, then <code>ensure qu_peds</code> and <code>ensure qu_anims</code>.</li>
+          <li>Restart the server and run the test commands above.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/functions">Lesson 4</a> and <a href="/lessons/tables">Lesson 5</a> for the full walkthrough behind these files.</li>
+          <li>Move the animation table into MySQL so registered animations survive a restart.</li>
+          <li>Wrap the commands in an ACE permission check so only staff can add peds for other players.</li>
+        </ul>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Make it yours</header>
+        <p>Set <code>Config.Framework</code> to match your server, and <code>Config.Language</code> to your default locale. Rename the resources, the <code>test_peds</code> table, and the <code>test:</code> and <code>animation:</code> event prefixes so they do not collide with anything else on your server. Add an admin permission check before the ped commands if players should not be able to manage each other's peds.</p>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates">&larr; Templates hub</a>
+        <a class="next" href="/templates/nui-survey">Next: NUI survey &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#ped-resource">Ped resource</a>
+        <a href="#ped-server">server.lua</a>
+        <a href="#ped-client">client.lua</a>
+        <a href="#anim-resource">Animation resource</a>
+        <a href="#anim-server">server.lua</a>
+        <a href="#anim-locales">Locales</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

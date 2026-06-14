@@ -1,0 +1,231 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Bonus · Debug class</span></div>
+        <h1>Debug class for total beginners</h1>
+        <p class="lede">This is the early primer shown before Lesson 01 on the scripts-from-zero path. Use it now for the error-reading habit, then revisit it later when exports, SQL, and framework errors become real in your own server.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll build</dt><dd>A calm way to read errors before you start changing random code.</dd></div>
+          <div><dt>Time</dt><dd>~18 minutes</dd></div>
+          <div><dt>You need</dt><dd>No setup. Read it before your first Lua lesson, then keep it bookmarked for later builds.</dd></div>
+          <div><dt>You'll learn</dt><dd>Read the first error -> spot <code>nil</code> -> spot wrong-side calls -> spot broken <code>exports</code> -> spot SQL and oxmysql issues -> debug in a clean order</dd></div>
+        </div>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: an error is a clue, not a verdict</h2>
+        <p>When FiveM or Lua throws an error, it is not saying "you are bad at coding." It is saying "I tried to do one specific thing, and one specific part was missing or wrong." Your only job is to read the message slowly and translate it into plain English.</p>
+        <p>The biggest beginner mistake is changing five files before understanding the first error. Do the opposite. Read the first red line. Find the file. Find the line. Ask what value or function is missing. Only then touch the code.</p>
+
+        <div class="callout callout--tip">
+          <header>The five-step rule</header>
+          <p>Read the first error -> open the named file -> go to the named line -> identify the missing thing -> fix one thing and test again. That is real debugging.</p>
+        </div>
+      </section>
+
+      <section id="nil-errors">
+        <h2><code>nil</code>: the most common word you will see</h2>
+        <p><code>nil</code> means "there is nothing here." In Lua, this is normal. It becomes an error only when you try to <em>use</em> the nothing like it was real data or a real function.</p>
+
+        <figure class="code">
+          <header><span>Typical nil errors</span></header>
+          <pre><code class="language-bash">attempt to index a nil value
+attempt to call a nil value
+attempt to concatenate a nil value</code></pre>
+        </figure>
+
+        <ul>
+          <li><strong>Attempt to index a nil value</strong> -> you tried <code>thing.name</code> or <code>thing[1]</code>, but <code>thing</code> was empty.</li>
+          <li><strong>Attempt to call a nil value</strong> -> you tried <code>thing()</code>, but <code>thing</code> was not a real function.</li>
+          <li><strong>Attempt to concatenate a nil value</strong> -> you tried to glue text onto an empty value.</li>
+        </ul>
+
+        <div class="callout callout--warn">
+          <header>Plain-English translation</header>
+          <p>If you see <code>nil</code>, stop asking "why is Lua broken?" and ask "what value did I assume existed here?" Most of the time the answer is: wrong variable name, wrong side, missing guard, or data not loaded yet.</p>
+        </div>
+      </section>
+
+      <section id="wrong-side">
+        <h2>Wrong-side calls: client vs server mistakes</h2>
+        <p>FiveM has two worlds. Some functions exist only on the client. Some exist only on the server. If you call the wrong one on the wrong side, Lua often tells you <code>attempt to call a nil value</code>.</p>
+
+        <figure class="code">
+          <header><span>Example</span></header>
+          <pre><code class="language-bash">SCRIPT ERROR: @qu_hello/client/main.lua:1: attempt to call a nil value (global 'GetPlayerEndpoint')</code></pre>
+        </figure>
+
+        <p>That does <strong>not</strong> usually mean the name is misspelled. It often means the function exists only on the server, but you called it from <code>client/main.lua</code>.</p>
+
+        <div class="callout callout--fivem">
+          <header>Fast fix</header>
+          <p>Look at the file path first. If the file is in <code>client/</code>, check whether the native or framework function is client-safe. If the file is in <code>server/</code>, check whether you accidentally pasted a client-only function there.</p>
+        </div>
+      </section>
+
+      <section id="exports-errors">
+        <h2><code>exports</code> errors: another resource is missing or named wrong</h2>
+        <p><code>exports</code> means "call a function from another resource." If that other resource is not started, has the wrong name, or you copied the wrong framework snippet, the error usually points there.</p>
+
+        <figure class="code">
+          <header><span>Common exports failures</span></header>
+          <pre><code class="language-bash">No such export GetCoreObject in resource qb-core
+attempt to index a nil value (global 'lib')
+No such export AddItem in resource ox_inventory</code></pre>
+        </figure>
+
+        <ul>
+          <li><strong>No such export</strong> -> the resource name is wrong, the export name is wrong, or that resource is not running.</li>
+          <li><strong><code>lib</code> is nil</strong> -> you forgot the ox_lib shared import or loaded files in the wrong order.</li>
+          <li><strong>QBCore snippet on ESX or Qbox</strong> -> you copied a snippet for the wrong framework.</li>
+        </ul>
+
+        <div class="callout callout--tip">
+          <header>Beginner habit</header>
+          <p>When an exports error appears, check four things in this order: resource name -> manifest dependency/import -> correct framework -> resource started. Do not start rewriting logic first.</p>
+        </div>
+      </section>
+
+      <section id="sql-errors">
+        <h2>SQL and oxmysql errors: the database layer is a separate system</h2>
+        <p>SQL errors feel bigger because they mention tables, columns, and databases. They are still just clues. The important thing is to separate <em>Lua is wrong</em> from <em>database structure is wrong</em>.</p>
+
+        <figure class="code">
+          <header><span>Common SQL failures</span></header>
+          <pre><code class="language-bash">Failed to execute query
+Unknown column 'cash' in 'field list'
+Table 'server.players' doesn't exist
+No such export query in resource oxmysql</code></pre>
+        </figure>
+
+        <ul>
+          <li><strong>Unknown column</strong> -> your query asked for a column the table does not have.</li>
+          <li><strong>Table doesn't exist</strong> -> you never imported the SQL file, or you used the wrong database.</li>
+          <li><strong>oxmysql export error</strong> -> <code>oxmysql</code> is not started, not installed, or called wrong.</li>
+          <li><strong>Query failed</strong> -> read the full error. Usually the SQL string, placeholders, or table shape is wrong.</li>
+        </ul>
+
+        <div class="callout callout--warn">
+          <header>SQL comes later on purpose</header>
+          <p>If you cannot yet build a small server event or callback, SQL will feel worse than it is. That is why this course pushes SQL after your first builds. Database bugs are easier once Lua and events already feel normal.</p>
+        </div>
+      </section>
+
+      <section id="starter-fixes">
+        <h2>The first fixes to try before you panic</h2>
+        <div class="debug-steps">
+          <article class="debug-step">
+            <span class="debug-card__num">01</span>
+            <h3>Read the first red line</h3>
+            <p>Ignore the tenth line for now. The first error is usually the real clue.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">02</span>
+            <h3>Open the exact file and line</h3>
+            <p>Do not guess. Go to the path and line number the console gave you.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">03</span>
+            <h3>Check for <code>nil</code></h3>
+            <p>Ask what value you assumed existed but does not exist yet.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">04</span>
+            <h3>Check the side</h3>
+            <p>Make sure the function belongs on client or server before changing anything else.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">05</span>
+            <h3>Check the dependency</h3>
+            <p>Make sure the resource you depend on is installed, named right, and started.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">06</span>
+            <h3>Check the framework snippet</h3>
+            <p>Make sure you copied code for the right framework: QBCore or ESX.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">07</span>
+            <h3>Check manifest imports</h3>
+            <p>Wrong file paths or missing imports can make whole features look broken.</p>
+          </article>
+          <article class="debug-step">
+            <span class="debug-card__num">08</span>
+            <h3>Check SQL basics</h3>
+            <p>If it is SQL, check table names, column names, and whether <code>oxmysql</code> is running.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="cheat-sheet">
+        <h2>One-screen cheat sheet</h2>
+        <div class="debug-sheet">
+          <div class="debug-sheet__row">
+            <h3><code>attempt to index a nil value</code></h3>
+            <p>You tried to read inside a value that does not exist yet.</p>
+          </div>
+          <div class="debug-sheet__row">
+            <h3><code>attempt to call a nil value</code></h3>
+            <p>You tried to call a function name that is empty in this runtime.</p>
+          </div>
+          <div class="debug-sheet__row">
+            <h3><code>attempt to concatenate a nil value</code></h3>
+            <p>You tried to glue text to an empty value.</p>
+          </div>
+          <div class="debug-sheet__row">
+            <h3><code>No such export ...</code></h3>
+            <p>The resource is wrong, missing, not started, or the export name is wrong.</p>
+          </div>
+          <div class="debug-sheet__row">
+            <h3><code>Unknown column ...</code></h3>
+            <p>Your SQL query does not match your table structure.</p>
+          </div>
+          <div class="debug-sheet__row">
+            <h3><code>Table ... doesn't exist</code></h3>
+            <p>The table was not imported or you are connected to the wrong database.</p>
+          </div>
+          <div class="debug-sheet__row">
+            <h3><code>lib</code> is nil</h3>
+            <p>ox_lib import order or manifest setup is wrong.</p>
+          </div>
+          <div class="debug-sheet__row debug-sheet__row--accent">
+            <h3>Fastest debug tool</h3>
+            <p>Add <code>print(type(value), value)</code> before the crashing line.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Error messages are clues, not punishments. Read the first line and work from there.</li>
+          <li><code>nil</code> means "this does not exist yet." Check your variable names, spelling, and whether the file loaded.</li>
+          <li>Wrong-side errors happen when you call a client function on the server or vice versa. Know which world your code runs in.</li>
+          <li>Export errors mean the resource is missing, not started, or the export name is misspelled.</li>
+          <li>The fastest debug tool is <code>print(type(value), value)</code> on the line before the crash.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Open any script you have written so far. Intentionally break it three ways: (1) misspell a variable name, (2) call a function that does not exist, (3) try to read a key from a nil table. Run each one, read the error, and fix it using only the console output.</p>
+        <p class="expected">Expected outcome</p>
+        <p>You should see three different error messages, identify the broken line from each one, and fix all three without guessing.</p>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>The error message always includes a file path and line number. Start there. Add <code>print(type(varName))</code> above the broken line to confirm what is nil.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/debugging/" target="_blank" rel="noopener">FiveM debugging guide</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/manual.html#6.1" target="_blank" rel="noopener">Lua error handling (pcall, xpcall)</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Where to use this page</h2>
+        <p>Use this page the first week you learn Lua. Then come back when you hit framework work, exports, ox_lib, and SQL. A professional does not avoid errors. A professional reads them faster.</p>
+      </section>

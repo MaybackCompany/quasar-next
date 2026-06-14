@@ -1,0 +1,107 @@
+<LessonHero
+  crumbs="Module 08A"
+  title="Entity ownership and cleanup"
+  meta={[
+    { label: "Module", value: "Module 08A" },
+    { label: "Time", value: "~35 min" },
+    { label: "Side", value: "client" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will track spawned entities and clean them on resource stop.
+</LessonHero>
+
+## Outcome
+
+You will track spawned entities and clean them on resource stop.
+
+<Callout variant="tip" title="Why it matters">
+  Untracked entities leak. Leaks become server lag and visual clutter.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Mission entity | An entity your script intends to manage. Example: SetEntityAsMissionEntity marks it. |
+| Registry | A table that tracks created handles. Example: spawnedProps[id] = entity. |
+| Cleanup path | Code that deletes entities later. Example: onResourceStop deletes props. |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_entity_owner" },
+    { cmd: "Side", desc: "client" },
+    { cmd: "File path", desc: "resources/qu_entity_owner/client.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_entity_owner" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'entity_owner'
+local spawnedProps = {}
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    for id, entity in pairs(spawnedProps) do
+        if DoesEntityExist(entity) then DeleteEntity(entity) end
+        print(('[QUIET][%s][cleanup] id=%s'):format(MODULE, id))
+    end
+end)
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][entity_owner][cleanup] prints for each tracked entity.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Track one prop handle.
+- Delete it manually.
+- Restart the resource and confirm cleanup.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_entity_owner' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_entity_owner' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

@@ -1,0 +1,262 @@
+<LessonHero
+  crumbs="Step 04"
+  title="server.cfg, resources, and dependencies"
+  meta={[
+    { label: "You'll do", value: "Open server.cfg, read ensure order, map the resources folder, and prove dependency order with two tiny throwaway resources." },
+    { label: "Time", value: "~20 minutes." },
+    { label: "You need", value: "Step 03 done: a running server you can reach in txAdmin, and your server folder open in a text editor." },
+    { label: "Result", value: "You can explain why a script like a phone, inventory, or job must load after the resources it depends on, and you can prove it in the console." },
+  ]}
+>
+  `server.cfg` is the startup script for your city. It names the server, sets the port, holds your secrets, and decides the **order** every resource loads. FXServer reads it top to bottom, so a script that needs `ox_lib` or `oxmysql` only works if those are `ensure`d **above** it. In this lesson you read a real config, then build two tiny resources that *prove* order matters without touching a single production script.
+</LessonHero>
+
+<Prereq
+  items={[
+    "txAdmin shows my server online (Step 03 finished).",
+    "I know where my server folder lives and can open it in VS Code.",
+    "I can find the txAdmin CFG Editor and the Live Console.",
+    "I can read txAdmin Live Console output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Order is a rule, not a suggestion">
+  FXServer starts resources in the exact order their `ensure` lines appear in `server.cfg`. A dependency must come first; the script that needs it comes second. You will not memorize this. You will watch one console line flip from `provider found: pong` to `provider MISSING` and never forget it.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Open server.cfg and find the ensure block" outcome="You can point at the line where resources start.">
+    Open your server folder in VS Code (right-click the folder, **Open with Code**), then open `server.cfg`. Scroll until you find the run of lines that start with `ensure`. That block is the load order. A typical 2026 config looks like this:
+
+    ```text
+    endpoint_add_tcp "0.0.0.0:30120"
+    endpoint_add_udp "0.0.0.0:30120"
+
+    sv_hostname "My ESX Server"
+    sv_maxclients 48
+
+    # Pin the game build. Use a current build from the live artifacts list,
+    # never a stale number copied from an old guide.
+    sv_enforceGameBuild <current-build>
+
+    set mysql_connection_string "mysql://root:PASSWORD@127.0.0.1/fivem?charset=utf8mb4"
+    set mysql_slow_query_warning 150
+
+    sv_licenseKey "PASTE_YOUR_CFX_PORTAL_KEY_HERE"
+
+    ensure oxmysql
+    ensure ox_lib
+    ensure es_extended
+    ensure ox_inventory
+    ensure ox_target
+    ```
+
+    <ExpectedOutput>
+    You can put your cursor on the first `ensure` line and say out loud: "everything below here starts in this order."
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Know what the important lines do" outcome="No line in the config is a mystery to you.">
+    Three of those lines hold the keys to the whole server:
+
+    - `sv_licenseKey` is your **Cfx.re Portal** key. Get it free at `portal.cfx.re` (this is the current portal; older guides call it Keymaster). It is required even for a local test server.
+    - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn you about any query slower than 150 ms.
+    - `sv_enforceGameBuild` pins which GTA build players load. Pull a **current** build number from the live FiveM artifacts list; never paste a stale build from a 2024 tutorial.
+
+    <Callout variant="fivem" title="Two of these lines are secrets">
+      `sv_licenseKey` and `mysql_connection_string` contain secrets. Never paste their real values into Discord, public GitHub, screenshots, videos, or support tickets. Blur them first. If one leaks, revoke the key in the Cfx.re Portal and rotate the database password immediately.
+    </Callout>
+  </Step>
+
+  <Step num={3} title="Read the ensure block as a dependency map" outcome="You can say why each line sits where it does.">
+    Order is not random. Read it as layers, each one depending on the layer above:
+
+    ```text
+    # 1. Database bridge first, anything that saves data needs it
+    ensure oxmysql
+
+    # 2. Shared helper library second
+    ensure ox_lib
+
+    # 3. Framework core third (ESX or Qbox for a new 2026 server)
+    ensure es_extended
+
+    # 4. Core gameplay systems after the framework
+    ensure ox_inventory
+    ensure ox_target
+
+    # 5. Your scripts last, after everything they depend on
+    ensure qs-smartphone-pro
+    ```
+
+    A script that calls `lib.` functions needs `ox_lib` above it. A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
+  </Step>
+
+  <Step num={4} title="Build two throwaway resources to test order safely" outcome="You have a provider and a consumer that report whether the order worked.">
+    Never test order by restarting `ox_lib`, a framework, or a paid script on a live server, you can kick players and break everything downstream. Instead build two tiny local resources: no players, no data, no risk.
+
+    Create this layout inside your `resources` folder. The `[local]` bracket folder just keeps your own test scripts grouped:
+
+    ```text
+    resources/[local]/qu_dep_provider/
+      fxmanifest.lua
+      server.lua
+    resources/[local]/qu_dep_consumer/
+      fxmanifest.lua
+      server.lua
+    ```
+
+    `qu_dep_provider/fxmanifest.lua`:
+
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
+
+    server_script 'server.lua'
+    ```
+
+    `qu_dep_provider/server.lua`:
+
+    ```lua
+    exports('Ping', function()
+        return 'pong'
+    end)
+
+    print('[qu_dep_provider] export ready')
+    ```
+
+    `qu_dep_consumer/fxmanifest.lua`:
+
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
+
+    server_script 'server.lua'
+    ```
+
+    `qu_dep_consumer/server.lua`:
+
+    ```lua
+    CreateThread(function()
+        local ok, result = pcall(function()
+            return exports.qu_dep_provider:Ping()
+        end)
+
+        if ok and result == 'pong' then
+            print('[qu_dep_consumer] provider found: ' .. result)
+        else
+            print('[qu_dep_consumer] provider MISSING (wrong ensure order)')
+        end
+    end)
+    ```
+
+    Notice neither manifest has a `lua54` line. Lua 5.4 is the only runtime in 2026, so that line is deprecated and ignored. Leave it out.
+  </Step>
+
+  <Step num={5} title="Run the order test, then break it on purpose" outcome="You watch one console line flip when the order is wrong.">
+    Make a backup copy of `server.cfg` first. Then add both resources in dependency-first order, near the bottom, and save:
+
+    ```text
+    ensure qu_dep_provider
+    ensure qu_dep_consumer
+    ```
+
+    Open txAdmin and go to the **Live Console**. Restart the provider, then the consumer:
+
+    ```text
+    restart qu_dep_provider
+    restart qu_dep_consumer
+    ```
+
+    The consumer found the provider because it loaded second:
+
+    <ExpectedOutput>
+    [qu_dep_provider] export ready
+    [qu_dep_consumer] provider found: pong
+    </ExpectedOutput>
+
+    Now break it. Swap the two lines so the consumer is ensured **first**, save, and restart both again:
+
+    ```text
+    ensure qu_dep_consumer
+    ensure qu_dep_provider
+    ```
+
+    ```text
+    restart qu_dep_consumer
+    restart qu_dep_provider
+    ```
+
+    The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early:
+
+    <ExpectedOutput>
+    [qu_dep_consumer] provider MISSING (wrong ensure order)
+    [qu_dep_provider] export ready
+    </ExpectedOutput>
+
+    Put the lines back in provider-first order and restore your backup if you changed anything else. You just proved the rule from Step 3 with your own eyes.
+  </Step>
+
+  <Step num={6} title="Check a real script's dependencies before you install it" outcome="You can predict the right ensure position without restarting anything live.">
+    For real paid scripts, inspect, do not restart. Open the resource's `fxmanifest.lua` and read its `dependencies` block and any shared scripts it pulls in:
+
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
+
+    shared_script '@ox_lib/init.lua'
+
+    dependencies {
+        'ox_lib',
+        'oxmysql',
+        'es_extended'
+    }
+    ```
+
+    That `@ox_lib/init.lua` line and that `dependencies` block both say the same thing: this script needs `ox_lib`, `oxmysql`, and the framework `ensure`d above it. Confirm each one already sits higher in `server.cfg`, then add the script below them. No live restart required.
+
+    <Callout variant="fivem" title="The resources folder, at a glance">
+      Bracket folders like `[local]`, `[jobs]`, or `[cars]` are just organizers, FiveM still sees the resources inside them, and `ensure [cars]` starts every resource in that bracket. Your tree usually looks like `resources/[standalone]/ox_lib`, `resources/[qb]/qb-core`, `resources/[local]/qu_dep_provider`, and so on.
+    </Callout>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Couldn't find resource qu_dep_provider", fix: "The folder name and the ensure name must match exactly. Check for a typo or a wrapping zip folder, the resource folder must hold fxmanifest.lua directly." },
+    { symptom: "provider MISSING when you expected found", fix: "The consumer was ensured above the provider. Put ensure qu_dep_provider first, save, then restart the provider before the consumer." },
+    { symptom: "No such export Ping", fix: "The provider failed to start or has a typo in exports('Ping', ...). Restart qu_dep_provider and read the line above the error in the Live Console." },
+    { symptom: "Access denied for user / Unknown database 'fivem'", fix: "Your mysql_connection_string is wrong or the database does not exist yet. Fix the connection string and create the database before ensuring oxmysql-dependent scripts." },
+    { symptom: "The command is not recognized", fix: "Type server commands like restart in the txAdmin Live Console, not in the in-game F8 client console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Read server.cfg top to bottom and explain what every important line does, including the two that hold secrets.",
+    "Order an ensure block as a dependency map: oxmysql, then ox_lib, then framework, then systems, then your scripts.",
+    "Build a throwaway provider and consumer to prove ensure order without risking a live server.",
+    "Open any script's fxmanifest.lua, read its dependencies and shared_script lines, and place it correctly in server.cfg by inspection alone."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Open one installed resource, read its `fxmanifest.lua`, and write down every dependency it names (the `dependencies` block and any `@resource/init.lua` shared scripts). Then state, in one sentence, which line must sit above it in `server.cfg` and why.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Server commands", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "Cfx.re docs · Resource manifest", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" },
+    { label: "ox_lib documentation", href: "https://overextended.dev/ox_lib" }
+  ]}
+/>

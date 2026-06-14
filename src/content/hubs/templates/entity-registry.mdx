@@ -1,0 +1,107 @@
+<LessonHero
+  crumbs="Entity registry"
+  title="Entity registry"
+  meta={[
+    { label: "Purpose", value: "Track spawned entities, delete on stop." },
+    { label: "Dependencies", value: "FiveM client runtime." },
+    { label: "Files", value: "fxmanifest.lua, registry.lua." },
+    { label: "First log", value: "[QUIET][registry][track] id=… entity=…" },
+    { label: "Lesson", value: "Lesson 24: entity cleanup" },
+  ]}
+>
+  Every spawned entity gets an id and a cleanup path. On `onResourceStop` the registry walks itself and deletes anything still alive. Zero leaks at restart.
+</LessonHero>
+
+<Callout variant="warn" title="Cleanup rule">
+  Never spawn without a registry id and an `onResourceStop` path. One orphan entity at restart becomes a stuck object on the map for the next session.
+</Callout>
+
+## Files
+
+- **fxmanifest.lua**, client-only manifest.
+- **registry.lua**, the registry module: `add`, `cleanup`, and the resource stop hook.
+
+## fxmanifest.lua
+
+```
+-- PURPOSE: Manifest for the entity-registry template.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Registry uses client natives, keep it on the client side only.
+-- Expand this: add a server-side mirror that records owner identifiers.
+-- SECURITY:
+--   - Never expose the Registry table through net events.
+--   - Always run cleanup on resource stop and on player disconnect.
+--   - Validate ids server-side before mirroring any registry write.
+
+fx_version 'cerulean'
+game 'gta5'
+
+author 'Quasar Academy'
+description 'Template: track spawned entities and cleanup paths'
+version '1.0.0'
+
+client_script 'registry.lua'
+```
+
+[View raw fxmanifest.lua](/templates/entity-registry/fxmanifest.lua)
+
+## registry.lua
+
+```
+-- PURPOSE: Track spawned entities and cleanup paths.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Never spawn without a registry id and cleanup path.
+-- Expand this: add timeout cleanup and ownership checks.
+-- SECURITY:
+--   - Validate id and entity handle before add or remove.
+--   - Always pair add with onResourceStop cleanup, no orphans.
+--   - Never expose the Registry table through net events.
+
+local MODULE = 'registry'
+local Registry = {}
+
+local function log(action, message)
+    print(('[QUIET][%s][%s] %s'):format(MODULE, action, message))
+end
+
+function Registry.add(id, entity)
+    if not id or not entity or entity == 0 then return false end
+    Registry[id] = entity
+    log('track', ('id=%s entity=%s'):format(id, entity))
+    return true
+end
+
+function Registry.cleanup(reason)
+    for id, entity in pairs(Registry) do
+        if type(entity) == 'number' and DoesEntityExist(entity) then
+            DeleteEntity(entity)
+        end
+        log('cleanup', ('id=%s reason=%s'):format(id, reason or 'manual'))
+        Registry[id] = nil
+    end
+end
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        Registry.cleanup('resource_stop')
+    end
+end)
+
+return Registry
+```
+
+[View raw registry.lua](/templates/entity-registry/registry.lua)
+
+## Install
+
+1. Create `resources/[local]/qu_registry/`.
+2. Copy both files into it.
+3. Add `ensure qu_registry` to `server.cfg`.
+4. From another resource, `require` or copy the registry module and call `Registry.add(id, entity)` after every spawn.
+5. Restart the resource and watch the cleanup line: `[QUIET][registry][cleanup] reason=resource_stop`.
+
+## Next steps
+
+- Read [Lesson 24](/lessons/cleanup-discipline) for the full cleanup pattern.
+- Pair with [the vehicle spawn template](/templates/vehicle-spawn), spawned vehicles register themselves.
+- Add a per-id timeout when an entity has a known lifetime (drop, marker, prop).

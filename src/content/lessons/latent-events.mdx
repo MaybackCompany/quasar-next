@@ -1,0 +1,144 @@
+<LessonHero
+  crumbs="Module 04 · Bonus"
+  title="Latent events: TriggerLatentServerEvent &amp; TriggerLatentClientEvent"
+  meta={[
+    { label: "You'll learn", value: "When to swap TriggerServerEvent for TriggerLatentServerEvent, the bps parameter, and the gotchas with broadcasting to all players" },
+    { label: "Time", value: "~12 minutes" },
+    { label: "Prereqs", value: "Lesson 14 (TriggerServerEvent / TriggerClientEvent)" },
+    { label: "Outcome", value: "You know the rule of thumb (small = regular, big = latent) and you can size bps for your payload" },
+  ]}
+>
+  A regular `TriggerServerEvent` blocks the network channel until the whole payload arrives. For small messages that is fine. For big tables, image buffers, or character export blobs, blocking the channel can time the player out. Latent events stream the payload at a controlled rate so the channel stays open.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds TriggerLatentServerEvent large payload upload as a working FiveM resource named `qu_latent_events`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_latent_events
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_latent_events/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu_latent_events:upload', function(payload)
+    print('[qu_latent_events] received ' .. #payload .. ' bytes')
+    TriggerClientEvent('qu_latent_events:done', source, #payload)
+end)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('latenttest', function()
+    TriggerLatentServerEvent('qu_latent_events:upload', 25000, string.rep('A', 20000))
+    print('[qu_latent_events] upload started')
+end, false)
+
+RegisterNetEvent('qu_latent_events:done', function(size)
+    print('[qu_latent_events] server received ' .. size)
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_latent_events
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_latent_events
+    ```
+
+    Run this test:
+
+    ```text
+    /latenttest
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_latent_events] upload started
+Server: [qu_latent_events] received 20000 bytes
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_latent_events does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_latent_events", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_latent_events, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_latent_events folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for TriggerLatentServerEvent large payload upload.",
+    "Add ensure qu_latent_events to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_latent_events`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

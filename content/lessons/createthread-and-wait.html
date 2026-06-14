@@ -1,0 +1,377 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 04 &middot; Bonus</span></div>
+        <h1>CreateThread, Wait, and the tick budget</h1>
+        <p class="lede">Every FiveM script runs inside one Lua VM per resource. The VM has a strict per-tick budget. <code>CreateThread</code> spawns a coroutine; <code>Wait(ms)</code> yields it back to the engine. Forget the Wait and you freeze the game. Use the wrong Wait value and your script either hogs the frame or feels laggy. This bonus is the deep dive that turns "I copied the boilerplate" into "I know exactly why it's there."</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>What <code>CreateThread</code> actually creates, why <code>Wait</code> is mandatory inside loops, and how to pick the right wait time per use case</dd></div>
+          <div><dt>Time</dt><dd>~15 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 04 (loops), Lesson 11 (natives), Lesson 15 (callbacks)</dd></div>
+          <div><dt>Outcome</dt><dd>You can split work across draw threads, state threads, and polling threads: and you stop your resource from eating the server frame</dd></div>
+        </div>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>Early required bridge</header>
+        <p>This lesson is no longer just a late bonus. Take it right after the loops lesson if <code>while true</code>, <code>Wait</code>, or <code>CreateThread</code> still feels copied rather than understood. The loops lesson links here because this is the safety bridge before natives, targets, vehicles, and performance work.</p>
+      </section>
+
+      <section class="prereq" data-lesson="14b">
+        <h2>Before you start</h2>
+        <p>Quick check. If any of these are shaky, pop back to the linked lesson for two minutes, the rest of this lesson sits on top of them.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have written a callback handler and seen it answer (<a href="../clase-14/leason14.html">Lesson 14</a>)</label></li>
+          <li><label><input type="checkbox"> I have a vague picture of what a Lua coroutine is, "a function that can pause and resume" is enough</label></li>
+          <li><label><input type="checkbox"> I have run a resource, edited a file, and watched it reload (or restarted it from the console)</label></li>
+          <li><label><input type="checkbox"> I know how to open the F8 client console and read its lines</label></li>
+        </ul>
+      </section>
+
+      <section id="why">
+        <h2>Why threads exist in FiveM</h2>
+        <p>FiveM games tick at the player's frame rate. The Lua scheduler runs all your resource's coroutines on each tick, in order, until each one yields with <code>Wait</code> or returns. If a coroutine never yields, the scheduler never gets the frame back. The game freezes. On the server side the same is true, except the tick rate is fixed (about 50/s) and a stuck coroutine freezes the entire server.</p>
+        <p>A <strong>thread</strong> in FiveM is just a Lua coroutine the scheduler agreed to resume on every tick. <code>CreateThread(fn)</code> hands the function to the scheduler. <code>Wait(ms)</code> yields it back, with a hint of how soon you want to be resumed.</p>
+
+        <div class="callout callout--tip">
+          <header>Mental model</header>
+          <p>Think of <code>CreateThread</code> as <em>"please run this function next tick, and keep running it until it returns or Waits"</em>. Think of <code>Wait(ms)</code> as <em>"I am done for now, wake me in at least <code>ms</code> milliseconds."</em></p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>The minimal thread</h2></header>
+        <p class="step-outcome">Outcome: a loop that prints once a second without freezing the game.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>client.lua: the canonical thread</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    while true do
+        print('[QUIET][thread] tick at ' .. GetGameTimer())
+        Wait(1000) -- 1 second
+    end
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Three things to notice</summary>
+            <ul>
+              <li><code>CreateThread</code> takes one argument: a function. It returns immediately, the script keeps running below it. The body of the function runs asynchronously on the scheduler.</li>
+              <li><code>while true do ... end</code> is the standard pattern. The thread lives forever, ticking at whatever rate <code>Wait</code> allows.</li>
+              <li><code>Wait(1000)</code> yields the coroutine. It will be resumed no sooner than 1000 ms later, but the engine may delay further if other work is queued.</li>
+            </ul>
+          </details>
+          <details class="explain">
+            <summary>What if I forget the Wait?</summary>
+            <p>The loop never yields. The scheduler can't resume any other coroutine, including its own internal ones. On a client, the game freezes and the player has to alt-F4. On the server, the entire server stops responding to events, joins, and chat. In both cases the FiveM watchdog will eventually kill the resource with a "script timeout" log line, but by then players are angry.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Wait(0): the per-frame thread</h2></header>
+        <p class="step-outcome">Outcome: you understand when to drop to <code>Wait(0)</code> and when not to.</p>
+        <div class="step-body">
+          <p><code>Wait(0)</code> means "yield, but resume on the very next tick." It is the right choice when:</p>
+          <ul>
+            <li>You are <strong>drawing on screen</strong> (markers, text, scaleforms), the frame must redraw the marker or it flickers.</li>
+            <li>You are <strong>checking input</strong> with <code>IsControlPressed</code> or <code>IsControlJustReleased</code>, missing a frame can miss the keypress.</li>
+            <li>You are inside a tight game loop where one frame of latency would be visible.</li>
+          </ul>
+          <p>It is the <strong>wrong</strong> choice when:</p>
+          <ul>
+            <li>You are polling something that changes every few seconds (player coords, weapon, vehicle).</li>
+            <li>You are doing math or table walks that the player never sees the result of within a frame.</li>
+          </ul>
+
+          <figure class="code">
+            <header><span>client.lua: draw thread (correct Wait(0))</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    while true do
+        Wait(0) -- per-frame redraw
+        DrawMarker(1, 215.0, -810.0, 30.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                   1.0, 1.0, 1.0, 0, 200, 255, 100, false, false, 2, false)
+    end
+end)</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>client.lua: polling thread (Wait(500), not Wait(0))</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    while true do
+        Wait(500) -- check twice a second is plenty
+        local ped = PlayerPedId()
+        if IsPedInAnyVehicle(ped, false) then
+            -- update HUD speedometer, fuel, etc
+        end
+    end
+end)</code></pre>
+          </figure>
+
+          <div class="callout callout--warn">
+            <header>Adaptive Wait pattern</header>
+            <p>For loops that only sometimes need per-frame work, branch the Wait. Idle at <code>Wait(500)</code>, drop to <code>Wait(0)</code> only when the player is actively in range. Server FPS thanks you.</p>
+            <pre><code class="language-lua">CreateThread(function()
+    while true do
+        local sleep = 500
+        local ped = PlayerPedId()
+        local pos = GetEntityCoords(ped)
+        if #(pos - vector3(215.0, -810.0, 30.0)) &lt; 10.0 then
+            sleep = 0 -- close to the marker, draw every frame
+            DrawMarker(1, 215.0, -810.0, 30.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                       1.0, 1.0, 1.0, 0, 200, 255, 100, false, false, 2, false)
+        end
+        Wait(sleep)
+    end
+end)</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>The three thread roles</h3></header>
+        <p>Open your client.lua. For each <code>CreateThread</code> you have, label which of the three roles it is: <strong>draw</strong> (Wait 0), <strong>state</strong> (Wait 500-2000), or <strong>polling</strong> (Wait 5000+). If you cannot label it, it is doing too much, split it into two threads with different Wait budgets.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Threads, return, and CreateThreadNow</h2></header>
+        <p class="step-outcome">Outcome: you know when a thread dies, and the difference between <code>CreateThread</code> and <code>CreateThreadNow</code>.</p>
+        <div class="step-body">
+          <h3>A thread ends when its function returns</h3>
+          <p>If the function inside <code>CreateThread</code> hits <code>return</code>, falls off the end, or finishes its <code>for</code> loop, the coroutine is destroyed. There is no respawn. If you want it to keep going, use <code>while true do</code>.</p>
+          <figure class="code">
+            <header><span>thread that runs once and dies</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    Wait(2000)
+    print('[QUIET][thread] booted up')
+    -- function returns here, thread is gone
+end)</code></pre>
+          </figure>
+          <p>This pattern is fine for one-shot setup that needs to happen after a delay. It is <strong>not</strong> a substitute for <code>SetTimeout</code>, <code>SetTimeout</code> is more explicit about intent.</p>
+
+          <h3>CreateThread vs CreateThreadNow</h3>
+          <ul>
+            <li><code>CreateThread(fn)</code> queues the function to run on the next tick. The line after returns immediately.</li>
+            <li><code>CreateThreadNow(name, fn)</code> runs the function <em>synchronously</em>, in the current tick, until it Waits or returns. Use case: scaleform setup that must finish before you draw, or anything where the next line really does need the thread's first work to be done.</li>
+          </ul>
+          <div class="callout callout--tip">
+            <header>You almost always want <code>CreateThread</code></header>
+            <p>If you need synchronous behavior, you usually just write the code inline. <code>CreateThreadNow</code> is mostly used by the framework internals.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>SetTimeout and SetInterval</h2></header>
+        <p class="step-outcome">Outcome: you know which scheduling primitive fits which job.</p>
+        <div class="step-body">
+          <p>FiveM exposes a few scheduling helpers besides <code>CreateThread</code>:</p>
+          <div class="cheat-table">
+            <div class="cheat-row cheat-head">
+              <div>API</div><div>Runs</div><div>Use it for</div>
+            </div>
+            <div class="cheat-row">
+              <div><code>CreateThread(fn)</code></div><div>Forever, until the function returns</div><div>State machines, draw loops, polling, anything that needs to live for the resource lifetime</div>
+            </div>
+            <div class="cheat-row">
+              <div><code>SetTimeout(ms, fn)</code></div><div>Once, after the delay</div><div>"Despawn this entity in 30 seconds." "Retry this request in 5 seconds."</div>
+            </div>
+            <div class="cheat-row">
+              <div><code>Wait(ms)</code></div><div>Yields the current thread</div><div>Inside <code>CreateThread</code> bodies. Cannot be used at the top level.</div>
+            </div>
+          </div>
+          <figure class="code">
+            <header><span>SetTimeout vs nested CreateThread</span></header>
+            <pre><code class="language-lua">-- Idiomatic: one-shot delayed work
+SetTimeout(30000, function()
+    print('[QUIET][cleanup] firing 30s after spawn')
+end)
+
+-- Equivalent but more verbose
+CreateThread(function()
+    Wait(30000)
+    print('[QUIET][cleanup] same effect, more code')
+end)</code></pre>
+          </figure>
+          <div class="callout callout--warn">
+            <header>SetInterval does not exist</header>
+            <p>FiveM has no built-in <code>SetInterval</code>. If you want one, write <code>CreateThread(function() while true do Wait(ms); fn() end end)</code>, it is the same thing.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Convert a SetInterval</h3></header>
+        <p>Without copying from above, write a thread that prints <code>'[QUIET][heartbeat]'</code> every 10 seconds, and a <code>SetTimeout</code> that prints <code>'[QUIET][bootmsg]'</code> exactly once, 5 seconds after the resource starts. Run it; both messages should appear on schedule.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Threads inside callbacks and event handlers</h2></header>
+        <p class="step-outcome">Outcome: you know that event handlers already run inside a coroutine, so <code>Wait</code> works there too.</p>
+        <div class="step-body">
+          <p>Event handlers registered with <code>RegisterNetEvent</code>, <code>AddEventHandler</code>, <code>RegisterCommand</code>, and <code>lib.callback.register</code> all run inside a coroutine. That means you can call <code>Wait</code> directly inside them, you do not need to wrap them in <code>CreateThread</code>.</p>
+          <figure class="code">
+            <header><span>command handler with Wait inside</span></header>
+            <pre><code class="language-lua">RegisterCommand('greet', function()
+    print('[QUIET][greet] step 1')
+    Wait(1000)
+    print('[QUIET][greet] step 2 (one second later)')
+end, false)</code></pre>
+          </figure>
+          <div class="callout callout--warn">
+            <header>Do not use Wait inside callback returns</header>
+            <p>If you are returning a value from <code>lib.callback.register</code>, do all your async work first, then return. The client is blocked on your callback, the longer you Wait, the slower the player's UI feels.</p>
+          </div>
+          <p>The exception is module-top-level code. Lua loads files in a single pass before any scheduler tick. You cannot call <code>Wait</code> at the top of a file; you have to wrap it in <code>CreateThread</code>.</p>
+          <figure class="code">
+            <header><span>top-level Wait fails: wrap in CreateThread</span></header>
+            <pre><code class="language-lua">-- WRONG: error "attempt to call Wait outside of a coroutine"
+print('booting')
+Wait(1000)
+print('one second later')
+
+-- RIGHT
+print('booting')
+CreateThread(function()
+    Wait(1000)
+    print('one second later')
+end)</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>While true with no Wait</summary>
+          <p>The single most-common bug in beginner FiveM scripts. Even <code>Wait(0)</code> is enough, what kills you is <em>no</em> Wait at all. Always have one Wait reachable inside every <code>while true do ... end</code> body, on every code path.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Wait(0) for everything</summary>
+          <p>Wait(0) means "every frame." A polling thread that checks <code>GetVehicleEngineHealth</code> every frame burns CPU for no benefit. Use <code>Wait(500)</code> or higher unless you have proven you need per-frame.</p>
+        </details>
+
+        <details class="explain">
+          <summary>One mega-thread doing everything</summary>
+          <p>If your thread draws a marker, polls the player position, runs a 60-second cooldown timer, and listens for a key press all in the same loop, the slowest path determines the responsiveness of the fastest path. Split into separate threads, each with its own Wait budget.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Calling Wait at the top of a file</summary>
+          <p>Top-level code runs during file load, not inside a coroutine. <code>Wait</code> needs a coroutine. Wrap it in <code>CreateThread</code>, or move the work into <code>onResourceStart</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Assuming Wait(ms) is exact</summary>
+          <p>Wait is a minimum. The scheduler may resume you later if it is busy. For client threads on a low-FPS machine, <code>Wait(50)</code> can easily turn into 80-100 ms. If you need a precise delay, store the start time with <code>GetGameTimer()</code> and check the elapsed time yourself.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Spawning a new thread every event</summary>
+          <p><code>RegisterNetEvent('foo', function() CreateThread(function() ... end) end)</code> is almost always a mistake. The event handler already runs in a coroutine, just write the code inline. Spawning a new thread per event leaks coroutines under load.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What does <code>CreateThread(fn)</code> actually do?</legend>
+            <label><input type="radio" name="q1" value="a"> Spawns an OS-level thread for the function.</label>
+            <label><input type="radio" name="q1" value="b"> Schedules a Lua coroutine to be resumed on each game tick until it returns.</label>
+            <label><input type="radio" name="q1" value="c"> Runs the function on a separate CPU core.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What happens if a <code>while true do ... end</code> loop has no <code>Wait</code> on the client?</legend>
+            <label><input type="radio" name="q2" value="a"> Lua throws a runtime error immediately.</label>
+            <label><input type="radio" name="q2" value="b"> The game silently slows down to 50 % FPS.</label>
+            <label><input type="radio" name="q2" value="c"> The scheduler never gets the frame back; the game freezes until the watchdog kills the resource.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. When should you use <code>Wait(0)</code>?</legend>
+            <label><input type="radio" name="q3" value="a"> When the loop draws on screen or polls input every frame and would be visibly broken with a longer wait.</label>
+            <label><input type="radio" name="q3" value="b"> Always, it gives the smoothest gameplay.</label>
+            <label><input type="radio" name="q3" value="c"> Only inside callbacks.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. You want to delete a vehicle 30 seconds after spawning it. What's the simplest API?</legend>
+            <label><input type="radio" name="q4" value="a"> <code>CreateThread(function() Wait(30000); DeleteEntity(veh) end)</code>, nothing else works.</label>
+            <label><input type="radio" name="q4" value="b"> <code>SetTimeout(30000, function() DeleteEntity(veh) end)</code>.</label>
+            <label><input type="radio" name="q4" value="c"> <code>SetInterval(30000, function() DeleteEntity(veh) end)</code>.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>5. Inside a <code>RegisterNetEvent</code> handler, can you call <code>Wait(500)</code> directly?</legend>
+            <label><input type="radio" name="q5" value="a"> No, net event handlers do not run in a coroutine.</label>
+            <label><input type="radio" name="q5" value="b"> Yes, event handlers already run in a coroutine, so <code>Wait</code> works directly.</label>
+            <label><input type="radio" name="q5" value="c"> Only if you wrap the handler body in <code>CreateThread</code> first.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>CreateThread(fn)</code></dt><dd>Schedules <code>fn</code> as a coroutine. Returns immediately. The function may run forever (with <code>while true do</code>) or finish and die.</dd></div>
+          <div><dt><code>Wait(ms)</code></dt><dd>Yields the current coroutine. Resumes no sooner than <code>ms</code> milliseconds later. Only callable inside a coroutine.</dd></div>
+          <div><dt><code>Wait(0)</code></dt><dd>"Resume on the next tick." Use for draw loops, input checks, and per-frame logic.</dd></div>
+          <div><dt><code>Wait(500)</code> &ndash; <code>Wait(2000)</code></dt><dd>State threads. Polling player position, vehicle, weapon, job: anything that doesn't change every frame.</dd></div>
+          <div><dt><code>Wait(5000+)</code></dt><dd>Background polling. Heartbeats, cleanup sweeps, sync checks.</dd></div>
+          <div><dt><code>SetTimeout(ms, fn)</code></dt><dd>Run <code>fn</code> once, after the delay. The thread idiom for one-shot delayed work.</dd></div>
+          <div><dt>No SetInterval</dt><dd>Use <code>CreateThread(function() while true do Wait(ms); fn() end end)</code>.</dd></div>
+          <div><dt>Event handlers are coroutines</dt><dd><code>RegisterNetEvent</code>, <code>AddEventHandler</code>, <code>RegisterCommand</code>, callbacks: all run inside a coroutine. <code>Wait</code> works directly.</dd></div>
+          <div><dt>Top-level code is not</dt><dd>You cannot call <code>Wait</code> at the top of a file. Wrap it in <code>CreateThread</code>.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>What <code>CreateThread</code> actually creates, a Lua coroutine on the FiveM scheduler, not an OS thread</li>
+          <li>Why every <code>while true do ... end</code> needs a <code>Wait</code>, the scheduler can't resume anything else until you yield</li>
+          <li>How to pick the right Wait value: <code>0</code> for draw and input, <code>500-2000</code> for state, <code>5000+</code> for background polling</li>
+          <li>The adaptive Wait pattern, idle at a long Wait, drop to <code>Wait(0)</code> only when the player is in range</li>
+          <li>That threads die when their function returns, and how that interacts with one-shot vs forever loops</li>
+          <li>When to reach for <code>SetTimeout</code> instead of nesting a <code>Wait</code> inside a thread</li>
+          <li>That event handlers already run inside a coroutine, so you don't need to wrap them in <code>CreateThread</code></li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Refactor this single thread into three: a draw thread, a state thread, and a polling thread. Each should have the right Wait for its job. Confirm with the server console that the heartbeat fires every 10 seconds while the marker still draws smoothly.</p>
+        <figure class="code"><header><span>start with this</span></header>
+          <pre><code class="language-lua">-- BEFORE: one thread doing too much
+CreateThread(function()
+    local lastHeartbeat = 0
+    while true do
+        Wait(0)
+        DrawMarker(1, 215.0, -810.0, 30.0, 0,0,0, 0,0,0,
+                   1.0, 1.0, 1.0, 0, 200, 255, 100, false, false, 2, false)
+        local ped = PlayerPedId()
+        local pos = GetEntityCoords(ped)
+        if GetGameTimer() - lastHeartbeat &gt; 10000 then
+            print('[QUIET][heartbeat] pos=' .. tostring(pos))
+            lastHeartbeat = GetGameTimer()
+        end
+    end
+end)</code></pre>
+        </figure>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console</span></header>
+          <pre><code>[QUIET][heartbeat] pos=vector3(...)   -- once every 10s
+-- marker continues drawing smoothly the whole time</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Citizen.CreateThread/" target="_blank" rel="noopener">FiveM docs, Citizen.CreateThread</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Citizen.Wait/" target="_blank" rel="noopener">FiveM docs, Citizen.Wait</a></li>
+          <li><a href="../clase-3/leason3.html">Lesson 04, Loops: for, while, when to stop</a></li>
+          <li><a href="../clase-10/leason10.html">Lesson 11, FiveM natives, the toolbox</a></li>
+          <li><a href="../clase-14/leason14.html">Lesson 15, Callbacks</a></li>
+        </ul>
+      </section>

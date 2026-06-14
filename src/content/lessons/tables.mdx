@@ -1,0 +1,143 @@
+<LessonHero
+  crumbs="Module 01 · Lesson 06"
+  title="Tables: the one data structure to rule them all"
+  meta={[
+    { label: "You'll build", value: "A qu_roster resource that prints a live player roster with levels and statuses, stacking everything you learned in Module 01." },
+    { label: "Time", value: "~22 minutes (longest in the module, earned)" },
+    { label: "You need", value: "Module 01 lessons 01–05 under your belt. Server running. Console visible." },
+    { label: "You'll learn", value: "Array tables -> dictionary tables -> ipairs vs pairs -> nested tables -> table.insert / table.remove -> the reference gotcha" },
+  ]}
+>
+  In Lua, almost every collection of data is a **table**. Player lists, config files, inventories, job data, and many other things all use tables. This lesson teaches you how to read them, write them, loop through them, and avoid the classic beginner mistake: forgetting that tables are references, not copies.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds array table roster with ipairs and table.insert as a working FiveM resource named `qu_tables`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_tables
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_tables/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local roster = { { name = 'Maya', level = 5 }, { name = 'Rami', level = 12 } }
+
+RegisterCommand('roster', function()
+    table.insert(roster, { name = 'New Player', level = 1 })
+    for index, player in ipairs(roster) do
+        print(('[qu_tables] %d %s level %d'):format(index, player.name, player.level))
+    end
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_tables
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_tables
+    ```
+
+    Run this test:
+
+    ```text
+    roster
+    ```
+
+    <ExpectedOutput>
+      [qu_tables] 1 Maya level 5
+[qu_tables] 2 Rami level 12
+[qu_tables] 3 New Player level 1
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_tables does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_tables", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_tables, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_tables folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for array table roster with ipairs and table.insert.",
+    "Add ensure qu_tables to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Run it live
+
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4.
+
+<Sandbox initial={`local items = {"bread", "water", "radio"}
+for i, item in ipairs(items) do
+  print(i, item)
+end`} />
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_tables`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

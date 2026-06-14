@@ -1,0 +1,191 @@
+<LessonHero
+  crumbs="Configurable blips"
+  title="Configurable blips"
+  meta={[
+    { label: "Purpose", value: "Spawn and manage map blips from a single config file." },
+    { label: "Dependencies", value: "ox_lib (optional). FiveM server runtime. No database needed." },
+    { label: "Files", value: "2 scripts: config.lua, client.lua." },
+    { label: "First log", value: "Blips loaded from config. on resource start." },
+    { label: "Command", value: "/deleteallblips clears every spawned blip." },
+  ]}
+>
+  Define every map marker in one config table. The client reads the table on start, draws each blip, and a command can wipe them all. Add a new location by adding a line, not by editing logic.
+</LessonHero>
+
+<Callout variant="fivem" title="What this template builds">
+  A config-driven blips system. You list each location once in `Config.Blips` with its coords, sprite, color, and scale. When the resource starts, a client loop reads that list and draws every blip on the map. The script keeps the blip handles in a table so a command can remove them cleanly later. Blips are a client-side concept, so all the drawing lives in `client.lua`. There is no money, job, or SQL here, so nothing needs the server wall.
+</Callout>
+
+## Files
+
+Drop these into a new resource folder. Add the resource to `server.cfg` after `ox_lib`.
+
+- **config.lua**, the `Config.Blips` table where you define every marker.
+- **client.lua**, reads the config, draws the blips, and registers the delete command.
+
+## config.lua
+
+The config file lets server owners predefine blips with specific properties. This keeps every location in one place and keeps the logic untouched when the map changes.
+
+```
+Config = {}
+
+-- Define blips
+Config.Blips = {
+    {
+        name = "Police Station",
+        coords = vector3(425.1, -979.5, 30.7),
+        sprite = 60,
+        color = 29,
+        scale = 1.0
+    },
+    {
+        name = "Hospital",
+        coords = vector3(295.8, -584.9, 43.1),
+        sprite = 61,
+        color = 2,
+        scale = 1.2
+    },
+    {
+        name = "Garage",
+        coords = vector3(215.8, -810.1, 30.7),
+        sprite = 50,
+        color = 3,
+        scale = 0.8
+    }
+}
+```
+
+What each field does:
+
+- `Config.Blips`, a table holding every predefined blip and its attributes.
+- `coords`, a `vector3` that sets the blip position in the world.
+- `sprite`, `color`, and `scale`, the visual properties you can tune per blip.
+
+## Creating blips dynamically
+
+The client reads `Config.Blips` and spawns each marker when the resource starts. The handles go into `createdBlips` so you can manage them later.
+
+```
+local createdBlips = {}
+
+-- Create blips from config
+function LoadBlips()
+    for _, blipData in pairs(Config.Blips) do
+        local blip = AddBlipForCoord(blipData.coords.x, blipData.coords.y, blipData.coords.z)
+        SetBlipSprite(blip, blipData.sprite)
+        SetBlipColour(blip, blipData.color)
+        SetBlipScale(blip, blipData.scale)
+        BeginTextCommandSetBlipName("STRING")
+        AddTextComponentString(blipData.name)
+        EndTextCommandSetBlipName(blip)
+        table.insert(createdBlips, blip)
+    end
+end
+
+-- Initialize blips on resource start
+AddEventHandler('onResourceStart', function(resourceName)
+    if GetCurrentResourceName() == resourceName then
+        LoadBlips()
+        print("Blips loaded from config.")
+    end
+end)
+```
+
+What is happening:
+
+- `createdBlips`, a table that stores the handle of every blip you create so you can find them again.
+- `LoadBlips`, loops through `Config.Blips` to create and configure each blip.
+- `onResourceStart`, runs once when this resource boots, then calls `LoadBlips`.
+
+## Deleting blips
+
+A command removes every blip the resource drew. Add this to the same `client.lua`.
+
+```
+-- Command to delete all blips
+RegisterCommand('deleteallblips', function(source, args)
+    for _, blip in pairs(createdBlips) do
+        if DoesBlipExist(blip) then
+            RemoveBlip(blip)
+        end
+    end
+    createdBlips = {}
+    print("All blips deleted.")
+end, false)
+```
+
+What is happening:
+
+- `DoesBlipExist`, checks the blip is still valid before you try to remove it.
+- `RemoveBlip`, takes the blip off the game map.
+- `createdBlips = {}`, clears the table after deleting so you never reference a stale handle.
+
+<Callout variant="warn" title="Clear before you redraw">
+  The blip handles only live for the current session. If you reload or restart the resource without removing the old blips first, you can stack duplicate markers on the same spot. Run `/deleteallblips` (or remove them in an `onResourceStop` handler) before you draw a fresh set.
+</Callout>
+
+<Callout variant="fivem" title="Blips are client-side">
+  Every blip function here runs on the local player's map. There is no server call, so each player draws their own blips when the resource starts for them. If you want one player to control another player's map, you would trigger a client event from the server. For a fixed set of location markers, the client-only approach in this template is all you need.
+</Callout>
+
+## Practical examples
+
+### Predefined blips on startup
+
+When the resource starts, every blip defined in `config.lua` is created automatically. No command, no setup, they appear the moment the resource boots.
+
+### Deleting blips at runtime
+
+Run `/deleteallblips` in game to remove all created blips while you play. Useful for testing positions without restarting.
+
+### Adding a new blip
+
+To add a new location, add one entry to the `Config.Blips` table in `config.lua`:
+
+```
+{
+    name = "Bank",
+    coords = vector3(150.2, -1040.3, 29.3),
+    sprite = 108,
+    color = 5,
+    scale = 1.0
+}
+```
+
+After you restart the resource, the new blip appears on the map automatically. You never touch the client logic to add a location.
+
+<Callout variant="tip" title="Find your sprite and color IDs">
+  Sprite and color values are numeric IDs from the GTA blip list. Keep a reference open while you build your config so you pick the right icon and tint. A wrong sprite still draws, it just shows the wrong picture, so check the map after each addition.
+</Callout>
+
+## fxmanifest.lua
+
+A minimal manifest that loads the config first, then the client script that reads it.
+
+```
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script 'config.lua'
+client_script 'client.lua'
+```
+
+The config loads as a `shared_script` so both sides can read it if you later add a server piece. For this template only the client uses it.
+
+## Install
+
+1. Create a folder `resources/[local]/qu_blips/`.
+2. Copy `config.lua` and `client.lua` into it.
+3. Add the `fxmanifest.lua` above beside them.
+4. Add `ensure qu_blips` to `server.cfg` after `ensure ox_lib`.
+5. Restart the server and watch the console for `Blips loaded from config.`
+6. Open the map in game and confirm your blips appear where you set them.
+
+## Make it yours
+
+- Edit `Config.Blips`: every marker on your map lives in this one table. Add, remove, or retune entries here, never in `client.lua`.
+- Tune `sprite`, `color`, and `scale` per location to match your server's look.
+- Rename the resource folder and the `ensure` line if `qu_blips` does not fit your naming.
+- Want toggle-able categories? Add a `category` field to each blip and check it inside `LoadBlips` before you draw.
+- Want clean restarts? Add an `onResourceStop` handler that loops `createdBlips` and calls `RemoveBlip` so reloads never duplicate markers.

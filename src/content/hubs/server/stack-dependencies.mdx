@@ -1,0 +1,185 @@
+<LessonHero
+  crumbs="Lesson 3"
+  title="Stack and dependencies"
+  meta={[
+    { label: "Outcome", value: "A framework decision record and one annotated dependency graph." },
+    { label: "Vocabulary", value: "A dependency is a resource that another resource needs first. Example: a phone may need ox_lib and qb-core." },
+    { label: "Rule", value: "QBCore or ESX first. Qbox only when a trusted developer owns compatibility and migrations." },
+    { label: "Duration", value: "35-50 minutes." },
+    { label: "Prerequisites", value: "Completed server brief and a candidate framework shortlist." },
+    { label: "Pass condition", value: "stack-decision.md lists framework, inventory, target, database, ensure order, and rollback notes." },
+  ]}
+>
+  Choose one framework before buying scripts, then map what each script needs before it can start. This prevents random install order, missing exports, and database save failures.
+</LessonHero>
+
+Decision first
+
+Do not mix frameworks. Pick one foundation, buy scripts that clearly support it, and put dependencies above dependent resources in `server.cfg`.
+
+## Framework decision tree
+
+1. If you are new, choose **QBCore**. It is common, current, and easier to hire help for.
+2. If you already bought ESX-only scripts or have ESX staff, choose **ESX Legacy**.
+3. If a trusted developer is responsible for ox resources, bridge code, and migrations, you may choose **Qbox**.
+4. If you want "the best one" but cannot explain the dependency chain, choose **QBCore** and keep learning.
+
+| Framework | Best for | Owner risk |
+| --- | --- | --- |
+| QBCore | Beginner owners, broad modern script support, common examples | Resource quality varies, but support is easy to find |
+| ESX Legacy | Servers committed to ESX scripts or staff experience | Older scripts may need updates and compatibility checks |
+| Qbox | Developer-led builds that understand ox ecosystem and migrations | Bridge issues can stop non-coder owners quickly |
+
+## Database and framework roles
+
+| Term | Description |
+| --- | --- |
+| MariaDB | The database server that stores persistent data such as characters, money, inventory, vehicles, houses, and logs. |
+| HeidiSQL | The visual database client owners use to import SQL, inspect tables, and confirm data actually saved. |
+| oxmysql | The resource that lets FiveM scripts talk to MariaDB. It should start before framework and gameplay scripts that save data. |
+| Framework | The roleplay foundation. It defines player data, jobs, money, items, and many script APIs. |
+| Inventory | The item system. It often replaces a framework default, so it must match your framework and other scripts. |
+| Target | The interaction system players use to click peds, props, doors, and zones. |
+
+<StepGroup>
+  <Step num={1} title="Create a stack decision record" outcome="your framework choice is written before purchasing.">
+      1. Open `Documents\FiveM-Owner\planning`.
+      2. Create `stack-decision.md`.
+      3. Fill out the template below.
+
+      ```
+      Framework: QBCore / ESX / Qbox
+      Reason:
+      Database: MariaDB
+      SQL bridge: oxmysql
+      Inventory:
+      Target:
+      Phone:
+      Garage:
+      Vehicle keys:
+      Resources that require ox_lib:
+      Resources that import SQL:
+      Resources that replace framework defaults:
+      Resources that need a developer:
+      Rollback note:
+      ```
+  </Step>
+</StepGroup>
+
+## Annotated dependency graph
+
+This graph reads top to bottom. If a lower item starts before an upper item, it may fail because its tools are not loaded yet.
+
+```
+MariaDB
+  Why: stores persistent rows.
+  Proof: HeidiSQL connects and fivem database opens.
+    |
+oxmysql
+  Why: FiveM scripts use it to talk to MariaDB.
+  Proof: txAdmin shows oxmysql started before framework.
+    |
+ox_lib
+  Why: shared helper library used by many modern scripts.
+  Proof: no "cannot find @ox_lib/init.lua" errors.
+    |
+Framework: qb-core or es_extended
+  Why: player object, jobs, accounts, core APIs.
+  Proof: player joins, character data loads.
+    |
+Core replacements: inventory, target, garage, keys
+  Why: gameplay scripts call these exports.
+  Proof: no missing export errors.
+    |
+Paid scripts: phone, jobs, housing, businesses
+  Why: visible features players use.
+  Proof: normal player can use feature after reconnect.
+    |
+Maps, vehicles, clothing
+  Why: assets players download or stream.
+  Proof: no F8 spam, acceptable resmon, no collision issues.
+```
+
+<StepGroup>
+  <Step num={2} title="Translate the graph into ensure order" outcome="server.cfg starts foundations before features.">
+      ```
+      # 1. Database bridge
+      ensure oxmysql
+
+      # 2. Shared libraries
+      ensure ox_lib
+
+      # 3. Framework
+      ensure qb-core
+      # or: ensure es_extended
+
+      # 4. Core systems that gameplay scripts call
+      ensure ox_inventory
+      ensure ox_target
+      ensure qs-vehiclekeys
+
+      # 5. Quasar and gameplay scripts after dependencies
+      ensure qs-smartphone-pro
+      ensure [jobs]
+      ensure [garages]
+
+      # 6. Streamed assets after logic foundations
+      ensure [maps]
+      ensure [cars]
+      ensure [clothing]
+      ```
+
+      After a clean restart, txAdmin shows database, library, framework, core systems, scripts, then assets starting in that order.
+  </Step>
+</StepGroup>
+
+## Ensure-order rationale
+
+- **Database before saves:** scripts cannot save player data if `oxmysql` is not started.
+- **Library before users:** scripts that import `@ox_lib/init.lua` need `ox_lib` first.
+- **Framework before jobs:** jobs need player objects, accounts, grades, and callbacks from the framework.
+- **Inventory before item scripts:** shops, jobs, phones, and rewards often add or remove items.
+- **Assets after logic:** maps and vehicles usually stream models, while logic systems define gameplay behavior.
+
+<StepGroup>
+  <Step num={3} title="Check a script before installing it" outcome="you can spot dependencies without being a coder.">
+      1. Open the seller documentation.
+      2. Open the script folder.
+      3. Open `fxmanifest.lua`.
+      4. Search for `dependencies`, `@ox_lib`, `exports`, and framework names.
+      5. Add every required resource above this script in `server.cfg`.
+      6. Write the dependency list in `stack-decision.md`.
+
+      ```
+      dependencies {
+        'ox_lib',
+        'oxmysql',
+        'qb-core'
+      }
+      ```
+  </Step>
+</StepGroup>
+
+## Failure recovery
+
+<Callout variant="info" title="No such export">
+  <Callout variant="danger">
+    The provider resource probably starts after the script that calls it, or is missing. Move the dependency above the script, run `refresh`, then restart both resources in order.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="cannot find @ox_lib/init.lua">
+  <Callout variant="danger">
+    Install `ox_lib`, ensure it above the script, and confirm the folder is named exactly `ox_lib`.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="Script says it supports multiple frameworks">
+  <Callout variant="danger">
+    Open its config and choose one framework bridge only. Do not enable QBCore and ESX at the same time.
+  </Callout>
+</Callout>
+
+## Pass condition
+
+You are done when `stack-decision.md` names one framework, core dependencies, replacement systems, SQL resources, and a tested ensure order. A developer should be able to read it and predict the boot order.

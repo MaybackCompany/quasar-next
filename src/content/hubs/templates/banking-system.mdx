@@ -1,0 +1,715 @@
+<LessonHero
+  crumbs="Banking system"
+  title="Banking system"
+  meta={[
+    { label: "Purpose", value: "Give players a working bank: deposit, withdraw, transfer." },
+    { label: "Dependencies", value: "ESX (es_extended) or QBCore (qb-core). No oxmysql needed: money lives in the framework." },
+    { label: "Files", value: "fxmanifest.lua, config/config.lua, locales/*.lua, server/server.lua, client/client.lua, and the html/ NUI." },
+    { label: "Open it", value: "Type /bank in chat to bring up the menu." },
+  ]}
+>
+  A drop-in bank menu your players open with `/bank`. They can deposit cash, withdraw from the bank, and transfer money to another player, all through a small NUI window. One config switch flips it between ESX and QBCore.
+</LessonHero>
+
+<Callout variant="fivem" title="How it fits together">
+  The client asks the server for the player's balance with a callback, then opens the NUI menu. Every button in the menu calls back to the client over `fetch`, the client validates the number and fires a server event, and the server moves the money using the framework's account functions. The server is the only place that touches money, which is exactly where that logic belongs.
+</Callout>
+
+## Files
+
+- **fxmanifest.lua**, declares the UI page, scripts, and the NUI files the client is allowed to load.
+- **config/config.lua**, picks the framework and language, and gives you the `_U` locale helper.
+- **locales/en.lua** and **locales/es.lua**, the notification text players see.
+- **server/server.lua**, the money logic: balance callback, deposit, withdraw, transfer, plus framework adapter functions.
+- **client/client.lua**, the `/bank` command, the NUI open event, and the NUI callbacks.
+- **html/index.html**, **html/css/style.css**, **html/js/script.js**, the menu the player sees and clicks.
+
+## fxmanifest.lua
+
+This is the resource's table of contents. The `ui_page` line tells FiveM which HTML to render, and the `files` block lists every NUI asset the client is allowed to fetch. If a CSS or JS file is missing from `files`, the menu will load blank, so keep that list in sync with your `html/` folder.
+
+```
+fx_version 'bodacious'
+game 'gta5'
+
+name "__.seerrgiioo.__"
+description "quasar university - leason 8"
+author "__.seerrgiioo.__"
+version "1.0.0"
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/css/style.css',
+    'html/js/script.js'
+}
+
+client_scripts {
+    'client/client.lua',
+}
+
+server_scripts {
+    'server/server.lua',
+}
+
+shared_scripts {
+    'config/config.lua',
+    'locales/*.lua'
+}
+```
+
+## config/config.lua
+
+One place to choose your framework and language. The `_U` function looks up a key in the active locale table, so the rest of the resource sends short keys like `deposit_success` instead of hardcoded sentences. Set `Config.Framework` to `'esx'` or `'qbcore'` and you are done.
+
+```
+Config = Config or {}
+Locales = Locales or {}
+Config.Framework = 'esx' -- Change to 'qbcore' if using QBCore
+Config.Locale = 'en' -- Default language ('en')
+
+function _U(key)
+    return Locales[Config.Locale][key] or key
+end
+```
+
+<Callout variant="tip" title="Tip">
+  Because `_U` falls back to the raw key when a translation is missing, a typo shows up in game as the key itself instead of a crash. That makes missing locale entries easy to spot.
+</Callout>
+
+## locales/en.lua and locales/es.lua
+
+These tables hold the short notification strings the player sees after each action. Add a new language by copying one of these files, changing the table name (the part in brackets), and translating the values. Then point `Config.Locale` at it.
+
+```
+Locales['en'] = {
+    ['deposit_success'] = 'Deposit successful!',
+    ['withdraw_success'] = 'Withdrawal successful!',
+    ['transfer_success'] = 'Transfer successful!',
+    ['invalid_amount'] = 'Invalid amount entered.',
+    ['error_retrieve'] = 'Error: Unable to retrieve bank details.'
+}
+```
+
+```
+Locales['es'] = {
+    ['deposit_success'] = '¡Depósito exitoso!',
+    ['withdraw_success'] = '¡Retiro exitoso!',
+    ['transfer_success'] = '¡Transferencia exitosa!',
+    ['invalid_amount'] = 'Cantidad no válida ingresada.',
+    ['error_retrieve'] = 'Error: No se pudieron obtener los detalles bancarios.'
+}
+```
+
+## server/server.lua
+
+This is the heart of the resource. It detects the framework, exposes a balance callback, and handles the three money events. Notice that every deposit, withdraw, and transfer re-checks the amount and the balance on the server before moving anything. That check is what keeps a player from sending a fake amount and printing money.
+
+### Framework detection
+
+At the top, the server grabs the right core object based on your config. If the name is wrong, it prints an error instead of silently doing nothing.
+
+```
+-- Detectar framework
+if Config.Framework == 'esx' then
+    ESX = exports['es_extended']:getSharedObject()
+elseif Config.Framework == 'qbcore' then
+    QBCore = exports['qb-core']:GetCoreObject()
+else
+    print('Error: Unsupported framework specified in config.')
+end
+```
+
+### Get balance callback
+
+When the player runs `/bank`, the client asks for these two numbers. The server reads the bank account and the cash on hand, then sends both back so the menu can show them.
+
+```
+-- Callback para obtener saldo
+if Config.Framework == 'esx' then
+    ESX.RegisterServerCallback('bank:getBalance', function(source, cb)
+        local xPlayer = ESX.GetPlayerFromId(source)
+        if not xPlayer then
+            cb(0, 0)
+            return
+        end
+
+        local balance = xPlayer.getAccount('bank').money
+        local cash = xPlayer.getMoney()
+        cb(balance, cash)
+    end)
+elseif Config.Framework == 'qbcore' then
+    QBCore.Functions.CreateCallback('bank:getBalance', function(source, cb)
+        local xPlayer = QBCore.Functions.GetPlayer(source)
+        if not xPlayer then
+            cb(0, 0)
+            return
+        end
+
+        local balance = xPlayer.Functions.GetMoney('bank')
+        local cash = xPlayer.Functions.GetMoney('cash')
+        cb(balance, cash)
+    end)
+end
+```
+
+### Deposit, withdraw, and transfer events
+
+Three net events, one per action. Each one looks up the player, reads the relevant balance, and only moves money when the amount is positive and the player actually has it. On success or failure it fires a notify back to the client with a locale key.
+
+```
+-- Eventos del servidor
+RegisterNetEvent('bank:server:deposit')
+AddEventHandler('bank:server:deposit', function(amount)
+    local src = source
+    local xPlayer = GetPlayerFromId(src)
+
+    if not xPlayer then
+        TriggerClientEvent('bank:client:notify', src, 'error_retrieve')
+        return
+    end
+
+    local cash = GetCash(xPlayer)
+
+    if amount > 0 and cash >= amount then
+        RemoveCash(xPlayer, amount)
+        AddBank(xPlayer, amount)
+        TriggerClientEvent('bank:client:notify', src, 'deposit_success')
+    else
+        TriggerClientEvent('bank:client:notify', src, 'invalid_amount')
+    end
+end)
+
+RegisterNetEvent('bank:server:withdraw')
+AddEventHandler('bank:server:withdraw', function(amount)
+    local src = source
+    local xPlayer = GetPlayerFromId(src)
+
+    if not xPlayer then
+        TriggerClientEvent('bank:client:notify', src, 'error_retrieve')
+        return
+    end
+
+    local bank = GetBank(xPlayer)
+
+    if amount > 0 and bank >= amount then
+        AddCash(xPlayer, amount)
+        RemoveBank(xPlayer, amount)
+        TriggerClientEvent('bank:client:notify', src, 'withdraw_success')
+    else
+        TriggerClientEvent('bank:client:notify', src, 'invalid_amount')
+    end
+end)
+
+RegisterNetEvent('bank:server:transfer')
+AddEventHandler('bank:server:transfer', function(targetId, amount)
+    local src = source
+    local xPlayer = GetPlayerFromId(src)
+    local targetPlayer = GetPlayerFromId(targetId)
+
+    if not xPlayer or not targetPlayer then
+        TriggerClientEvent('bank:client:notify', src, 'error_retrieve')
+        return
+    end
+
+    local bank = GetBank(xPlayer)
+
+    if amount > 0 and bank >= amount then
+        RemoveBank(xPlayer, amount)
+        AddBank(targetPlayer, amount)
+        TriggerClientEvent('bank:client:notify', src, 'transfer_success')
+    else
+        TriggerClientEvent('bank:client:notify', src, 'invalid_amount')
+    end
+end)
+```
+
+### Framework adapter functions
+
+The events above never call ESX or QBCore directly. Instead they call these small helpers, and the helper decides which framework function to use. This is the trick that lets one resource serve both frameworks: to add support for a third, you only edit these functions.
+
+```
+-- Funciones auxiliares
+function GetPlayerFromId(playerId)
+    if Config.Framework == 'esx' then
+        return ESX.GetPlayerFromId(playerId)
+    elseif Config.Framework == 'qbcore' then
+        return QBCore.Functions.GetPlayer(playerId)
+    end
+end
+
+function GetCash(player)
+    if Config.Framework == 'esx' then
+        return player.getMoney()
+    elseif Config.Framework == 'qbcore' then
+        return player.Functions.GetMoney('cash')
+    end
+end
+
+function AddCash(player, amount)
+    if Config.Framework == 'esx' then
+        player.addMoney(amount)
+    elseif Config.Framework == 'qbcore' then
+        player.Functions.AddMoney('cash', amount)
+    end
+end
+
+function RemoveCash(player, amount)
+    if Config.Framework == 'esx' then
+        player.removeMoney(amount)
+    elseif Config.Framework == 'qbcore' then
+        player.Functions.RemoveMoney('cash', amount)
+    end
+end
+
+function GetBank(player)
+    if Config.Framework == 'esx' then
+        return player.getAccount('bank').money
+    elseif Config.Framework == 'qbcore' then
+        return player.Functions.GetMoney('bank')
+    end
+end
+
+function AddBank(player, amount)
+    if Config.Framework == 'esx' then
+        player.addAccountMoney('bank', amount)
+    elseif Config.Framework == 'qbcore' then
+        player.Functions.AddMoney('bank', amount)
+    end
+end
+
+function RemoveBank(player, amount)
+    if Config.Framework == 'esx' then
+        player.removeAccountMoney('bank', amount)
+    elseif Config.Framework == 'qbcore' then
+        player.Functions.RemoveMoney('bank', amount)
+    end
+end
+```
+
+<Callout variant="danger" title="Never trust the amount the client sends">
+  The client can send any number it wants. The reason this template is safe is that the server reads the player's real balance with `GetCash` or `GetBank` and refuses the action unless `amount > 0` and the player has the funds. If you ever move that check to the client, you hand players an exploit. Keep all money math on the server.
+</Callout>
+
+## client/client.lua
+
+The client is the bridge between the player and the server. It registers the `/bank` command, opens the NUI menu when the balance comes back, and turns NUI button presses into server events. It never moves money itself: it only forwards validated requests.
+
+### Framework init and the /bank command
+
+On resource start the client grabs the same core object. The `/bank` command asks the server for the balance and cash, and only opens the menu once both values arrive.
+
+```
+local Framework = nil
+local FrameworkName = Config.Framework
+
+Citizen.CreateThread(function()
+    if FrameworkName == 'esx' then
+        Framework = exports['es_extended']:getSharedObject()
+    elseif FrameworkName == 'qbcore' then
+        Framework = exports['qb-core']:GetCoreObject()
+    else
+        print('Error: Unsupported framework specified in config.')
+    end
+end)
+
+RegisterCommand('bank', function()
+    if FrameworkName == 'esx' then
+        Framework.TriggerServerCallback('bank:getBalance', function(balance, cash)
+            if balance and cash then
+                TriggerEvent('bank:client:openMenu', balance, cash)
+            else
+                print('Error: Unable to retrieve balance.')
+            end
+        end)
+    elseif FrameworkName == 'qbcore' then
+        Framework.Functions.TriggerCallback('bank:getBalance', function(balance, cash)
+            if balance and cash then
+                TriggerEvent('bank:client:openMenu', balance, cash)
+            else
+                print('Error: Unable to retrieve balance.')
+            end
+        end)
+    else
+        print('Error: Unsupported framework specified in config.')
+    end
+end)
+```
+
+### Opening the NUI menu
+
+This event hands control to the mouse. `SetNuiFocus(true, true)` lets the player click the menu, and `SendNUIMessage` pushes the balance and cash into the page so the JavaScript can display them.
+
+```
+RegisterNetEvent('bank:client:openMenu')
+AddEventHandler('bank:client:openMenu', function(balance, cash)
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        action = 'openMenu',
+        balance = balance,
+        cash = cash
+    })
+end)
+```
+
+### NUI callbacks
+
+Each button in the menu posts back to one of these callbacks. The client does a first sanity check with `tonumber`, fires the matching server event, and answers the UI with `ok` or `error`. The `close` callback releases focus so the player can move again.
+
+```
+RegisterNUICallback('deposit', function(data, cb)
+    local amount = tonumber(data.amount)
+    if amount and amount > 0 then
+        TriggerServerEvent('bank:server:deposit', amount)
+        cb('ok')
+    else
+        cb('error')
+    end
+end)
+
+RegisterNUICallback('withdraw', function(data, cb)
+    local amount = tonumber(data.amount)
+    if amount and amount > 0 then
+        TriggerServerEvent('bank:server:withdraw', amount)
+        cb('ok')
+    else
+        cb('error')
+    end
+end)
+
+RegisterNUICallback('transfer', function(data, cb)
+    local targetId = tonumber(data.targetId)
+    local amount = tonumber(data.amount)
+    if targetId and amount and amount > 0 then
+        TriggerServerEvent('bank:server:transfer', targetId, amount)
+        cb('ok')
+    else
+        cb('error')
+    end
+end)
+
+RegisterNUICallback('close', function(_, cb)
+    SetNuiFocus(false, false)
+    cb('ok')
+end)
+```
+
+### The notify handler
+
+When the server reports back, this handler runs the locale key through `_U` and shows it as a native GTA notification. That is why the server only ever sends short keys: the client decides the language.
+
+```
+RegisterNetEvent('bank:client:notify')
+AddEventHandler('bank:client:notify', function(messageKey)
+    local message = _U(messageKey)
+    SetNotificationTextEntry("STRING")
+    AddTextComponentString(message)
+    DrawNotification(false, true)
+end)
+```
+
+<Callout variant="warn" title="Focus is a two-step dance">
+  Whenever you call `SetNuiFocus(true, true)` to open a menu, you must call `SetNuiFocus(false, false)` to close it. If the `close` callback never fires, the player is stuck with a cursor and frozen controls. Always give the player a way out.
+</Callout>
+
+## html/index.html
+
+The NUI markup is small on purpose. There is the main menu with the balance, the cash, and four buttons, plus a hidden modal that doubles as the input box for all three actions. The target ID field only shows up for transfers.
+
+```
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank Menu</title>
+    <link rel="stylesheet" href="/templates/banking-system/css/style.css">
+</head>
+<body>
+    <div id="bankMenu" style="display: none;">
+        <h1>Bank Menu</h1>
+        <p id="balance">Account Balance: $0</p>
+        <p id="cash">Cash: $0</p>
+        <button id="depositButton">Deposit</button>
+        <button id="withdrawButton">Withdraw</button>
+        <button id="transferButton">Transfer</button>
+        <button id="closeButton">Close</button>
+    </div>
+
+    <div id="modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2 id="modalTitle"></h2>
+            <input id="modalInput" type="number" placeholder="Enter amount" />
+            <input id="modalTarget" type="number" placeholder="Enter target ID" style="display: none;" />
+            <button id="confirmButton">Confirm</button>
+            <button id="cancelButton">Cancel</button>
+        </div>
+    </div>
+
+    <script src="/templates/banking-system/js/script.js"></script>
+</body>
+</html>
+```
+
+## html/js/script.js
+
+This script wires up the menu. It listens for the `openMenu` message from the client to fill in the numbers, opens the modal with the right title per action, and on confirm it posts the amount (and target ID for transfers) back to the client over `fetch`. `GetParentResourceName()` is the FiveM helper that gives the script its own resource name so the URL resolves.
+
+```
+window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (data.action === 'openMenu') {
+        document.getElementById('bankMenu').style.display = 'block';
+        document.getElementById('balance').textContent = `Account Balance: $${data.balance}`;
+        document.getElementById('cash').textContent = `Cash: $${data.cash}`;
+    }
+});
+
+document.getElementById('closeButton').addEventListener('click', () => {
+    document.getElementById('bankMenu').style.display = 'none';
+    fetch(`https://${GetParentResourceName()}/close`, { method: 'POST' });
+});
+
+const modal = document.getElementById('modal');
+const modalTitle = document.getElementById('modalTitle');
+const modalInput = document.getElementById('modalInput');
+const modalTarget = document.getElementById('modalTarget');
+const confirmButton = document.getElementById('confirmButton');
+const cancelButton = document.getElementById('cancelButton');
+
+let currentAction = null;
+
+// Show modal
+function openModal(action) {
+    modal.style.display = 'flex';
+    modalInput.value = '';
+    modalTarget.value = '';
+    modalTarget.style.display = action === 'transfer' ? 'block' : 'none';
+
+    switch (action) {
+        case 'deposit':
+            modalTitle.textContent = 'Deposit Money';
+            break;
+        case 'withdraw':
+            modalTitle.textContent = 'Withdraw Money';
+            break;
+        case 'transfer':
+            modalTitle.textContent = 'Transfer Money';
+            break;
+    }
+    currentAction = action;
+}
+
+// Close modal
+function closeModal() {
+    modal.style.display = 'none';
+    currentAction = null;
+}
+
+// Handle confirm
+confirmButton.addEventListener('click', () => {
+    const amount = parseFloat(modalInput.value);
+    const targetId = parseInt(modalTarget.value);
+
+    if (!amount || amount <= 0 || (currentAction === 'transfer' && !targetId)) {
+        alert('Please enter a valid amount or target ID.');
+        return;
+    }
+
+    switch (currentAction) {
+        case 'deposit':
+            fetch(`https://${GetParentResourceName()}/deposit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount })
+            });
+            break;
+        case 'withdraw':
+            fetch(`https://${GetParentResourceName()}/withdraw`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount })
+            });
+            break;
+        case 'transfer':
+            fetch(`https://${GetParentResourceName()}/transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount, targetId })
+            });
+            break;
+    }
+
+    closeModal();
+});
+
+// Handle cancel
+cancelButton.addEventListener('click', closeModal);
+
+// Attach modal to buttons
+document.getElementById('depositButton').addEventListener('click', () => openModal('deposit'));
+document.getElementById('withdrawButton').addEventListener('click', () => openModal('withdraw'));
+document.getElementById('transferButton').addEventListener('click', () => openModal('transfer'));
+```
+
+<Callout variant="tip" title="Tip">
+  The `alert()` on bad input is fine for a first pass, but it pauses the whole UI thread. When you polish this menu, swap it for an inline error message under the input so the player stays in flow.
+</Callout>
+
+## html/css/style.css
+
+The styling keeps the menu centered and readable, with a simple modal that fades and slides in. Nothing here is load-bearing for the logic, so this is the first file to restyle when you want the bank to match your server's look.
+
+```
+#bankMenu {
+    width: 400px;
+    margin: 50px auto;
+    padding: 20px;
+    background: linear-gradient(135deg, #1e1e2f, #252540);
+    border-radius: 8px;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+#bankMenu button {
+    margin: 10px;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+}
+
+#bankMenu button:hover {
+    background-color: #0056b3;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7); /* Dark transparent background */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease; /* Smooth fade-in animation */
+}
+
+.modal-content {
+    background: #2c2f33; /* Dark theme */
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    width: 350px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    animation: slideIn 0.4s ease; /* Smooth slide-in animation */
+    color: #ffffff; /* Text color */
+    font-family: Arial, sans-serif;
+}
+
+.modal-content h2 {
+    font-size: 22px;
+    margin-bottom: 20px;
+    color: #f4b400; /* Highlight color for the title */
+    font-weight: bold;
+}
+
+.modal-content input {
+    width: calc(100% - 20px);
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #444;
+    border-radius: 8px;
+    background: #23272a; /* Slightly lighter background for inputs */
+    color: #ffffff;
+    font-size: 16px;
+    box-sizing: border-box;
+}
+
+.modal-content input::placeholder {
+    color: #b0b3b8; /* Placeholder color */
+    opacity: 0.8;
+}
+
+.modal-content button {
+    margin: 10px 5px;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.modal-content button#confirmButton {
+    background: #4caf50; /* Green for confirm */
+    color: white;
+}
+
+.modal-content button#confirmButton:hover {
+    background: #45a049;
+}
+
+.modal-content button#cancelButton {
+    background: #f44336; /* Red for cancel */
+    color: white;
+}
+
+.modal-content button#cancelButton:hover {
+    background: #d32f2f;
+}
+
+.modal-content button:active {
+    transform: scale(0.98); /* Slight scale-down on click */
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+```
+
+## Install
+
+1. Create `resources/[local]/qu_bank/` and drop the file tree above inside it.
+2. Open `config/config.lua` and set `Config.Framework` to `'esx'` or `'qbcore'`.
+3. Make sure `es_extended` or `qb-core` starts before this resource in your `server.cfg`.
+4. Add `ensure qu_bank` after your framework line.
+5. Restart the server, join, and type `/bank` to open the menu.
+
+## Testing
+
+- Run `/bank` and confirm the balance and cash match your character.
+- Deposit a small amount, then withdraw it, and watch the numbers move the right way.
+- Get a second player nearby, note their server ID, and transfer them a few dollars.
+- Try an empty or negative amount and confirm you get the `invalid_amount` notification, not a balance change.
+- Flip `Config.Framework` and re-run the same checks to confirm both frameworks behave the same.
+
+## Make it yours
+
+- **Framework and language:** set `Config.Framework` and `Config.Locale` in `config/config.lua`.
+- **Wording:** edit the strings in `locales/en.lua`, or add a new locale file and point the config at it.
+- **Look:** restyle `html/css/style.css` to match your server. The logic does not depend on the colors.
+- **Limits:** if you want a max transfer or a fee, add that check in the server events in `server/server.lua`, never in the NUI.

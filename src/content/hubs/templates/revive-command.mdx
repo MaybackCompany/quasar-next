@@ -1,0 +1,135 @@
+<LessonHero
+  crumbs="Revive command"
+  title="Revive command"
+  meta={[
+    { label: "Purpose", value: "Revive a player by ID with a single chat command." },
+    { label: "Dependencies", value: "None. Native calls only, no framework, no ox_lib, no oxmysql." },
+    { label: "Files", value: "2 sides: a client command sender and a server validator, plus the client revive handler." },
+    { label: "Command", value: "/revive 3 revives the player whose server ID is 3." },
+    { label: "Pattern", value: "client command, server validate, client act, with named net events." },
+  ]}
+>
+  A `/revive` command that brings a downed player back up by ID. The client registers the command, the server checks the target is real, and the target client restores its own health. A clean walk through the server and client event split.
+</LessonHero>
+
+<Callout variant="tip" title="How to drop it in">
+  Put the server block in a `server.lua` and the client blocks in a `client.lua`, list both in your `fxmanifest.lua` under `server_scripts` and `client_scripts`, then add `ensure` for your resource in `server.cfg`. Restart, go down in-game, and have someone run `/revive` on your ID.
+</Callout>
+
+<Callout variant="fivem" title="Why this crosses the client and server wall">
+  You cannot revive someone else from your own client: you do not own their ped. So the command runs on the client, hands the target ID to the server, the server confirms that player is actually connected, and then it tells that player's client to heal itself. Three hops, each on the side that has the right to act. This is the core FiveM pattern worth memorizing.
+</Callout>
+
+## RegisterCommand
+
+This creates the in-game command players type to start the revive.
+
+```
+RegisterCommand('revive', function(source, args)
+    -- here goes the code
+end)
+```
+
+- `source`: the ID of the player who ran the command.
+- `args`: a table of the extra words typed after the command.
+
+## Read the target player ID
+
+The first argument after the command is the target. `tonumber` turns that text into a number you can use as a player ID.
+
+```
+RegisterCommand('revive', function(source, args)
+    local target_id = tonumber(args[1]) -- Using the first argument as the player ID.
+end)
+```
+
+### A word on RegisterNetEvent
+
+The [RegisterNetEvent](https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/) function lets you register custom events on the client or the server. These events are how the two sides talk to each other in FiveM. Once an event is registered you can fire it with `TriggerEvent` on the same side, or `TriggerClientEvent` and `TriggerServerEvent` to cross sides.
+
+```
+RegisterNetEvent("myCustomEvent")
+AddEventHandler("myCustomEvent", function(data)
+    print("Event received with data: " .. data)
+end)
+```
+
+<Callout variant="danger" title="Validate and lock down your events">
+  Always validate incoming data and stop unauthorized players from triggering events. A net event anyone can fire is a net event exploiters will fire. In a real server, gate `/revive` behind an admin check before you trust the caller, and never assume the data on an event is clean.
+</Callout>
+
+## Server: validate the target
+
+The server receives the target ID, confirms that player is actually connected, then tells their client to revive. The ping check is a cheap way to prove the player exists: a real connected player has a ping above zero.
+
+```
+RegisterNetEvent("qs-university:server:revive")
+AddEventHandler("qs-university:server:revive", function(target_id)
+    local src = source -- source is the player who executed the command
+
+    if target_id and GetPlayerPing(target_id) > 0 then -- Check if the player ID is valid
+        TriggerClientEvent("qs-university:client:revive", target_id)
+
+        print(string.format("The player [%s] has been revived by [%s].", target_id, src))
+    else
+        print(string.format("The player [%s] does not exist or is not connected.", target_id))
+    end
+end)
+```
+
+- `local src = source`: captures who sent the command, useful for the log line.
+- `GetPlayerPing(target_id) > 0`: confirms the target is a real, connected player before you act.
+- `TriggerClientEvent("qs-university:client:revive", target_id)`: fires the client revive on the target only. That client event is created in the next section.
+- The two `print` lines are debug logs: the first prints on a valid ID, the second on an invalid one.
+
+### A word on string.format
+
+The `string.format` method returns a formatted string. It works like `printf` in C: you write placeholders such as `%s` for strings and `%d` for integers, and the values fill in. It is handy for building readable log lines out of variables.
+
+```
+string.format("Hello, %s! You have %d new messages.", "John", 5)
+```
+
+## Client: do the revive
+
+This handler runs on the target player's client. It grabs their ped, checks they are actually dead, sets their health back up, and clears any death animation still playing.
+
+```
+RegisterNetEvent("qs-university:client:revive")
+AddEventHandler("qs-university:client:revive", function()
+    local playerPed = PlayerPedId() -- Getting the player's ped
+
+    if IsEntityDead(playerPed) then -- Check if the player is dead
+        SetEntityHealth(playerPed, 200) -- Set the player's health to 200
+        ClearPedTasksImmediately(playerPed) -- Clear the player's tasks like animations
+
+        print("You have been revived.") -- Debug message in the console if the player is revived
+    end
+end)
+```
+
+- `PlayerPedId()`: returns the local player entity to act on.
+- `IsEntityDead(playerPed)`: only revives when the player is actually down.
+- `SetEntityHealth(playerPed, 200)`: restores health. 200 is full health for a player ped.
+- `ClearPedTasksImmediately(playerPed)`: stops the death animation so they stand straight back up.
+
+<Callout variant="warn" title="Wire the command to the server event">
+  The three blocks above are the pieces. To connect them, your `/revive` command needs to call `TriggerServerEvent("qs-university:server:revive", target_id)` after it reads `target_id`. Without that line the command reads the ID and then does nothing. The event names must match exactly across both files or the hop silently fails.
+</Callout>
+
+## Test it
+
+1. Add the resource to `server.cfg` with an `ensure` line for your folder name.
+2. Start the server, join, and get yourself downed in-game.
+3. Have a second player (or yourself, if you know your server ID) run `/revive <id>` and watch the health come back.
+
+<Callout variant="tip" title="Read the console">
+  The `print` lines tell you exactly where you are. A "has been revived" log with no health change means the client event name is mismatched. A "does not exist" log means the target ID was wrong or not connected.
+</Callout>
+
+## Make it yours
+
+- Rename the event strings from `qs-university:server:revive` and `qs-university:client:revive` to your own prefix, and keep both sides in sync.
+- Add an admin or permission check at the top of the server handler before you trust the caller, so not every player can revive at will.
+- Change the revive health from `200` if your server uses a different max, or add a short animation and a chat confirmation on the client side.
+- Swap the ping check for your framework's "is player online" helper if you already run one, but keep some validation: never act on an unchecked ID.

@@ -1,0 +1,523 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 05 · Lesson 18</span></div>
+        <h1>ox_target: "press E to interact", done right</h1>
+        <p class="lede">Most FiveM servers have things players can interact with: NPCs, doors, trunks, registers, ATMs. Before <code>ox_target</code>, building those interactions meant lots of repeated distance checks and prompt code. With <code>ox_target</code>, most of that becomes one small options table. This lesson teaches that pattern slowly.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>addModel</code> for peds and props -> <code>addGlobalPlayer</code> for other players -> <code>addBoxZone</code> for world regions -> <code>canInteract</code> -> the shared option schema</dd></div>
+          <div><dt>Time</dt><dd>~25 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 16 (ox_lib) and Lesson 17 (Qbox). <code>ox_target</code> installed.</dd></div>
+          <div><dt>Outcome</dt><dd>A merchant ped, an ATM zone, and a "give cash" option on other players, all using the same target system.</dd></div>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 18: ox_target interactions</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>ox_target creates interactable zones and entities.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find target options in client files.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Add one zone with one option first.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Create one box zone and print when selected.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small oxtarget example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Target</dt><dd>An interactable point or entity.<br><span>Example: a box zone opens a menu.</span></dd></div>
+            <div><dt tabindex="0">Option</dt><dd>One action shown to the player.<br><span>Example: Search trunk is one option.</span></dd></div>
+            <div><dt tabindex="0">Zone</dt><dd>A shaped area that can be interacted with.<br><span>Example: addBoxZone creates one.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_target</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_target/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_target</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][oxtarget]">
+            <header><span class="file">qu_target/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'oxtarget'
+
+RegisterCommand('quiet_17', function()
+    print(('[QUIET][%s][command] client ran'):format(MODULE))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][oxtarget]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_target</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>oxtarget_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][oxtarget_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_target' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="prereq" data-lesson="17">
+        <h2>Before you start</h2>
+        <ul>
+          <li><label><input type="checkbox" data-id="oxtarget"> <code>ox_target</code> resource is installed and started</label></li>
+          <li><label><input type="checkbox" data-id="qbox"> Qbox player object is accessible (Lesson 17)</label></li>
+          <li><label><input type="checkbox" data-id="peds"> I've spawned a ped at least once using <code>CreatePed</code> or an equivalent (Lesson 11)</label></li>
+        </ul>
+      </section>
+
+      <section class="reading-panel">
+        <h3>How to read this lesson</h3>
+        <p>Ignore the big API feeling. ox_target is one simple idea: attach options to a thing. Learn one shape first. Then see it on a ped, on a zone, and on another player.</p>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: attach options to things</h2>
+        <p>The main idea behind ox_target is simple: instead of writing your own distance checks and prompt text every frame, you tell the library which thing has which options. The library handles the eye, the hover, and the click.</p>
+
+        <p>There are four flavours of "thing" you can attach options to:</p>
+        <ul>
+          <li><strong>Models</strong>: any ped or prop with a matching model hash. Spawn 10 mechanics; they all get the same menu.</li>
+          <li><strong>Specific entities</strong>: one particular vehicle, prop, or ped you've spawned. Menus are unique to that entity.</li>
+          <li><strong>Global players</strong>: options on every other player's body. "Check ID", "handcuff", "give cash".</li>
+          <li><strong>Zones</strong>: arbitrary 3D regions in the world: a box, sphere, or polygon. Great for robbing registers, entering buildings, turning in contracts.</li>
+        </ul>
+        <p>Same option schema for all four. Learn one shape, then reuse it on peds, props, players, and zones.</p>
+      </section>
+
+      <section id="schema">
+        <h2>The option schema: the shape you'll memorise</h2>
+        <p>Every interaction option is a table with the same fields. Here's the full list, most are optional.</p>
+
+        <figure class="code">
+          <header><span>an ox_target option, the full shape</span></header>
+          <pre><code class="language-lua">{
+    name = 'qu_merchant_buy',     -- unique id, for removing later
+    label = 'Buy a pizza',        -- what the player sees
+    icon = 'fa-solid fa-pizza-slice', -- Font Awesome class
+    distance = 2.0,                -- max range in metres
+    canInteract = function(entity, distance, coords, name)
+        return Player and Player.PlayerData.money.cash &gt;= 5
+    end,
+    onSelect = function(data)
+        TriggerServerEvent('qu:server:buyPizza')
+    end,
+    groups = { 'police', 'ambulance' }, -- job-gated (optional)
+    items = 'phone',               -- require an item (optional)
+}</code></pre>
+        </figure>
+
+        <p>The three fields you'll touch 90% of the time: <code>label</code> (the text), <code>icon</code> (any Font Awesome class), and <code>onSelect</code> (the function that runs when the player clicks). The rest are gates, distance, condition, job, item, and you reach for them as the script grows.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2><code>addModel</code>: a merchant ped</h2></header>
+        <p class="step-outcome">Outcome: every spawned ped of the chosen model glows when you look at it and offers a "Buy pizza" option.</p>
+        <div class="step-body">
+          <p>Build <code>qu_target</code>. Spawn a mafia boss ped in a fixed spot, then attach a target option to his model. Any ped of that model anywhere on the map will inherit the same menu, handy when you have multiple mechanics, shopkeepers, or drug dealers.</p>
+
+          <figure class="code">
+            <header><span>qu_target/client/main.lua</span></header>
+            <pre><code class="language-lua">local merchantPed
+
+CreateThread(function()
+    local model = `mp_m_shopkeep_01`  -- backtick = GetHashKey
+    RequestModel(model)
+    while not HasModelLoaded(model) do Wait(0) end
+
+    merchantPed = CreatePed(4, model, -47.5, -1757.7, 29.4, 40.0, false, true)
+    FreezeEntityPosition(merchantPed, true)
+    SetEntityInvincible(merchantPed, true)
+    SetBlockingOfNonTemporaryEvents(merchantPed, true)
+end)
+
+exports.ox_target:addModel(`mp_m_shopkeep_01`, {
+    {
+        name = 'qu_merchant_pizza',
+        label = 'Buy a pizza ($5)',
+        icon = 'fa-solid fa-pizza-slice',
+        distance = 2.0,
+        onSelect = function()
+            TriggerServerEvent('qu:server:buyPizza')
+        end,
+    },
+    {
+        name = 'qu_merchant_talk',
+        label = 'Chat',
+        icon = 'fa-solid fa-comment',
+        distance = 2.5,
+        onSelect = function()
+            lib.notify({ description = '"Nice weather for a heist."' })
+        end,
+    },
+})</code></pre>
+          </figure>
+
+          <p>Spawn in game, walk to the Pillbox corner store, look at the clerk, the eye cursor appears with two options. Click pizza and the server event fires. No raycasting. No distance math. Just a declaration.</p>
+
+          <div class="callout callout--fivem">
+            <header>Why <code>CreateThread</code> for the ped</header>
+            <p>Model loading and entity creation are async operations, they can't live at file top level. Wrap in <code>CreateThread</code> so they happen after the script runs and don't block the main flow. This is a pattern you'll repeat, every FiveM script that spawns entities wraps creation in a thread.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2><code>addBoxZone</code>: robbable ATM spots</h2></header>
+        <p class="step-outcome">Outcome: a specific 3D region of the world triggers a target option, without needing an entity.</p>
+        <div class="step-body">
+          <p>Sometimes the thing you want to target isn't a ped or prop, it's a location. A spot in an alley where drug deals happen. A tile where the laundromat laundering happens. The doorknob of a building you want players to enter. That's a zone.</p>
+
+          <figure class="code">
+            <header><span>qu_target/client/main.lua (append)</span></header>
+            <pre><code class="language-lua">exports.ox_target:addBoxZone({
+    coords = vec3(146.2, -1040.2, 29.4),
+    size = vec3(1.0, 1.0, 2.0),
+    rotation = 0.0,
+    debug = false,   -- set true to draw the box in-game while designing
+    options = {
+        {
+            name = 'qu_atm_rob',
+            label = 'Rob ATM',
+            icon = 'fa-solid fa-sack-dollar',
+            distance = 1.5,
+            groups = { 'unemployed', 'criminal' },
+            canInteract = function()
+                -- server will re-check, but skip UI for on-duty cops
+                return PlayerData and PlayerData.job.name ~= 'police'
+            end,
+            onSelect = function()
+                TriggerServerEvent('qu:server:robAtm', 'pillbox-north')
+            end,
+        },
+    },
+})</code></pre>
+          </figure>
+
+          <p>Three knobs worth exploring: <code>coords</code> and <code>size</code> define the box; <code>debug = true</code> draws the box in-game so you can see what you're placing. <code>groups</code> limits the interaction to certain jobs. <code>canInteract</code> is a live-check function that runs every time the player hovers, use it for "should this show right now".</p>
+
+          <div class="callout callout--pro">
+            <header>Two layers of gating, both necessary</header>
+            <p><code>canInteract</code> and <code>groups</code> are UX, they hide the option. But the server must still enforce the rule when the event fires. A cheater can ignore UX; they can't ignore server validation. UX gate + server gate = a good design.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2><code>addGlobalPlayer</code>: actions on other players</h2></header>
+        <p class="step-outcome">Outcome: looking at another player offers context-specific options like "give cash" or "handcuff".</p>
+        <div class="step-body">
+          <p>Every RP server needs player-on-player interactions. ox_target makes this trivial with <code>addGlobalPlayer</code>: options added to every other player's body, filtered by job and condition.</p>
+
+          <figure class="code">
+            <header><span>qu_target/client/main.lua (append)</span></header>
+            <pre><code class="language-lua">exports.ox_target:addGlobalPlayer({
+    {
+        name = 'qu_give_cash',
+        label = 'Give cash',
+        icon = 'fa-solid fa-hand-holding-dollar',
+        distance = 1.5,
+        onSelect = function(data)
+            local input = lib.inputDialog('Give cash', {
+                { type = 'number', label = 'Amount', min = 1, max = 10000, required = true },
+            })
+            if not input then return end
+            TriggerServerEvent('qu:server:giveCash', GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity)), input[1])
+        end,
+    },
+    {
+        name = 'qu_handcuff',
+        label = 'Handcuff',
+        icon = 'fa-solid fa-lock',
+        distance = 2.0,
+        groups = { 'police', 'sheriff' },
+        canInteract = function()
+            return PlayerData and PlayerData.job.onduty
+        end,
+        onSelect = function(data)
+            TriggerServerEvent('qu:server:handcuff', GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity)))
+        end,
+    },
+})</code></pre>
+          </figure>
+
+          <p>The <code>onSelect</code> function receives a <code>data</code> table that includes <code>entity</code>: the ped of the targeted player. Convert to server id via <code>GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity))</code>. That server id is what you send to the server, which then uses it (after validation) as <code>source</code>'s target.</p>
+
+          <details class="explain">
+            <summary>Never trust the target id the client sent</summary>
+            <p>The client could lie, <em>but so could the target</em>. The server must verify: is the sender near the target? Is the sender on duty? Does the sender have authority? Otherwise you've built a remote-handcuff exploit that works across the map. Target ids are a starting point for server checks, not a permission slip.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Cleanup: remove when done, always</h2></header>
+        <p class="step-outcome">Outcome: restarting your resource doesn't leave orphaned target options hanging around.</p>
+        <div class="step-body">
+          <p>Every <code>addModel</code>, <code>addBoxZone</code>, <code>addGlobalPlayer</code> call needs a matching remove on resource stop. Otherwise, every restart stacks more options on the same models, five "Buy pizza" entries, five "Chat" entries. Players hate it; debugging is worse.</p>
+
+          <figure class="code">
+            <header><span>qu_target/client/main.lua (append)</span></header>
+            <pre><code class="language-lua">AddEventHandler('onResourceStop', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+
+    exports.ox_target:removeModel(`mp_m_shopkeep_01`, { 'qu_merchant_pizza', 'qu_merchant_talk' })
+    exports.ox_target:removeZone('qu_atm_rob')
+    exports.ox_target:removeGlobalPlayer({ 'qu_give_cash', 'qu_handcuff' })
+
+    if merchantPed and DoesEntityExist(merchantPed) then
+        DeleteEntity(merchantPed)
+    end
+end)</code></pre>
+          </figure>
+
+          <p>Match the <code>name</code> fields you gave when adding. Remove takes either a single name string or a table of them. Delete any entities you spawned, orphan peds leak memory and look silly. This block of cleanup is worth writing before the feature works; it means every restart is clean.</p>
+
+          <div class="callout callout--tip">
+            <header>The symmetry rule</header>
+            <p>For every side-effect your script creates on start, an option, a ped, a blip, a command, write the matching cleanup in <code>onResourceStop</code>. It takes 60 seconds now and saves you two hours of ghost-debugging later.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Design the mechanic shop</h3></header>
+        <p>Sketch the target options for a mechanic shop entrance. Requirements:</p>
+        <ul>
+          <li>A ped inside the shop whose options depend on job.</li>
+          <li>Mechanics see: "Open parts menu", "Clock off".</li>
+          <li>Non-mechanics see: "Apply for work".</li>
+          <li>All options require being within 2 metres.</li>
+        </ul>
+        <p>Write the <code>addModel</code> call, then open the solution.</p>
+
+        <div class="self-check">
+          <details>
+            <summary>The solution</summary>
+            <figure class="code">
+              <header><span>client/main.lua</span></header>
+              <pre><code class="language-lua">exports.ox_target:addModel(`s_m_y_xmech_02`, {
+    {
+        name = 'qu_mech_parts',
+        label = 'Open parts menu',
+        icon = 'fa-solid fa-wrench',
+        distance = 2.0,
+        canInteract = function()
+            return PlayerData and PlayerData.job.name == 'mechanic' and PlayerData.job.onduty
+        end,
+        onSelect = function() lib.showContext('qu_mech_parts_menu') end,
+    },
+    {
+        name = 'qu_mech_clockoff',
+        label = 'Clock off',
+        icon = 'fa-solid fa-clock',
+        distance = 2.0,
+        canInteract = function()
+            return PlayerData and PlayerData.job.name == 'mechanic' and PlayerData.job.onduty
+        end,
+        onSelect = function() TriggerServerEvent('qu:server:toggleDuty') end,
+    },
+    {
+        name = 'qu_mech_apply',
+        label = 'Apply for work',
+        icon = 'fa-solid fa-user-plus',
+        distance = 2.0,
+        canInteract = function()
+            return PlayerData and PlayerData.job.name ~= 'mechanic'
+        end,
+        onSelect = function() TriggerServerEvent('qu:server:applyMechanic') end,
+    },
+})</code></pre>
+            </figure>
+            <p>Notice how <code>canInteract</code> shapes the UX, each option appears only when relevant. The server still enforces the real job change when the event fires.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Trust rule refresh</h3></header>
+        <p>A new developer builds a <code>/givecash</code> target option. The <code>onSelect</code> grabs the target's server id and sends it plus the amount to a server event. The server event takes the money from the sender and gives it to the target. Name every trust violation this design has and sketch the fix.</p>
+
+        <div class="self-check">
+          <details>
+            <summary>The answer</summary>
+            <ol>
+              <li><strong>Target id is client-supplied.</strong> The cheater sends any server id. <strong>Fix:</strong> accept the id but verify the sender is within 2 metres of the target on the server (<code>#(senderCoords - targetCoords) &lt; 2.0</code>).</li>
+              <li><strong>Amount is client-supplied.</strong> A cheater sends a negative number to <em>steal</em> cash instead of giving it. <strong>Fix:</strong> <code>if type(amount) ~= 'number' or amount &lt;= 0 or amount &gt; 100000 then return end</code>.</li>
+              <li><strong>Sender balance unchecked.</strong> They might not have the cash. <strong>Fix:</strong> re-read <code>Player.PlayerData.money.cash</code> and compare.</li>
+              <li><strong>Target validity unchecked.</strong> Server id might be invalid or disconnected. <strong>Fix:</strong> <code>if not Target then return end</code> after <code>GetPlayer</code>.</li>
+            </ol>
+            <p>Four checks for a four-line feature. Every target interaction walks this same audit path, type, range, authority, context.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes: ox_target edition</h2>
+
+        <details class="explain">
+          <summary>Doing the permission check only in <code>canInteract</code></summary>
+          <p><code>canInteract</code> is UX. A cheater can hide the check by patching the client. Server must re-validate on the event.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to remove on stop</summary>
+          <p>Every restart leaves duplicate options. A week later, players see "Buy pizza" five times on the same ped. Wire <code>onResourceStop</code> the same day you wire the <code>addModel</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Debug mode left on in production</summary>
+          <p><code>debug = true</code> on a zone draws a visible box in-game. Great during design, terrible for players. Grep your codebase for <code>debug = true</code> before shipping.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Hardcoding model hashes as strings</summary>
+          <p><code>'mp_m_shopkeep_01'</code> as a string vs <code>`mp_m_shopkeep_01`</code> as a hash literal (backticks) are not interchangeable. <code>addModel</code> wants the numeric hash. Use backticks or <code>GetHashKey</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Attaching options before the resource is ready</summary>
+          <p>If you call <code>addModel</code> at file top level but ox_target hasn't finished starting, the call is a no-op. Put <code>addModel</code> calls after <code>QBCore:Client:OnPlayerLoaded</code> or wrap in <code>CreateThread(function() ...; Wait(1000); ... end)</code> while you're learning.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What does <code>addModel</code> attach to?</legend>
+            <label><input type="radio" name="q1" value="a"> A single specific ped you spawned.</label>
+            <label><input type="radio" name="q1" value="b"> Every entity in the world that matches the given model hash.</label>
+            <label><input type="radio" name="q1" value="c"> A zone around a model's default position.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. <code>canInteract</code> returns <code>false</code>. What happens?</legend>
+            <label><input type="radio" name="q2" value="a"> The server rejects the interaction when triggered.</label>
+            <label><input type="radio" name="q2" value="b"> The option appears greyed out.</label>
+            <label><input type="radio" name="q2" value="c"> The option is hidden from the UI, it never appears for this player at this moment.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why remove options in <code>onResourceStop</code>?</legend>
+            <label><input type="radio" name="q3" value="a"> Without cleanup, every restart stacks duplicate options on the same targets.</label>
+            <label><input type="radio" name="q3" value="b"> FiveM's garbage collector won't release the memory.</label>
+            <label><input type="radio" name="q3" value="c"> It's required by ox_target or the resource won't start.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. Can the server trust <code>canInteract</code> to protect a feature?</legend>
+            <label><input type="radio" name="q4" value="a"> Yes, ox_target runs it server-side.</label>
+            <label><input type="radio" name="q4" value="b"> No, it's client-side UX. Server must re-validate.</label>
+            <label><input type="radio" name="q4" value="c"> Only when <code>groups</code> is also set.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: ox_target</h2>
+        <dl>
+          <div><dt>Attach to a model</dt><dd><code>exports.ox_target:addModel(hash, options)</code></dd></div>
+          <div><dt>Attach to a zone</dt><dd><code>exports.ox_target:addBoxZone({ coords, size, rotation, options })</code></dd></div>
+          <div><dt>Attach to every player</dt><dd><code>exports.ox_target:addGlobalPlayer(options)</code></dd></div>
+          <div><dt>Attach to a specific entity</dt><dd><code>exports.ox_target:addLocalEntity(entity, options)</code></dd></div>
+          <div><dt>Option shape</dt><dd><code>{ name, label, icon, distance, canInteract, groups, items, onSelect }</code></dd></div>
+          <div><dt>Remove</dt><dd><code>removeModel</code>, <code>removeZone</code>, <code>removeGlobalPlayer</code>, <code>removeLocalEntity</code></dd></div>
+          <div><dt>Design knobs</dt><dd><code>debug = true</code> to see zones while building; toggle off before shipping</dd></div>
+          <div><dt>Trust rule</dt><dd><code>canInteract</code> and <code>groups</code> are UX. Server validates always.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to attach interaction options to peds and props using <code>addModel</code></li>
+          <li>How to create zone-based interactions with <code>addBoxZone</code> for world regions without entities</li>
+          <li>How to add player-on-player options using <code>addGlobalPlayer</code></li>
+          <li>That <code>canInteract</code> and <code>groups</code> are UX gates only -- the server must always re-validate</li>
+          <li>Why cleanup in <code>onResourceStop</code> is required to prevent duplicate options stacking on restart</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add an <code>addModel</code> target to the vending machine prop <code>`prop_vend_soda_01`</code> with one option: "Buy soda ($2)". When clicked, it should fire a server event <code>'qu:server:buySoda'</code> and show a notify saying "Refreshing!". Include the matching <code>onResourceStop</code> cleanup.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console</span></header>
+          <pre><code>-- Walk up to any soda vending machine
+-- Eye cursor appears with "Buy soda ($2)"
+-- Click it: green notification "Refreshing!"
+-- Restart resource: no duplicate options appear</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Use <code>exports.ox_target:addModel(`prop_vend_soda_01`, { ... })</code> with a <code>name</code> field like <code>'qu_vend_soda'</code>. In <code>onSelect</code>, call <code>TriggerServerEvent</code> and <code>lib.notify</code>. In the cleanup handler, use <code>exports.ox_target:removeModel(`prop_vend_soda_01`, 'qu_vend_soda')</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://overextended.dev/ox_target" target="_blank" rel="noopener">ox_target official documentation</a></li>
+          <li><a href="https://github.com/overextended/ox_target" target="_blank" rel="noopener">ox_target GitHub repository</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Module 05: wrap</h2>
+        <p>You now have the three pieces that separate a homemade script from a production script: <code>ox_lib</code> for UI, Qbox for state, <code>ox_target</code> for interactions. Every real FiveM resource you'll read or write from here on uses this triad. The remaining lessons stop teaching new concepts and start putting everything together, three build projects where you'll ship scripts that combine every module from start to finish. First up: the <code>/heal</code> command, done properly.</p>
+      </section>

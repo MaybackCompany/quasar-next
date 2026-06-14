@@ -1,0 +1,201 @@
+<LessonHero
+  crumbs="Step 03"
+  title="Install pinned artifacts and choose a recipe"
+  meta={[
+    { label: "You'll do", value: "Download an official FXServer artifact, record the build, open txAdmin in your browser, claim it with your Cfx.re account, run a framework recipe (ESX or Qbox), paste your license key, and join the running server." },
+    { label: "Time", value: "~25 minutes. Recipe downloads can be slow." },
+    { label: "You need", value: "Step 02 done: MariaDB running, and a free Cfx.re license key from the portal saved in license-key.txt." },
+    { label: "Result", value: "A running FiveM server you can join with connect 127.0.0.1:30120." },
+  ]}
+>
+  An **artifact** is the FXServer build you download. **txAdmin** is the browser dashboard that **ships inside** that build and opens by itself the first time you run it. A **recipe** is a one-click starter that downloads a framework and writes your first `server.cfg`. You do all of this with the files Cfx.re gives you. Nothing extra to install.
+</LessonHero>
+
+<Prereq
+  items={[
+    "MariaDB is installed and a database client (HeidiSQL or DBeaver) connects to it.",
+    "I have a free license key from the Cfx.re Portal saved in license-key.txt.",
+    "I can extract a .7z archive (7-Zip or WinRAR is installed).",
+    "I can allow a Windows Firewall prompt when it appears.",
+  ]}
+/>
+
+<Callout variant="fivem" title="txAdmin is already in the box">
+  Since 2020, txAdmin ships **bundled inside FXServer**. You do not download or install it separately. When you run `FXServer.exe` for the first time, it boots txAdmin and opens `http://localhost:40120` in your browser. The license key is free and required even for a server only you can reach.
+</Callout>
+
+## Watch the full install
+
+The full install-and-configure walkthrough. Follow along here as you work through the steps below.
+
+<LessonVideo loomId="81886632cbdd481e8f29e48ab88e167f" title="Install and configure a FiveM server" caption="Full server install and configuration walkthrough." />
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Download an official artifact and record the build" outcome="server.7z is downloaded and the build number is written down.">
+    Open the official Cfx.re Windows artifacts page and pick a build from the **Recommended** (green) channel near the top. Recommended is the stable line; do not grab the bleeding-edge "Latest" or "Optional" rows for a first server.
+
+    ```text
+    https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/
+    ```
+
+    Download the `server.7z` for that build. Then create a tiny note so you can roll back later if an update ever breaks the server. Make the file `C:\FXServer\artifact-pin.txt` and fill in what you used:
+
+    ```text
+    Artifact OS: Windows
+    Channel: Recommended
+    Artifact build: <the number you clicked>
+    Downloaded: <today's date>
+    Source URL: https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/
+    Known-good after test: pending
+    Rollback build: none yet
+    ```
+
+    Only download from this Cfx.re page. Do not use Discord mirrors, YouTube links, or random upload sites.
+  </Step>
+
+  <Step num={2} title="Extract and run FXServer" outcome="txAdmin opens by itself at http://localhost:40120.">
+    Make a clean folder, extract the archive into it, and run the server binary.
+
+    ```text
+    C:\FXServer\server\        <- extract server.7z here
+    C:\FXServer\server-data\   <- create this empty (your config + resources live here)
+    ```
+
+    Double-click `C:\FXServer\server\FXServer.exe`. A black console window opens and starts txAdmin. Allow the Windows Firewall prompt if it appears, then wait for your browser to open the dashboard.
+
+    ```text
+    http://localhost:40120
+    ```
+
+    Keep the black FXServer console open the whole time. Closing it stops txAdmin.
+
+    <ExpectedOutput>
+    txAdmin: starting...
+    [txAdmin] Webserver is now available at http://localhost:40120/
+    [txAdmin] Use the PIN to setup the first admin: 1234
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Claim txAdmin with your Cfx.re account" outcome="txAdmin is linked to your Cfx.re identity and a local admin login exists.">
+    On the txAdmin setup screen, enter the PIN printed in the console, then link your Cfx.re account (the same account you used to get the license key at the portal). Authorize txAdmin, set a **local** txAdmin password, and name your server profile.
+
+    Two logins exist and they are not the same thing:
+
+    - **Cfx.re account** is your global identity at `portal.cfx.re`.
+    - **txAdmin password** logs you into this dashboard only.
+  </Step>
+
+  <Step num={4} title="Run a framework recipe" outcome="txAdmin downloads a framework and writes your first server.cfg.">
+    When txAdmin asks how to set up the server, choose the **recipe / template** path (older builds call it "Popular Recipes"). For a new 2026 server, pick one of these:
+
+    - **ESX Legacy** for the largest script catalog and the most copy-paste tutorials.
+    - **Qbox** for the actively maintained, ox-native successor to QBCore, available as a one-click recipe.
+
+    QBCore still runs, but its development has largely stalled, so prefer ESX Legacy or Qbox for a fresh build. Both are beginner-friendly through the recipe.
+
+    When the recipe prompts you, paste the key from `license-key.txt` and set the database name (use `fivem` if asked). Let every recipe step finish, then click **Save & Run Server**.
+
+    ```text
+    sv_licenseKey <paste from license-key.txt>
+    ```
+
+    <ExpectedOutput>
+    [txAdmin] Running recipe...
+    Resources downloaded. Writing server.cfg...
+    [txAdmin] Server started. Status: ONLINE
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Set the game build, then start the server" outcome="The server boots on a current game build with no version mismatch.">
+    Your `server.cfg` needs a game build so clients load the matching GTA V content. Use a current build, not a stale pinned one. Open the live artifacts page (same link as Step 1) to read the build number the Recommended channel targets right now, then set it in `server.cfg`:
+
+    ```text
+    sv_enforceGameBuild <current_build>   # read the number from the live artifacts list
+    ```
+
+    Save the file, then in the txAdmin Live Console restart the server so the change takes effect:
+
+    ```bash
+    restart
+    ```
+
+    <ExpectedOutput>
+    Server license key authentication succeeded.
+    Authenticated with txAdmin.
+    Started resource (your framework resources)
+    Server is now listening on 0.0.0.0:30120
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Connect from your FiveM client" outcome="Your client joins and txAdmin shows one player online.">
+    Open FiveM, press **F8** to open the client console, and connect to your own machine:
+
+    ```bash
+    connect 127.0.0.1:30120
+    ```
+
+    If the server is on a VPS instead, use its public address and the same port:
+
+    ```bash
+    connect YOUR_SERVER_IP:30120
+    ```
+
+    Once you spawn in, go back to txAdmin. The Players panel shows 1 online and the Live Console logs your connection. Now update your note so a future you knows this build is safe.
+
+    ```text
+    Known-good after test: yes
+    ```
+
+    txAdmin writes its own data under `txData/`. On most installs the per-server logs sit here:
+
+    ```text
+    txData/<your-server>/logs/admin
+    txData/<your-server>/logs/fxserver
+    txData/<your-server>/logs/server
+    ```
+
+    The path can move between builds. If you do not see `txData`, search your FXServer folder for `txData` and look for the `logs` folder inside the server profile.
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "The browser never opens / localhost:40120 refused", fix: "FXServer.exe is not running or the console was closed. Reopen FXServer.exe, keep the black window open, then visit http://localhost:40120 manually." },
+    { symptom: "Server license key authentication failed", fix: "Get a fresh free key from portal.cfx.re, paste the exact value into sv_licenseKey, and restart. Keys are tied to one server name." },
+    { symptom: "Could not connect to database / oxmysql failed", fix: "Start MariaDB, confirm the database name matches the recipe, and check the mysql_connection_string convar host, user, and password." },
+    { symptom: "Client kicked: game build mismatch", fix: "Set sv_enforceGameBuild to the current build from the live artifacts list, then restart. Do not pin an old 2024 build." },
+    { symptom: "The txAdmin setup screen does not match these steps", fix: "Labels move between builds. Follow the stable task order: enter PIN, claim with Cfx.re, choose recipe, paste key, set database, Save & Run. If lost, open the txAdmin setup docs in References." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Download a Recommended-channel FXServer artifact and record its build for rollback.",
+    "Run FXServer.exe and let the bundled txAdmin open itself at http://localhost:40120.",
+    "Claim txAdmin with your Cfx.re account and set a separate local dashboard password.",
+    "Run an ESX Legacy or Qbox recipe with your free license key to write the first server.cfg.",
+    "Set a current sv_enforceGameBuild and join your own server with connect 127.0.0.1:30120.",
+    "Find txAdmin logs under txData/&lt;server&gt;/logs and search for the folder if the path moved.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Open the txAdmin Live Console and type `status`. Then join with FiveM and run `status` again. Confirm the second output lists your player as connected, then write down the exact line that shows your name.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Setting up a server using txAdmin", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
+    { label: "FiveM Windows server artifacts (Recommended channel)", href: "https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/" },
+    { label: "Qbox documentation", href: "https://docs.qbox.re/" },
+    { label: "ESX Legacy documentation", href: "https://documentation.esx-framework.org/" },
+  ]}
+/>

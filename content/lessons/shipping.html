@@ -1,0 +1,432 @@
+<header class="lesson-hero">
+        <p class="crumbs"><a href="../index.html">Home</a> <span>/</span> <a href="../index.html#paths">Curriculum</a> <span>/</span> Pro Path P14</p>
+        <h1>Shipping: opening night checklist</h1>
+        <p class="lede">A restaurant does not open for guests without prepped stations, a backup line, and a rollback plan if a dish fails. Same here: convars pinned, ACE locked, DB backed up, monitoring on, and a known-good build to revert to.</p>
+        <dl class="hero-outcome">
+          <div><dt>You will learn</dt><dd>The pre-flight, the hot-standby, the rollback path.</dd></div>
+          <div><dt>Time</dt><dd>~30 min</dd></div>
+          <div><dt>Prereqs</dt><dd>P8 anti-cheat patterns, P9 persistence, and secret handling from convars/server.cfg.</dd></div>
+          <div><dt>Pass condition</dt><dd>Staging restore drill, rollback command, and boot header proof are captured before production launch.</dd></div>
+          <div><dt>Project</dt><dd>release-v1</dd></div>
+        </dl>
+      </header>
+
+      
+
+      <section class="prereq" data-lesson="p14" aria-label="Before you start">
+        <h2>Before you start</h2>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> A staging server with the same artifact version as production.</label></li>
+          <li><label><input type="checkbox"> Working DB backup script (mysqldump or managed snapshot).</label></li>
+          <li><label><input type="checkbox"> Discord webhooks for alerts and audit logs (P2 + P8).</label></li>
+        </ul>
+        <p class="callout callout--fivem"><strong>Mental model.</strong> Treat go-live as a <em>readiness checklist</em>, not a feature. Each item flips green or it does not ship.</p>
+      </section>
+
+      <section class="mental-model">
+        <h2>The five pillars</h2>
+        <ul>
+          <li><strong>Pin</strong>, artifact version, resource versions, DB schema migration applied.</li>
+          <li><strong>Lock</strong>, ACE permissions, RCON password, server-only convars.</li>
+          <li><strong>Save</strong>, backups before deploy and on every scheduled restart.</li>
+          <li><strong>Watch</strong>, resmon panel, error webhook, player count alert.</li>
+          <li><strong>Roll back</strong>, one command to switch to the previous build + previous DB snapshot.</li>
+        </ul>
+        <p class="callout callout--pro"><strong>Pro tip.</strong> Tag every release in git as <code>v1.4.2</code> and write the artifact build number in <code>VERSION</code> at repo root. Restarts log it, saves hours during incidents.</p>
+      </section>
+
+      <section class="step" id="command-matrix">
+        <h2>Command matrix: local, hosted panel, Linux VPS</h2>
+        <p class="explain">Use the column that matches your environment. Do not paste Linux commands into a hosted panel unless your host explicitly gives shell access.</p>
+        <table>
+          <thead><tr><th>Job</th><th>Local test server</th><th>Hosted panel</th><th>Linux VPS</th></tr></thead>
+          <tbody>
+            <tr><td>Restart</td><td>txAdmin: <code>restart qu_core</code></td><td>Panel restart button or txAdmin Scheduled Restart</td><td><code>screen -S fivem -X stuff "restart qu_core^M"</code></td></tr>
+            <tr><td>Backup DB</td><td>HeidiSQL export or <code>mysqldump fivem &gt; backup.sql</code></td><td>Panel database backup/snapshot button</td><td><code>mysqldump --single-transaction fivem | zstd -o /backups/fivem.sql.zst</code></td></tr>
+            <tr><td>Restore DB</td><td>Import <code>backup.sql</code> into a test database</td><td>Restore into staging or a duplicate database, never straight to live first</td><td><code>zstdcat backup.sql.zst | mysql fivem_restore_test</code></td></tr>
+            <tr><td>Deploy files</td><td>Copy into <code>resources/</code>, then restart resource</td><td>SFTP or panel file manager into the documented resource path</td><td><code>rsync -a --delete build/ host:/srv/fivem/releases/TAG/</code></td></tr>
+            <tr><td>Rollback</td><td>Restore previous resource folder from <code>backups/</code></td><td>Panel file snapshot restore + txAdmin restart</td><td><code>ln -sfn /srv/fivem/releases/PREV current.new &amp;&amp; mv -Tf current.new current</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="step" id="step-pin">
+        <h2>Step 1 &middot; Pin the build</h2>
+<pre><code class="language-bash"># server.cfg
+sv_enforceGameBuild 3258
+set sv_licenseKey "cfxk_..."
+set onesync on
+set onesync_population true
+set sv_maxClients 64</code></pre>
+<pre><code class="language-lua">-- in any resource that needs to know the release tag
+print("[qu_core] release " .. (LoadResourceFile(GetCurrentResourceName(), "VERSION") or "dev"))</code></pre>
+        <p class="explain">Pinning <code>sv_enforceGameBuild</code> prevents player crashes when Rockstar pushes a new build. Loading <code>VERSION</code> from your release artifact tags every console line.</p>
+        <button class="btn btn-mark" data-step="pin">Mark step done</button>
+      </section>
+
+      <section class="step" id="step-lock">
+        <h2>Step 2 &middot; Lock permissions</h2>
+<pre><code class="language-bash"># server.cfg
+add_ace group.admin command allow
+add_ace group.admin command.quit deny
+add_ace group.admin qu_jobs.* allow
+add_ace group.police qu_jobs.police allow
+add_ace group.ems    qu_jobs.ems    allow
+add_principal identifier.discord:1234567 group.admin
+
+rcon_password "rotate-me-on-every-deploy"
+sv_endpoints "0.0.0.0:30120"</code></pre>
+        <p class="explain">Deny <code>command.quit</code> on admins so a misclicked command cannot kill the server. Rotate <code>rcon_password</code> every deploy and never commit it, load via env or <code>exec server-secrets.cfg</code>.</p>
+        <button class="btn btn-mark" data-step="lock">Mark step done</button>
+      </section>
+
+      <section class="step" id="step-save">
+        <h2>Step 3 &middot; Backup and restart hooks</h2>
+<pre><code class="language-bash"># scripts/backup.sh
+TS=$(date +%F-%H%M)
+mysqldump --single-transaction --quick --routines fivem &gt; /backups/fivem-$TS.sql
+gzip /backups/fivem-$TS.sql
+find /backups -name "fivem-*.sql.gz" -mtime +14 -delete</code></pre>
+<pre><code class="language-lua">-- resources/qu_core/server/restart.lua
+AddEventHandler("txAdmin:events:scheduledRestart", function(data)
+  if data and data.secondsRemaining == 60 then
+    TriggerEvent("qu_core:flushAll")        -- flush caches (P9)
+    TriggerEvent("qu_core:announce", "Server restart in 60s.")
+  end
+end)
+
+AddEventHandler("onResourceStop", function(name)
+  if name ~= GetCurrentResourceName() then return end
+  TriggerEvent("qu_core:flushAll")
+end)</code></pre>
+        <p class="explain">Two save paths: scheduled restart (txAdmin) and ad-hoc resource stop. Cron runs the dump every 6h and prunes anything older than 14 days.</p>
+        <button class="btn btn-mark" data-step="save">Mark step done</button>
+      </section>
+
+      <section class="step" id="step-watch">
+        <h2>Step 4 &middot; Watch and alert</h2>
+<pre><code class="language-lua">-- resources/qu_watch/server/main.lua
+local WEBHOOK = GetConvar("qu_alerts_webhook", "")
+
+local function alert(text)
+  if WEBHOOK == "" then return end
+  PerformHttpRequest(WEBHOOK, function() end, "POST",
+    json.encode({ content = ("[%s] %s"):format(os.date("%H:%M:%S"), text) }),
+    { ["Content-Type"] = "application/json" })
+end
+
+CreateThread(function()
+  while true do
+    Wait(60000)
+    local n = GetNumPlayerIndices()
+    if n == 0 then alert("Server empty") end
+  end
+end)
+
+AddEventHandler("onResourceStop", function(name)
+  alert(("Resource stopped: %s"):format(name))
+end)</code></pre>
+        <p class="explain">Lightweight watcher posts to Discord on empty server or any resource stop. Pair with txAdmin&rsquo;s built-in performance alerts for resmon spikes.</p>
+        <button class="btn btn-mark" data-step="watch">Mark step done</button>
+      </section>
+
+      <section class="checkpoint">
+        <h2>Recap &middot; Dry run on staging</h2>
+        <ol>
+          <li>Deploy the candidate build to staging. Run a 30-minute soak with bots or a small group.</li>
+          <li>Trigger a scheduled restart. Confirm <code>flushAll</code> ran and DB rows are written.</li>
+          <li>Stop a non-critical resource. Confirm Discord alert fires.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint">
+        <h2>Recap &middot; Rollback rehearsal</h2>
+        <p>Tag the staging DB with a snapshot. Switch the resource <code>master</code> symlink to the previous tag and restart. Confirm everything boots and the watcher is silent. This is the muscle memory you want before you ever need it.</p>
+        <p class="expected">Mandatory backup-restore drill proof</p>
+        <figure class="code">
+          <header><span>staging console</span></header>
+          <pre><code class="language-bash">[drill] backup restored into fivem_restore_test
+[drill] row parity users delta=0.00%
+[drill] boot ok release=v1.4.2 source=restored-backup</code></pre>
+        </figure>
+      </section>
+
+      <section class="step" id="step-5">
+        <h2>Step 5 &middot; Production at scale</h2>
+        <p class="explain">Three real-world concerns once you stop being one box on a friend&rsquo;s home connection: blue/green deploys with atomic swaps, backup verification with restore drills, and an incident runbook that actually gets followed at 02:00.</p>
+
+        <section class="substep" id="step-5-1">
+          <h3>5.1 &middot; Blue/green deploy and atomic symlink swap</h3>
+          <p>One <code>current</code> symlink, two release directories, and a swap that takes microseconds. The running server keeps its open file descriptors until the next restart, so the swap itself is non-disruptive, the cutover is the restart.</p>
+<pre><code class="language-bash"># release layout on the host
+/srv/fivem/
+  releases/
+    1.4.2/        # previous (kept hot for instant rollback)
+    1.4.3/        # candidate just rsynced
+  current -&gt; releases/1.4.3
+  shared/
+    server-secrets.cfg
+    cache/
+
+# scripts/release.sh
+set -euo pipefail
+TAG="$1"
+RELEASE_DIR="/srv/fivem/releases/$TAG"
+
+# 1. ship the artifact tree without touching the live one
+rsync -a --delete \
+  ./build/ "release-host:$RELEASE_DIR/" \
+  --exclude="cache/" --exclude="logs/"
+
+# 2. snapshot DB before the cutover (see 5.2)
+ssh release-host "/srv/fivem/scripts/backup.sh pre-$TAG"
+
+# 3. atomic symlink flip (POSIX rename(2) is atomic on the same filesystem)
+ssh release-host "ln -sfn '$RELEASE_DIR' /srv/fivem/current.new \
+  &amp;&amp; mv -Tf /srv/fivem/current.new /srv/fivem/current"
+
+# 4. tell txAdmin to restart the server (graceful, with the 60s flush hook)
+ssh release-host "/srv/fivem/scripts/txadmin-restart.sh 'release $TAG'"</code></pre>
+<pre><code class="language-bash"># scripts/rollback.sh -- one command, &lt;5 seconds to swap
+set -euo pipefail
+PREV=$(cat /srv/fivem/.last-good)
+ln -sfn "/srv/fivem/releases/$PREV" /srv/fivem/current.new
+mv -Tf /srv/fivem/current.new /srv/fivem/current
+/srv/fivem/scripts/txadmin-restart.sh "rollback to $PREV"
+echo "[rollback] now on $PREV"</code></pre>
+          <p class="explain">The trick is <code>mv -Tf</code> on a symlink: the kernel does an atomic <code>rename(2)</code> so there is never a moment where <code>current</code> does not exist. After a successful boot, write the tag to <code>.last-good</code> so <code>rollback.sh</code> always knows the target. Keep at least the previous two releases on disk, tiny cost, instant rollback.</p>
+        </section>
+
+        <section class="substep" id="step-5-2">
+          <h3>5.2 &middot; Backup verification and restore drills</h3>
+          <p>A backup you have never restored is a hope, not a backup. The dump must be off-host, compressed, and a weekly automated restore must read it back into staging and assert the row counts.</p>
+<pre><code class="language-bash"># scripts/backup.sh -- runs every 6h via cron + before every release
+set -euo pipefail
+TAG="${1:-scheduled}"
+TS=$(date +%F-%H%M)
+OUT="/backups/fivem-$TS-$TAG.sql.zst"
+
+mysqldump \
+  --single-transaction \
+  --quick \
+  --routines \
+  --triggers \
+  --hex-blob \
+  --default-character-set=utf8mb4 \
+  fivem \
+  | zstd -3 -T0 -o "$OUT"
+
+# off-host replication (do NOT trust the host with the live DB)
+rsync -az --remove-source-files /backups/fivem-*.zst backup-host:/archive/fivem/
+
+# retention: keep 14 days locally, 90 days off-host
+find /backups -name "fivem-*.zst" -mtime +14 -delete
+ssh backup-host "find /archive/fivem -name 'fivem-*.zst' -mtime +90 -delete"</code></pre>
+<pre><code class="language-bash"># scripts/restore-drill.sh -- runs Sunday 03:00, page on failure
+set -euo pipefail
+LATEST=$(ssh backup-host "ls -t /archive/fivem/fivem-*.zst | head -1")
+ssh backup-host "zstdcat $LATEST" | mysql -h staging-db fivem_restore_test
+
+# sanity: row counts must be within 0.5% of production
+PROD=$(mysql -N -h prod-db -e "SELECT COUNT(*) FROM users" fivem)
+TEST=$(mysql -N -h staging-db -e "SELECT COUNT(*) FROM users" fivem_restore_test)
+DELTA=$(python3 -c "print(abs($PROD - $TEST) / $PROD * 100)")
+awk -v d="$DELTA" 'BEGIN{ exit (d &gt; 0.5) }' \
+  || { curl -X POST "$ALERT_WEBHOOK" -d "{\"content\":\"restore drill FAILED, delta $DELTA%\"}"; exit 1; }
+echo "[drill] OK, delta $DELTA%"</code></pre>
+          <p class="explain"><code>--single-transaction</code> takes a repeatable-read snapshot, so InnoDB tables dump without locking writers. <code>zstd -3</code> is roughly 3&times; faster than <code>gzip -6</code> at a similar ratio. The drill is the part that matters, running it weekly catches schema drift, charset corruption, and missing routines long before a real incident.</p>
+        </section>
+
+        <section class="substep" id="step-5-3">
+          <h3>5.3 &middot; Incident runbook and observability</h3>
+          <p>02:00 incidents do not get solved by clever ideas. They get solved by a checklist that someone half-asleep can follow.</p>
+<pre><code class="language-lua">-- resources/qu_watch/server/runbook.lua
+-- prints the entire incident header in the first 20 lines of every boot
+local function bootHeader()
+  local v = LoadResourceFile(GetCurrentResourceName(), "VERSION") or "dev"
+  print(("[qu] release        : %s"):format(v))
+  print(("[qu] artifact       : %s"):format(GetConvar("sv_enforceGameBuild", "?")))
+  print(("[qu] dashboard      : %s"):format(GetConvar("qu_dashboard_url", "?")))
+  print(("[qu] runbook        : %s"):format(GetConvar("qu_runbook_url", "?")))
+  print(("[qu] oncall webhook : %s"):format(GetConvar("qu_oncall_webhook", "?") ~= "" and "set" or "MISSING"))
+end
+AddEventHandler("onResourceStart", function(name)
+  if name == GetCurrentResourceName() then bootHeader() end
+end)</code></pre>
+<pre><code class="language-lua">-- resources/qu_watch/server/oncall.lua
+-- severity-aware paging: low -&gt; channel, high -&gt; @oncall role mention
+local OK, WARN, CRIT = 1, 2, 3
+local CHANNEL  = GetConvar("qu_alerts_webhook", "")
+local ONCALL   = GetConvar("qu_oncall_webhook", "")
+local ROLE_ID  = GetConvar("qu_oncall_role_id", "")
+
+local function page(severity, summary, details)
+  local target = severity &gt;= CRIT and ONCALL or CHANNEL
+  if target == "" then return end
+  local mention = severity &gt;= CRIT and ("&lt;@&amp;" .. ROLE_ID .. "&gt; ") or ""
+  local body = json.encode({
+    content = mention .. ("**[%s]** %s"):format(({"OK","WARN","CRIT"})[severity], summary),
+    embeds  = { { description = details, color = severity &gt;= CRIT and 15158332 or 15844367 } }
+  })
+  PerformHttpRequest(target, function() end, "POST", body,
+    { ["Content-Type"] = "application/json" })
+end
+
+-- example: payroll job stalls
+AddEventHandler("qu_jobs:payrollFailed", function(err, n)
+  page(CRIT, "Payroll failed", ("error: %s\non-duty at fail: %d"):format(err, n))
+end)
+exports("page", page)</code></pre>
+          <p class="explain">Three rules keep this honest: (1) <em>boot header in the first 20 lines</em>, the responder never has to ask &ldquo;what version is running?&rdquo;. (2) <em>severity gates the channel</em>, CRIT pages the on-call role, WARN posts to the team channel, OK never pages. (3) <em>runbook URL is a convar</em>, you can update the doc without redeploying. Pair this with a one-paragraph incident template in the runbook (timeline, blast radius, mitigation, rollback decision) and the responder is reading, not improvising.</p>
+        </section>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Benchmark &middot; FXServer Linux artifact 12247, 64 slots, 32 players online</h2>
+        <p class="explain">Numbers from staging soak with realistic load: 32 connected, P12 jobs ticking, P10 inventories warm, mid-deploy operations exercised. <code>p50</code> typical, <code>p95</code> 95th percentile.</p>
+        <table class="benchmark-table">
+          <thead><tr><th>Deploy phase</th><th>Duration p50</th><th>Duration p95</th><th>Player downtime</th></tr></thead>
+          <tbody>
+            <tr><td>mysqldump 500 MB DB</td><td>9.8 s</td><td>14 s</td><td>--single-transaction, no row locks on writers</td></tr>
+            <tr><td>mysqldump 5 GB DB</td><td>92 s</td><td>148 s</td><td>I/O bound, 110 MB/s ceiling on NVMe</td></tr>
+            <tr><td>mysqldump 50 GB DB</td><td>16 min</td><td>27 min</td><td>plan for staged dumps or replica-only dumps</td></tr>
+            <tr><td>gzip -6 (5 GB SQL)</td><td>140 s</td><td>180 s</td><td>single-threaded, 35 MB/s</td></tr>
+            <tr><td>zstd -3 -T0 (5 GB SQL)</td><td>42 s</td><td>58 s</td><td>multi-threaded, similar ratio (~3.4&times; smaller)</td></tr>
+            <tr><td>rsync delta (50 MB build)</td><td>0.8 s</td><td>2.1 s</td><td>only changed files, over 1 Gbit LAN</td></tr>
+            <tr><td>rsync delta (cold remote)</td><td>14 s</td><td>22 s</td><td>full file scan, no daemon</td></tr>
+            <tr><td>Symlink swap (<code>mv -Tf</code>)</td><td>0.0008 s</td><td>0.002 s</td><td>atomic, single rename(2) syscall</td></tr>
+            <tr><td>txAdmin scheduled restart broadcast</td><td>180 ms</td><td>480 ms</td><td>fans out to every client connection</td></tr>
+            <tr><td><code>flushAll</code> at 32 players (P9)</td><td>320 ms</td><td>820 ms</td><td>must finish inside the 60s window</td></tr>
+            <tr><td><code>onResourceStop</code> fan-out, 80 resources</td><td>22 ms</td><td>64 ms</td><td>single event, all listeners run sync</td></tr>
+            <tr><td><code>PerformHttpRequest</code> Discord webhook</td><td>140 ms</td><td>420 ms</td><td>p99 over 1 s when Discord rate-limits</td></tr>
+            <tr><td>Discord rate limit (5 msg / 2 s / channel)</td><td>n/a</td><td>n/a</td><td>burst &gt; 5 returns 429 with retry-after</td></tr>
+            <tr><td><code>GetNumPlayerIndices()</code></td><td>0.01 ms</td><td>0.04 ms</td><td>cheap, safe to poll every minute</td></tr>
+            <tr><td>ACE check cached (<code>IsPlayerAceAllowed</code>)</td><td>0.00005 ms</td><td>0.0002 ms</td><td>hot in every command path</td></tr>
+            <tr><td>ACE check after <code>refresh_ace</code></td><td>0.04 ms</td><td>0.12 ms</td><td>recomputes principal chain</td></tr>
+            <tr><td>Boot to ready (clean cache)</td><td>38 s</td><td>62 s</td><td>oxmysql connect + 80 resources start</td></tr>
+            <tr><td>Boot after rollback (warm DB)</td><td>22 s</td><td>34 s</td><td>same artifact tree, no rsync</td></tr>
+            <tr><td>Restore drill (5 GB DB into staging)</td><td>3 min 40 s</td><td>5 min 10 s</td><td>zstd decompress + mysql restore</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at scale</h2>
+        <p class="explain">Every row is a postmortem someone has actually written. The <em>fix</em> column is the durable one, not the panicked hotfix.</p>
+        <table class="failure-modes-table">
+          <thead><tr><th>Symptom</th><th>Root cause</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td>Players crash en masse the morning after a Rockstar update.</td><td><code>sv_enforceGameBuild</code> not pinned, clients auto-updated to a build the server does not accept.</td><td>Pin to a known-good build in <code>server.cfg</code>; bump deliberately after staging tests; subscribe to CFX release notes.</td></tr>
+            <tr><td>Deploy goes wrong at 22:00 and nobody can restore.</td><td>Backups exist but have never been restored; schema drift or charset corruption surfaces only at the worst moment.</td><td>Weekly automated <code>restore-drill.sh</code> into staging that asserts row-count parity and pages on failure. The drill is the backup.</td></tr>
+            <tr><td>RCON password leaks in a public bug report.</td><td>Password hardcoded in <code>server.cfg</code>, file committed to git history.</td><td><code>exec server-secrets.cfg</code> with that file gitignored; rotate every deploy; scan history with <code>gitleaks</code> before going public.</td></tr>
+            <tr><td>Backups quietly stop running after a host reboot.</td><td>Cron job depends on a user who is not enabled at boot, or path-not-found error logged once and ignored.</td><td>Cron sends a heartbeat to the alert channel on success. <em>No heartbeat for 8 h</em> pages the on-call. Silent success is the worst kind.</td></tr>
+            <tr><td>Disk full at 03:00 because backup retention never ran.</td><td><code>find -mtime +14 -delete</code> matches nothing because the filename pattern changed when someone renamed the dump.</td><td>Add <code>du -sh /backups</code> to a daily heartbeat alert; alert when &gt; 80% of partition; pin retention to file-mtime, not filename.</td></tr>
+            <tr><td>txAdmin restart broadcasts but cache flush does not finish in time.</td><td><code>flushAll</code> takes &gt; 60 s under load; the 60-second hook fires too late to complete cleanly.</td><td>Hook on <code>secondsRemaining == 120</code> instead of 60 for large flushes; or split the flush into staged batches that each finish in &lt; 30 s.</td></tr>
+            <tr><td>Symlink swap leaves the old fds open; new code never loads.</td><td>The swap is atomic but the process keeps reading from the old inode. Without a restart, &ldquo;deploy done&rdquo; is a lie.</td><td>The swap is the prep, the restart is the deploy. Always pair <code>ln -sfn</code> with <code>txadmin-restart.sh</code>; never call &ldquo;done&rdquo; before the new boot header prints.</td></tr>
+            <tr><td>Webhook URL ends up in an error log shared on Discord.</td><td>Stack trace logs the URL string when <code>PerformHttpRequest</code> fails to parse the body.</td><td>Read webhook from convar; log only its hash or a redacted prefix; rotate the URL if it ever appears in shared output.</td></tr>
+            <tr><td>Rollback rehearsed never, fails first time under stress.</td><td><code>rollback.sh</code> assumes a state that has drifted: missing release dir, schema migration not reversible, secrets file out of date.</td><td>Run the rollback path monthly on staging as a planned drill. Keep the previous two release dirs hot. Migrations must include a <code>down.sql</code> when feasible.</td></tr>
+            <tr><td>Single backup host is the SPOF that takes everything down.</td><td>All backups rsynced to one box; that box dies; production fine but recovery impossible.</td><td>Replicate to two destinations (off-site object storage + a second host); test reading from each independently every quarter.</td></tr>
+            <tr><td>Discord on-call paging never fires when it matters.</td><td>Webhook hits a channel nobody reads at 03:00; or rate-limited at the moment of the storm.</td><td>CRIT severity uses a separate webhook to a channel with role mention; verify the page-test path in every weekly drill; have a phone-call fallback (PagerDuty, OpsGenie).</td></tr>
+            <tr><td>Boot logs lack version, incident takes 20 min to diagnose.</td><td><code>VERSION</code> file missing, <code>bootHeader</code> never run, responder asks &ldquo;what release is on?&rdquo;.</td><td>Print release / artifact / dashboard / runbook URLs in the first 20 lines on every <code>onResourceStart</code> of <code>qu_watch</code>. Make it impossible to miss.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-3">
+        <header><span class="chip">Recap 3</span><h3>Senior depth: production readiness</h3></header>
+        <p>Shipping is not a release; it is a rollback rehearsal. You can swap the active build with one atomic <code>mv -Tf</code>, you have a backup that has been restored into staging within the last seven days, and your boot logs print release / artifact / dashboard / runbook URLs in the first 20 lines. When the page fires at 03:00, the on-call has links, not riddles.</p>
+      </section>
+
+      <section class="mistakes">
+        <h2>Common mistakes</h2>
+        <details class="explain"><summary>Deploying without a backup window.</summary><p>Always snapshot DB first. A failed migration with no snapshot is the worst night of your life.</p></details>
+        <details class="explain"><summary>RCON password committed to git.</summary><p>Use <code>exec server-secrets.cfg</code> with that file gitignored, or env vars resolved at boot.</p></details>
+        <details class="explain"><summary>No <code>sv_enforceGameBuild</code>.</summary><p>Players crash on Rockstar updates with no warning. Pin and bump deliberately.</p></details>
+        <details class="explain"><summary>Single point of failure on saves.</summary><p>Have both scheduled flushes and shutdown flushes. Either alone leaves a tail of lost work.</p></details>
+        <details class="explain"><summary>No version in the console.</summary><p>During an incident you need to see the running version in the first 10 lines of logs. Print it.</p></details>
+      </section>
+
+      <section class="quiz" aria-label="Quick check">
+        <h2>Quick check</h2>
+        <form class="quiz-form">
+          <fieldset data-answer="b"><legend>1. <code>sv_enforceGameBuild</code> protects against&hellip;</legend>
+            <label><input type="radio" name="q1" value="a"> SQL injection</label>
+            <label><input type="radio" name="q1" value="b"> Rockstar pushing a new game build</label>
+            <label><input type="radio" name="q1" value="c"> Discord rate limits</label></fieldset>
+          <fieldset data-answer="c"><legend>2. The two save paths in our setup are&hellip;</legend>
+            <label><input type="radio" name="q2" value="a"> Cron-only and manual SQL</label>
+            <label><input type="radio" name="q2" value="b"> Client save and server save</label>
+            <label><input type="radio" name="q2" value="c"> Scheduled restart hook and <code>onResourceStop</code></label></fieldset>
+          <fieldset data-answer="a"><legend>3. Where does the alert webhook URL live?</legend>
+            <label><input type="radio" name="q3" value="a"> A convar (<code>qu_alerts_webhook</code>)</label>
+            <label><input type="radio" name="q3" value="b"> Hardcoded in Lua</label>
+            <label><input type="radio" name="q3" value="c"> The HTML page</label></fieldset>
+          <fieldset data-answer="b"><legend>4. Why deny <code>command.quit</code> on admins?</legend>
+            <label><input type="radio" name="q4" value="a"> Performance</label>
+            <label><input type="radio" name="q4" value="b"> Prevent accidental server shutdown</label>
+            <label><input type="radio" name="q4" value="c"> NUI compatibility</label></fieldset>
+          <fieldset data-answer="b"><legend>5. Atomic deploy primitive on Linux is&hellip;</legend>
+            <label><input type="radio" name="q5" value="a"> <code>cp -r</code> over the live folder</label>
+            <label><input type="radio" name="q5" value="b"> <code>mv -Tf</code> on the resource symlink so swap is one syscall</label>
+            <label><input type="radio" name="q5" value="c"> Stop server, copy files, start server</label></fieldset>
+          <button type="button" class="btn btn-quiz">Check answers</button>
+          <p class="quiz-feedback" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheatsheet</h2>
+        <dl>
+          <div><dt><code>sv_enforceGameBuild</code></dt><dd>Pin client game build.</dd></div>
+          <div><dt><code>add_ace</code> / <code>add_principal</code></dt><dd>Lock down commands and roles.</dd></div>
+          <div><dt><code>rcon_password</code></dt><dd>Rotate every deploy; never commit.</dd></div>
+          <div><dt><code>txAdmin:events:scheduledRestart</code></dt><dd>Hook to flush caches before restart.</dd></div>
+          <div><dt><code>onResourceStop</code></dt><dd>Last-chance flush for ad-hoc stops.</dd></div>
+          <div><dt><code>VERSION</code></dt><dd>Tag every console line with build.</dd></div>
+          <div><dt>Backup retention</dt><dd>14 days, gzipped, off-host.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap">
+        <h2>Recap</h2>
+        <ul>
+          <li>Pin build, lock permissions, automate backups.</li>
+          <li>Two save paths: scheduled restart and resource stop.</li>
+          <li>Webhook alerts for empty server and resource crashes.</li>
+          <li>Rehearse rollback before you need it.</li>
+          <li>Print the release tag in every boot log.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise">
+        <h2>Exercise</h2>
+        <p>Write a <code>scripts/release.sh</code> that bumps <code>VERSION</code>, tags the git commit, runs <code>scripts/backup.sh</code>, then rsyncs to the production host. Add a <code>scripts/rollback.sh</code> that swaps the <code>current</code> symlink back and restarts the server.</p>
+        <figure>
+          <figcaption>Expected output</figcaption>
+<pre><code class="language-bash">$ ./scripts/release.sh 1.4.3
+[release] tagging v1.4.3
+[release] backup -&gt; /backups/fivem-2026-05-05-2300.sql.gz
+[release] rsync -&gt; prod:/srv/fivem/releases/1.4.3
+[release] symlink current -&gt; 1.4.3
+[release] restart sent</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server/" target="_blank" rel="noopener">CFX server setup</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">Server commands</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/#sv_enforcegamebuild-build" target="_blank" rel="noopener">sv_enforceGameBuild</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" target="_blank" rel="noopener">txAdmin</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Add a green/blue deploy: two artifact dirs, atomic symlink swap, instant rollback.</li>
+          <li>Wire Grafana or a tiny Express dashboard reading from your audit tables.</li>
+          <li>Run weekly restore drills from a real backup into staging.</li>
+        </ul>
+      </section>

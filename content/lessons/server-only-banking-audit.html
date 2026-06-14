@@ -1,0 +1,627 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> > <span>Module 07 · Lesson 23</span></div>
+        <h1>Server-only banking with audit logs</h1>
+        <p class="lede">In Lesson 21 you built a mini bank that held balances in memory. Restart the server and all the money vanished. Now you fix that. This lesson reworks the banking script to persist balances in SQL, adds an audit log that records every deposit and withdrawal, and enforces the rule that the server computes everything. The client never sends an amount. Ever.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A SQL-backed banking resource with persistent balances and a complete audit trail.</dd></div>
+          <div><dt>Time</dt><dd>~40 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>Migration pattern -> audit log table -> server-computed balance -> INSERT on every action -> reading the trail</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 21 (mini banking) and Lesson 22 (SQL from zero) complete. oxmysql running.</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="22">
+        <h2>Before you start</h2>
+        <p>Quick check. This lesson is about authority and audit trails, so the foundations have to be solid.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have completed <a href="../clase-21/leason21.html">Lesson 21</a>, I can run a parameterized INSERT and SELECT against MySQL with <code>oxmysql</code></label></li>
+          <li><label><input type="checkbox"> I completed <a href="../clase-22b/leason22b.html">Convars &amp; server.cfg</a> and my DB string/webhooks live in server-only config, not Lua or client files</label></li>
+          <li><label><input type="checkbox"> I know the difference between <code>TriggerServerEvent</code> (client &rarr; server) and <code>TriggerClientEvent</code> (server &rarr; client), and which side I am writing on</label></li>
+          <li><label><input type="checkbox"> I have a <code>users</code> table or equivalent that I can attach a balance column to (or I am happy to create one in this lesson)</label></li>
+          <li><label><input type="checkbox"> I can say in one sentence why letting a client send "deposit 999999" is dangerous (<a href="../clase-12/leason12.html">Lesson 12, trust &amp; authority</a>)</label></li>
+        </ul>
+        <div class="callout callout--danger">
+          <header>Secret/config preflight</header>
+          <p>Do not continue if your <code>mysql_connection_string</code> or audit webhook is hard-coded in a resource. Put them in <code>server-secrets.cfg</code>, load it with <code>exec</code>, and gitignore that file before writing banking code.</p>
+        </div>
+        <figure class="code">
+          <header><span>exact oxmysql failure</span></header>
+          <pre><code class="language-bash">[script:oxmysql] Error: Access denied for user 'fivem'@'localhost' (using password: YES)</code></pre>
+        </figure>
+        <p>Fix the connection before testing money: correct the password or grant the user on the active database, restart, and confirm <code>[script:oxmysql] Database server connection established!</code>.</p>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 23: Server-only banking with audit logs</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Audit logs record important changes.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find them in server SQL insert calls.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Insert one row for every transaction.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Create one audit row and read it back.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small audit example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Audit log</dt><dd>A row for every important change.<br><span>Example: deposit creates one audit row.</span></dd></div>
+            <div><dt tabindex="0">Migration</dt><dd>SQL that creates or changes tables.<br><span>Example: CREATE TABLE IF NOT EXISTS.</span></dd></div>
+            <div><dt tabindex="0">Rollback</dt><dd>Undoing a bad change with records.<br><span>Example: reverse one broken transaction.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_bank_sql</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_bank_sql/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure oxmysql</code><br><code>ensure qu_bank_sql</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][audit]">
+            <header><span class="file">qu_bank_sql/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'audit'
+
+MySQL.ready(function()
+    MySQL.query('SELECT 1 AS ready', {}, function(result)
+        print(('[QUIET][%s][ready] rows=%s'):format(MODULE, #result))
+    end)
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][audit]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>server.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure oxmysql</code> above <code>ensure qu_bank_sql</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>audit_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][audit_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_bank_sql' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section id="why-audit">
+        <h2>Why audit logs matter</h2>
+        <p>An audit log is a record of every action that changed something important. In a bank, that means every deposit and every withdrawal gets a row in a separate table. Why bother?</p>
+        <ul>
+          <li><strong>Debugging.</strong> A player says "I had $5000 and now I have $200." Without logs, you have no idea what happened. With logs, you can see every action, timestamp, and amount.</li>
+          <li><strong>Cheater detection.</strong> If someone exploits a money duplication bug, the audit log shows it: 50 deposits of $999999 in one second. Without logs, you only find out when the economy is already broken.</li>
+          <li><strong>Rollback.</strong> If a bug gives everyone $1M, the audit log lets you find and reverse exactly the broken transactions instead of wiping everyone's balance.</li>
+        </ul>
+        <p>The rule is simple: if money moves, a row gets written. No exceptions.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>The migration: create both tables on start</h2></header>
+        <p class="step-outcome">Outcome: your resource creates the <code>accounts</code> and <code>audit_log</code> tables automatically the first time it runs.</p>
+        <div class="step-body">
+          <p>A <strong>migration</strong> is a SQL script that sets up or changes your database schema. The cleanest pattern for FiveM: run your CREATE TABLE statements when the resource starts. Because we use <code>IF NOT EXISTS</code>, they are safe to run every time.</p>
+          <figure class="code">
+            <header><span>qu_bank_sql/migration.sql</span></header>
+            <pre><code class="language-sql">CREATE TABLE IF NOT EXISTS qu_accounts (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(60)  NOT NULL UNIQUE,
+    balance    INT          NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS qu_audit_log (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(60)  NOT NULL,
+    action     VARCHAR(20)  NOT NULL,
+    amount     INT          NOT NULL,
+    note       VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);</code></pre>
+          </figure>
+          <p>Two tables:</p>
+          <ul>
+            <li><code>qu_accounts</code> -- one row per player. <code>UNIQUE</code> on identifier means a player can only have one account. <code>balance</code> is an integer (no floating point, no cents -- keep it simple).</li>
+            <li><code>qu_audit_log</code> -- one row per action. <code>action</code> is a short string like <code>'deposit'</code> or <code>'withdraw'</code>. <code>note</code> is optional context. <code>created_at</code> is auto-stamped.</li>
+          </ul>
+          <p>Now load this from Lua on resource start:</p>
+          <figure class="code">
+            <header><span>qu_bank_sql/server.lua (top)</span></header>
+            <pre><code class="language-lua">MySQL.ready(function()
+    MySQL.query([[
+        CREATE TABLE IF NOT EXISTS qu_accounts (
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            identifier VARCHAR(60)  NOT NULL UNIQUE,
+            balance    INT          NOT NULL DEFAULT 0
+        )
+    ]])
+    MySQL.query([[
+        CREATE TABLE IF NOT EXISTS qu_audit_log (
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            identifier VARCHAR(60)  NOT NULL,
+            action     VARCHAR(20)  NOT NULL,
+            amount     INT          NOT NULL,
+            note       VARCHAR(255) DEFAULT NULL,
+            created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        )
+    ]])
+    print('[qu_bank_sql] Migration complete')
+end)</code></pre>
+          </figure>
+          <div class="callout callout--tip">
+            <header>Why two separate MySQL.query calls?</header>
+            <p>oxmysql's <code>MySQL.query</code> runs one statement at a time. If you try to put both CREATE TABLE statements in one string separated by a semicolon, it may fail. One query per call is the safe pattern.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Ensure the account exists</h2></header>
+        <p class="step-outcome">Outcome: a helper that creates a player's account row if it does not exist yet.</p>
+        <div class="step-body">
+          <p>Before you can deposit or check a balance, the player needs a row in <code>qu_accounts</code>. This helper tries to insert one; if the identifier already exists (thanks to <code>UNIQUE</code>), it does nothing.</p>
+          <figure class="code">
+            <header><span>qu_bank_sql/server.lua</span></header>
+            <pre><code class="language-lua">local function ensureAccount(identifier)
+    MySQL.insert.await(
+        'INSERT IGNORE INTO qu_accounts (identifier, balance) VALUES (?, 0)',
+        { identifier }
+    )
+end</code></pre>
+          </figure>
+          <p><code>INSERT IGNORE</code> means "try to insert, but if the row already exists (because of the UNIQUE constraint), silently skip it". No error, no duplicate. This is the safe way to handle first-time players.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Server reads the balance from DB</h2></header>
+        <p class="step-outcome">Outcome: the server always reads balance from the database, never from a Lua variable.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_bank_sql/server.lua</span></header>
+            <pre><code class="language-lua">local function getBalance(identifier)
+    ensureAccount(identifier)
+    local bal = MySQL.scalar.await(
+        'SELECT balance FROM qu_accounts WHERE identifier = ?',
+        { identifier }
+    )
+    return bal or 0
+end</code></pre>
+          </figure>
+          <p><code>MySQL.scalar.await</code> returns a single value: the first column of the first row. Perfect for reading one number. We call <code>ensureAccount</code> first so there is always a row to read.</p>
+          <div class="callout callout--danger">
+            <header>Never cache the balance in a Lua upvalue</header>
+            <p>"I'll store it in a local table for speed." The moment any other resource modifies the database, your cached number is wrong. Always read from the database when making money decisions. One extra query is cheap. A wrong balance is a bug report.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Deposit with audit log</h2></header>
+        <p class="step-outcome">Outcome: depositing money updates the balance and writes an audit row in a single transaction, both succeed together or neither does.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_bank_sql/server.lua</span></header>
+            <pre><code class="language-lua">local function deposit(identifier, amount, note)
+    local ok = MySQL.transaction.await({
+        {
+            'UPDATE qu_accounts SET balance = balance + ? WHERE identifier = ?',
+            { amount, identifier }
+        },
+        {
+            'INSERT INTO qu_audit_log (identifier, action, amount, note) VALUES (?, ?, ?, ?)',
+            { identifier, 'deposit', amount, note or 'deposit' }
+        }
+    })
+    if not ok then
+        print(('[qu_bank_sql] deposit transaction failed: %s amount %d'):format(identifier, amount))
+        return false, 'deposit_failed'
+    end
+    return true
+end</code></pre>
+          </figure>
+          <p>Three things every money move must guarantee. This deposit covers all three:</p>
+          <ol>
+            <li><strong>Math in the database, not in Lua.</strong> <code>balance = balance + ?</code> is a single SQL statement. You never read the old balance into Lua, add, and write back, that would be a classic read-modify-write race when two deposits land in the same millisecond.</li>
+            <li><strong>Balance change and audit row commit together.</strong> <code>MySQL.transaction.await</code> wraps both statements in a single transaction. If the audit <code>INSERT</code> fails (table missing, disk full, restart mid-write) the <code>UPDATE</code> is rolled back. You never end up with money credited but no evidence of where it came from.</li>
+            <li><strong>The transaction is awaited.</strong> The function does not return until MySQL has committed (or rolled back). On a server restart the moment after this call, the on-disk state is consistent, there is no half-finished write floating in oxmysql's queue.</li>
+          </ol>
+          <div class="callout">
+            <header>Why the unawaited <code>MySQL.insert</code> from Lesson 21 is a bug here</header>
+            <p>Fire-and-forget audit logging works for tutorials and breaks the moment a server crash, restart, or oxmysql queue overflow drops the in-flight insert. The balance change has already committed; the audit row never lands. You wake up to a player whose balance jumped with no audit trail. Always <code>await</code> any write that is part of a money decision.</p>
+          </div>
+          <div class="callout callout--fivem">
+            <header>The client NEVER sends the amount</header>
+            <p>In Lesson 21, the client sent an amount to the server. That was fine for learning events, but in a real system it is a security hole. A cheater can fire <code>TriggerServerEvent('qu:bank:deposit', 999999)</code>. In this version, the server decides the amount based on game logic (job payout, item sold, etc.). The client only says "I want to deposit" -- the server figures out how much.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Write the migration SQL</h3></header>
+        <p>Without looking above, write the CREATE TABLE statements for both <code>qu_accounts</code> and <code>qu_audit_log</code>. Include: appropriate types, NOT NULL where needed, UNIQUE on identifier in accounts, DEFAULT on balance and timestamps.</p>
+        <div class="self-check">
+          <details>
+            <summary>Check your answer</summary>
+            <figure class="code">
+              <header><span>SQL</span></header>
+              <pre><code class="language-sql">CREATE TABLE IF NOT EXISTS qu_accounts (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(60)  NOT NULL UNIQUE,
+    balance    INT          NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS qu_audit_log (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(60)  NOT NULL,
+    action     VARCHAR(20)  NOT NULL,
+    amount     INT          NOT NULL,
+    note       VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);</code></pre>
+            </figure>
+            <p>Key details to check: <code>UNIQUE</code> on identifier in accounts (one account per player), <code>DEFAULT 0</code> on balance (new accounts start at zero), <code>DEFAULT NULL</code> on note (optional context), and <code>DEFAULT CURRENT_TIMESTAMP</code> so the database stamps each audit row automatically.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Withdraw with balance check</h2></header>
+        <p class="step-outcome">Outcome: withdrawals deny on insufficient funds atomically, the SQL guard rejects two concurrent overdrafts that would both pass a separate balance check.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_bank_sql/server.lua</span></header>
+            <pre><code class="language-lua">local function withdraw(identifier, amount, note)
+    -- Atomic check-and-debit. The `WHERE balance >= ?` guard means the
+    -- balance check and the deduction happen as a single SQL statement.
+    -- Two concurrent withdrawals against the same row cannot both
+    -- succeed when only one is affordable: MySQL serialises the row
+    -- update under the hood. affectedRows = 1 confirms the deduction
+    -- landed; affectedRows = 0 means the guard rejected it.
+    local affected = MySQL.update.await(
+        'UPDATE qu_accounts SET balance = balance - ? WHERE identifier = ? AND balance >= ?',
+        { amount, identifier, amount }
+    )
+    if affected ~= 1 then
+        return false, 'Not enough funds'
+    end
+
+    -- Audit row is awaited so we never silently lose evidence on a
+    -- restart. If the insert fails after a successful debit (table
+    -- missing, disk full, oxmysql queue dropped) we log loudly so an
+    -- operator can reconcile from the MySQL slow-query log. For strict
+    -- atomicity (audit failure rolls back the debit) wrap both calls
+    -- in `MySQL.transaction.await` like the deposit function above.
+    local insertId = MySQL.insert.await(
+        'INSERT INTO qu_audit_log (identifier, action, amount, note) VALUES (?, ?, ?, ?)',
+        { identifier, 'withdraw', amount, note or 'withdraw' }
+    )
+    if not insertId then
+        print(('[qu_bank_sql] AUDIT FAIL: %s withdrew %d, audit row missing'):format(identifier, amount))
+    end
+    return true
+end</code></pre>
+          </figure>
+          <p>This is the version that survives concurrent traffic. The naive pattern from Lesson 21, read balance, validate in Lua, then UPDATE, is a textbook <strong>time-of-check / time-of-use (TOCTOU)</strong> race. Picture two withdrawals arriving at the same instant, both reading a $300 balance, both validating $200 ≤ $300, both running the UPDATE. The player ends up at -$100 and a duplication bug just shipped.</p>
+          <p>The fix is to push the check <em>into</em> the UPDATE itself with <code>WHERE balance &gt;= ?</code>. MySQL holds a row lock for the duration of the statement, so the second withdrawal sees the post-debit balance and the guard rejects it. <code>affectedRows</code> tells you which side of the guard you landed on: <strong>1</strong> means the row was updated, <strong>0</strong> means the guard rejected it.</p>
+          <div class="callout callout--fivem">
+            <header>The pattern, generalised</header>
+            <p>Any time you want to mutate a row only if it is in a particular state, do the check in the <code>WHERE</code> clause and trust <code>affectedRows</code>. Reading state into Lua, deciding, then writing back is a race waiting to happen, for money, for inventory, for anything where two clients can fight over the same row.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Wire commands and read the audit log</h2></header>
+        <p class="step-outcome">Outcome: players can deposit, withdraw, check balance, and view their transaction history.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_bank_sql/server.lua</span></header>
+            <pre><code class="language-lua">RegisterCommand('deposit', function(source, args)
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    local amount = tonumber(args[1])
+    if not amount or amount < 1 or amount ~= math.floor(amount) then
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'error', title = 'Bank', description = 'Enter a valid whole number.'
+        })
+        return
+    end
+
+    deposit(identifier, amount, 'manual deposit')
+    local newBal = getBalance(identifier)
+    TriggerClientEvent('ox_lib:notify', src, {
+        type = 'success', title = 'Bank',
+        description = ('Deposited $%d. Balance: $%d'):format(amount, newBal)
+    })
+end, false)
+
+RegisterCommand('withdraw', function(source, args)
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    local amount = tonumber(args[1])
+    if not amount or amount < 1 or amount ~= math.floor(amount) then
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'error', title = 'Bank', description = 'Enter a valid whole number.'
+        })
+        return
+    end
+
+    local ok, err = withdraw(identifier, amount, 'manual withdraw')
+    if not ok then
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'error', title = 'Bank', description = err
+        })
+        return
+    end
+
+    local newBal = getBalance(identifier)
+    TriggerClientEvent('ox_lib:notify', src, {
+        type = 'success', title = 'Bank',
+        description = ('Withdrew $%d. Balance: $%d'):format(amount, newBal)
+    })
+end, false)
+
+RegisterCommand('balance', function(source)
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    local bal = getBalance(identifier)
+    TriggerClientEvent('ox_lib:notify', src, {
+        type = 'inform', title = 'Bank',
+        description = ('Balance: $%d'):format(bal)
+    })
+end, false)
+
+RegisterCommand('auditlog', function(source)
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    local rows = MySQL.query.await(
+        'SELECT action, amount, note, DATE_FORMAT(created_at, "%Y-%m-%d %H:%i") AS ts FROM qu_audit_log WHERE identifier = ? ORDER BY created_at DESC LIMIT 10',
+        { identifier }
+    )
+
+    if not rows or #rows == 0 then
+        print(('[qu_bank_sql] %s has no audit entries'):format(identifier))
+        return
+    end
+
+    for i, row in ipairs(rows) do
+        print(('[qu_bank_sql] %s | %s | $%d | %s | %s'):format(
+            identifier, row.action, row.amount, row.note or '', row.ts
+        ))
+    end
+end, false)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>DATE_FORMAT in the SELECT</summary>
+            <p><code>DATE_FORMAT(created_at, "%Y-%m-%d %H:%i")</code> tells MySQL to format the timestamp as a readable string like <code>2026-05-03 14:30</code>. Without it, you get a raw timestamp object that Lua doesn't know how to print nicely. The <code>AS ts</code> part gives the formatted column a short name you can use in Lua: <code>row.ts</code>.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Write the deposit handler</h3></header>
+        <p>Write a server event handler called <code>qu:bank:deposit</code> that:</p>
+        <ol>
+          <li>Gets the identifier from <code>source</code></li>
+          <li>Reads the current balance from the database</li>
+          <li>Adds a fixed amount (say $500, from a job payout)</li>
+          <li>Writes the audit log row</li>
+          <li>Notifies the player</li>
+        </ol>
+        <p>The client event that triggers this should send <strong>zero</strong> data -- no amount, no balance. The server decides everything.</p>
+        <div class="self-check">
+          <details>
+            <summary>Check your answer</summary>
+            <figure class="code">
+              <header><span>server.lua</span></header>
+              <pre><code class="language-lua">local JOB_PAYOUT = 500
+
+RegisterNetEvent('qu:bank:deposit', function()
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    deposit(identifier, JOB_PAYOUT, 'job payout')
+    local newBal = getBalance(identifier)
+    TriggerClientEvent('ox_lib:notify', src, {
+        type = 'success', title = 'Bank',
+        description = ('Received $%d. Balance: $%d'):format(JOB_PAYOUT, newBal)
+    })
+end)</code></pre>
+            </figure>
+            <p>The key: the client fires <code>TriggerServerEvent('qu:bank:deposit')</code> with no arguments. The server uses its own <code>JOB_PAYOUT</code> constant. A cheater who changes the event cannot manipulate the amount because the amount is never read from the event payload.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Client sending "new balance" to server</summary>
+          <div class="callout callout--danger">
+            <p>If the client sends <code>TriggerServerEvent('qu:bank:deposit', 999999)</code> and the server trusts it, the player has infinite money. The server must compute the new balance itself using <code>balance = balance + ?</code> in SQL or by reading from the database. The client's only job is to say "I want to do this action." The amount comes from the server's game logic.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Not checking balance before withdraw</summary>
+          <div class="callout callout--danger">
+            <p>If your withdraw handler does <code>UPDATE SET balance = balance - ?</code> without first checking <code>balance >= amount</code>, a player can end up with a negative balance. Negative balances break everything downstream: other scripts that check "can the player afford this?" get confused, and exploiters can game transfer logic. Always check first, then update.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Missing audit log on a transfer</summary>
+          <div class="callout callout--danger">
+            <p>Every money movement needs a log row. If you add a transfer feature later and only log the sender's side, you have an incomplete trail. When debugging, you see money leave player A but no record of it arriving at player B. Log both sides: one <code>transfer_out</code> row for the sender and one <code>transfer_in</code> row for the receiver.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Database connection timeout</summary>
+          <div class="callout callout--danger">
+            <p>If the database goes down or the connection times out, <code>MySQL.query.await</code> can return <code>nil</code> or throw an error. Wrap critical operations in a nil check: <code>local result = MySQL.query.await(...) if not result then -- handle failure end</code>. For production servers, monitor your MariaDB uptime and set <code>mysql_connection_string</code>'s <code>connectTimeout</code> parameter if needed.</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="c">
+            <legend>1. Why keep an audit log instead of just updating the balance?</legend>
+            <label><input type="radio" name="q1" value="a"> Because MySQL requires a second table for every UPDATE.</label>
+            <label><input type="radio" name="q1" value="b"> Because it makes the code look professional.</label>
+            <label><input type="radio" name="q1" value="c"> So you can debug disputes, detect cheaters, and reverse bad transactions by seeing every action that changed the balance.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. In a server-authoritative bank, what should the client event contain?</legend>
+            <label><input type="radio" name="q2" value="a"> Nothing, or only an action type. The server decides all amounts and reads all balances itself.</label>
+            <label><input type="radio" name="q2" value="b"> The amount the player wants to deposit or withdraw.</label>
+            <label><input type="radio" name="q2" value="c"> The player's current balance so the server can verify it.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>3. What is a migration in FiveM resource development?</legend>
+            <label><input type="radio" name="q3" value="a"> Moving a resource from one server to another.</label>
+            <label><input type="radio" name="q3" value="b"> A SQL script that creates or modifies database tables, typically run on resource start.</label>
+            <label><input type="radio" name="q3" value="c"> A backup of the database before making changes.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: SQL banking patterns</h2>
+        <dl>
+          <div><dt><code>MySQL.insert(sql, params)</code></dt><dd>Insert a row. Returns the new <code>id</code>. Use for audit log entries.</dd></div>
+          <div><dt><code>MySQL.update.await(sql, params)</code></dt><dd>Update rows and wait for it to finish. Returns number of affected rows.</dd></div>
+          <div><dt><code>MySQL.query.await(sql, params)</code></dt><dd>Run a SELECT and get the rows back as a Lua table.</dd></div>
+          <div><dt><code>INSERT IGNORE INTO</code></dt><dd>Insert if not exists, skip silently if UNIQUE constraint blocks it.</dd></div>
+          <div><dt><code>balance = balance + ?</code></dt><dd>Let the database do the math. Avoids race conditions in Lua.</dd></div>
+          <div><dt><code>WHERE identifier = ?</code></dt><dd>Always filter by player. Never update all rows by accident.</dd></div>
+          <div><dt><code>DATE_FORMAT(col, '%Y-%m-%d %H:%i')</code></dt><dd>Format a timestamp into a readable string inside the query.</dd></div>
+          <div><dt>Audit pattern</dt><dd>Every money change = one UPDATE to balance + one INSERT to audit log. No exceptions.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to use a migration pattern to create tables on resource start</li>
+          <li>Why audit logs exist: debugging, cheater detection, and transaction reversal</li>
+          <li>That the server reads and updates balances from the database, and the client never sends amounts</li>
+          <li>How to write a withdraw function that checks balance before updating</li>
+          <li>How to use <code>DATE_FORMAT</code> to read timestamps from the audit log</li>
+          <li>That every money movement must produce an audit log row, no exceptions</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Exercise</h2>
+        <p>Add a <code>/withdraw</code> command to the banking resource that:</p>
+        <ol>
+          <li>Reads the player's identifier from <code>source</code></li>
+          <li>Takes an amount from the command arguments</li>
+          <li>Validates the amount (positive integer)</li>
+          <li>Checks the player has enough balance in the database</li>
+          <li>Updates the balance with <code>balance = balance - ?</code></li>
+          <li>Inserts an audit log row with action <code>'withdraw'</code></li>
+          <li>Notifies the player with the new balance, or an error if denied</li>
+        </ol>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>in-game</span></header>
+          <pre><code>-- /deposit 1000
+-- Green notification: "Deposited $1000. Balance: $1000"
+
+-- /withdraw 300
+-- Green notification: "Withdrew $300. Balance: $700"
+
+-- /withdraw 900
+-- Red notification: "Not enough funds"
+
+-- /auditlog (server console)
+[qu_bank_sql] license:abc | withdraw | $300 | manual withdraw | 2026-05-03 14:32
+[qu_bank_sql] license:abc | deposit  | $1000 | manual deposit | 2026-05-03 14:31</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>You already have the <code>withdraw</code> function from Step 5 and the command pattern from Step 6. The exercise is about wiring them together and testing the deny path. Try withdrawing more than your balance, then check <code>/auditlog</code> to confirm only the successful operations were logged.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+          <li><a href="../clase-20/leason20.html">QU Lesson 21: Mini banking</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Add a <code>/transfer [playerId] [amount]</code> command that debits the sender, credits the receiver, and writes <strong>two</strong> audit rows (one <code>transfer_out</code>, one <code>transfer_in</code>), all four statements in a single <code>MySQL.transaction.await</code> batch. Bonus: include the atomic-guard <code>WHERE balance &gt;= ?</code> on the debit so the whole transfer rolls back if the sender cannot afford it.</li>
+          <li>Add an admin command <code>/auditplayer [identifier] [page]</code> that paginates the audit log (LIMIT/OFFSET, 20 rows per page, newest first). Gate it with an ACE permission like <code>quasar.audit</code> and reject callers without it.</li>
+          <li>Harden the database calls with <code>pcall</code> hygiene: wrap each <code>MySQL.*</code> call so a thrown error never bubbles out of the command handler and crash-logs the player. On failure, write a one-line warning with the player identifier, action, and amount to a dedicated <code>logs/qu_bank_failures.log</code> file so an operator can reconcile manually after an outage.</li>
+        </ul>
+      </section>

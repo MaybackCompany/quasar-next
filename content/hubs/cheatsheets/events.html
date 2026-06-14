@@ -1,0 +1,222 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/">Quasar Academy</a> › <a href="/cheatsheets">Cheatsheets</a> › <span>Events</span></div>
+        <h1>Events: trigger, listen, secure</h1>
+        <p class="lede">Four verbs for FiveM events. Pick one based on which side fires and which side listens. The secure wrapper goes on top once the basic flow works.</p>
+
+        <div class="hero-outcome">
+          <div><dt>Same-side: TriggerEvent</dt><dd>Fires inside the same script process. No network.</dd></div>
+          <div><dt>Client → server: TriggerServerEvent</dt><dd>Always validate on the server. Client can fake any payload.</dd></div>
+          <div><dt>Server → client: TriggerClientEvent</dt><dd>First arg is event name, second is target source, then the payload.</dd></div>
+          <div><dt>Net listener needs Register</dt><dd>Across the wire requires <code>RegisterNetEvent</code> before <code>AddEventHandler</code>.</dd></div>
+        </div>
+      </section>
+
+      <section id="flow">
+        <h2>The flow at a glance</h2>
+        <figure class="cheat-diagram" role="group" aria-labelledby="flow-cap">
+          <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="flow-title flow-desc" focusable="false">
+            <title id="flow-title">FiveM event flow between client and server</title>
+            <desc id="flow-desc">TriggerEvent stays on one side. TriggerServerEvent crosses from client to server. TriggerClientEvent crosses from server to one or every client.</desc>
+            <defs>
+              <marker id="ev-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+            <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+              <rect x="20" y="40" width="280" height="240" rx="10" fill="none" stroke="#cfdde3" stroke-width="1.5"/>
+              <text x="160" y="28" text-anchor="middle" font-size="12" font-weight="600" fill="#04394a" letter-spacing="0.08em">CLIENT</text>
+              <rect x="420" y="40" width="280" height="240" rx="10" fill="none" stroke="#cfdde3" stroke-width="1.5"/>
+              <text x="560" y="28" text-anchor="middle" font-size="12" font-weight="600" fill="#04394a" letter-spacing="0.08em">SERVER</text>
+              <g fill="#04394a">
+                <rect x="50" y="80" width="220" height="44" rx="6" fill="#f6fbfd" stroke="#cfdde3"/>
+                <text x="160" y="100" text-anchor="middle" font-weight="600">TriggerEvent</text>
+                <text x="160" y="116" text-anchor="middle" fill="#476a78" font-size="11">same side, no network</text>
+                <rect x="50" y="200" width="220" height="44" rx="6" fill="#f6fbfd" stroke="#cfdde3"/>
+                <text x="160" y="220" text-anchor="middle" font-weight="600">RegisterNetEvent</text>
+                <text x="160" y="236" text-anchor="middle" fill="#476a78" font-size="11">listen for cross-network</text>
+                <rect x="450" y="80" width="220" height="44" rx="6" fill="#f6fbfd" stroke="#cfdde3"/>
+                <text x="560" y="100" text-anchor="middle" font-weight="600">TriggerEvent</text>
+                <text x="560" y="116" text-anchor="middle" fill="#476a78" font-size="11">same side, no network</text>
+                <rect x="450" y="200" width="220" height="44" rx="6" fill="#f6fbfd" stroke="#cfdde3"/>
+                <text x="560" y="220" text-anchor="middle" font-weight="600">RegisterNetEvent</text>
+                <text x="560" y="236" text-anchor="middle" fill="#476a78" font-size="11">listen for cross-network</text>
+              </g>
+              <g stroke="#08b9d6" stroke-width="2" fill="none" color="#08b9d6">
+                <path d="M270,144 C 340,144 380,200 450,210" marker-end="url(#ev-arrow)"/>
+                <path d="M450,90 C 380,90 340,150 270,160" marker-end="url(#ev-arrow)"/>
+              </g>
+              <g font-size="11" fill="#04394a">
+                <text x="360" y="152" text-anchor="middle" font-weight="600">TriggerServerEvent</text>
+                <text x="360" y="166" text-anchor="middle" fill="#476a78">client → server</text>
+                <text x="360" y="84" text-anchor="middle" font-weight="600">TriggerClientEvent</text>
+                <text x="360" y="98" text-anchor="middle" fill="#476a78">server → one or all (-1)</text>
+              </g>
+            </g>
+          </svg>
+          <figcaption id="flow-cap">Same-side calls stay inside one box. Cross-network calls travel the wire and need <code>RegisterNetEvent</code> on the receiving side.</figcaption>
+        </figure>
+      </section>
+
+      <section id="four-verbs">
+        <h2>The four verbs</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Verb</div><div>Crosses network</div><div>Side</div><div>Use for</div>
+          </div>
+          <div class="cheat-row">
+            <div><code>TriggerEvent</code></div><div>No</div><div>Either</div><div>Same-side broadcast</div>
+          </div>
+          <div class="cheat-row">
+            <div><code>TriggerServerEvent</code></div><div>Yes</div><div>Client only</div><div>Ask server to do something</div>
+          </div>
+          <div class="cheat-row">
+            <div><code>TriggerClientEvent</code></div><div>Yes</div><div>Server only</div><div>Tell one or all clients</div>
+          </div>
+          <div class="cheat-row">
+            <div><code>TriggerLatentClientEvent</code></div><div>Yes</div><div>Server only</div><div>Big payloads, throttled bandwidth</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="local">
+        <h2>Same-side events</h2>
+        <pre><code>-- listen
+AddEventHandler('myresource:hello', function(name)
+  print('hello ' .. name)
+end)
+
+-- fire (same side, same resource or another resource on the same side)
+TriggerEvent('myresource:hello', 'Maria')</code></pre>
+        <div class="callout callout--tip">
+          <header>Same-side broadcast</header>
+          <p>Use this when you want other resources on the same side to react to something. No network cost.</p>
+        </div>
+      </section>
+
+      <section id="client-to-server">
+        <h2>Client to server</h2>
+        <pre><code>-- client.lua
+TriggerServerEvent('shop:buy', itemId)
+
+-- server.lua
+RegisterNetEvent('shop:buy', function(itemId)
+  local source = source                            -- snapshot before any await
+  local item = Config.Items[itemId]
+  if not item then return end                      -- validate input
+  if not removeMoney(source, item.price) then return end
+  exports['ox_inventory']:AddItem(source, item.name, 1)
+end)</code></pre>
+        <div class="callout callout--warn">
+          <header>Always snapshot source</header>
+          <p>Inside a <code>RegisterNetEvent</code> handler, <code>source</code> is the player who triggered. After any <code>await</code> or callback, it can change. Snapshot it on the first line.</p>
+        </div>
+      </section>
+
+      <section id="server-to-client">
+        <h2>Server to client</h2>
+        <pre><code>-- server.lua
+local source = 5                                   -- one player
+TriggerClientEvent('notify:show', source, 'Welcome')
+
+TriggerClientEvent('shop:close', -1)               -- -1 means every client
+
+-- client.lua
+RegisterNetEvent('notify:show', function(message)
+  lib.notify({ description = message })
+end)</code></pre>
+        <p>The second argument is the target. <code>-1</code> broadcasts to all connected clients. Use sparingly: every connected player runs the handler.</p>
+      </section>
+
+      <section id="register">
+        <h2>RegisterNetEvent vs AddEventHandler</h2>
+        <p>For events that cross the network, you must call both. <code>RegisterNetEvent</code> declares that the event can be triggered from the other side. <code>AddEventHandler</code> binds the function.</p>
+        <pre><code>-- shorter: register and bind in one
+RegisterNetEvent('shop:buy', function(itemId)
+  -- handler body
+end)
+
+-- equivalent to
+RegisterNetEvent('shop:buy')
+AddEventHandler('shop:buy', function(itemId)
+  -- handler body
+end)</code></pre>
+        <div class="callout callout--warn">
+          <header>Missing register</header>
+          <p>If you forget <code>RegisterNetEvent</code>, the event fires but nothing happens. The console logs <em>NetEvent &apos;X&apos; was not safe for network use</em>.</p>
+        </div>
+      </section>
+
+      <section id="naming">
+        <h2>Naming convention</h2>
+        <p>Use the <code>resource:action</code> shape. It prevents collisions across resources and makes the event obvious in logs.</p>
+        <pre><code>-- good
+'qb-shops:server:buyItem'
+'ox_inventory:client:openInventory'
+'myresource:server:savePosition'
+
+-- bad
+'buy'                                               -- collides with everything
+'doStuff'                                           -- meaningless</code></pre>
+      </section>
+
+      <section id="ox-secure">
+        <h2>ox_lib secure net wrappers</h2>
+        <p>The <code>lib.callback</code> and <code>lib.triggerClientEvent</code> wrappers add rate limiting, version checks, and structured arguments. Use them once the basic flow works.</p>
+        <pre><code>-- server: callback with response
+lib.callback.register('shop:price', function(source, itemId)
+  local item = Config.Items[itemId]
+  return item and item.price or 0
+end)
+
+-- client: ask and wait
+local price = lib.callback.await('shop:price', 100, 'bread')
+print('bread costs', price)</code></pre>
+        <div class="callout callout--tip">
+          <header>When to upgrade</header>
+          <p>Plain events for one-shot triggers. Callbacks when you need a response. Both can coexist in the same resource.</p>
+        </div>
+      </section>
+
+      <section id="common-mistakes">
+        <h2>Common mistakes</h2>
+        <div class="callout callout--warn">
+          <header>Trusting client payload</header>
+          <p>The client can fire <code>TriggerServerEvent('shop:buy', 'free-money')</code>. The server must look up the price from its own config, not from the payload.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>source after await</header>
+          <p>Inside a server handler, <code>source</code> is a magic global. After any <code>Citizen.Wait</code>, callback, or <code>MySQL.query.await</code>, it may have changed. Always <code>local source = source</code> on the first line.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Using AddEventHandler on a net event</header>
+          <p>Without <code>RegisterNetEvent</code> first, the handler runs only for same-side events. Cross-network triggers are silently ignored and logged as unsafe.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Broadcasting with -1 every tick</header>
+          <p><code>TriggerClientEvent('hud:update', -1, ...)</code> in a 100ms loop floods the network. Send only when the value actually changes.</p>
+        </div>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/cheatsheets/resource-skeleton">← Resource skeleton</a>
+        <a class="next" href="/cheatsheets/ox-lib-ui">Next: ox_lib UI cheatsheet →</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#flow">Flow at a glance</a>
+        <a href="#four-verbs">The four verbs</a>
+        <a href="#local">Same-side</a>
+        <a href="#client-to-server">Client to server</a>
+        <a href="#server-to-client">Server to client</a>
+        <a href="#register">Register vs Add</a>
+        <a href="#naming">Naming</a>
+        <a href="#ox-secure">ox_lib wrappers</a>
+        <a href="#common-mistakes">Common mistakes</a>
+      </nav>
+    </aside>
+  </div>

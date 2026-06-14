@@ -1,0 +1,144 @@
+<LessonHero
+  crumbs="Module 04 · Bonus"
+  title="Cancelling events: CancelEvent() &amp; WasEventCanceled()"
+  meta={[
+    { label: "You'll learn", value: "How CancelEvent() propagates through a handler chain, when downstream handlers still run, and the playerConnecting kick pattern" },
+    { label: "Time", value: "~12 minutes" },
+    { label: "Prereqs", value: "Lesson 13 (TriggerEvent) and 14 (TriggerServerEvent / TriggerClientEvent)" },
+    { label: "Outcome", value: "You can cancel an event from a handler, detect cancellation downstream, and pick the right tool between cancel, return, and defer" },
+  ]}
+>
+  Sometimes one handler needs to veto the rest. A spawn-protection script blocks the death-handler chain. An anti-cheat resource cancels `playerConnecting` for a banned UID before any other resource sees the join. `CancelEvent()` is the signal; `WasEventCanceled()` is how downstream handlers know.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds CancelEvent and WasEventCanceled in a server handler chain as a working FiveM resource named `qu_cancelling_events`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_cancelling_events
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_cancelling_events/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+AddEventHandler('qu_cancelling_events:check', function(name)
+    print('[qu_cancelling_events] first handler checked ' .. name)
+    if name == 'blocked' then
+        CancelEvent()
+        print('[qu_cancelling_events] event cancelled')
+    end
+end)
+
+AddEventHandler('qu_cancelling_events:check', function(name)
+    if WasEventCanceled() then
+        print('[qu_cancelling_events] second handler saw cancel')
+        return
+    end
+    print('[qu_cancelling_events] second handler allowed ' .. name)
+end)
+
+RegisterCommand('canceltest', function(_, args)
+    TriggerEvent('qu_cancelling_events:check', args[1] or 'allowed')
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_cancelling_events
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_cancelling_events
+    ```
+
+    Run this test:
+
+    ```text
+    canceltest blocked
+    ```
+
+    <ExpectedOutput>
+      [qu_cancelling_events] event cancelled
+[qu_cancelling_events] second handler saw cancel
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_cancelling_events does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_cancelling_events", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_cancelling_events, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_cancelling_events folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for CancelEvent and WasEventCanceled in a server handler chain.",
+    "Add ensure qu_cancelling_events to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_cancelling_events`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

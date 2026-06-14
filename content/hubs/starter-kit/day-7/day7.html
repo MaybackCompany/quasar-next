@@ -1,0 +1,228 @@
+<main class="day-main">
+    <a class="kit-back" href="/starter-kit">← Back to the 7-day path</a>
+
+    <section style="margin-top: 20px">
+      <div class="day-eyebrow">Day 7 · Qbox &amp; multi-framework · ~40 min</div>
+      <h1 class="day-title">Qbox and one script for all three</h1>
+      <p class="day-lede">This is the hardest day in the starter kit, so slow down. You are not learning a brand-new money idea now. You are learning how one script can survive in three framework worlds. Keep repeating the same sentence: <strong>same script idea, different framework vocabulary</strong>.</p>
+    </section>
+
+    <h2 class="day-section-title">Day 7 in plain English</h2>
+    <div class="prose">
+      <p>You already know the real rule from Days 5 and 6: <em>no balance check, no deposit</em>.</p>
+      <p>Day 7 only adds one extra idea: a server might run ESX, QBCore, or Qbox, so your script may need to detect which world it is in before it chooses the right code branch.</p>
+      <p>Think of it like this:</p>
+      <p><strong>The question</strong> is always the same: "which framework am I talking to?"</p>
+      <p><strong>The answer</strong> is one of three names: <code class="inline">qbox</code>, <code class="inline">qbcore</code>, or <code class="inline">esx</code>.</p>
+      <p><strong>The behavior</strong> is still the same: guard first, move money second.</p>
+    </div>
+
+    <section class="reading-panel">
+      <h3>How to use Day 7</h3>
+      <p>This is the hardest starter day, so do it in two passes. First make the Qbox-only version work. Then do the runtime detection. Only after that should you attempt the one-command-for-all-frameworks lab.</p>
+    </section>
+
+    <h2 class="day-section-title">Concepts</h2>
+    <div class="prose">
+      <p><strong>Side-by-side cheat sheet:</strong> ESX uses <code class="inline">xPlayer.getMoney()</code>. QBCore uses <code class="inline">Player.Functions.GetMoney('cash')</code>. Qbox usually starts with <code class="inline">exports.qbx_core:GetPlayer(src)</code>, then reads cash from <code class="inline">Player.PlayerData.money.cash</code>. Different names, same idea: look up the player, read the cash, guard first.</p>
+      <div class="concept">
+        <h4>Qbox is export-first</h4>
+        <p>No more <code class="inline">GetCoreObject()</code> dance. You use a direct export to get the player object: <code class="inline">exports.qbx_core:GetPlayer(src)</code>. After that, the returned player looks very close to QBCore: read data from <code class="inline">Player.PlayerData</code> and mutate money with <code class="inline">Player.Functions.AddMoney</code> / <code class="inline">RemoveMoney</code>. Cleaner entry point, familiar player shape.</p>
+      </div>
+      <div class="concept">
+        <h4>Inventory lives in ox_inventory</h4>
+        <p>Qbox delegates inventory to ox_inventory. Adding an item: <code class="inline">exports.ox_inventory:AddItem(src, 'water', 1)</code>. Same API on ESX or QBCore if you switch them to ox_inventory as well.</p>
+      </div>
+      <div class="concept">
+        <h4>Framework-agnostic code</h4>
+        <p>You can ship one resource that works on all three. At top of file, detect: if <code class="inline">exports.qbx_core</code> exists, prefer Qbox. Else if <code class="inline">QBCore</code> is set, use QB. Else if <code class="inline">ESX</code> is set, use ESX. Each branch has its own money API, and each one still needs the balance check.</p>
+      </div>
+      <div class="concept" style="border-left: 3px solid var(--danger); padding-left: 14px;">
+        <h4>Third framework, same rule</h4>
+        <p>Qbox still lets you write bad money logic if you skip the guard. <strong>Check before you move:</strong> <code class="inline">if Player.PlayerData.money.cash &lt; 100 then return end</code>. Then use <code class="inline">Player.Functions.RemoveMoney</code> and <code class="inline">Player.Functions.AddMoney</code>. Three frameworks, three APIs, one rule: <em>never trust the client, never skip the balance check</em>.</p>
+      </div>
+    </div>
+
+    <h2 class="day-section-title">Lab 1 · <code class="inline" style="font-size:0.9em">/deposit</code>, the Qbox way</h2>
+    <p class="prose">Step one: fetch the player with <code class="inline">exports.qbx_core:GetPlayer(source)</code> and guard on <code class="inline">Player.PlayerData.money.cash &gt;= 100</code>. Step two: use <code class="inline">Player.Functions.RemoveMoney('cash', 100, ...)</code> and <code class="inline">Player.Functions.AddMoney('bank', 100, ...)</code>.</p>
+    <p class="prose"><strong>What to do:</strong></p>
+    <ol class="prose">
+      <li>Get the player once and store it in a local variable.</li>
+      <li>Check <code class="inline">Player.PlayerData.money.cash</code> before you touch anything else.</li>
+      <li>If cash is below 100, use <code class="inline">return</code> immediately.</li>
+      <li>Only after the guard passes, remove 100 from cash and add 100 to bank.</li>
+    </ol>
+
+    <div class="lab"
+         data-day-id="day-7"
+         data-lab-id="lab1"
+         data-lab-title="/deposit using exports.qbx_core + Player.Functions"
+         data-lab-objective="RegisterCommand 'deposit'. Get the qbx player, guard on Player.PlayerData.money.cash >= 100, then use Player.Functions.RemoveMoney / AddMoney.">
+      <template class="lab-template">RegisterCommand('deposit', function(source, args, rawCommand)
+  local Player = exports.qbx_core:GetPlayer(source)
+  -- step 1: guard. refuse if Player.PlayerData.money.cash is below 100.
+
+  -- step 2: move 100 cash -> bank via Player.Functions
+end, false)
+</template>
+      <template class="lab-tests">[
+        { "name": "'deposit' command is registered",                     "assert": { "type": "hasCommand", "name": "deposit" } },
+        { "name": "Qbox RemoveMoney was used",                           "run": "_sandbox_run_command('deposit', 1)", "assert": { "type": "callAtLeast", "fn": "qbPlayer.RemoveMoney", "min": 1 } },
+        { "name": "Happy path: cash 500 -> 400",                         "assert": { "type": "lua", "expr": "return _sandbox.qbxPlayer and _sandbox.qbxPlayer.PlayerData.money.cash == 400" } },
+        { "name": "Happy path: bank 1000 -> 1100",                       "assert": { "type": "lua", "expr": "return _sandbox.qbxPlayer and _sandbox.qbxPlayer.PlayerData.money.bank == 1100" } },
+        { "name": "Guard: with 50 cash, deposit is refused",             "run": "_sandbox.qbxPlayer.PlayerData.money.cash = 50; _sandbox.qbxPlayer.PlayerData.money.bank = 0; _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.qbxPlayer.PlayerData.money.cash == 50 and _sandbox.qbxPlayer.PlayerData.money.bank == 0" } }
+      ]</template>
+    </div>
+
+    <div class="hint">
+      <p><strong>If the guard test fails</strong> (<em>Guard: with 50 cash, deposit is refused</em>): read <code class="inline">Player.PlayerData.money.cash</code> and place <code class="inline">return</code> above the money calls. If you remove money first and check later, the test is right to fail.</p>
+    </div>
+
+    <h2 class="day-section-title">Lab 2 · Detect the framework at runtime</h2>
+    <p class="prose">Write a function <code class="inline">detectFramework()</code> that returns one of the strings <code class="inline">'qbox'</code>, <code class="inline">'qbcore'</code>, or <code class="inline">'esx'</code>, picking in that priority order. Then print <code class="inline">framework: &lt;name&gt;</code>.</p>
+    <p class="prose">In the sandbox, all three frameworks are defined at once at first, so your detection needs priority. Then the tests flip the sandbox into Qbox-only, QBCore-only, and ESX-only modes one at a time, so every branch gets verified for real.</p>
+    <p class="prose"><strong>What to do:</strong></p>
+    <ol class="prose">
+      <li>Check Qbox first: if <code class="inline">exports</code> and <code class="inline">exports.qbx_core</code> exist, return <code class="inline">'qbox'</code>.</li>
+      <li>If not, check <code class="inline">QBCore</code>.</li>
+      <li>If not, check <code class="inline">ESX</code>.</li>
+      <li>Print the result so the test can read it.</li>
+    </ol>
+
+    <div class="lab"
+         data-day-id="day-7"
+         data-lab-id="lab2"
+         data-lab-title="Framework detection with priority"
+         data-lab-objective="Return 'qbox' if exports.qbx_core exists, else 'qbcore' if QBCore exists, else 'esx' if ESX exists. Then print 'framework: <name>'.">
+      <template class="lab-template">function detectFramework()
+  -- your code here
+end
+
+print('framework: ' .. detectFramework())
+</template>
+      <template class="lab-tests">[
+        { "name": "Function prioritises Qbox when all are present", "assert": { "type": "hasExactPrint", "text": "framework: qbox" } },
+        { "name": "If only QBCore exists, it returns qbcore",       "run": "_sandbox_use_framework('qbcore'); print('framework: ' .. detectFramework())", "assert": { "type": "hasExactPrint", "text": "framework: qbcore" } },
+        { "name": "If only ESX exists, it returns esx",             "run": "_sandbox_use_framework('esx'); print('framework: ' .. detectFramework())", "assert": { "type": "hasExactPrint", "text": "framework: esx" } }
+      ]</template>
+    </div>
+
+    <h2 class="day-section-title">Lab 3 · One <code class="inline" style="font-size:0.9em">/deposit</code>, all three frameworks</h2>
+    <p class="prose">This is the payoff. Write <strong>one</strong> <code class="inline">/deposit</code> command that works on Qbox, QBCore, or ESX, whichever the server is running. Reuse your <code class="inline">detectFramework()</code> from Lab 2. Each branch fetches the right player, checks the balance, and moves 100 cash to bank. Same rule every time: if the player has less than 100 cash, <code class="inline">return</code> without touching money.</p>
+    <p class="prose">When the file first loads, all three frameworks are present, so your detection priority still matters: <code class="inline">qbox</code> → <code class="inline">qbcore</code> → <code class="inline">esx</code>. After that, the tests switch the sandbox into one framework at a time and check both the happy path and the guard path on every branch.</p>
+    <p class="prose"><strong>Build order:</strong></p>
+    <ol class="prose">
+      <li>Write <code class="inline">detectFramework()</code> first and keep it tiny.</li>
+      <li>Inside the command, store the framework name in <code class="inline">fw</code>.</li>
+      <li>Write the Qbox branch fully before touching the others.</li>
+      <li>Copy the <em>shape</em> of the branch, not the exact API names, into QBCore and ESX.</li>
+      <li>End every branch the same way: if not enough cash, <code class="inline">return</code>.</li>
+    </ol>
+
+    <div class="lab"
+         data-day-id="day-7"
+         data-lab-id="lab3"
+         data-lab-title="Framework-agnostic /deposit with balance guard on every branch"
+         data-lab-objective="One RegisterCommand. Detect framework by priority. Dispatch to the right money API, each branch guarded by a balance check.">
+      <template class="lab-template">function detectFramework()
+  if exports and exports.qbx_core then return 'qbox' end
+  if QBCore then return 'qbcore' end
+  if ESX then return 'esx' end
+  return 'none'
+end
+
+RegisterCommand('deposit', function(source, args, rawCommand)
+  local fw = detectFramework()
+
+  if fw == 'qbox' then
+    local Player = exports.qbx_core:GetPlayer(source)
+    -- guard + Player.Functions.RemoveMoney('cash', 100, ...) + AddMoney('bank', 100, ...)
+
+  elseif fw == 'qbcore' then
+    local Player = QBCore.Functions.GetPlayer(source)
+    -- guard + RemoveMoney('cash', 100) + AddMoney('bank', 100)
+
+  elseif fw == 'esx' then
+    local xPlayer = ESX.GetPlayerFromId(source)
+    -- guard + xPlayer.removeMoney(100) + xPlayer.addAccountMoney('bank', 100)
+  end
+end, false)
+</template>
+      <template class="lab-tests">[
+        { "name": "'deposit' command is registered",                         "assert": { "type": "hasCommand", "name": "deposit" } },
+        { "name": "Qbox branch moves 100 cash to bank",                      "run": "_sandbox_use_framework('qbox'); _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.qbxPlayer and _sandbox.qbxPlayer.PlayerData.money.cash == 400 and _sandbox.qbxPlayer.PlayerData.money.bank == 1100" } },
+        { "name": "Qbox guard refuses a broke player",                       "run": "_sandbox_use_framework('qbox'); local p = exports.qbx_core:GetPlayer(1); p.PlayerData.money.cash = 50; p.PlayerData.money.bank = 0; _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.qbxPlayer.PlayerData.money.cash == 50 and _sandbox.qbxPlayer.PlayerData.money.bank == 0" } },
+        { "name": "QBCore branch moves 100 cash to bank",                    "run": "_sandbox_use_framework('qbcore'); _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.qbPlayer and _sandbox.qbPlayer.PlayerData.money.cash == 400 and _sandbox.qbPlayer.PlayerData.money.bank == 1100" } },
+        { "name": "QBCore guard refuses a broke player",                     "run": "_sandbox_use_framework('qbcore'); local p = QBCore.Functions.GetPlayer(1); p.PlayerData.money.cash = 50; p.PlayerData.money.bank = 0; _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.qbPlayer.PlayerData.money.cash == 50 and _sandbox.qbPlayer.PlayerData.money.bank == 0" } },
+        { "name": "ESX branch moves 100 cash to bank",                       "run": "_sandbox_use_framework('esx'); _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.esxXPlayer and _sandbox.esxXPlayer.money.cash == 400 and _sandbox.esxXPlayer.money.bank == 1100" } },
+        { "name": "ESX guard refuses a broke player",                        "run": "_sandbox_use_framework('esx'); local p = ESX.GetPlayerFromId(1); p.money.cash = 50; p.money.bank = 0; _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.esxXPlayer.money.cash == 50 and _sandbox.esxXPlayer.money.bank == 0" } },
+        { "name": "Framework helper resets back to all for later labs",      "run": "_sandbox_use_framework('all')", "assert": { "type": "lua", "expr": "return exports.qbx_core ~= false and QBCore ~= nil and ESX ~= nil" } }
+      ]</template>
+    </div>
+
+    <div class="hint">
+      <p><strong>The sandbox now checks all three branches</strong>, not just Qbox. If QBCore or ESX fail, compare your branch against the earlier day pages. Same rule, different property names. Fix one branch at a time until every happy-path and guard test is green.</p>
+    </div>
+
+    <h2 class="day-section-title">Starter-kit final tests</h2>
+    <div class="prose">
+      <p>Green tests here means you can follow a template. The next step is proving you can rebuild the ideas from memory.</p>
+      <p>After this page, open the final test ladder and do the scripts in order:</p>
+      <ol>
+        <li><code class="inline">/hello</code></li>
+        <li><code class="inline">/wallet</code></li>
+        <li><code class="inline">/ping</code></li>
+        <li><code class="inline">/healme</code></li>
+        <li><code class="inline">/deposit</code> for one framework, then all three</li>
+      </ol>
+      <p><a href="/starter-kit/final-tests">Open the starter-kit final tests →</a></p>
+    </div>
+
+    <section style="margin-top: 44px; padding: 26px 28px; border: 1px solid var(--accent-line); border-radius: 14px; background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg-1) 80%);">
+      <h3 style="margin: 0 0 10px 0; font-family: var(--font-display); font-size: 20px;">You just finished the starter kit.</h3>
+      <p style="margin: 0 0 16px 0; color: var(--fg-muted); line-height: 1.65;">Seven days, fifteen labs, three frameworks. If you started from zero and made it here, you now have a real beginner foundation: commands, tables, events, ox_lib, framework money APIs, and the habit of guarding server logic before touching state. From here, the 21-lesson curriculum picks up: real resource layouts, NUI, databases, jobs, inventories, and shipping. Keep going.</p>
+      <a href="/" style="display: inline-block; padding: 12px 22px; border-radius: 10px; background: var(--primary); color: var(--primary-fg); border: 0; font-weight: 600; text-decoration: none;">Open the 21-lesson curriculum →</a>
+    </section>
+
+    <section class="lesson-recap" id="recap">
+      <h2>What you learned today</h2>
+      <ul>
+        <li><code class="inline">exports.qbx_core:GetPlayer(source)</code> is how Qbox gives you the player object. No <code class="inline">GetCoreObject()</code> dance needed -- just a direct export call.</li>
+        <li>Runtime detection checks which framework is loaded by testing if <code class="inline">exports.qbx_core</code>, <code class="inline">QBCore</code>, or <code class="inline">ESX</code> exist, in that priority order.</li>
+        <li>One script can support all three frameworks by branching on the detected framework name. Same logic, different API spellings in each branch.</li>
+        <li>Shared patterns (guard the balance, get the player, move money) reduce duplicate code. The rule never changes across frameworks: check first, act second.</li>
+      </ul>
+    </section>
+
+    <section id="mistakes">
+      <h2>Common mistakes</h2>
+      <details class="explain">
+        <summary>Detection always returns the wrong framework</summary>
+        <div class="callout callout--danger">
+          <p>You are checking frameworks in the wrong order. If you check <code class="inline">ESX</code> before <code class="inline">QBCore</code>, a server running both will always pick ESX. Check Qbox first, then QBCore, then ESX. Priority order matters because some servers load multiple framework globals.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Script crashes with "attempt to index a nil value" on a server with no framework</summary>
+        <div class="callout callout--danger">
+          <p>You forgot to handle the "no framework found" case. If none of the three globals exist, your detection returns <code class="inline">nil</code> and the next line that tries to use it crashes. Always add a fallback branch (like <code class="inline">return 'none'</code>) and handle it gracefully in your command.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Deposit works on QBCore but crashes on ESX (or vice versa)</summary>
+        <div class="callout callout--danger">
+          <p>You mixed up method names between frameworks. ESX uses <code class="inline">xPlayer.removeMoney(100)</code> (lowercase, no account name for cash). QBCore uses <code class="inline">Player.Functions.RemoveMoney('cash', 100)</code> (uppercase, with account string). Each branch must use its own framework's exact API. Do not copy-paste one branch into another without changing the method names.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="reading-panel" style="margin-top: 32px;">
+      <h3>Before you move on</h3>
+      <p>Write one sentence that explains what you built today and how it works. If you cannot explain it simply, redo the labs until it clicks.</p>
+    </section>
+
+    <nav class="day-nav">
+      <a href="/starter-kit/day-6/day6">← Day 6</a>
+      <a class="day-nav-next" href="/starter-kit">Back to the path</a>
+    </nav>
+  </main>

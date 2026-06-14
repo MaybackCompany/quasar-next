@@ -1,0 +1,312 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 04 &middot; Bonus</span></div>
+        <h1>State bags: <code>Entity(x).state</code>, <code>Player(s).state</code>, <code>GlobalState</code></h1>
+        <p class="lede">Half the time you reach for <code>TriggerClientEvent</code>, what you actually want is a <strong>state bag</strong>: a key/value blob attached to an entity, a player, or the whole server, automatically replicated across the network. Set the value once on the server; every client sees it. Hook a handler; you get notified when it changes.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>Entity state, Player state, and GlobalState; who can write each; and how to react to changes with <code>AddStateBagChangeHandler</code></dd></div>
+          <div><dt>Time</dt><dd>~15 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 14 (events) and Lesson 12 (trust &amp; authority)</dd></div>
+          <div><dt>Outcome</dt><dd>You can replace ad-hoc broadcast events with state bags and pick the right scope (entity vs player vs global)</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="14c">
+        <h2>Before you start</h2>
+        <p>Quick check. If any of these are shaky, pop back to the linked lesson for two minutes, the rest of this lesson sits on top of them.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have fired and handled a net event across the wall (<a href="../clase-13/leason13.html">Lesson 13</a>)</label></li>
+          <li><label><input type="checkbox"> I have the rule "server decides, client obeys" in my bones (<a href="../clase-12/leason12.html">Lesson 12</a>)</label></li>
+          <li><label><input type="checkbox"> I know what an entity handle is, a number returned by spawn natives (we will go deep in Lesson 23, "good enough" is fine here)</label></li>
+          <li><label><input type="checkbox"> I am comfortable reading and writing key/value tables in Lua (<code>t.score = 5</code>)</label></li>
+        </ul>
+      </section>
+
+      <section id="why">
+        <h2>Why state bags exist</h2>
+        <p>Imagine you want every client to know which players are on duty as police. The naive approach is "loop every player, <code>TriggerClientEvent</code> every other player." That is <em>O(N&sup2;)</em> traffic and you have to re-broadcast on every join, leave, and toggle. With state bags you write <code>Player(src).state.duty = 'police'</code> on the server. The engine syncs the value to every interested client, automatically, including new joiners. You read it from any client with <code>Player(target).state.duty</code>.</p>
+
+        <div class="callout callout--tip">
+          <header>Mental model</header>
+          <p>State bags are FiveM's built-in shared key-value store. Three scopes: <strong>per-entity</strong> (sticks to the vehicle/ped/object), <strong>per-player</strong> (sticks to the player session), and <strong>global</strong> (one bag for the whole server). Server can write any of them; clients can write only their own player bag and entities they own.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Entity state: data on a specific vehicle, ped, or object</h2></header>
+        <p class="step-outcome">Outcome: tag a vehicle as "rented" on the server; any client can read the tag without an extra event.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>server.lua: tag the vehicle</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:rent:checkout', function(netId)
+    local src = source
+    local vehicle = NetworkGetEntityFromNetworkId(netId)
+    if vehicle == 0 then return end
+
+    Entity(vehicle).state:set('rentedBy', src, true) -- replicate to clients
+    Entity(vehicle).state:set('rentExpires', os.time() + 3600, true)
+    print(('[QUIET][rent] tagged netId=%d for src=%d'):format(netId, src))
+end)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>client.lua: read the tag from any client</span></header>
+            <pre><code class="language-lua">RegisterCommand('whoseride', function()
+    local veh = GetVehiclePedIsIn(PlayerPedId(), false)
+    if veh == 0 then return end
+
+    local renter = Entity(veh).state.rentedBy
+    local expires = Entity(veh).state.rentExpires
+    print(('[QUIET][rent] renter=%s expires=%s'):format(tostring(renter), tostring(expires)))
+end, false)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>What <code>:set(key, value, replicate)</code> does</summary>
+            <ul>
+              <li>Direct assignment <code>Entity(v).state.k = value</code> works and replicates by default <em>from the server</em>. From a client it does <em>not</em> replicate.</li>
+              <li><code>:set('k', value, true)</code> forces replication. Use the explicit form on the client when you want a value to reach the server.</li>
+              <li><code>:set('k', value, false)</code> keeps the value local, useful when the server wants to remember something without telling clients.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Player state: data tied to a session</h2></header>
+        <p class="step-outcome">Outcome: track each player's duty status so any other client can render their blip differently.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>server.lua: toggle duty</span></header>
+            <pre><code class="language-lua">RegisterCommand('duty', function(source)
+    local cur = Player(source).state.duty
+    local next = (cur == 'police') and nil or 'police'
+    Player(source).state:set('duty', next, true)
+    print(('[QUIET][duty] src=%d duty=%s'):format(source, tostring(next)))
+end, true)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>client.lua: read another player's duty</span></header>
+            <pre><code class="language-lua">RegisterCommand('checkduty', function(_, args)
+    local serverId = tonumber(args[1])
+    if not serverId then return end
+    local duty = Player(serverId).state.duty
+    print(('[QUIET][duty] src=%d => %s'):format(serverId, tostring(duty)))
+end, false)</code></pre>
+          </figure>
+          <p>Notice: from the client we use <code>Player(serverId)</code>, not <code>LocalPlayer</code>. <code>LocalPlayer.state</code> reads the local player's bag. <code>Player(N).state</code> reads any player's bag by their server ID.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Entity vs player scope</h3></header>
+        <p>For each piece of data, write down the right scope: vehicle plate, vehicle owner, weapon currently equipped by the player, current job, current shop's stock, server-wide opening hours.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>GlobalState: one bag for the whole server</h2></header>
+        <p class="step-outcome">Outcome: server flips a flag; every client reads it without you wiring a single event.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>server.lua: toggle a server flag</span></header>
+            <pre><code class="language-lua">RegisterCommand('moneyon', function()
+    GlobalState.moneyEnabled = true
+end, true)
+
+RegisterCommand('moneyoff', function()
+    GlobalState.moneyEnabled = false
+end, true)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>client.lua: read it anywhere</span></header>
+            <pre><code class="language-lua">RegisterCommand('shopopen', function()
+    if GlobalState.moneyEnabled then
+        print('[QUIET][shop] open for business')
+    else
+        print('[QUIET][shop] economy disabled')
+    end
+end, false)</code></pre>
+          </figure>
+          <p>GlobalState is server-write, client-read. Clients trying to write GlobalState are silently ignored.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Reacting to changes with AddStateBagChangeHandler</h2></header>
+        <p class="step-outcome">Outcome: react to a state change with one handler instead of polling on a thread.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>client.lua: redraw blip when duty changes</span></header>
+            <pre><code class="language-lua">AddStateBagChangeHandler('duty', nil, function(bagName, key, value, _, replicated)
+    local playerId = GetPlayerFromStateBagName(bagName)
+    if playerId == 0 then return end
+    local ped = GetPlayerPed(playerId)
+    print(('[QUIET][duty:change] player=%d duty=%s'):format(playerId, tostring(value)))
+    -- update blip color, attach an outfit, whatever
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Signature breakdown</summary>
+            <ul>
+              <li><code>AddStateBagChangeHandler(key, bagName, handler)</code></li>
+              <li><strong>key</strong>: the state key to watch. Pass <code>nil</code> to fire on any key.</li>
+              <li><strong>bagName</strong>: an exact bag name like <code>'player:5'</code> to scope to one bag, or <code>nil</code> for all bags of any kind.</li>
+              <li><strong>handler(bagName, key, value, reserved, replicated)</strong>: fires after the change is committed. Use <code>GetPlayerFromStateBagName</code> or <code>GetEntityFromStateBagName</code> to resolve the owner.</li>
+            </ul>
+          </details>
+          <div class="callout callout--warn">
+            <header>Handlers are global per resource</header>
+            <p>If you register the same key handler twice in the same resource, it fires twice. Track the return value and unregister with <code>RemoveStateBagChangeHandler(cookie)</code> on resource stop if you need to clean up.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>The shallow-update trap</h2></header>
+        <p class="step-outcome">Outcome: you avoid the silent bug where a sub-key never replicates.</p>
+        <div class="step-body">
+          <p>State bags serialize the entire value at the top-level key. Mutating a nested table does <strong>not</strong> trigger replication.</p>
+          <figure class="code">
+            <header><span>WRONG: mutation does not replicate</span></header>
+            <pre><code class="language-lua">Entity(v).state.metadata = { fuel = 100, plate = 'ABC123' }
+
+-- later...
+Entity(v).state.metadata.fuel = 50 -- LOOKS fine, replicates NOTHING</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>RIGHT: reassign the top-level key</span></header>
+            <pre><code class="language-lua">local meta = Entity(v).state.metadata
+meta.fuel = 50
+Entity(v).state.metadata = meta -- triggers serialization + replication</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>BETTER: flat keys</span></header>
+            <pre><code class="language-lua">Entity(v).state['meta:fuel']  = 50
+Entity(v).state['meta:plate'] = 'ABC123'</code></pre>
+          </figure>
+          <p>The flat-key form is what the official docs recommend. It avoids both the mutation bug and the cost of re-serializing the whole metadata blob on every fuel tick.</p>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Mutating a nested table and expecting replication</summary>
+          <p>Covered above. The serializer only sees writes at the top-level key. Either reassign the top key, or use flat <code>'a:b'</code> keys.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using state bags for high-frequency data</summary>
+          <p>State bag writes serialize and broadcast. For values that change every frame (fuel, speedometer), use a local thread or a NUI message instead. State bags are for "this value changed once and now everyone needs to know."</p>
+        </details>
+
+        <details class="explain">
+          <summary>Trying to write GlobalState from a client</summary>
+          <p>Silently ignored. If a client needs to update server-wide state, fire a regular event and let the server validate, then write GlobalState.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to clean up bags on entity delete</summary>
+          <p>Entity bags die with the entity, so this one is safe. But if you keep references to a deleted entity in a registry, the next read returns <code>nil</code> for everything, not a stale value.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using <code>LocalPlayer.state</code> on the server</summary>
+          <p><code>LocalPlayer</code> only exists on the client. From the server, use <code>Player(source).state</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Trusting client-set state</summary>
+          <p>Client <code>Player(serverId).state:set('k', v, true)</code> replicates to the server. A modded client can lie about anything. Validate every value the same way you would for a regular net event.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Which scope fits "is this player currently on duty"?</legend>
+            <label><input type="radio" name="q1" value="a"> Entity state on the player's ped.</label>
+            <label><input type="radio" name="q1" value="b"> Player state, <code>Player(src).state.duty</code>.</label>
+            <label><input type="radio" name="q1" value="c"> GlobalState, one flag for everyone.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. <code>GlobalState.moneyEnabled = true</code> on a client does what?</legend>
+            <label><input type="radio" name="q2" value="a"> Replicates the change to all clients.</label>
+            <label><input type="radio" name="q2" value="b"> Throws a runtime error.</label>
+            <label><input type="radio" name="q2" value="c"> Is silently ignored, only the server can write GlobalState.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why does <code>Entity(v).state.meta.fuel = 50</code> not replicate?</legend>
+            <label><input type="radio" name="q3" value="a"> Only top-level key writes serialize the bag, nested mutation is invisible to the engine.</label>
+            <label><input type="radio" name="q3" value="b"> The fuel field has special handling.</label>
+            <label><input type="radio" name="q3" value="c"> Nested tables aren't allowed at all.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. You want to react when the <code>duty</code> state changes on any player. The native is&hellip;</legend>
+            <label><input type="radio" name="q4" value="a"> <code>RegisterStateBagEvent</code>.</label>
+            <label><input type="radio" name="q4" value="b"> <code>AddStateBagChangeHandler('duty', nil, handler)</code>.</label>
+            <label><input type="radio" name="q4" value="c"> <code>WatchState('duty', handler)</code>.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>5. From the client, you write <code>Entity(v).state:set('hijacked', true, true)</code>. The server&hellip;</legend>
+            <label><input type="radio" name="q5" value="a"> Refuses to accept the value.</label>
+            <label><input type="radio" name="q5" value="b"> Receives it and a modded client could send anything, validate before trusting it.</label>
+            <label><input type="radio" name="q5" value="c"> Validates it automatically against the entity owner list.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>Entity(v).state.k = value</code></dt><dd>Per-entity bag. Server writes replicate by default; client writes are local unless you use <code>:set(k, v, true)</code>.</dd></div>
+          <div><dt><code>Player(src).state.k = value</code></dt><dd>Per-player bag. Server can write any. Clients can write only their own (use <code>LocalPlayer.state</code>).</dd></div>
+          <div><dt><code>LocalPlayer.state.k</code></dt><dd>Shorthand for the local player's bag. Client only.</dd></div>
+          <div><dt><code>GlobalState.k = value</code></dt><dd>Server-only write, client-read. One bag for the whole server.</dd></div>
+          <div><dt><code>state:set(key, value, replicate)</code></dt><dd>Explicit form. Pass <code>true</code> to replicate, <code>false</code> to keep local.</dd></div>
+          <div><dt><code>AddStateBagChangeHandler(key, bagName, handler)</code></dt><dd>Fire when the state changes. Pass <code>nil</code> for either argument to widen the match.</dd></div>
+          <div><dt><code>GetPlayerFromStateBagName(name)</code> / <code>GetEntityFromStateBagName(name)</code></dt><dd>Resolve the player ID or entity handle from inside a change handler.</dd></div>
+          <div><dt>Flat keys</dt><dd>Prefer <code>state['meta:fuel']</code> over <code>state.meta.fuel</code>: nested mutation does not replicate.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Three scopes: entity state, player state, GlobalState, and which fits which kind of data</li>
+          <li>The replication rule: server writes broadcast by default; client writes are local unless you pass <code>true</code> to <code>:set</code></li>
+          <li>How to react to changes with <code>AddStateBagChangeHandler</code> instead of polling on a thread</li>
+          <li>The shallow-update trap: only top-level key writes serialize the bag</li>
+          <li>That state bags still cross the trust boundary, client-set state must be validated server-side</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Replace this old broadcast pattern with a state bag. Server should set <code>Player(src).state.weapon</code> when the player picks up a weapon, and a change handler on the client should print the new weapon name. No <code>TriggerClientEvent</code>.</p>
+        <figure class="code"><header><span>BEFORE: broadcast pattern</span></header>
+          <pre><code class="language-lua">-- server
+RegisterNetEvent('qu:wpn:pickup', function(weaponName)
+    local src = source
+    TriggerClientEvent('qu:wpn:announce', -1, src, weaponName)
+end)
+
+-- client
+RegisterNetEvent('qu:wpn:announce', function(src, weaponName)
+    print(('[QUIET][wpn] %d picked up %s'):format(src, weaponName))
+end)</code></pre>
+        </figure>
+        <p class="expected">After: server uses <code>Player(src).state.weapon</code>; client uses <code>AddStateBagChangeHandler</code>.</p>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/networking/state-bags/" target="_blank" rel="noopener">FiveM docs, state bags</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x5BA35AAF" target="_blank" rel="noopener">Native, ADD_STATE_BAG_CHANGE_HANDLER</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 14, events</a></li>
+          <li><a href="../clase-11/leason11.html">Lesson 12, trust &amp; authority</a></li>
+        </ul>
+      </section>

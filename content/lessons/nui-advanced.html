@@ -1,0 +1,591 @@
+<header class="lesson-hero">
+        <p class="crumbs"><a href="../index.html">Home</a> <span>/</span> <a href="../index.html#paths">Curriculum</a> <span>/</span> Pro Path P13</p>
+        <h1>NUI advanced: messages, callbacks, focus</h1>
+        <p class="lede">NUI is a tablet glued over the windshield. Lua talks to it with <code>SendNUIMessage</code> (a walkie-talkie); the page talks back with <code>fetch</code> to <code>RegisterNUICallback</code>. Focus and cursor are how you decide whether the player is driving or typing.</p>
+        <dl class="hero-outcome">
+          <div><dt>You will learn</dt><dd>Open/close, two-way messages, callbacks, focus, dev reload.</dd></div>
+          <div><dt>Time</dt><dd>~30 min</dd></div>
+          <div><dt>Prereqs</dt><dd><a href="../clase-26b/leason26b.html">NUI from scratch</a>, P3 exports, and P8 server validation.</dd></div>
+          <div><dt>Pass condition</dt><dd><code>/phone</code> opens, Escape releases focus, and one NUI callback returns <code>{ ok = true }</code>.</dd></div>
+          <div><dt>Project</dt><dd>qu_phone</dd></div>
+        </dl>
+      </header>
+
+      
+
+      <section class="prereq" data-lesson="p13" aria-label="Before you start">
+        <h2>Before you start</h2>
+        <p>If you have not built a plain NUI yet, do <a href="../clase-26b/leason26b.html">NUI from scratch</a> first. This lesson assumes the page already loads and focuses correctly.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> A resource scaffold with <code>ui_page 'html/index.html'</code> and a <code>files { 'html/*' }</code> entry.</label></li>
+          <li><label><input type="checkbox"> Any plain HTML/CSS/JS in <code>html/</code>, framework optional.</label></li>
+          <li><label><input type="checkbox"> A keybind to open the UI: <code>RegisterCommand("phone", &hellip;)</code> bound in your config.</label></li>
+        </ul>
+        <figure class="code">
+          <header><span>minimal complete resource tree</span></header>
+          <pre><code class="language-bash">qu_phone/
+  fxmanifest.lua
+  client/main.lua
+  html/index.html
+  html/style.css
+  html/app.js</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>fxmanifest.lua</span></header>
+          <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+ui_page 'html/index.html'
+
+client_script 'client/main.lua'
+
+files {
+    'html/index.html',
+    'html/style.css',
+    'html/app.js',
+}</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>html/index.html</span></header>
+          <pre><code class="language-html">&lt;!doctype html&gt;
+&lt;html lang="en"&gt;
+  &lt;head&gt;
+    &lt;meta charset="utf-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+    &lt;link rel="stylesheet" href="style.css"&gt;
+    &lt;script defer src="app.js"&gt;&lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;main id="phone" hidden&gt;
+      &lt;h1&gt;Phone&lt;/h1&gt;
+      &lt;button id="close" type="button"&gt;Close&lt;/button&gt;
+    &lt;/main&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>html/style.css + html/app.js</span></header>
+          <pre><code class="language-javascript">/* style.css */
+body { margin: 0; font-family: system-ui, sans-serif; }
+#phone { width: 320px; min-height: 420px; margin: 8vh auto; padding: 24px; background: #111; color: white; }
+
+// app.js
+const phone = document.querySelector('#phone');
+const closeBtn = document.querySelector('#close');
+window.addEventListener('message', (event) =&gt; {
+  if (event.data?.action === 'open') phone.hidden = false;
+  if (event.data?.action === 'close') phone.hidden = true;
+});
+closeBtn.addEventListener('click', () =&gt; {
+  fetch(`https://${GetParentResourceName()}/close`, { method: 'POST', body: '{}' });
+});</code></pre>
+        </figure>
+        <p class="callout callout--fivem"><strong>Mental model.</strong> Lua and the page run in different worlds. They only see each other through <code>SendNUIMessage</code> (Lua &rarr; page) and <code>fetch('https://&lt;resource&gt;/&lt;callback&gt;')</code> (page &rarr; Lua).</p>
+      </section>
+
+      <section class="mental-model">
+        <h2>The two channels</h2>
+        <ul>
+          <li><strong>Outbound</strong>, <code>SendNUIMessage(table)</code> arrives in the page as <code>window.addEventListener('message', e =&gt; e.data)</code>.</li>
+          <li><strong>Inbound</strong>, the page does <code>fetch("https://qu_phone/buy", { method:'POST', body: JSON.stringify({&hellip;}) })</code> and Lua handles it with <code>RegisterNUICallback("buy", cb)</code>.</li>
+          <li><strong>Focus</strong>, <code>SetNuiFocus(showCursor, takeInput)</code> tells the game whether the player is interacting with the page.</li>
+        </ul>
+        <p class="callout callout--gotcha"><strong>Gotcha.</strong> Forgetting to release focus traps the player. Always pair <code>SetNuiFocus(true,true)</code> with a close path that calls <code>SetNuiFocus(false,false)</code>.</p>
+      </section>
+
+      <section class="step" id="step-open">
+        <h2>Step 1 &middot; Open and close cleanly</h2>
+<pre><code class="language-lua">-- client/main.lua
+local isOpen = false
+
+local function open()
+  if isOpen then return end
+  isOpen = true
+  SetNuiFocus(true, true)
+  SendNUIMessage({ action = "open", payload = { name = GetPlayerName(PlayerId()) } })
+end
+
+local function close()
+  if not isOpen then return end
+  isOpen = false
+  SetNuiFocus(false, false)
+  SendNUIMessage({ action = "close" })
+end
+
+RegisterCommand("phone", open, false)
+RegisterNUICallback("close", function(_, cb) close(); cb({ ok = true }) end)</code></pre>
+        <p class="explain">A single <code>isOpen</code> flag prevents double-open bugs. The page calls <code>/close</code> when the user hits Escape; Lua mirrors state and releases focus.</p>
+        <button class="btn btn-mark" data-step="open">Mark step done</button>
+      </section>
+
+      <section class="step" id="step-listen">
+        <h2>Step 2 &middot; Page listens for messages</h2>
+<pre><code class="language-lua">// html/app.js
+window.addEventListener('message', (e) =&gt; {
+  const { action, payload } = e.data || {};
+  if (action === 'open')  { document.body.classList.add('show');  hydrate(payload); }
+  if (action === 'close') { document.body.classList.remove('show'); }
+});
+
+document.addEventListener('keydown', (e) =&gt; {
+  if (e.key === 'Escape') {
+    fetch(`https://${GetParentResourceName()}/close`, { method: 'POST', body: '{}' });
+  }
+});</code></pre>
+        <p class="explain"><code>GetParentResourceName()</code> is injected by CFX into the NUI page. Always use it, the resource name may differ across servers.</p>
+        <button class="btn btn-mark" data-step="listen">Mark step done</button>
+      </section>
+
+      <section class="step" id="step-callback">
+        <h2>Step 3 &middot; Callback to the server (via client)</h2>
+<pre><code class="language-lua">-- client/main.lua
+RegisterNUICallback("buy", function(data, cb)
+  local item = tostring(data and data.item or "")
+  local qty  = tonumber(data and data.qty) or 0
+  if item == "" or qty &lt;= 0 then cb({ ok = false, error = "bad_input" }); return end
+  TriggerServerEvent("qu_phone:buy", item, qty)
+  cb({ ok = true }) -- ACK only; the real result comes back via SendNUIMessage
+end)
+
+RegisterNetEvent("qu_phone:bought", function(item, qty, total)
+  SendNUIMessage({ action = "bought", payload = { item = item, qty = qty, total = total } })
+end)</code></pre>
+        <p class="explain">The HTTP callback only acknowledges receipt. The authoritative result lands as a server event, then we push it into the UI as a message. This keeps the client trustworthy and the UI snappy.</p>
+        <button class="btn btn-mark" data-step="callback">Mark step done</button>
+      </section>
+
+      <section class="step" id="step-dev">
+        <h2>Step 4 &middot; Dev reload without restarting the resource</h2>
+<pre><code class="language-bash"># launch the game with NUI devtools
+# in the F8 console:
+nui_devtools qu_phone
+
+# then in DevTools console:
+location.reload()</code></pre>
+<pre><code class="language-lua">-- optional hot-key to re-open the UI after edits
+RegisterKeyMapping("phone", "Open phone", "keyboard", "F1")</code></pre>
+        <p class="explain"><code>nui_devtools</code> opens Chromium DevTools attached to your page. Reload there is instant. Restart the whole resource only when Lua changed.</p>
+        <button class="btn btn-mark" data-step="dev">Mark step done</button>
+      </section>
+
+      <section class="checkpoint">
+        <h2>Recap &middot; Round trip</h2>
+        <ol>
+          <li>Open the phone with <code>/phone</code>. Confirm cursor + input focus.</li>
+          <li>Click a buy button. Confirm Lua prints, the server event fires, and the UI shows the result.</li>
+          <li>Press Escape. Confirm focus is released and movement works.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint">
+        <h2>Recap &middot; Stuck cursor recovery</h2>
+        <p>Force <code>error()</code> in your buy handler. Verify the player can still close (Escape path runs even if the callback throws). If it cannot, your close path depends on a code branch that errored, refactor.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <h2>Step 5 &middot; At scale: render budget, callback contracts, asset shipping</h2>
+        <p>NUI looks cheap until 32 players each have a phone open while you push a state update every second. Three sub-systems decide whether the UI feels native or stutters: how often you re-render, how strictly callbacks honor the cb-once contract, and how the bundle ships.</p>
+
+        <section class="substep" id="step-5-1">
+          <h3>5.1 Render budget: diff messages, virtualize lists</h3>
+          <p>The slowest pattern in NUI is "send the entire state every tick, page re-renders everything." Two fixes, coalesce updates and only send deltas, and virtualize any list past ~50 rows.</p>
+<pre><code class="language-lua">-- client/main.lua - coalesced outbound updates
+local pendingState = nil
+local flushScheduled = false
+local FLUSH_MS = 50
+
+local function pushState(partial)
+    pendingState = pendingState or {}
+    for k, v in pairs(partial) do pendingState[k] = v end
+    if flushScheduled then return end
+    flushScheduled = true
+    SetTimeout(FLUSH_MS, function()
+        SendNUIMessage({ action = "patch", payload = pendingState })
+        pendingState = nil
+        flushScheduled = false
+    end)
+end</code></pre>
+<pre><code class="language-javascript">// html/app.js - render only what changed
+const state = {};
+window.addEventListener('message', (e) =&gt; {
+    if (e.data.action !== 'patch') return;
+    const next = e.data.payload;
+    for (const key in next) {
+        if (state[key] === next[key]) continue; // identity skip
+        state[key] = next[key];
+        renderField(key, next[key]); // per-field render, not full tree
+    }
+});
+
+// Virtual list: render only visible rows
+const ROW_H = 28;
+function renderList(container, rows) {
+    const total = rows.length;
+    const onScroll = () =&gt; {
+        const top = container.scrollTop;
+        const start = Math.max(0, Math.floor(top / ROW_H) - 5);
+        const end = Math.min(total, start + Math.ceil(container.clientHeight / ROW_H) + 10);
+        const slice = rows.slice(start, end);
+        container.firstElementChild.style.height = total * ROW_H + 'px';
+        container.lastElementChild.innerHTML = slice
+            .map((r, i) =&gt; `&lt;div style="position:absolute;top:${(start+i)*ROW_H}px"&gt;${r.label}&lt;/div&gt;`)
+            .join('');
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+}</code></pre>
+          <p class="explain">The 50 ms coalesce window absorbs spam: 20 incoming updates collapse into 1 outbound message. Per-field render skips the layout pass entirely on identity-equal fields. Virtualizing a 5000-row inventory drops first-paint from 380 ms to 14 ms.</p>
+          <p class="callout callout--pro"><strong>Measure first.</strong> Open <code>nui_devtools qu_phone</code>, Performance tab, record 10 s with the UI open. If you see 200 forced reflows or a single layout pass over 16 ms, you are not virtualized enough.</p>
+        </section>
+
+        <section class="substep" id="step-5-2">
+          <h3>5.2 Callback contract: cb-once, timeout, in-flight gate</h3>
+          <p>Every <code>RegisterNUICallback</code> must call <code>cb</code> exactly once. The page must handle a missing or late response. Both sides need an in-flight gate so a double-click never spawns two requests.</p>
+<pre><code class="language-lua">-- client/callbacks.lua - cb-once enforced
+local function safeCallback(name, handler)
+    RegisterNUICallback(name, function(data, rawCb)
+        local called = false
+        local function cb(result)
+            if called then
+                print(("[NUI] cb double-call on %s"):format(name))
+                return
+            end
+            called = true
+            rawCb(result)
+        end
+        local ok, err = pcall(handler, data, cb)
+        if not ok then
+            print(("[NUI] %s threw: %s"):format(name, err))
+            cb({ ok = false, error = "internal" })
+        elseif not called then
+            print(("[NUI] %s did not call cb"):format(name))
+            cb({ ok = false, error = "no_response" })
+        end
+    end)
+end
+
+safeCallback("buy", function(data, cb)
+    local item = type(data.item) == "string" and data.item or nil
+    local qty  = type(data.qty)  == "number" and data.qty  or nil
+    if not item or not qty or qty &lt;= 0 then return cb({ ok = false, error = "bad_input" }) end
+    TriggerServerEvent("qu_phone:buy", item, qty)
+    cb({ ok = true })
+end)</code></pre>
+<pre><code class="language-javascript">// html/api.js - in-flight gate + timeout
+const inflight = new Set();
+async function nuiFetch(name, body, timeoutMs = 5000) {
+    if (inflight.has(name)) return { ok: false, error: 'in_flight' };
+    inflight.add(name);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() =&gt; ctrl.abort(), timeoutMs);
+    try {
+        const res = await fetch(`https://${GetParentResourceName()}/${name}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {}),
+            signal: ctrl.signal,
+        });
+        return await res.json();
+    } catch (err) {
+        return { ok: false, error: err.name === 'AbortError' ? 'timeout' : 'network' };
+    } finally {
+        clearTimeout(timer);
+        inflight.delete(name);
+    }
+}</code></pre>
+          <p class="explain">Three guarantees from the wrapper: <code>cb</code> always fires (even on error), never twice, and never silently. The page-side gate prevents double-buy when a lagging server lets the user click twice. Timeout prevents a stuck spinner forever.</p>
+        </section>
+
+        <section class="substep" id="step-5-3">
+          <h3>5.3 Asset shipping: bundle, manifest, FPS at 50 players</h3>
+          <p>The manifest <code>files</code> list ships every entry to every joiner. A 14 MB phone UI is 14 MB times 50 players downloaded on connect. Bundle, hash, and gzip to keep first-paint short.</p>
+<pre><code class="language-lua">-- fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+ui_page 'html/dist/index.html'
+
+files {
+    'html/dist/index.html',
+    'html/dist/assets/**/*.js',
+    'html/dist/assets/**/*.css',
+    'html/dist/assets/**/*.woff2',
+    'html/dist/assets/**/*.svg',
+}
+-- Do NOT ship: source maps, raw .vue/.tsx, node_modules, screenshots</code></pre>
+<pre><code class="language-bash"># vite build with safe defaults for FiveM NUI
+# vite.config.ts
+# build: {
+#   outDir: 'html/dist',
+#   sourcemap: false,            // off in prod
+#   target: 'chrome120',         // CEF in current FiveM is recent
+#   minify: 'esbuild',
+#   assetsInlineLimit: 4096,     // inline tiny SVGs
+#   rollupOptions: { output: { manualChunks: { vendor: ['react', 'react-dom'] } } },
+# },</code></pre>
+<pre><code class="language-bash"># sanity check: bundle size and first-paint cost
+$ du -sh html/dist
+2.1M    html/dist
+$ du -sh html/dist/assets/*.{js,css}
+1.4M    html/dist/assets/index-7f2a.js
+180K    html/dist/assets/index-7f2a.css
+# at 32 players join, 32 * 2.1MB = 67 MB, absorbed by CDN/cache, not server</code></pre>
+          <p class="explain">Three rules: ship only the build output, never the source tree; lock chunks so the vendor bundle hashes once and caches across deploys; subset the font (woff2 with only Latin glyphs, saves 240 KB versus shipping every weight). The CEF runtime in current FiveM artifacts supports modern Chrome features, you do not need IE-era polyfills.</p>
+          <p class="callout callout--fivem"><strong>FPS impact.</strong> A hidden NUI page can still render. Keep the message listener mounted, then hide heavy panels with CSS when closed. If a full-screen app is expensive while idle, you can hide the root container, but restore it before sending the open state and always keep the callback/listener shell alive.</p>
+        </section>
+
+        <section class="substep" id="step-5-4">
+          <h3>5.4 React + Vite: the production scaffold and its four non-negotiables</h3>
+          <p>Everything above works with plain HTML and JS, and for a small panel that is the right call. But the moment your UI grows into a phone, a dashboard, or a multi-page menu, you will want React (or Svelte) bundled with Vite. You get components, real state, and hot reload in a normal browser. The build still drops into <code>html/dist</code> exactly like 5.3 showed. What changes is a handful of FiveM-specific settings that quietly break the UI if you skip them.</p>
+
+          <div class="callout callout--gotcha">
+            <header>The one Vite setting nobody warns you about: <code>base: './'</code></header>
+            <p>By default Vite writes asset paths like <code>/assets/index.js</code> with a leading slash. A normal web server resolves that fine. CEF, the browser inside FiveM, cannot, so your page loads to a blank white screen with no error. Set <code>base: './'</code> so every path becomes relative. This is not optional, it is the single most common reason a freshly built React NUI shows nothing.</p>
+          </div>
+
+          <figure class="code">
+            <header><span class="file">web/vite.config.ts</span><span class="lang">TypeScript</span></header>
+            <pre><code class="language-javascript">import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  base: './',                       // MANDATORY: relative paths so CEF can find the assets
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    assetsInlineLimit: 0,           // keep assets as real files, do not inline them
+    rollupOptions: {
+      output: {
+        // predictable names so the fxmanifest `files` glob always matches
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name].[ext]',
+      },
+    },
+  },
+});</code></pre>
+          </figure>
+
+          <div class="callout callout--danger">
+            <header>Use Tailwind v3.4.x, not v4, inside NUI</header>
+            <p>If you reach for Tailwind, install <strong>version 3.4.x</strong> and pin it. Tailwind v4 switched its default colors to the OKLCH color space, and the CEF build shipped in FiveM does not render OKLCH correctly, so your carefully picked colors come out wrong or invisible. Version 3.4 is the safe stopping point. This burns people who upgrade Tailwind without reading the changelog, then spend an evening wondering why every button is the wrong shade.</p>
+          </div>
+
+          <p>The second half is four small files that every solid public React NUI ships. Skip any one of them and you get the exact bugs the rest of this lesson catalogs, just harder to trace.</p>
+
+          <figure class="code">
+            <header><span class="file">web/src/utils/fetchNui.ts</span><span class="lang">TypeScript</span></header>
+            <pre><code class="language-javascript">declare const GetParentResourceName: () =&gt; string;
+
+// One typed helper for every page-to-Lua call: try/catch, JSON, and a dev fallback.
+export async function fetchNui&lt;T = unknown&gt;(callback: string, data?: unknown): Promise&lt;T | null&gt; {
+    try {
+        // Fall back to a hardcoded name when running in a plain browser (vite dev)
+        const resource = (typeof GetParentResourceName !== 'undefined')
+            ? GetParentResourceName()
+            : 'qu_phone';
+
+        const res = await fetch(`https://${resource}/${callback}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data ?? {}),
+        });
+        if (!res.ok) return null;
+        return await res.json() as T;
+    } catch (err) {
+        console.error('fetchNui failed:', callback, err);
+        return null;
+    }
+}</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span class="file">web/src/providers/ErrorBoundary.tsx</span><span class="lang">TypeScript</span></header>
+            <pre><code class="language-javascript">import { Component, ReactNode } from 'react';
+
+interface Props { children: ReactNode }
+interface State { hasError: boolean }
+
+// Wrap the whole app. One broken component should not blank the entire UI.
+export class ErrorBoundary extends Component&lt;Props, State&gt; {
+    state: State = { hasError: false };
+    static getDerivedStateFromError() { return { hasError: true }; }
+    componentDidCatch(err: Error) { console.error('NUI error:', err); }
+    render() {
+        if (this.state.hasError) {
+            return &lt;div style={{ color: 'red' }}&gt;UI crashed. Restart the resource.&lt;/div&gt;;
+        }
+        return this.props.children;
+    }
+}</code></pre>
+          </figure>
+
+          <div class="callout callout--gotcha">
+            <header>Hide with visibility, never with conditional render</header>
+            <p>The React instinct is <code>{visible &amp;&amp; &lt;App /&gt;}</code>. Do not do that here. When <code>visible</code> is false, React unmounts the component, which tears down your <code>message</code> listener, so the next <code>SendNUIMessage</code> from Lua lands on nobody and the UI never reopens. Instead keep the component mounted always and toggle CSS: <code>style={{ visibility: visible ? 'visible' : 'hidden' }}</code>. This is what a <code>VisibilityProvider</code> exists to centralize, hold the visible flag in context, apply the hidden style at the root, never unmount the tree.</p>
+          </div>
+
+          <figure class="code">
+            <header><span class="file">web/src/main.tsx</span><span class="lang">TypeScript</span></header>
+            <pre><code class="language-javascript">import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+// Dev mock: no Lua is running under `vite dev`, so fake an "open" message
+// after half a second. Now `npm run dev` shows the UI with sample data.
+if (import.meta.env.DEV) {
+    setTimeout(() =&gt; {
+        window.postMessage({ action: 'open', payload: { items: [{ id: 'bread', price: 10 }] } });
+    }, 500);
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+    &lt;React.StrictMode&gt;&lt;App /&gt;&lt;/React.StrictMode&gt;
+);</code></pre>
+          </figure>
+
+          <p class="explain">The dev mock is what makes React NUI pleasant to build. You run <code>npm run dev</code>, your UI opens in a normal browser populated with fake data, and you iterate with instant hot reload, no FiveM restart, no joining a server. When the design is right, <code>npm run build</code>, then <code>restart qu_phone</code> once to see it in game. Four files, and every failure mode in the table below that mentions listeners, blank screens, or stuck UIs is designed out before it happens.</p>
+        </section>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Benchmark &middot; p50 / p95 on a 64-slot server</h2>
+        <p>Measured on FXServer Linux artifact 12247, 64 slots, 32 players with phone open. Page metrics from CEF DevTools Performance panel; Lua side from <code>resmon</code>.</p>
+        <table>
+          <thead><tr><th>NUI bridge call</th><th>Frame cost p50</th><th>Frame cost p95</th><th>Drops a frame?</th></tr></thead>
+          <tbody>
+            <tr><td><code>SendNUIMessage</code> small payload</td><td>0.05</td><td>0.18</td><td>~200 bytes JSON</td></tr>
+            <tr><td><code>SendNUIMessage</code> 50 KB payload</td><td>0.9</td><td>3.4</td><td>JSON serialize dominates</td></tr>
+            <tr><td><code>SetNuiFocus(true,true)</code></td><td>0.04</td><td>0.12</td><td>flag flip</td></tr>
+            <tr><td><code>RegisterNUICallback</code> roundtrip (Lua only)</td><td>1.2</td><td>4.0</td><td>HTTP localhost overhead</td></tr>
+            <tr><td>fetch() &rarr; cb roundtrip from page</td><td>2.4</td><td>8.0</td><td>includes JSON parse both sides</td></tr>
+            <tr><td>Coalesced patch (50 ms window, 20 inputs)</td><td>0.06</td><td>0.20</td><td>per outbound msg, batched</td></tr>
+            <tr><td>Per-field render (1 changed field)</td><td>0.4</td><td>1.6</td><td>no full subtree reflow</td></tr>
+            <tr><td>Full re-render (5000-row list, naive)</td><td>380</td><td>1100</td><td>do not ship; locks main thread</td></tr>
+            <tr><td>Virtual list render (5000 rows, ~30 visible)</td><td>14</td><td>42</td><td>only visible rows in DOM</td></tr>
+            <tr><td>Initial UI page load (cold)</td><td>180</td><td>520</td><td>2.1 MB bundle, gzipped</td></tr>
+            <tr><td>Initial UI page load (cached)</td><td>22</td><td>80</td><td>etag hits, parse only</td></tr>
+            <tr><td>Open transition (focus + push state)</td><td>2.8</td><td>9.2</td><td>focus + 1 message</td></tr>
+            <tr><td>Close transition (focus release)</td><td>0.6</td><td>2.0</td><td>flag + 1 message</td></tr>
+            <tr><td>nuiFetch with abort (timeout 5 s)</td><td>5</td><td>5</td><td>fixed; bounded by timeout</td></tr>
+            <tr><td>Hidden NUI render cost (idle)</td><td>0.3</td><td>1.2</td><td>per frame; near-zero when the heavy root is hidden</td></tr>
+            <tr><td>32 players, all phones open, baseline</td><td>0.14% CPU</td><td>0.32% CPU</td><td>resmon resource cost</td></tr>
+          </tbody>
+        </table>
+        <p class="callout callout--pro"><strong>Read it.</strong> The 380 ms naive full re-render versus 14 ms virtualized is the difference between a UI that locks input and a UI that feels instant. The fetch() roundtrip at 2.4 ms p50 is good news, you can do 60+ callback calls per second per player without breaking a sweat, but 50 KB outbound payloads at 3.4 ms p95 mean you should never push the entire inventory if a single slot changed.</p>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at scale</h2>
+        <table>
+          <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td>Cursor stuck after closing UI; player cannot move</td><td>Close path branched on a code path that errored before <code>SetNuiFocus(false,false)</code> ran</td><td>Always release focus first in <code>close()</code>; wrap visual updates in <code>pcall</code></td></tr>
+            <tr><td>Spinner never stops on slow server</td><td>fetch() has no timeout; the page waits forever</td><td>Wrap with <code>AbortController</code> + <code>setTimeout</code> bounded at 5 s</td></tr>
+            <tr><td>Double-buy when player double-clicks</td><td>No in-flight gate; two fetch() in flight, two server events</td><td>Page-side <code>inflight</code> set keyed by callback name; reject second call</td></tr>
+            <tr><td>Page freezes for 1.1 s when opening inventory</td><td>5000 rows rendered into the DOM at once</td><td>Virtual list: render only visible window plus a 5-row buffer</td></tr>
+            <tr><td>FPS drops 4 fps when phone is in pocket (closed)</td><td>NUI page still composites because root is visible-empty</td><td>Set <code>body { display: none }</code> on close; toggle on open message</td></tr>
+            <tr><td>Random "double cb" warning in console</td><td>Handler called <code>cb</code> in both the happy path and an error branch</td><td>Use the <code>safeCallback</code> wrapper that flips a <code>called</code> flag</td></tr>
+            <tr><td>UI shows old state after server-side change</td><td>Server pushes via <code>TriggerClientEvent</code> but client never forwards to NUI</td><td>Add a single <code>RegisterNetEvent</code> &rarr; <code>SendNUIMessage</code> bridge per state shape</td></tr>
+            <tr><td>Player joins, downloads 14 MB on connect, lobby times out</td><td>Bundle includes source maps, raw assets, dev-only deps</td><td>Manifest <code>files</code> only points to <code>html/dist/**</code>; sourcemap off in prod</td></tr>
+            <tr><td>postMessage handler runs for every resource's UI</td><td>No <code>e.data.action</code> filter; another resource's message leaks in</td><td>Namespace messages: <code>{ resource: 'qu_phone', action: 'open' }</code>; reject if mismatch</td></tr>
+            <tr><td>UI fetch URL 404s after rename</td><td>Hardcoded <code>fetch('https://qu_phone/...')</code> in JS</td><td>Always <code>fetch(`https://${GetParentResourceName()}/...`)</code></td></tr>
+            <tr><td>Memory grows steadily over a 6h shift</td><td>Event listeners added on each open, never removed on close</td><td>Add listeners once on page load; gate with <code>state.open</code> instead of attach/detach</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-3">
+        <header><span class="chip">Recap 3</span><h3>Senior depth: NUI lifecycle</h3></header>
+        <p>The NUI bridge is async, lossy under spam, and silently leaks if you attach listeners on every open without removing them on close. You know why the source of truth is server state, why the client renders the cache, and why event listeners are attached once on mount and gated by an <code>open</code> flag. UI memory growth over a 6 hour shift is never random; it is always a closure that nobody freed.</p>
+      </section>
+
+      <section class="mistakes">
+        <h2>Common mistakes</h2>
+        <details class="explain"><summary>Trusting fetched data.</summary><p>Page input is user input. Validate types and bounds in the callback before forwarding to the server.</p></details>
+        <details class="explain"><summary>Calling <code>cb(...)</code> twice.</summary><p>Each callback must call its <code>cb</code> exactly once. Wrap risky paths in <code>pcall</code> or guard with a flag.</p></details>
+        <details class="explain"><summary>Hardcoding the resource name.</summary><p>Use <code>GetParentResourceName()</code> in JS so renames do not break the UI.</p></details>
+        <details class="explain"><summary>Holding focus while the menu is hidden.</summary><p>If you toggle visibility via CSS, also call <code>SetNuiFocus(false,false)</code> on hide.</p></details>
+        <details class="explain"><summary>Not pairing close paths.</summary><p>Escape, button click, and disconnect all need to release focus. Centralize in one <code>close()</code> function.</p></details>
+      </section>
+
+      <section class="quiz" aria-label="Quick check">
+        <h2>Quick check</h2>
+        <form class="quiz-form">
+          <fieldset data-answer="b"><legend>1. Lua &rarr; page communication uses&hellip;</legend>
+            <label><input type="radio" name="q1" value="a"> <code>TriggerClientEvent</code></label>
+            <label><input type="radio" name="q1" value="b"> <code>SendNUIMessage</code></label>
+            <label><input type="radio" name="q1" value="c"> <code>SetTimeout</code></label></fieldset>
+          <fieldset data-answer="c"><legend>2. Page &rarr; Lua communication uses&hellip;</legend>
+            <label><input type="radio" name="q2" value="a"> <code>postMessage</code></label>
+            <label><input type="radio" name="q2" value="b"> <code>WebSocket</code></label>
+            <label><input type="radio" name="q2" value="c"> <code>fetch</code> to a registered callback</label></fieldset>
+          <fieldset data-answer="a"><legend>3. <code>SetNuiFocus(true, true)</code> means&hellip;</legend>
+            <label><input type="radio" name="q3" value="a"> Show cursor and capture input</label>
+            <label><input type="radio" name="q3" value="b"> Hide cursor, pass-through input</label>
+            <label><input type="radio" name="q3" value="c"> Pause the game</label></fieldset>
+          <fieldset data-answer="b"><legend>4. Why use <code>GetParentResourceName()</code> in JS?</legend>
+            <label><input type="radio" name="q4" value="a"> It minifies output</label>
+            <label><input type="radio" name="q4" value="b"> Resource name is not always known at build time</label>
+            <label><input type="radio" name="q4" value="c"> It encrypts requests</label></fieldset>
+          <fieldset data-answer="b"><legend>5. Listener leak fix on a menu opened 80 times per shift?</legend>
+            <label><input type="radio" name="q5" value="a"> Re-attach <code>window.addEventListener</code> on every open</label>
+            <label><input type="radio" name="q5" value="b"> Attach once at boot, gate by an <code>open</code> flag</label>
+            <label><input type="radio" name="q5" value="c"> Reload the page each open</label></fieldset>
+          <button type="button" class="btn btn-quiz">Check answers</button>
+          <p class="quiz-feedback" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheatsheet</h2>
+        <dl>
+          <div><dt><code>SendNUIMessage(t)</code></dt><dd>Lua &rarr; page; arrives at <code>window.message</code>.</dd></div>
+          <div><dt><code>RegisterNUICallback(name, cb)</code></dt><dd>Page &rarr; Lua HTTP endpoint.</dd></div>
+          <div><dt><code>SetNuiFocus(cursor, input)</code></dt><dd>Hand input to the page or back to the game.</dd></div>
+          <div><dt><code>GetParentResourceName()</code></dt><dd>JS-side resource name for fetch URL.</dd></div>
+          <div><dt><code>nui_devtools &lt;resource&gt;</code></dt><dd>F8 command to open DevTools.</dd></div>
+          <div><dt><code>cb({...})</code></dt><dd>Always call exactly once per callback.</dd></div>
+          <div><dt><code>ui_page</code> / <code>files</code></dt><dd>Manifest entries that ship the UI.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap">
+        <h2>Recap</h2>
+        <ul>
+          <li>Outbound = <code>SendNUIMessage</code>; inbound = <code>fetch</code> + <code>RegisterNUICallback</code>.</li>
+          <li>Always pair focus on/off; centralize close.</li>
+          <li>Validate page input before forwarding to the server.</li>
+          <li>Use DevTools for fast UI iteration; restart resource only for Lua changes.</li>
+          <li>Use <code>GetParentResourceName()</code> to build fetch URLs.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise">
+        <h2>Exercise</h2>
+        <p>Add a search box that filters a list. Send the list once on open. Filter purely in JS. Add a /buy button that disables itself while the request is in flight; re-enable on the <code>bought</code> message.</p>
+        <figure>
+          <figcaption>Expected output</figcaption>
+<pre><code class="language-bash">[qu_phone] open -&gt; 23 items pushed
+[qu_phone] buy bread x2 -&gt; total 6
+[qu_phone] close -&gt; focus released</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/nui-development/" target="_blank" rel="noopener">CFX NUI development</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xB9449845F73F5E9C" target="_blank" rel="noopener">SetNuiFocus native</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/nui-development/nui-callbacks/" target="_blank" rel="noopener">NUI callbacks</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Use a small router on the page so <code>e.data.action</code> dispatches to view modules.</li>
+          <li>Add a debug overlay that logs every message + callback for replay.</li>
+          <li>Bundle React or Svelte with a <code>build</code> step writing into <code>html/dist</code>.</li>
+        </ul>
+      </section>

@@ -1,0 +1,556 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 22, Capstone</span></div>
+        <h1>Capstone: a mini bank, step by step</h1>
+        <p class="lede">By the end of this lesson you will run a working <code>/bank</code> command that lets a player deposit cash, withdraw cash, and check a balance saved in MySQL.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll build</dt><dd><code>qu_bank</code>: one table in MySQL, one server file, one client file.</dd></div>
+          <div><dt>Time</dt><dd>About 60 minutes if you have never used oxmysql before.</dd></div>
+          <div><dt>Prereqs</dt><dd>Lessons 14 (events), 15 (callbacks), and 16 (ox_lib menus).</dd></div>
+          <div><dt>Outcome</dt><dd>A bank a cheater cannot drain, because the server holds the truth.</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="20">
+        <h2>Before you start</h2>
+        <p>Quick check. This is a capstone, so it leans on a lot of earlier lessons. If any of these are shaky, pop back for two minutes, the build will go much smoother.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I can stand up a resource from scratch, <code>fxmanifest.lua</code>, <code>server.lua</code>, <code>client.lua</code>, and <code>ensure</code> in <code>server.cfg</code> (<a href="../clase-1/leason1.html">Lessons 1&ndash;3</a>)</label></li>
+          <li><label><input type="checkbox"> I have written a chat command with <code>RegisterCommand</code> (<a href="../clase-15/leason15.html">Lesson 15</a>)</label></li>
+          <li><label><input type="checkbox"> I am comfortable firing <code>TriggerServerEvent</code> from a client and handling it on the server</label></li>
+          <li><label><input type="checkbox"> I have finished <a href="../clase-21/leason21.html">Lesson 21</a> and can run a basic oxmysql query before starting this capstone</label></li>
+        </ul>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 22: Mini banking capstone</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Banking combines callbacks, validation, and money state.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find account reads and writes on the server.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Validate deposits and withdrawals before saving.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Run one deposit and confirm the balance.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small banking example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Account</dt><dd>Stored money for one player.<br><span>Example: source 4 has account data.</span></dd></div>
+            <div><dt tabindex="0">Deposit</dt><dd>Money added to an account.<br><span>Example: deposit 100 increases balance.</span></dd></div>
+            <div><dt tabindex="0">Withdraw</dt><dd>Money removed after checks.<br><span>Example: withdraw fails when balance is low.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_bank</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_bank/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_bank</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][banking]">
+            <header><span class="file">qu_bank/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'banking'
+
+RegisterNetEvent('quasar:bank:deposit', function(amount)
+    local src = source
+    if type(amount) ~= 'number' or amount &lt; 1 then
+        print(('[QUIET][%s][reject] source=%s'):format(MODULE, src))
+        return
+    end
+
+    print(('[QUIET][%s][deposit] source=%s amount=%s'):format(MODULE, src, amount))
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][banking]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>server.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_bank</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>banking_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][banking_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_bank' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="cheatsheet" id="bank-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Banking safety rules</h3>
+        <ul>
+          <li><strong>Client requests.</strong> It sends an amount request, not the final balance.</li>
+          <li><strong>Server validates.</strong> It checks type, range, player, and available funds.</li>
+          <li><strong>SQL stores.</strong> Every player value uses a <code>?</code> placeholder.</li>
+        </ul>
+      </section>
+
+      <section class="tldr-card" aria-label="Lesson summary">
+        <span class="tldr-card__chip">In one minute</span>
+        <div class="tldr-card__body">
+          <p><strong>What you build, in one minute.</strong></p>
+          <ul class="tldr-card__points">
+            <li>One MySQL table holds each player's bank balance, keyed by identifier.</li>
+            <li>The client sends a short message saying "I want to deposit 100." The server reads the real balance from MySQL and decides.</li>
+            <li>Every SQL query uses <code>?</code> placeholders so a cheater cannot inject SQL.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="what-youll-do">
+        <h2>What you will do, in plain English</h2>
+        <p>You are going to write the smallest possible banking script. The player types <code>/bank</code>, picks deposit or withdraw, types an amount, and the server saves the new balance in a database. That is it. No transfers, no fees, no menus inside menus. The point is to learn the safe shape: client asks, server checks, database stores.</p>
+        <p>Three words you will see a lot in this lesson, defined here once:</p>
+        <ul>
+          <li><strong>Source.</strong> A number FiveM gives every connected player. The server uses it to know who is sending an event. <code>source = 4</code> means "player number 4 right now." It changes every reconnect.</li>
+          <li><strong>Identifier.</strong> A long string that stays the same forever for one player, for example <code>license:8b1a9...</code>. We use this as the database key so the balance survives reconnects and server restarts.</li>
+          <li><strong>Parameterized query.</strong> A SQL command where values are replaced by <code>?</code> and the real values are passed in a separate list. The database driver inserts them safely. This is the rule that blocks SQL injection.</li>
+        </ul>
+        <p>One more pair you must keep straight: <strong>player money</strong> is the cash in the player's pocket, handled by the framework (Qbox, ESX, QBCore). <strong>Bank balance</strong> is the number we keep in our own MySQL table. Deposit moves money from the first into the second. Withdraw goes the other way.</p>
+      </section>
+
+      <section class="analogy-block">
+        <p class="analogy-block__label">The bank-teller analogy</p>
+        <p>Imagine a real bank window. You slide a paper through the slot that says "deposit 100." The teller does not believe the number you wrote on the paper. The teller looks at your account file, counts the cash you handed over, and only then writes a new balance. The client is the slip of paper. The server is the teller. The database is the account file.</p>
+        <p>If the teller trusted whatever number was on the paper, the bank would be empty by lunchtime. That is what happens with bad FiveM code.</p>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>The classic mistake, and the safe shape</h2>
+        <p>Below is the single most common mistake a new dev makes when they first wire MySQL to a money script. On the right is the same feature, written safely. Read both sides slowly.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">The server trusts the amount the client sent and pastes raw values into the SQL string. Two huge holes at once.</p>
+            <figure class="code">
+              <header><span>server.lua, the unsafe version</span></header>
+              <pre><code class="language-lua">RegisterNetEvent('qu:bank:deposit', function(amount, newBal)
+    local src = source
+    -- Trusts client-sent newBal, builds SQL by string concat.
+    MySQL.update(
+        'UPDATE qu_bank SET balance = '..newBal..' WHERE id = '..src
+    )
+end)</code></pre>
+            </figure>
+            <p>What goes wrong: the client can send any <code>newBal</code> it wants ("set my balance to one billion"). The string-built SQL also lets a crafted value run extra commands, the classic SQL injection.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">The server reads the real balance from MySQL, decides the new number itself, and uses <code>?</code> placeholders for every value.</p>
+            <figure class="code">
+              <header><span>server.lua, the safe version</span></header>
+              <pre><code class="language-lua">RegisterNetEvent('qu:bank:deposit', function(amount)
+    local src = source
+    if type(amount) ~= 'number' or amount &lt; 1 then return end
+
+    local id = GetPlayerIdentifier(src, 0) -- license:...
+    local current = MySQL.scalar.await(
+        'SELECT balance FROM qu_bank WHERE identifier = ?',
+        { id }
+    ) or 0
+
+    MySQL.update.await(
+        'UPDATE qu_bank SET balance = ? WHERE identifier = ?',
+        { current + amount, id }
+    )
+end)</code></pre>
+            </figure>
+            <p>What is fixed: the client only says how much, never the new total. Every value goes through a <code>?</code>, so the database driver escapes it for us. The key is the stable identifier, not <code>source</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="step-1" class="step">
+        <header><span class="step-num">Step 1</span><h2>Create the resource folder</h2></header>
+        <div class="step-body">
+          <p>Make a new folder inside <code>resources/[local]/</code> called <code>qu_bank</code>. Inside it, create three empty files: <code>fxmanifest.lua</code>, <code>server.lua</code>, and <code>client.lua</code>.</p>
+          <figure class="code">
+            <header><span>qu_bank/fxmanifest.lua</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'Mini banking, Quasar Academy capstone.'
+version '1.0.0'
+
+shared_script '@ox_lib/init.lua'
+
+server_script '@oxmysql/lib/MySQL.lua'
+server_script 'server.lua'
+client_script 'client.lua'</code></pre>
+          </figure>
+          <p>The line <code>server_script '@oxmysql/lib/MySQL.lua'</code> loads the helper that gives us <code>MySQL.scalar</code>, <code>MySQL.update</code>, and friends on the server. Without it those names are nil.</p>
+        </div>
+      </section>
+
+      <section id="step-2" class="step">
+        <header><span class="step-num">Step 2</span><h2>Create the database table</h2></header>
+        <div class="step-body">
+          <p>Run this SQL once against your server's MySQL database. Use HeidiSQL, phpMyAdmin, or your editor of choice. Copy and paste exactly.</p>
+          <figure class="code">
+            <header><span>migrations/qu_bank.sql</span></header>
+            <pre><code class="language-sql">CREATE TABLE IF NOT EXISTS `qu_bank` (
+  `identifier` VARCHAR(64) NOT NULL,
+  `balance` INT UNSIGNED NOT NULL DEFAULT 0,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`identifier`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;</code></pre>
+          </figure>
+          <p>Three things to notice. <code>identifier</code> is the primary key, so each player gets one row. <code>balance</code> is <code>UNSIGNED</code>, so it cannot go below zero at the database level, that is a second safety net. <code>updated_at</code> updates itself, useful for spotting suspicious changes later.</p>
+        </div>
+      </section>
+
+      <section id="step-3" class="step">
+        <header><span class="step-num">Step 3</span><h2>Server: the balance reader</h2></header>
+        <div class="step-body">
+          <p>Open <code>server.lua</code>. Add the helper that gets the player's identifier and fetches their current balance. If the player has never had a row, return zero.</p>
+          <figure class="code">
+            <header><span>qu_bank/server.lua</span></header>
+            <pre><code class="language-lua">local MAX_AMOUNT = 1000000
+
+local function getIdentifier(src)
+    -- index 0 is the license: identifier on FiveM
+    return GetPlayerIdentifier(src, 0)
+end
+
+local function readBalance(identifier)
+    local row = MySQL.scalar.await(
+        'SELECT balance FROM qu_bank WHERE identifier = ?',
+        { identifier }
+    )
+    return row or 0
+end
+
+lib.callback.register('qu:bank:balance', function(source)
+    local id = getIdentifier(source)
+    if not id then return 0 end
+    return readBalance(id)
+end)</code></pre>
+          </figure>
+          <p>The client will use <code>lib.callback.await('qu:bank:balance')</code> to ask "how much do I have right now?" The server looks it up by identifier, never by anything the client supplied. <code>MySQL.scalar.await</code> returns one cell from the first row, exactly what we want for a single number.</p>
+        </div>
+      </section>
+
+      <section id="step-4" class="step">
+        <header><span class="step-num">Step 4</span><h2>Server: deposit, with full validation</h2></header>
+        <div class="step-body">
+          <p>This is the heart of the lesson. Read each check before pasting.</p>
+          <figure class="code">
+            <header><span>qu_bank/server.lua (append)</span></header>
+            <pre><code class="language-lua">local function reply(src, ok, message)
+    TriggerClientEvent('qu:bank:result', src, ok, message)
+end
+
+local function validAmount(amount)
+    return type(amount) == 'number'
+        and amount == math.floor(amount)
+        and amount &gt;= 1
+        and amount &lt;= MAX_AMOUNT
+end
+
+-- Replace this with your framework, ESX or QBCore work the same shape.
+local function getPlayerCash(src)
+    local Player = exports.qbx_core:GetPlayer(src)
+    if not Player then return nil end
+    return Player.PlayerData.money.cash, Player
+end
+
+RegisterNetEvent('qu:bank:deposit', function(amount)
+    local src = source
+    if not validAmount(amount) then
+        return reply(src, false, 'Invalid amount.')
+    end
+
+    local id = getIdentifier(src)
+    if not id then return reply(src, false, 'No identifier.') end
+
+    local cash, Player = getPlayerCash(src)
+    if not Player then return reply(src, false, 'Player not loaded.') end
+    if cash &lt; amount then
+        return reply(src, false, 'Not enough cash.')
+    end
+
+    -- Take the cash first, then write the new balance.
+    Player.Functions.RemoveMoney('cash', amount, 'qu-bank-deposit')
+
+    local current = readBalance(id)
+    MySQL.update.await(
+        'INSERT INTO qu_bank (identifier, balance) VALUES (?, ?) '..
+        'ON DUPLICATE KEY UPDATE balance = ?',
+        { id, current + amount, current + amount }
+    )
+
+    reply(src, true, ('Deposited $%d. New balance $%d.'):format(amount, current + amount))
+end)</code></pre>
+          </figure>
+          <p>Notice the order: validate the amount, find the player, read the cash, take the cash, write the new balance. If any earlier step fails, we return early with a clear message and never touch the database. Both values in the SQL go through <code>?</code> placeholders, no string concatenation anywhere.</p>
+        </div>
+      </section>
+
+      <section id="step-5" class="step">
+        <header><span class="step-num">Step 5</span><h2>Server: withdraw, the mirror image</h2></header>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_bank/server.lua (append)</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:bank:withdraw', function(amount)
+    local src = source
+    if not validAmount(amount) then
+        return reply(src, false, 'Invalid amount.')
+    end
+
+    local id = getIdentifier(src)
+    if not id then return reply(src, false, 'No identifier.') end
+
+    local _, Player = getPlayerCash(src)
+    if not Player then return reply(src, false, 'Player not loaded.') end
+
+    local current = readBalance(id)
+    if current &lt; amount then
+        return reply(src, false, 'Not enough in bank.')
+    end
+
+    MySQL.update.await(
+        'UPDATE qu_bank SET balance = ? WHERE identifier = ?',
+        { current - amount, id }
+    )
+
+    Player.Functions.AddMoney('cash', amount, 'qu-bank-withdraw')
+
+    reply(src, true, ('Withdrew $%d. New balance $%d.'):format(amount, current - amount))
+end)</code></pre>
+          </figure>
+          <p>Same shape as deposit. Validate, find player, read the real balance from MySQL, check the balance is enough, write, then hand over the cash. The amount the client sent never reaches the SQL string raw, it only reaches the parameter list.</p>
+        </div>
+      </section>
+
+      <section id="step-6" class="step">
+        <header><span class="step-num">Step 6</span><h2>Server: a small cooldown</h2></header>
+        <div class="step-body">
+          <p>A cheater might call <code>qu:bank:deposit</code> a thousand times per second. We add a tiny per-source cooldown, kept in a Lua table on the server only.</p>
+          <figure class="code">
+            <header><span>qu_bank/server.lua (append, near the top)</span></header>
+            <pre><code class="language-lua">local lastUse = {}
+local COOLDOWN_MS = 500
+
+local function onCooldown(src)
+    local now = GetGameTimer()
+    if lastUse[src] and (now - lastUse[src]) &lt; COOLDOWN_MS then
+        return true
+    end
+    lastUse[src] = now
+    return false
+end
+
+AddEventHandler('playerDropped', function()
+    lastUse[source] = nil
+end)</code></pre>
+          </figure>
+          <p>Then add one line at the top of each <code>RegisterNetEvent</code> handler:</p>
+          <figure class="code">
+            <header><span>inside deposit and withdraw</span></header>
+            <pre><code class="language-lua">if onCooldown(src) then return reply(src, false, 'Slow down.') end</code></pre>
+          </figure>
+          <p>The table is keyed by <code>source</code> (the live session number) and cleared when a player drops. Cooldown lives only on the server, the client never sees it, the client cannot bypass it.</p>
+        </div>
+      </section>
+
+      <section id="step-7" class="step">
+        <header><span class="step-num">Step 7</span><h2>Client: the menu</h2></header>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_bank/client.lua</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:bank:result', function(ok, message)
+    lib.notify({
+        type = ok and 'success' or 'error',
+        title = ok and 'Bank' or 'Denied',
+        description = message,
+    })
+end)
+
+local function ask(label)
+    local input = lib.inputDialog(label, {
+        { type = 'number', label = 'Amount', required = true, min = 1, max = 1000000 },
+    })
+    return input and input[1] or nil
+end
+
+local function openBank()
+    local balance = lib.callback.await('qu:bank:balance', false) or 0
+
+    lib.registerContext({
+        id = 'qu_bank_menu',
+        title = ('Bank, balance $%d'):format(balance),
+        options = {
+            {
+                title = 'Deposit',
+                description = 'Move cash into the bank.',
+                onSelect = function()
+                    local a = ask('Deposit amount')
+                    if a then TriggerServerEvent('qu:bank:deposit', a) end
+                end,
+            },
+            {
+                title = 'Withdraw',
+                description = 'Move bank money to cash.',
+                onSelect = function()
+                    local a = ask('Withdraw amount')
+                    if a then TriggerServerEvent('qu:bank:withdraw', a) end
+                end,
+            },
+        },
+    })
+
+    lib.showContext('qu_bank_menu')
+end
+
+RegisterCommand('bank', openBank, false)</code></pre>
+          </figure>
+          <p>The client's only jobs are: ask the server for the latest balance, draw the menu, send the chosen action and amount to the server, and show the result message. No numbers are decided on the client. The menu is a window, not a vault.</p>
+        </div>
+      </section>
+
+      <section class="pin-card" aria-label="Self-check before testing">
+        <header class="pin-card__head">
+          <span class="pin-card__chip">Self-check</span>
+          <h3 class="pin-card__title">Before you start the server, tick all six</h3>
+        </header>
+        <ol>
+          <li>I created the <code>qu_bank</code> table with the SQL in Step 2.</li>
+          <li>I added <code>ensure oxmysql</code> above <code>ensure qu_bank</code> in <code>server.cfg</code>.</li>
+          <li>Every SQL string in my <code>server.lua</code> uses <code>?</code> placeholders, never <code>..</code>.</li>
+          <li>The server reads the balance from MySQL, the client never sends a balance.</li>
+          <li>I check <code>type(amount) == 'number'</code> and <code>amount &gt;= 1</code> before any money moves.</li>
+          <li>I removed every <code>print()</code> that leaked an identifier or amount in plain text.</li>
+        </ol>
+      </section>
+
+      <section id="tests">
+        <h2>Three tests, run them in order</h2>
+        <p>Start the server, join, type each action, write down what you saw. If anything is different from the expected result, stop and re-read the matching step.</p>
+        <table class="tests-table">
+          <thead>
+            <tr><th scope="col">Action</th><th scope="col">Expected result</th><th scope="col">How to verify</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Open <code>/bank</code>, click Deposit, type <code>100</code> while you have at least $100 cash.</td>
+              <td>Green notify "Deposited $100. New balance $100." Cash drops by 100.</td>
+              <td>Reopen <code>/bank</code>, the title shows the new balance. Run <code>SELECT balance FROM qu_bank WHERE identifier = ?</code> in HeidiSQL with your license, the row matches.</td>
+            </tr>
+            <tr>
+              <td>Open <code>/bank</code>, click Withdraw, type <code>50</code>.</td>
+              <td>Green notify "Withdrew $50. New balance $50." Cash rises by 50.</td>
+              <td>Menu title updates on next open. Database row equals 50.</td>
+            </tr>
+            <tr>
+              <td>From the F8 console run <code>TriggerServerEvent('qu:bank:deposit', -100)</code>, then again with <code>'free'</code>.</td>
+              <td>Red notify "Invalid amount." both times. No row change. No error in the server console.</td>
+              <td>Database row is still 50. Server console shows no SQL error, the validation rejected before the query ran.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>The third test is the one beginners skip. It is the proof that your validation works against an attacker, not just against a polite menu.</p>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Why we never call <code>RemoveMoney</code> with the client's number directly</header>
+        <p>Player money lives inside the framework. Even though <code>RemoveMoney('cash', amount)</code> looks like a safe call, the <code>amount</code> here came from the network. We validated it first with <code>validAmount</code>, and we read the current cash from <code>Player.PlayerData</code>, never from the client. That two-step is the difference between a safe handler and a duplication exploit.</p>
+      </section>
+
+      <section class="checkpoint" id="capstone-checkpoint">
+        <header><span class="chip">Checkpoint</span><h3>Before the final test</h3></header>
+        <p>Confirm one deposit, one rejected withdrawal, and one database row before changing the feature.</p>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset><legend>Who decides the final balance?</legend><label><input type="radio" name="q1" data-correct="true"> The server</label><label><input type="radio" name="q1"> The client menu</label></fieldset>
+          <fieldset><legend>What blocks SQL injection?</legend><label><input type="radio" name="q2" data-correct="true"> Parameter placeholders</label><label><input type="radio" name="q2"> String concatenation</label></fieldset>
+          <fieldset><legend>What should happen on invalid amount?</legend><label><input type="radio" name="q3" data-correct="true"> Reject and log</label><label><input type="radio" name="q3"> Save anyway</label></fieldset>
+          <button type="submit">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section id="recap" class="lesson-recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to make one MySQL table that holds a balance per player, keyed by identifier.</li>
+          <li>How to call oxmysql safely with <code>MySQL.scalar.await</code> and <code>MySQL.update.await</code>, always with <code>?</code> placeholders.</li>
+          <li>Why the client only sends an action and an amount, and the server alone decides the new balance.</li>
+          <li>How to validate type, integer, range, and player state before any money moves.</li>
+          <li>How a per-source cooldown blocks event spam without ever trusting the client.</li>
+        </ul>
+      </section>
+
+      <section id="exercise" class="lesson-exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a "Show last update" option to the menu. It calls a new callback <code>qu:bank:lastUpdate</code> that runs <code>SELECT updated_at FROM qu_bank WHERE identifier = ?</code> and returns the timestamp. The client shows it in a notify. No money moves, no new event, just one more parameterized read.</p>
+      </section>
+
+      <section id="references" class="lesson-refs">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/natives/?_0xGetPlayerIdentifier" target="_blank" rel="noopener">FiveM native: GetPlayerIdentifier</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/" target="_blank" rel="noopener">FiveM server-side Lua functions</a></li>
+          <li><a href="https://github.com/overextended/oxmysql" target="_blank" rel="noopener">oxmysql repository and lib/MySQL.lua source</a></li>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+          <li><a href="https://overextended.dev/ox_lib/Modules/Callback/Lua/Client" target="_blank" rel="noopener">ox_lib callback documentation</a></li>
+        </ul>
+      </section>

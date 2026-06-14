@@ -1,0 +1,141 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="Persistence: cache + write-back"
+  meta={[
+    { label: "You'll learn", value: "In-memory cache, dirty flags, periodic flush, playerDropped save, txAdmin graceful shutdown" },
+    { label: "Time", value: "~24 minutes" },
+    { label: "Prereqs", value: "P1 (oxmysql), P4 (promises)" },
+    { label: "Outcome", value: "A wallet that updates 1000 times per minute in-memory and writes to DB at most once every 30 seconds: without losing data on crashes" },
+  ]}
+>
+  Reading from MySQL on every action is slow. Writing on every action floods your DB and locks tables. The fix is the cache + write-back pattern: keep player state in RAM, mark it dirty when it changes, flush on a timer and on disconnect. This is how every well-built FiveM economy survives 64-player nights.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds cache, dirty flag, timed flush, and playerDropped save as a working FiveM resource named `qu_persistence`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_persistence
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_persistence/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script '@oxmysql/lib/MySQL.lua'
+server_script 'server.lua'
+
+dependency 'oxmysql'
+    ```
+
+    Run this SQL before starting the resource:
+
+    ```sql
+CREATE TABLE IF NOT EXISTS qu_persistence_rows (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  amount INT NOT NULL DEFAULT 0
+);
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local cache = { cash = 0, dirty = false }
+RegisterCommand('cashadd', function(_, args) cache.cash = cache.cash + (tonumber(args[1]) or 1) cache.dirty = true print('[qu_persistence] cached ' .. cache.cash) end, true)
+CreateThread(function() while true do Wait(30000) if cache.dirty then MySQL.insert.await('INSERT INTO qu_persistence_rows (name, amount) VALUES (?, ?) ON DUPLICATE KEY UPDATE amount = ?', { 'wallet', cache.cash, cache.cash }) cache.dirty = false print('[qu_persistence] flushed') end end end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_persistence
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_persistence
+    ```
+
+    Run this test:
+
+    ```text
+    cashadd 25, then wait 30 seconds
+    ```
+
+    <ExpectedOutput>
+      [qu_persistence] cached 25
+[qu_persistence] flushed
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_persistence does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_persistence", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_persistence, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_persistence folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for cache, dirty flag, timed flush, and playerDropped save.",
+    "Add ensure qu_persistence to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_persistence`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

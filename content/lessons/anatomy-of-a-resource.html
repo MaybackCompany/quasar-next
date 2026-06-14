@@ -1,0 +1,652 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 02 · Lesson 07</span></div>
+        <h1>Anatomy of a resource</h1>
+        <p class="lede">A FiveM resource is just a folder with a label card. That label card is <code>fxmanifest.lua</code>. It tells FiveM what this folder is, which files belong to it, and which side should run them. This lesson teaches you to read that card line by line without guessing.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll build</dt><dd>An upgraded <code>qu_hello</code> manifest with metadata, three script entries (client, server, shared), and a clear mental map of what each field controls.</dd></div>
+          <div><dt>Time</dt><dd>~18 minutes</dd></div>
+          <div><dt>You need</dt><dd>The <code>qu_hello</code> resource from Lesson 01, a server you can restart, and the F8 in-game console open when you test.</dd></div>
+          <div><dt>You'll learn</dt><dd><code>fx_version</code> -> <code>game</code> -> <code>client_script</code> / <code>server_script</code> / <code>shared_script</code> -> <code>files</code> -> <code>ui_page</code> -> <code>exports</code> -> <code>dependency</code> -> the <code>@</code> import prefix</dd></div>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 7: fxmanifest and resource shape</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A resource is a script folder FiveM can start.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find it inside the server resources folder.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Declare files in fxmanifest.lua, then ensure the folder.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Create the smallest resource and restart it.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small resource example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Resource</dt><dd>A folder FiveM can start.<br><span>Example: qu_manifest is one resource.</span></dd></div>
+            <div><dt tabindex="0">Manifest</dt><dd>The file that tells FiveM what to load.<br><span>Example: fxmanifest.lua lists server.lua.</span></dd></div>
+            <div><dt tabindex="0">Ensure</dt><dd>The command that starts a resource.<br><span>Example: ensure qu_manifest loads the folder.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_manifest</code></dd></div>
+            <div><dt>Side</dt><dd><code>shared</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_manifest/shared.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_manifest</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][resource]">
+            <header><span class="file">qu_manifest/shared.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'resource'
+
+RegisterCommand('quiet_6', function(source)
+    print(('[QUIET][%s][command] source=%s api=fx_version'):format(MODULE, source))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][resource]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>shared.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_manifest</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>resource_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][resource_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="prereq" data-lesson="6">
+        <h2>Before you start</h2>
+        <p>Tick these off. This lesson assumes you finished Module 01 and have a resource to upgrade.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="qu_hello"> I still have the <code>qu_hello</code> folder from Lesson 01 with a working <code>server.lua</code></label></li>
+          <li><label><input type="checkbox" data-id="ensure"> I can run <code>ensure qu_hello</code> in the server console and see its output</label></li>
+          <li><label><input type="checkbox" data-id="f8"> I know how to open the in-game F8 console (press <kbd>F8</kbd> once connected to the server)</label></li>
+          <li><label><input type="checkbox" data-id="lua"> I'm comfortable with variables, strings, and <code>print</code> from Module 01</label></li>
+        </ul>
+      </section>
+
+      <section class="reading-panel">
+        <h3>How to read this lesson</h3>
+        <p>This is not a memorise-every-field lesson. Read it like a label card. First learn what a manifest does. Then learn the three script entries. Only after that should you care about files, dependencies, and imports.</p>
+      </section>
+
+      <section class="checkpoint" id="folder-tree-checkpoint">
+        <header><span class="chip">Required proof</span><h3>Build the folder first, one manifest line first</h3></header>
+        <p>Before reading the full manifest reference, make this tiny resource shape and confirm you can point at each file:</p>
+        <figure class="code">
+          <header><span>Smallest resource tree</span></header>
+          <pre><code class="language-bash">resources/
+└── qu_manifest/
+    ├── fxmanifest.lua
+    └── server.lua</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>qu_manifest/fxmanifest.lua, one-file manifest</span></header>
+          <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'</code></pre>
+        </figure>
+        <p>Get this version loading first. After it prints from <code>server.lua</code>, layer in shared, client, files, and dependencies one at a time.</p>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: what a resource <em>is</em></h2>
+        <p>Strip away every buzzword and a FiveM resource is a folder with a short instruction card inside it. The folder can live anywhere under <code>resources/</code>. What makes it a real resource is one file named exactly <code>fxmanifest.lua</code>.</p>
+        <p>That manifest is not your gameplay logic. It is your description page. It says: this is my resource, this is the game, these are my files, and this is which side should run them. FiveM reads that description first, then loads your real scripts.</p>
+        <p>That is why this lesson matters. If you can read a manifest calmly, the rest of a resource stops feeling like magic and starts feeling like named pieces in the right boxes.</p>
+
+        <div class="callout callout--fivem">
+          <header>FiveM note</header>
+          <p>Two consoles exist in FiveM: the <strong>server console</strong> (the window where you type <code>ensure</code>) and the <strong>client F8 console</strong> (inside the game, per player). Server scripts log to the server console. Client scripts log to F8. Keep both visible this lesson, you'll use them to prove what ran where.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Understand the six core fields</h2></header>
+        <p class="step-outcome">Outcome: you can read a manifest and name every line without guessing.</p>
+        <div class="step-body">
+          <p>Here's a manifest with every field you'll meet in this lesson. Read it once, then we'll walk each line.</p>
+          <figure class="code">
+            <header><span>Reference manifest (read only)</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'Upgraded qu_hello with full manifest fields.'
+version '1.0.0'
+
+shared_script 'shared.lua'
+client_script 'client.lua'
+server_script 'server.lua'
+
+files {
+  'config.json',
+}
+
+dependency 'some_other_resource'</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>What every line does</summary>
+            <ul>
+              <li><code>fx_version 'cerulean'</code>: the manifest format version. Think of it like "Lua for manifests, v3". <code>cerulean</code> is current (2024+). Its predecessors were <code>adamant</code> and <code>bodacious</code>; you'll only see those in old resources. Use <code>cerulean</code> on everything new.</li>
+              <li><code>game 'gta5'</code>: which CitizenFX game this resource targets. <code>'gta5'</code> for FiveM, <code>'rdr3'</code> for RedM, or a table like <code>{ 'gta5', 'rdr3' }</code> for both. We're on <code>gta5</code> for the whole course.</li>
+              <li><code>author</code>, <code>description</code>, <code>version</code>: metadata. Shown in txAdmin and the server console. Harmless to skip, but please don't, future-you will thank present-you.</li>
+              <li><code>shared_script</code> / <code>client_script</code> / <code>server_script</code>: the three script entries. Each one points to a <code>.lua</code> file (or a list or a glob) and says "run this on this side". Details in the next step.</li>
+              <li><code>files { ... }</code>: non-script assets: HTML, CSS, JS, images, JSON configs. Anything that isn't a <code>.lua</code> you want executed goes here.</li>
+              <li><code>dependency</code>: "don't start me unless <em>that</em> resource is already up". The server enforces the order.</li>
+            </ul>
+          </details>
+
+          <div class="callout callout--fivem">
+            <header>About <code>lua54 'yes'</code> and <code>__resource.lua</code> (legacy)</header>
+            <p>You will see <code>lua54 'yes'</code> in nearly every old fxmanifest. As of June 2025 the Lua 5.3 runtime was removed; every resource now runs on Lua 5.4 by default. The <code>lua54</code> directive still parses but is officially marked deprecated, the official docs no longer ask you to add it. <strong>Don't add it to new resources.</strong> If you inherit a codebase full of it, leave it for now, it's harmless, just stop typing it on new files.</p>
+            <p>You may also see a file named <code>__resource.lua</code> in very old resources. That was the manifest format before <code>fxmanifest.lua</code> existed. It is fully deprecated, current FiveM still loads it but every new resource uses <code>fxmanifest.lua</code>. If you ever migrate an old resource: rename the file, swap the manifest header to <code>fx_version 'cerulean'</code> + <code>game 'gta5'</code>, and you're done.</p>
+          </div>
+
+          <div class="callout callout--tip">
+            <header>Tip</header>
+            <p>The order of fields doesn't matter to FiveM, but it matters to humans. Put the version/game/metadata at the top, scripts in the middle, files and dependencies at the bottom. Every manifest you read from a serious studio follows roughly that shape.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>The three script entries</h2></header>
+        <p class="step-outcome">Outcome: you can decide, for any file you write, which side it belongs on.</p>
+        <div class="step-body">
+          <p>FiveM runs your code in two places: the <strong>server process</strong> (the machine hosting the game) and the <strong>client process</strong> (each connected player's PC). The three script entries tell FiveM which side to load a file on.</p>
+          <ul>
+            <li><code>server_script 'server.lua'</code>: runs on the server process. Database queries, money, bans, authority checks, server.</li>
+            <li><code>client_script 'client.lua'</code>: runs on every connected player. UI, animations, the world around the player, keypresses, client.</li>
+            <li><code>shared_script 'shared.lua'</code>: runs on <em>both</em>. Use it for pure Lua definitions with no FiveM-specific natives: shared constants, config tables, helper functions that work the same on either side.</li>
+          </ul>
+          <p>Each entry accepts three shapes. Learn all three, you'll see every one of them in the wild:</p>
+          <figure class="code">
+            <header><span>Three ways to list files</span></header>
+            <pre><code class="language-lua">client_script 'client.lua'
+
+client_script {
+  'client/main.lua',
+  'client/menu.lua',
+  'client/camera.lua',
+}
+
+client_scripts {
+  'client/*.lua',
+}</code></pre>
+          </figure>
+          <p>A single string for a single file. A table for a fixed list. A glob (notice the plural <code>client_scripts</code>) to sweep in every <code>.lua</code> under a folder. The glob form is lovely for large resources where files come and go.</p>
+
+          <details class="explain">
+            <summary>Load order matters</summary>
+            <p>Files inside a script entry load in the order they're listed. If <code>menu.lua</code> calls a function defined in <code>main.lua</code>, then <code>main.lua</code> has to be listed first. Globs sort alphabetically, so don't rely on them when order is load-bearing.</p>
+          </details>
+
+          <div class="callout callout--tip">
+            <header>One load-order rule worth memorising: shared goes first</header>
+            <p>There is a second kind of order on top of file order. Across the three entries, FiveM always loads <code>shared_scripts</code> <strong>before</strong> <code>client_scripts</code> and <code>server_scripts</code>. That ordering is the whole reason the shared layer is useful: by the time your client or server file runs, anything defined in shared (a <code>Config</code> table, a constant, a helper) already exists. So a good habit is to put your shared and config entries near the top of the manifest, then client and server below them. You will lean on this exact guarantee in the next lesson when both sides read one shared <code>Config</code> table.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Build A: add metadata to <code>qu_hello</code></h2></header>
+        <p class="step-outcome">Outcome: your old manifest now declares author, description, and version, ready for real work.</p>
+        <div class="step-body">
+          <p>Open <code>qu_hello/fxmanifest.lua</code>. Replace its contents with this:</p>
+          <figure class="code">
+            <header><span>qu_hello/fxmanifest.lua, Build A</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'My first resource'
+version '1.0.0'
+
+server_script 'server.lua'</code></pre>
+          </figure>
+          <p>Save. Restart the resource:</p>
+          <figure class="code">
+            <header><span>Server console</span></header>
+            <pre><code class="language-bash">ensure qu_hello</code></pre>
+          </figure>
+          <p>Your old <code>Hello, Los Santos</code> line still prints, nothing about behavior changed, you only added description. But now the resource reports itself properly in txAdmin and the server console. That's the baseline for every resource you'll write from here on.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Build B: add a client script</h2></header>
+        <p class="step-outcome">Outcome: one message in the server console, one message in the F8 console, two sides, one resource.</p>
+        <div class="step-body">
+          <p>Inside <code>qu_hello/</code>, create a new file called <code>client.lua</code> with a single line:</p>
+          <figure class="code">
+            <header><span>qu_hello/client.lua</span></header>
+            <pre><code class="language-lua">print('qu_hello client loaded')</code></pre>
+          </figure>
+          <p>Then open <code>fxmanifest.lua</code> and add one line to it:</p>
+          <figure class="code">
+            <header><span>qu_hello/fxmanifest.lua, Build B</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'My first resource'
+version '1.0.0'
+
+server_script 'server.lua'
+client_script 'client.lua'</code></pre>
+          </figure>
+          <p>Save. In the server console:</p>
+          <figure class="code">
+            <header><span>Server console</span></header>
+            <pre><code class="language-bash">ensure qu_hello</code></pre>
+          </figure>
+          <p>Connect to the server (or reconnect). Open the F8 console in-game. You should see two different places talking:</p>
+          <figure class="code">
+            <header><span>Server console</span></header>
+            <pre><code class="language-bash">[   script:qu_hello] Hello, Los Santos</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>F8 in-game console</span></header>
+            <pre><code class="language-bash">[   script:qu_hello] qu_hello client loaded</code></pre>
+          </figure>
+          <p>Two consoles. Two messages. One resource. You'll learn <em>why</em> there are two sides in Lesson 08, for now, trust the split: <code>server_script</code> prints to the server, <code>client_script</code> prints to F8.</p>
+
+          <div class="callout callout--tip">
+            <header>Tip</header>
+            <p>If F8 doesn't open in-game, the developer console may be disabled. Make sure you've connected to a server (the F8 console only works in-game), and check your FiveM keybinds for a conflict. On most setups F8 works out of the box.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Read the manifest out loud</h3></header>
+        <p>Before you move on, answer these without scrolling up:</p>
+        <div class="self-check">
+          <details>
+            <summary>What's the difference between <code>server_script</code> and <code>client_script</code>?</summary>
+            <p><code>server_script</code> runs on the server process (the host machine). <code>client_script</code> runs on each connected player's PC. Same manifest, two different places, two different consoles.</p>
+          </details>
+          <details>
+            <summary>What runtime does my code run on if I don't add <code>lua54 'yes'</code>?</summary>
+            <p>Lua 5.4. As of June 2025 the old Lua 5.3 runtime was removed and every resource runs on 5.4 by default. The <code>lua54</code> directive is officially deprecated, leave it off new resources.</p>
+          </details>
+          <details>
+            <summary>If a manifest has no <code>fx_version</code>, what happens?</summary>
+            <p>The resource refuses to load. The server console will print an error asking for a manifest version. FiveM needs to know which format rules to apply before it reads anything else.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Build C: add a shared script</h2></header>
+        <p class="step-outcome">Outcome: one file defines a constant; two sides read it. Proof that <code>shared_script</code> ran in both places.</p>
+        <div class="step-body">
+          <p>Create a third file in <code>qu_hello/</code> named <code>shared.lua</code>:</p>
+          <figure class="code">
+            <header><span>qu_hello/shared.lua</span></header>
+            <pre><code class="language-lua">SHARED_VERSION = '1.0.0'</code></pre>
+          </figure>
+          <p>Open <code>server.lua</code> and add a second line that uses the constant:</p>
+          <figure class="code">
+            <header><span>qu_hello/server.lua</span></header>
+            <pre><code class="language-lua">print('Hello, Los Santos')
+print('version: ' .. SHARED_VERSION)</code></pre>
+          </figure>
+          <p>Open <code>client.lua</code> and do the same:</p>
+          <figure class="code">
+            <header><span>qu_hello/client.lua</span></header>
+            <pre><code class="language-lua">print('qu_hello client loaded')
+print('version: ' .. SHARED_VERSION)</code></pre>
+          </figure>
+          <p>Now wire the shared file into the manifest. The order matters, <code>shared_script</code> goes first so the constant exists by the time the other scripts run:</p>
+          <figure class="code">
+            <header><span>qu_hello/fxmanifest.lua, Build C</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'My first resource'
+version '1.0.0'
+
+shared_script 'shared.lua'
+server_script 'server.lua'
+client_script 'client.lua'</code></pre>
+          </figure>
+          <p>Save everything. Run <code>ensure qu_hello</code>. Reconnect if needed. Both consoles now show the version:</p>
+          <figure class="code">
+            <header><span>Server console</span></header>
+            <pre><code class="language-bash">[   script:qu_hello] Hello, Los Santos
+[   script:qu_hello] version: 1.0.0</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>F8 in-game console</span></header>
+            <pre><code class="language-bash">[   script:qu_hello] qu_hello client loaded
+[   script:qu_hello] version: 1.0.0</code></pre>
+          </figure>
+          <p>Same string, two places. That's because <code>shared.lua</code> ran twice, once when the server started, once when the client connected. <code>SHARED_VERSION</code> exists in both environments independently. You didn't copy-paste a constant into two files; you defined it once and the manifest made it available to both sides.</p>
+
+          <details class="explain">
+            <summary>Why a global here?</summary>
+            <p><code>SHARED_VERSION</code> has no <code>local</code> in front of it, which makes it a <em>global</em>: reachable from any file on the same side. Module 01 told you to always prefer <code>local</code>, and that's still the right default. For one constant shared across a tiny resource a global is fine; a later Module 02 lesson shows you how to return a table or expose a proper pattern for bigger projects.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="files-and-deps">
+        <h2>Files, dependencies, and the <code>@</code> import</h2>
+        <p>You won't use these today, but you'll meet them fast. A preview so the syntax doesn't surprise you.</p>
+
+        <h3><code>files</code>: non-script assets</h3>
+        <p>Anything that isn't a <code>.lua</code> you want executed goes in <code>files</code>: HTML pages for a NUI menu, CSS, JavaScript, images, audio, JSON configs. Without this entry, FiveM won't even serve the file to clients.</p>
+        <figure class="code">
+          <header><span>Example, a resource with a config and a UI</span></header>
+          <pre><code class="language-lua">files {
+  'config.json',
+  'html/index.html',
+  'html/style.css',
+  'html/app.js',
+}
+
+ui_page 'html/index.html'</code></pre>
+        </figure>
+
+        <h3><code>dependency</code>: load order</h3>
+        <p>A <em>dependency</em> is another resource your code needs in order to work. If your script calls <code>exports.oxmysql:execute(...)</code>, then the resource <code>oxmysql</code> must already be running by the time your first line executes. If <code>oxmysql</code> isn't up yet, that export doesn't exist and your script crashes on the very first query.</p>
+        <p>Two places control this, and you need both:</p>
+        <ul>
+          <li><strong>fxmanifest.lua</strong> declares the dependency. The server reads this and refuses to start your resource if the named one is missing or has failed.</li>
+          <li><strong>server.cfg</strong> controls the boot order. FiveM starts resources top to bottom. The dependency must be <code>ensure</code>d <em>before</em> the dependant, otherwise yours boots first, hits the missing export, and dies.</li>
+        </ul>
+        <figure class="code">
+          <header><span>fxmanifest.lua, declare what you need</span></header>
+          <pre><code class="language-lua">dependency 'ox_lib'
+
+-- or several at once:
+dependencies {
+  'oxmysql',
+  'ox_inventory',
+  'qb-core',
+}</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>server.cfg, the order has to match</span></header>
+          <pre><code class="language-bash"># wrong, qu_hello boots before ox_lib exists
+ensure qu_hello
+ensure ox_lib
+
+# right, library first, then anything that uses it
+ensure ox_lib
+ensure oxmysql
+ensure qb-core
+ensure qu_hello</code></pre>
+        </figure>
+        <p>If you get the order wrong, the console tells you exactly what happened:</p>
+        <figure class="code">
+          <header><span>Server console, dependency not yet loaded</span></header>
+          <pre><code class="language-bash">[   script:qu_hello] SCRIPT ERROR: @qu_hello/client.lua:3: attempt to index a nil value (global 'lib')</code></pre>
+        </figure>
+        <p>Both errors mean the same thing: the resource you're calling into isn't ready. Either it isn't <code>ensure</code>d at all, it's listed below yours, or it failed to start (check its own console output for a red error and fix that one first).</p>
+        <div class="callout callout--tip">
+          <header>Manifest vs cfg, what each one does</header>
+          <p>The manifest says <em>I refuse to run without this</em>. The cfg says <em>start this one first</em>. You need both. Declaring the dependency without ordering the cfg leaves a race; ordering the cfg without declaring the dependency means a future dev removes the <code>ensure</code> line and your resource breaks silently.</p>
+        </div>
+
+        <h3><code>ui_page</code>: the entry HTML for a NUI menu</h3>
+        <p>If your resource has an in-game browser UI (a phone, an inventory, a shop), the manifest has to point FiveM at the entry HTML file. <code>ui_page</code> does that. The page itself, plus any CSS, JS, images, and fonts it loads, must <em>also</em> be listed in <code>files</code>, otherwise the client can't fetch them and the menu shows up blank.</p>
+        <figure class="code">
+          <header><span>fxmanifest.lua, a NUI page</span></header>
+          <pre><code class="language-lua">ui_page 'html/index.html'
+
+files {
+  'html/index.html',
+  'html/style.css',
+  'html/app.js',
+  'html/icons/*.svg',
+}</code></pre>
+        </figure>
+        <p>Two rules: <code>ui_page</code> takes <em>one</em> string (one entry point per resource), and every asset the page references has to appear in <code>files</code>. We rebuild a NUI menu from scratch in Module 06, this lesson just teaches you to spot the line.</p>
+
+        <h3><code>exports</code>: functions you let other resources call</h3>
+        <p>An export is a function your resource publishes. Other resources call it with <code>exports.your_resource:functionName(args)</code>. The manifest declares which functions are exported on which side: <code>exports</code> for client-side, <code>server_exports</code> for server-side.</p>
+        <figure class="code">
+          <header><span>fxmanifest.lua, declare exports</span></header>
+          <pre><code class="language-lua">exports {
+  'getPlayerSpeed',   -- client-side function
+}
+
+server_exports {
+  'getPlayerMoney',   -- server-side function
+}</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>client.lua, register the function</span></header>
+          <pre><code class="language-lua">function getPlayerSpeed()
+    local ped = PlayerPedId()
+    return GetEntitySpeed(ped) * 3.6 -- m/s -> km/h
+end</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span>another resource calling it</span></header>
+          <pre><code class="language-lua">local speed = exports.qu_hello:getPlayerSpeed()
+print('speed: ' .. speed)</code></pre>
+        </figure>
+        <p>Module 03 covers exports in depth (when to pick an export over an event, the cost of the call, the trust rule). For today: recognize <code>exports</code> and <code>server_exports</code> in the manifest, and know they're how resources hand each other named functions.</p>
+
+        <h3>The <code>@</code> prefix: importing from another resource</h3>
+        <p>Prefix a path with <code>@name/</code> to reference a file that lives <em>inside another resource</em>. The other resource has to be started (and typically listed as a dependency), and then its file loads into yours as if it were your own.</p>
+        <figure class="code">
+          <header><span>Example, load a library's init into this resource</span></header>
+          <pre><code class="language-lua">shared_script '@some_library/init.lua'
+
+-- the most common one, oxmysql:
+server_script '@oxmysql/lib/MySQL.lua'</code></pre>
+        </figure>
+        <p>You'll use this exact pattern in Module 05 when we pull in a real library, and again in Module 04 when we wire <code>oxmysql</code>. For now, just recognize the syntax when you see it.</p>
+
+        <p>Two of these you will type by hand on almost every real resource, so it helps to know what they hand you:</p>
+        <dl class="vocab-list">
+          <div><dt tabindex="0"><code>'@oxmysql/lib/MySQL.lua'</code></dt><dd>Loads the database wrapper. After this line you can call <code>MySQL.query</code>, <code>MySQL.update</code>, and friends.<br><span>Goes in <code>server_scripts</code>, because the database is server-only.</span></dd></div>
+          <div><dt tabindex="0"><code>'@ox_lib/init.lua'</code></dt><dd>Loads the <code>ox_lib</code> toolkit so you can call <code>lib.notify</code>, <code>lib.callback</code>, and the rest.<br><span>Goes in <code>shared_scripts</code> so both sides can use it.</span></dd></div>
+        </dl>
+        <div class="callout callout--gotcha">
+          <header>Forget the <code>@</code> line and you get a confusing error</header>
+          <p>The import line is what actually creates those globals. Skip it and call <code>MySQL.query(...)</code> anyway, and the console throws <code>attempt to index a nil value (global 'MySQL')</code>. That error reads like your code is broken, but it almost always means one thing: you forgot the matching <code>'@oxmysql/lib/MySQL.lua'</code> line in your manifest. Same story for <code>lib</code> and the <code>'@ox_lib/init.lua'</code> import. When a library global is suddenly <code>nil</code>, check the manifest before you touch the code.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Decide the side</h3></header>
+        <p>For each file below, answer in your head: does it belong in <code>server_script</code>, <code>client_script</code>, <code>shared_script</code>, or <code>files</code>?</p>
+        <div class="self-check">
+          <details>
+            <summary>A <code>config.lua</code> defining a list of vehicle prices used by both sides.</summary>
+            <p><code>shared_script</code>. It's pure data with no natives, and both sides need it.</p>
+          </details>
+          <details>
+            <summary>A <code>database.lua</code> that runs SQL queries against your MariaDB.</summary>
+            <p><code>server_script</code>. Databases never touch clients, clients can't be trusted with credentials or direct queries.</p>
+          </details>
+          <details>
+            <summary>A <code>hud.lua</code> drawing speed and fuel on the player's screen.</summary>
+            <p><code>client_script</code>. Drawing only makes sense on the player's PC.</p>
+          </details>
+          <details>
+            <summary>A <code>ui.html</code> file for a NUI menu.</summary>
+            <p><code>files</code>. It isn't Lua; it's a browser asset. The manifest ships it to the client's game window.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes &amp; what the console tells you</h2>
+
+        <details class="explain">
+          <summary>Filename typo, <code>FXManifest.lua</code> / <code>fx_manifest.lua</code> / <code>fxmanifest.Lua</code></summary>
+          <p>The filename is <code>fxmanifest.lua</code>. One word. All lowercase. No underscore, no capitals, nothing creative. If the name is wrong, FiveM doesn't even recognize the folder as a resource and refuses to load it, silently. Worst trap in the course because there's no error.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Error: <code>could not find a fx_version in manifest</code> (or similar)</summary>
+          <p>You forgot the <code>fx_version 'cerulean'</code> line. Every manifest needs it, it tells FiveM which format rules to apply. Add it as the first line and restart.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Error: <code>could not load script client.lua</code></summary>
+          <p>You listed a file in the manifest that doesn't exist on disk. Check the filename, check the folder, check for a typo. The path in the manifest is relative to the resource folder, <code>'client/main.lua'</code> means <code>qu_hello/client/main.lua</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Things run, but natives fail or log to the wrong console</summary>
+          <p>You put a server-only file in <code>client_script</code> (or vice versa). Drawing on screen from a <code>server_script</code> does nothing. Running a database query from a <code>client_script</code> either errors out or, worse, exposes logic the client shouldn't see. When something "kind of works but weird", always ask: am I on the right side?</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is a FiveM resource, at its simplest?</legend>
+            <label><input type="radio" name="q1" value="a"> A compiled binary installed into the server.</label>
+            <label><input type="radio" name="q1" value="b"> A folder containing a <code>fxmanifest.lua</code> file.</label>
+            <label><input type="radio" name="q1" value="c"> An entry in a database the server queries at boot.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Which entry runs a file on both the server and every client?</legend>
+            <label><input type="radio" name="q2" value="a"> <code>server_script</code></label>
+            <label><input type="radio" name="q2" value="b"> <code>client_script</code></label>
+            <label><input type="radio" name="q2" value="c"> <code>shared_script</code></label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>3. Which manifest line is officially deprecated and unnecessary on a new resource (June 2025)?</legend>
+            <label><input type="radio" name="q3" value="a"> <code>fx_version 'cerulean'</code></label>
+            <label><input type="radio" name="q3" value="b"> <code>lua54 'yes'</code></label>
+            <label><input type="radio" name="q3" value="c"> <code>game 'gta5'</code></label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. Where does a <code>config.json</code> belong in the manifest?</legend>
+            <label><input type="radio" name="q4" value="a"> <code>shared_script 'config.json'</code></label>
+            <label><input type="radio" name="q4" value="b"> Inside a <code>files { 'config.json' }</code> block.</label>
+            <label><input type="radio" name="q4" value="c"> It doesn't need to be listed, FiveM picks it up automatically.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: keep this open next lesson</h2>
+        <dl>
+          <div><dt><code>fx_version 'cerulean'</code></dt><dd>The manifest format version. Current. Use on everything new.</dd></div>
+          <div><dt><code>game 'gta5'</code></dt><dd>Target game. <code>'gta5'</code>, <code>'rdr3'</code>, or <code>{ 'gta5', 'rdr3' }</code>.</dd></div>
+          <div><dt><code>server_script</code></dt><dd>Runs on the server process. Money, bans, databases, authority.</dd></div>
+          <div><dt><code>client_script</code></dt><dd>Runs on each connected player. UI, drawing, keypresses, camera.</dd></div>
+          <div><dt><code>shared_script</code></dt><dd>Runs on both. Pure Lua definitions, constants, config tables, helpers.</dd></div>
+          <div><dt><code>files { ... }</code></dt><dd>Non-script assets, HTML, CSS, JS, images, JSON configs.</dd></div>
+          <div><dt><code>ui_page 'html/index.html'</code></dt><dd>Entry HTML for a NUI menu. Pair with <code>files</code> so the asset gets shipped.</dd></div>
+          <div><dt><code>exports { ... }</code> / <code>server_exports { ... }</code></dt><dd>Functions you expose to other resources. Lesson 12 uses these.</dd></div>
+          <div><dt><code>dependency 'name'</code></dt><dd>Won't start until <code>name</code> is up. Use <code>dependencies { ... }</code> for several.</dd></div>
+          <div><dt><code>'@name/file.lua'</code></dt><dd>Reference a file inside another resource. You'll use this in Module 05.</dd></div>
+          <div><dt><code>lua54 'yes'</code></dt><dd>Deprecated since June 2025. Lua 5.4 is the only runtime, don't add this to new resources.</dd></div>
+          <div><dt><code>__resource.lua</code></dt><dd>Legacy manifest format. Replaced by <code>fxmanifest.lua</code>. Don't author new ones.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>fxmanifest.lua</code> is the label card every resource needs -- without it, FiveM ignores the folder entirely.</li>
+          <li><code>fx_version 'cerulean'</code> and <code>game 'gta5'</code> are the two required header fields. The old <code>lua54 'yes'</code> directive is deprecated, every resource runs Lua 5.4 by default since June 2025.</li>
+          <li><code>server_script</code>, <code>client_script</code>, and <code>shared_script</code> tell FiveM which side should run each file.</li>
+          <li><code>files</code> ships non-Lua assets (HTML, CSS, JSON) to the client, and <code>dependency</code> enforces load order between resources.</li>
+          <li>The <code>@name/file.lua</code> prefix lets you import a file from another resource into yours.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Create a brand-new resource called <code>qu_greeter</code>. Write a <code>fxmanifest.lua</code> that declares <code>fx_version</code>, <code>game</code>, <code>author</code>, <code>description</code>, <code>version</code>, and a single <code>server_script</code> pointing at <code>server.lua</code>. In <code>server.lua</code>, print your server name. Run <code>ensure qu_greeter</code> and confirm the message appears.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console</span></header>
+          <pre><code>[   script:qu_greeter] Welcome to My Server</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Your manifest needs six lines: <code>fx_version 'cerulean'</code>, <code>game 'gta5'</code>, <code>author</code>, <code>description</code>, <code>version</code>, plus <code>server_script 'server.lua'</code>. Then <code>server.lua</code> is just one <code>print</code> call.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM Resource Manifest Reference</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 Reference Manual</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Try listing two files in a <code>client_script</code> table: <code>client_script { 'client/a.lua', 'client/b.lua' }</code>. Create both files, print a message from each, and watch the load order in F8.</li>
+          <li>Add <code>description</code>, <code>version</code>, and <code>author</code> to a real resource on your server (one you downloaded). Run <code>resources</code> in the server console and spot your metadata in the list.</li>
+          <li>Intentionally break the manifest: remove <code>fx_version</code>, run <code>ensure qu_hello</code>, and read the exact error. Then put it back. Knowing the error messages by sight is half the job.</li>
+        </ul>
+      </section>

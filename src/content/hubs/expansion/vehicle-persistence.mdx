@@ -1,0 +1,108 @@
+<LessonHero
+  crumbs="Module 09A"
+  title="Vehicle persistence base"
+  meta={[
+    { label: "Module", value: "Module 09A" },
+    { label: "Time", value: "~40 min" },
+    { label: "Side", value: "server" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will save a vehicle plate with validated server data.
+</LessonHero>
+
+## Outcome
+
+You will save a vehicle plate with validated server data.
+
+<Callout variant="tip" title="Why it matters">
+  Vehicle persistence fails when clients choose final state. The server must validate.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Plate | The visible vehicle identifier. Example: QS1234 is a plate. |
+| Mods | Vehicle upgrade data. Example: engine level and color. |
+| Despawn | Remove a vehicle from the world. Example: cleanup after storage. |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_vehicle_persist" },
+    { cmd: "Side", desc: "server" },
+    { cmd: "File path", desc: "resources/qu_vehicle_persist/server.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_vehicle_persist" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'vehicle_persist'
+
+RegisterNetEvent('quasar:vehicle:store', function(payload)
+    local src = source
+    if type(payload) ~= 'table' or type(payload.plate) ~= 'string' then
+        print(('[QUIET][%s][reject] source=%s bad plate'):format(MODULE, src))
+        return
+    end
+    MySQL.insert('INSERT INTO qu_vehicles (plate, owner) VALUES (?, ?)', { payload.plate, src })
+    print(('[QUIET][%s][store] source=%s plate=%s'):format(MODULE, src, payload.plate))
+end)
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][vehicle_persist][store] prints after a valid plate is stored.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Reject plates over 8 chars.
+- Add damage fields.
+- Log despawn success.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_vehicle_persist' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_vehicle_persist' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

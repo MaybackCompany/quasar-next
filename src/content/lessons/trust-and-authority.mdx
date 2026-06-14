@@ -1,0 +1,138 @@
+<LessonHero
+  crumbs="Module 03 · Lesson 12"
+  title="Who's in charge? Trust and authority"
+  meta={[
+    { label: "You'll learn", value: "Who should decide what -> how to spot trust mistakes -> the basic request/response pattern used by safe features" },
+    { label: "Time", value: "~20 minutes" },
+    { label: "Prereqs", value: "Lesson 10 (two worlds) and Lesson 11 (natives) complete." },
+    { label: "Outcome", value: "You can read a FiveM script and instantly spot where the server is trusting the client, and where it shouldn't." },
+  ]}
+>
+  This is one of the most important lessons in the whole course. If this rule clicks, many FiveM security ideas stop feeling complicated. If it does not click, even a small script can become easy to exploit. The rule is short: **the client asks, the server decides**.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds client request with server-decided reward amount as a working FiveM resource named `qu_trust_and_authority`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_trust_and_authority
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_trust_and_authority/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu_trust_and_authority:claim', function(clientAmount)
+    print('[qu_trust_and_authority] ignored client amount ' .. tostring(clientAmount))
+    TriggerClientEvent('qu_trust_and_authority:paid', source, 100)
+end)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('claimreward', function() TriggerServerEvent('qu_trust_and_authority:claim', 999999) end, false)
+RegisterNetEvent('qu_trust_and_authority:paid', function(amount) print('[qu_trust_and_authority] approved ' .. amount) end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_trust_and_authority
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_trust_and_authority
+    ```
+
+    Run this test:
+
+    ```text
+    /claimreward
+    ```
+
+    <ExpectedOutput>
+      Server: [qu_trust_and_authority] ignored client amount 999999
+F8: [qu_trust_and_authority] approved 100
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_trust_and_authority does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_trust_and_authority", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_trust_and_authority, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_trust_and_authority folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for client request with server-decided reward amount.",
+    "Add ensure qu_trust_and_authority to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_trust_and_authority`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

@@ -1,0 +1,655 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 04 · Lesson 14</span></div>
+        <h1>Crossing the wall: <code>TriggerServerEvent</code> and <code>TriggerClientEvent</code></h1>
+        <p class="lede">Last lesson was about events on one side. This lesson is about sending a message across the wall. The client asks. The server checks. The server answers or reacts. That small pattern sits underneath many real FiveM features.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>TriggerServerEvent</code> -> <code>TriggerClientEvent</code> -> <code>RegisterNetEvent</code> -> the <code>source</code> variable -> one client vs all clients</dd></div>
+          <div><dt>Time</dt><dd>~28 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 13 (<code>TriggerEvent</code>) and Lesson 12 (trust &amp; authority).</dd></div>
+          <div><dt>Outcome</dt><dd>A working ping-pong feature: client asks, server answers, client reacts, with validation and authority intact.</dd></div>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 14: TriggerServerEvent and TriggerClientEvent</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Network events cross the client/server wall.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find them in RegisterNetEvent and TriggerServerEvent calls.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Validate every payload on the server.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Send one request and reject bad data.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small network example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Net event</dt><dd>An event allowed across client and server.<br><span>Example: RegisterNetEvent opens one.</span></dd></div>
+            <div><dt tabindex="0">Payload</dt><dd>Data sent over the network.<br><span>Example: amount is payload data.</span></dd></div>
+            <div><dt tabindex="0">Validation</dt><dd>Checks before trusting data.<br><span>Example: type(amount) == &quot;number&quot;.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_secure_event</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_secure_event/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_secure_event</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][network]">
+            <header><span class="file">qu_secure_event/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'network'
+
+RegisterNetEvent('quasar:network:test', function(payload)
+    local src = source
+    if type(payload) ~= 'table' or type(payload.message) ~= 'string' then
+        print(('[QUIET][%s][reject] source=%s invalid payload'):format(MODULE, src))
+        return
+    end
+
+    print(('[QUIET][%s][accept] %s'):format(MODULE, payload.message))
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][network]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>server.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_secure_event</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>network_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][network_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="prereq" data-lesson="13">
+        <h2>Before you start</h2>
+        <ul>
+          <li><label><input type="checkbox" data-id="ev"> I can fire and handle an event on the same side (Lesson 13)</label></li>
+          <li><label><input type="checkbox" data-id="trust"> The rule "server decides, client obeys" is in my bones (Lesson 12)</label></li>
+          <li><label><input type="checkbox" data-id="split"> I know which folder holds client code and which holds server code (Lesson 8)</label></li>
+        </ul>
+      </section>
+
+      <section class="reading-panel">
+        <h3>How to read this lesson</h3>
+        <p>The page looks bigger than the idea. You only need to learn four verbs: <code>TriggerServerEvent</code>, <code>TriggerClientEvent</code>, <code>source</code>, and validation. Everything else is just examples of that same loop.</p>
+      </section>
+
+      <section class="callout callout--danger">
+        <header>Boxed rule: copy <code>source</code> before async work</header>
+        <p><code>source</code> exists only inside server event handlers. Treat it like a hot value: first line inside the handler is <code>local src = source</code>, then use <code>src</code> everywhere. If the handler does any <code>Wait</code>, SQL await, callback, or delayed work, never read <code>source</code> again after that point.</p>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: two radios, one channel</h2>
+        <p>When an event crosses the wall, you use different verbs. The client uses <code>TriggerServerEvent</code> to talk to the server. The server uses <code>TriggerClientEvent</code> to talk to a client. Same event idea, different direction.</p>
+        <p>There is one extra rule: the receiving side must declare that it is ready to accept that event name. That declaration is <code>RegisterNetEvent</code>. Without it, the message will not reach the handler.</p>
+
+        <div class="callout callout--fivem">
+          <header>Why <code>RegisterNetEvent</code> exists</header>
+          <p>Think of it as a safety switch. <code>RegisterNetEvent</code> is you saying: "yes, this exact event name is allowed to cross the wall." On the server, treat every <code>RegisterNetEvent</code> like an open door and decide carefully if it should exist.</p>
+        </div>
+      </section>
+
+      <section id="four-verbs">
+        <h2>Four verbs: know which one goes which direction</h2>
+        <p>Write these four lines on a sticky note. You'll use this table more than any other in the course.</p>
+
+        <figure class="code">
+          <header><span>The direction table</span></header>
+          <pre><code class="language-lua">-- From the CLIENT, to the SERVER:
+TriggerServerEvent('qu:server:heal')
+
+-- From the SERVER, to ONE CLIENT (by server id):
+TriggerClientEvent('qu:client:healed', source)
+
+-- From the SERVER, to ALL CLIENTS:
+TriggerClientEvent('qu:client:announce', -1, 'dinner is ready')
+
+-- Same side (refresher from last lesson):
+TriggerEvent('qu:client:hudTick')</code></pre>
+        </figure>
+
+        <p>Three things matter here. First, <code>-1</code> means "send to every connected client." Second, <code>source</code> is the trusted server-side id of the player who fired the event. Third, the direction is built into the function names, so choose the one that matches where the message is going.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Client → Server: the ask</h2></header>
+        <p class="step-outcome">Outcome: a client command that tells the server "I want to heal" and the server acknowledges it.</p>
+        <div class="step-body">
+          <p>We'll build <code>qu_netevents</code>. The client registers <code>/healme</code> and fires a server event. The server registers the event (with <code>RegisterNetEvent</code>) and prints a line when it arrives.</p>
+
+          <figure class="code">
+            <header><span>qu_netevents/client/main.lua</span></header>
+            <pre><code class="language-lua">RegisterCommand('healme', function()
+    TriggerServerEvent('qu:server:heal')
+end, false)</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>qu_netevents/server/main.lua</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:server:heal', function()
+    local src = source
+    print(('[qu_netevents] heal requested by player %d'):format(src))
+end)</code></pre>
+          </figure>
+
+          <p>The <code>source</code> line looks a bit unusual. Inside a server net-event handler, FiveM automatically fills in <code>source</code> with the id of the player who fired the event. A good habit is to copy it immediately with <code>local src = source</code>.</p>
+
+          <figure class="code">
+            <header><span>qu_netevents/fxmanifest.lua</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+client_scripts { 'client/*.lua' }
+server_scripts { 'server/*.lua' }</code></pre>
+          </figure>
+
+          <div class="callout callout--tip">
+            <header>Why copy <code>source</code> immediately</header>
+            <p><code>source</code> is not something you should keep reading later in the handler after waits or async work. Copy it once at the top and use your local variable after that.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Server → Client: the answer</h2></header>
+        <p class="step-outcome">Outcome: the server tells the requesting client to play the heal effect, completing a round trip.</p>
+        <div class="step-body">
+          <p>The server shouldn't just log; it should act. Let's close the loop. Server decides yes, server credits whatever it needs to credit, then server tells the one client to do the visible part.</p>
+
+          <figure class="code">
+            <header><span>qu_netevents/server/main.lua</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:server:heal', function()
+    local src = source
+    print(('[qu_netevents] heal ok for %d'):format(src))
+    TriggerClientEvent('qu:client:doHeal', src)
+end)</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>qu_netevents/client/main.lua</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:client:doHeal', function()
+    local ped = PlayerPedId()
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+    print('[qu_netevents] healed')
+end)
+
+RegisterCommand('healme', function()
+    TriggerServerEvent('qu:server:heal')
+end, false)</code></pre>
+          </figure>
+
+          <p>Run <code>/healme</code>. The server console logs the request, and the F8 console logs the heal. That is the full loop: client asks -> server decides -> client performs.</p>
+
+          <div class="callout callout--fivem">
+            <header>Two separate <code>RegisterNetEvent</code>s</header>
+            <p>Notice both sides now have their own. The server registers <code>qu:server:heal</code> because the client will fire it across. The client registers <code>qu:client:doHeal</code> because the server will fire it across. Any event that crosses the wall needs a <code>RegisterNetEvent</code> on the receiving side, full stop.</p>
+          </div>
+
+          <div class="callout callout--danger">
+            <header>The choice between <code>RegisterNetEvent</code> and <code>AddEventHandler</code> is a security decision</header>
+            <p>These two are not interchangeable, and the difference is your first line of defense. <code>RegisterNetEvent</code> opens an event to the network, so any player can fire it from their console. <code>AddEventHandler</code> on its own does <em>not</em>, it only hears events fired by your own Lua on the same side. FiveM flatly refuses to route a network message to an event you never registered.</p>
+            <p>That refusal is a feature, not a limitation. It means the rule is simple: only call <code>RegisterNetEvent</code> for events that genuinely need to be fired from the other side. If an event is just server code talking to server code, keep it as a plain <code>AddEventHandler</code> with no <code>RegisterNetEvent</code>, and you have made it impossible for a player to reach. Every needless <code>RegisterNetEvent</code> is one more door a cheater can knock on.</p>
+            <figure class="code">
+              <header><span>server/main.lua</span></header>
+              <pre><code class="language-lua">-- Players CAN fire this (it is registered for the network):
+RegisterNetEvent('qu:server:heal', function() ... end)
+
+-- Players CANNOT fire this (server-internal only, no RegisterNetEvent):
+AddEventHandler('qu:internal:recalcStats', function() ... end)</code></pre>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Broadcast: one server, many clients</h2></header>
+        <p class="step-outcome">Outcome: the server sends a message to every connected player at once.</p>
+        <div class="step-body">
+          <p>The <code>-1</code> target means "all clients." It is useful for announcements or anything everyone should see at once.</p>
+
+          <figure class="code">
+            <header><span>qu_netevents/server/main.lua (append)</span></header>
+            <pre><code class="language-lua">RegisterCommand('sayall', function(source, args)
+    local msg = table.concat(args, ' ')
+    TriggerClientEvent('qu:client:announce', -1, msg)
+end, true) -- true = restricted to server console / ACE</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>qu_netevents/client/main.lua (append)</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:client:announce', function(msg)
+    print('[announce] ' .. msg)
+end)</code></pre>
+          </figure>
+
+          <p>From the server console (not F8), type <code>sayall dinner is ready</code>. Every connected client sees the line in their F8 console. Swap <code>-1</code> for a specific server id to hit one player instead. That's the whole targeting model: one id, or minus one.</p>
+
+          <div class="callout callout--gotcha">
+            <header>Broadcasts are expensive, use them deliberately</header>
+            <p>A broadcast with 100 players pushes the message 100 times. For anything that isn't genuinely for everyone, send to specific clients or use a state bag (Module 05 territory). Resist the temptation to <code>-1</code> every effect, good servers reserve broadcasts for real "everybody" events.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Validate arguments: because they came from a client</h2></header>
+        <p class="step-outcome">Outcome: your server handler refuses to act on malformed or hostile input.</p>
+        <div class="step-body">
+          <p>The moment a net event carries arguments, those values came from the player's machine. That means they can be wrong, weird, or malicious. Validate them before you use them.</p>
+
+          <figure class="code">
+            <header><span>qu_netevents/server/main.lua, safe handler</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:server:giveItem', function(itemName, amount)
+    local src = source
+
+    if type(itemName) ~= 'string' or #itemName == 0 or #itemName &gt; 32 then
+        return -- wrong type or absurd length
+    end
+    if type(amount) ~= 'number' or amount &lt;= 0 or amount &gt; 100 then
+        return -- negative, zero, or gluttonous
+    end
+
+    print(('[qu_netevents] %d asked for %d x %s'):format(src, amount, itemName))
+    -- (real logic: look up item, check inventory space, save)
+end)</code></pre>
+          </figure>
+
+          <p>Use the same four checks every time: <strong>type</strong>, <strong>range</strong>, <strong>authority</strong>, and <strong>context</strong>. Lesson 12 introduced them. This is where they become real.</p>
+
+          <div class="callout callout--danger">
+            <header>Never trust types</header>
+            <p>Lua is dynamically typed. A cheater can send <code>TriggerServerEvent('qu:server:giveItem', {}, 'lol')</code> and your server will crash the moment it tries <code>#itemName</code> on a table. <code>type()</code> guards aren't pedantic, they're the difference between a live server and a 2 a.m. restart.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4b">
+        <header><span class="step-num">Step 4+</span><h2>The full security checklist: every gate, in order</h2></header>
+        <p class="step-outcome">Outcome: one mental checklist you run top to bottom on every server net-event handler that does anything valuable.</p>
+        <div class="step-body">
+          <p>The four checks above (type, range, authority, context) are the foundation. But a real money-or-items handler needs more gates than that, and the order they run in matters. Think of it like airport security: cheap checks first (is this even the right shape?), expensive checks last (charge the card). The moment any gate says "no", you <code>return</code> and nothing happens.</p>
+          <p>Here is the whole checklist as one labeled artifact. You do not need every line on every event, a handler that just prints a message needs almost none of it, but a handler that touches money or inventory should walk all eleven. Read the comments, they are the lesson.</p>
+
+          <figure class="code">
+            <header><span class="file">qu_netevents/server/main.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local locked = {}        -- one busy-flag per player (gate 10)
+local lastFired = {}     -- last-fire timestamps for rate limiting (gate 9)
+
+local function isRateLimited(src, name, minMs)
+    local key = src .. ':' .. name
+    local now = GetGameTimer()
+    if lastFired[key] and now - lastFired[key] &lt; minMs then return true end
+    lastFired[key] = now
+    return false
+end
+
+RegisterNetEvent('qu:server:buy', function(itemId, qty)
+    -- 1. SOURCE is valid
+    local src = source
+    if not src or src == 0 then return end
+
+    -- 2. TYPES of every argument
+    if type(itemId) ~= 'string' then return end
+    if type(qty) ~= 'number' then return end
+
+    -- 3. RANGES, lengths, and NaN
+    if #itemId &gt; 50 then return end          -- cap string length (DoS guard)
+    if qty ~= qty then return end             -- NaN check: only NaN is not equal to itself
+    if qty % 1 ~= 0 then return end           -- whole numbers only, no 1.5 tricks
+    if qty &lt; 1 or qty &gt; Config.MaxQty then return end
+
+    -- 4. WHITELIST: only known-good values pass
+    local item = Config.Items[itemId]
+    if not item then return end               -- not on the list, bail
+
+    -- 5. PLAYER is loaded (framework object exists)
+    local player = exports.qbx_core:GetPlayer(src)
+    if not player then return end
+
+    -- 6. PERMISSION / role check
+    if item.jobRequired and player.PlayerData.job.name ~= item.jobRequired then return end
+
+    -- 7. GAME STATE makes sense for the action
+    if IsEntityDead(GetPlayerPed(src)) then return end   -- can't shop while dead
+
+    -- 8. LOCATION: server-read coords are actually near the shop
+    local coords = GetEntityCoords(GetPlayerPed(src))
+    if #(coords - Config.ShopCoords) &gt; 5.0 then return end   -- #(a-b) = distance in metres
+
+    -- 9. RATE LIMIT: not spamming the event
+    if isRateLimited(src, 'qu:server:buy', 500) then return end
+
+    -- 10. LOCK: stop parallel copies racing each other
+    if locked[src] then return end
+    locked[src] = true
+
+    -- 11. ATOMIC money + inventory (charge, then give)
+    if player.PlayerData.money.cash &lt; item.price * qty then
+        locked[src] = nil
+        return
+    end
+    player.Functions.RemoveMoney('cash', item.price * qty, 'shop buy')
+    exports.ox_inventory:AddItem(src, itemId, qty)
+
+    locked[src] = nil      -- always release the lock, on EVERY path
+end)</code></pre>
+          </figure>
+
+          <p>Two gates trip people up the most, so let's name them plainly.</p>
+
+          <table>
+            <thead>
+              <tr><th>Gate</th><th>What it stops</th><th>The tell-tale exploit</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>NaN check (<code>qty ~= qty</code>)</td><td>Garbage math from <code>0/0</code></td><td>Cheater sends <code>0/0</code> as the amount and your price math returns nonsense</td></tr>
+              <tr><td>Whitelist over blacklist</td><td>Names you never thought of</td><td><code>'Admin_Weapon'</code> or <code>'admin_weapon '</code> with a trailing space sails past a blacklist</td></tr>
+              <tr><td>Location check</td><td>"Use the shop from anywhere"</td><td>Cheater fires <code>qu:server:buy</code> while standing across the map</td></tr>
+              <tr><td>Rate limit</td><td>Event spam</td><td>1,000 fires per second to brute-force a timing bug</td></tr>
+              <tr><td>Lock + atomic deduct</td><td>The duplication race</td><td>Ten parallel fires all pass the "has money" check before any one deducts</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout--warn">
+            <header>Whitelist, never blacklist</header>
+            <p>Listing the bad values (<code>if itemId == 'admin_weapon' then return end</code>) is a losing game. Attackers have infinite spellings, casings, and trailing spaces. Flip it: build a table of the values you allow, look the input up in it, and bail if it is not there. Only known-good passes, everything else is rejected by default.</p>
+          </div>
+
+          <div class="callout callout--danger">
+            <header>The duplication race is the one that ruins economies</header>
+            <p>Imagine ten copies of your handler starting at the same millisecond. Each one checks "does this player have $100?" Yes, yes, yes, ten times, because none of them has deducted yet. Then all ten deduct and all ten hand out an item. The player paid once and got ten. The fix is two layers: a per-player <code>lock</code> so only one copy runs at a time, and an <strong>atomic</strong> deduction so the database itself refuses to go negative. You will see the database version of this in Module 06.</p>
+          </div>
+
+          <div class="callout callout--pro">
+            <header>Attack your own handler before a cheater does</header>
+            <p>After you write a handler, open the F8 console and try to break it like a player would. Throw the ugliest inputs you can think of at it and watch for any money change, item, or red console error:</p>
+            <figure class="code">
+              <header><span>F8 console (acting like a cheater)</span></header>
+              <pre><code class="language-lua">TriggerServerEvent('qu:server:buy', nil, nil)
+TriggerServerEvent('qu:server:buy', 'rare_item', 999999)
+TriggerServerEvent('qu:server:buy', 'bread', -50)
+TriggerServerEvent('qu:server:buy', {}, 'lol')
+TriggerServerEvent('qu:server:buy', 'bread', 0/0)      -- NaN
+TriggerServerEvent('qu:server:buy', string.rep('x', 100000), 1)</code></pre>
+            </figure>
+            <p>If nothing happens on every single line, your gates are doing their job. If anything moves, you just found the bug before your players did.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Trace the bug</h3></header>
+        <p>A developer reports: "I run <code>/healme</code> and nothing happens. No errors either." You open their code. Find the three problems.</p>
+
+        <figure class="code">
+          <header><span>client/main.lua</span></header>
+          <pre><code class="language-lua">RegisterCommand('healme', function()
+    TriggerEvent('qu:server:heal')
+end, false)
+
+AddEventHandler('qu:client:doHeal', function()
+    SetEntityHealth(PlayerPedId(), 200)
+end)</code></pre>
+        </figure>
+
+        <figure class="code">
+          <header><span>server/main.lua</span></header>
+          <pre><code class="language-lua">AddEventHandler('qu:server:heal', function()
+    TriggerClientEvent('qu:client:doHeal', source)
+end)</code></pre>
+        </figure>
+
+        <div class="self-check">
+          <details>
+            <summary>The three fixes</summary>
+            <ol>
+              <li>Client uses <code>TriggerEvent</code> instead of <code>TriggerServerEvent</code>. Same-side verb, message never crosses the wall. Fix: change to <code>TriggerServerEvent('qu:server:heal')</code>.</li>
+              <li>Server uses <code>AddEventHandler</code> instead of <code>RegisterNetEvent</code>. Without <code>RegisterNetEvent</code>, the server refuses to deliver a net-fired event to the handler. Fix: replace with <code>RegisterNetEvent('qu:server:heal', function() ... end)</code>.</li>
+              <li>Client uses <code>AddEventHandler</code> for an event coming from the server. Same issue in reverse. Fix: <code>RegisterNetEvent('qu:client:doHeal', function() ... end)</code>.</li>
+            </ol>
+            <p>Two of those three bugs were about the direction verb, one about the declaration. Those two categories cover roughly 90% of "events mysteriously not firing" reports in real life.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>The full loop: a secure mini-feature</h2></header>
+        <p class="step-outcome">Outcome: a complete request/validate/decide/write/tell/perform cycle in working code.</p>
+        <div class="step-body">
+          <p>Here's the shape stripped to essentials, a <code>/ping</code> command that round-trips through the server with a tiny state check. No Quasar-specific tooling, no framework. Just the six beats from Lesson 12.</p>
+
+          <figure class="code">
+            <header><span>qu_netevents/client/main.lua, full loop</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:client:pong', function(streak)
+    print(('[qu_netevents] pong, streak: %d'):format(streak))
+end)
+
+RegisterCommand('ping', function()
+    TriggerServerEvent('qu:server:ping')
+end, false)</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>qu_netevents/server/main.lua, full loop</span></header>
+            <pre><code class="language-lua">local streaks = {}
+
+RegisterNetEvent('qu:server:ping', function()
+    local src = source
+    streaks[src] = (streaks[src] or 0) + 1            -- 4. server writes
+    TriggerClientEvent('qu:client:pong', src, streaks[src]) -- 5. server tells
+end)
+
+AddEventHandler('playerDropped', function()
+    streaks[source] = nil                              -- housekeeping
+end)</code></pre>
+          </figure>
+
+          <p>Walk the beats: <em>client asks</em> with <code>TriggerServerEvent</code>. <em>Server checks</em>: the <code>src</code> is trusted (<code>source</code> is set by FiveM, not the player). <em>Server decides</em>: in this toy, always yes. <em>Server writes</em> the streak to its own table. <em>Server tells</em> the client with <code>TriggerClientEvent</code>. <em>Client performs</em>: prints the streak. Every beat is in exactly the right process.</p>
+
+          <div class="callout callout--pro">
+            <header>Use this skeleton every time</header>
+            <p>Before you write any network feature, sketch those six beats. If any one of them lives on the wrong side, the feature is cheatable. If a beat is missing, the feature is broken. This mental checklist prevents the most expensive category of bugs in FiveM.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Name the verb</h3></header>
+        <p>For each scenario, name the single function call that starts the cross-wall travel, and whether any <code>RegisterNetEvent</code> needs to be added and where.</p>
+
+        <ol>
+          <li>The player presses <code>E</code>; the server needs to spend $100 from their balance.</li>
+          <li>The server has just set the in-game weather; every client needs to play the rain VFX.</li>
+          <li>The server wants to tell player id 42 they've been promoted to bartender.</li>
+          <li>A client-side HUD resource wants to flash a damage indicator locally when the player takes damage; no server involvement.</li>
+        </ol>
+
+        <div class="self-check">
+          <details>
+            <summary>Answers</summary>
+            <ol>
+              <li><code>TriggerServerEvent('qu:server:buyThing')</code> on the client. Server registers <code>RegisterNetEvent('qu:server:buyThing', ...)</code>.</li>
+              <li><code>TriggerClientEvent('qu:client:weatherFx', -1, 'rain')</code> on the server. Every client registers <code>RegisterNetEvent('qu:client:weatherFx', ...)</code>.</li>
+              <li><code>TriggerClientEvent('qu:client:promoted', 42, 'bartender')</code> on the server. Every client registers <code>RegisterNetEvent('qu:client:promoted', ...)</code> (each client's handler only runs if that client is id 42).</li>
+              <li><code>TriggerEvent('qu:client:damageFx')</code>: no wall crossing, no <code>RegisterNetEvent</code> needed. Lesson 13 territory.</li>
+            </ol>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes: the ones that bite everyone</h2>
+
+        <details class="explain">
+          <summary>Passing <code>source</code> as an argument from the client</summary>
+          <p>Never do <code>TriggerServerEvent('qu:server:giveMoney', source, 500)</code> and have the server use that id. A cheater will pass <em>someone else's</em> id. <code>source</code> on the server is already correct, already trusted, already tied to the real sender. Use the server's <code>source</code>, ignore anything the client sends.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting <code>RegisterNetEvent</code></summary>
+          <p><code>AddEventHandler</code> alone does not receive net-fired events. The handler is silent; nothing errors. If an event refuses to fire across the wall, this is the first thing to check, 99% of the time, that's it.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using <code>source</code> after a <code>Wait</code> or a DB query</summary>
+          <p><code>source</code> can change under you in async handlers. Copy it to a local first thing: <code>local src = source</code>. This is not a style preference, it's a correctness rule. Every tutorial you'll read has this; now you know why.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Trusting client-sent numbers</summary>
+          <p>"The client tells me how much money to deduct." No. The server looks up the real amount from its own state. The client only sends intent, never values the server could determine itself.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using the wrong direction verb</summary>
+          <p><code>TriggerServerEvent</code> fired from the server throws a clear error, that one you'll notice. <code>TriggerEvent</code> fired on the client when you meant <code>TriggerServerEvent</code> silently goes nowhere. When an event doesn't fire, check the verb before anything else.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="c">
+            <legend>1. What is <code>RegisterNetEvent</code>?</legend>
+            <label><input type="radio" name="q1" value="a"> An optimisation hint telling FiveM to send the event faster.</label>
+            <label><input type="radio" name="q1" value="b"> A replacement for <code>AddEventHandler</code>.</label>
+            <label><input type="radio" name="q1" value="c"> A declaration that the given event name is allowed to be fired from across the wall and handled on this side.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>2. On the server, inside a net-event handler, what is <code>source</code>?</legend>
+            <label><input type="radio" name="q2" value="a"> The event name as a string.</label>
+            <label><input type="radio" name="q2" value="b"> The server id of the player who fired the event, set by FiveM, trusted.</label>
+            <label><input type="radio" name="q2" value="c"> The ip address of the caller.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. You want the server to send an announcement to every connected player. Which call?</legend>
+            <label><input type="radio" name="q3" value="a"><code>TriggerClientEvent('qu:client:announce', -1, msg)</code></label>
+            <label><input type="radio" name="q3" value="b"><code>TriggerServerEvent('qu:client:announce', msg)</code></label>
+            <label><input type="radio" name="q3" value="c"><code>TriggerEvent('qu:client:announce', msg)</code></label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. A client fires <code>TriggerServerEvent('x', 'abc', 5)</code>. The server must…</legend>
+            <label><input type="radio" name="q4" value="a"> Trust the arguments, they came over the wire.</label>
+            <label><input type="radio" name="q4" value="b"> Validate type, range, authority, and context before acting.</label>
+            <label><input type="radio" name="q4" value="c"> Rebroadcast to all clients automatically.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>5. Why copy <code>local src = source</code> at the top of a server handler?</legend>
+            <label><input type="radio" name="q5" value="a"> To make it shorter to type.</label>
+            <label><input type="radio" name="q5" value="b"> To convert it to a number.</label>
+            <label><input type="radio" name="q5" value="c"> To lock in the id before any <code>Wait</code> or async call changes what <code>source</code> points at.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: events, across the wall</h2>
+        <dl>
+          <div><dt>Client → Server</dt><dd><code>TriggerServerEvent('name', ...)</code></dd></div>
+          <div><dt>Server → one client</dt><dd><code>TriggerClientEvent('name', playerId, ...)</code></dd></div>
+          <div><dt>Server → all clients</dt><dd><code>TriggerClientEvent('name', -1, ...)</code></dd></div>
+          <div><dt>Handler declaration</dt><dd><code>RegisterNetEvent('name', function(...) end)</code>: required on the receiving side of any cross-wall event.</dd></div>
+          <div><dt>Trusted player id (server-side only)</dt><dd><code>local src = source</code>: first line of every handler.</dd></div>
+          <div><dt>Validation on server</dt><dd>type → range → authority → context. Before every action.</dd></div>
+          <div><dt>Never do</dt><dd>Pass <code>source</code> as an argument from the client. Trust client-sent money/balance values. Use <code>-1</code> when a single target is fine.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>TriggerServerEvent</code> sends a message from the client to the server; <code>TriggerClientEvent</code> sends from server to one client (by id) or all clients (<code>-1</code>)</li>
+          <li><code>RegisterNetEvent</code> must be declared on the receiving side before a cross-wall event can be handled</li>
+          <li><code>source</code> is the trusted player id on the server -- copy it immediately with <code>local src = source</code></li>
+          <li>Every argument that crosses the wall came from a player's machine and must be validated: type, range, authority, context</li>
+          <li>The full secure loop: client asks, server checks, server decides, server writes, server tells, client performs</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build a <code>/hello</code> command. The client fires <code>TriggerServerEvent('qu:server:hello')</code>. The server handler prints the player's id to the server console, then fires <code>TriggerClientEvent('qu:client:welcomed', src)</code> back. The client handler prints "server says welcome!" in F8. Run it and check both consoles.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console</span></header>
+          <pre><code>[qu_netevents] hello from player 1</code></pre>
+        </figure>
+        <figure class="code"><header><span>F8 console (client)</span></header>
+          <pre><code>[qu_netevents] server says welcome!</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>You need <code>RegisterNetEvent</code> on both sides: one on the server for <code>qu:server:hello</code>, one on the client for <code>qu:client:welcomed</code>. Remember to copy <code>local src = source</code> in the server handler before using it.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/TriggerServerEvent/" target="_blank" rel="noopener">TriggerServerEvent -- FiveM docs</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/TriggerClientEvent/" target="_blank" rel="noopener">TriggerClientEvent -- FiveM docs</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/" target="_blank" rel="noopener">RegisterNetEvent -- FiveM docs</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Level up: what's next</h2>
+        <p>Events are a one-way shout. Perfect for "I did a thing" or "please do a thing", not perfect when the client needs to <em>ask the server a question and wait for the answer</em>. "Do I have enough money?" "What's this vehicle's owner?" For those, events are awkward, two events, one for the ask and one for the reply, plus tracking which ask matches which reply. There's a cleaner tool for it. It's called a callback, and it's the next lesson.</p>
+      </section>

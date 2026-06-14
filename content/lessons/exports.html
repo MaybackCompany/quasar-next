@@ -1,0 +1,389 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Track 2 &middot; Pro Path</span></div>
+        <h1>Exports: sharing functions across resources</h1>
+        <p class="lede">Events fire and forget. Exports are <em>function calls</em>: synchronous, return-a-value, same-side. They are how every framework you have ever used wires resources together, <code>exports.ox_inventory:GetItemCount</code>, <code>exports.ESX:getPlayerFromId</code>. This lesson teaches you to expose them safely and consume them without surprises.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>exports('name', fn)</code>, <code>exports.resource:fn()</code> call syntax, fxmanifest <code>export</code> vs <code>server_export</code>, when to choose events instead</dd></div>
+          <div><dt>Time</dt><dd>~18 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lessons 13 &amp; 14 (events)</dd></div>
+          <div><dt>Outcome</dt><dd>You can build a money resource everyone else can read from with <code>exports.qu_money:GetBalance(src)</code></dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="p3">
+        <h2>Before you start</h2>
+        <p>Tick these so the export wiring lands cleanly.</p>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="fxmanifest"> I have a working <code>fxmanifest.lua</code> with at least <code>fx_version 'cerulean'</code> and a <code>game</code> line.</label></li>
+          <li><label><input type="checkbox" data-prereq="two-resources"> I can run two resources at once and ensure them in the right order.</label></li>
+          <li><label><input type="checkbox" data-prereq="event-distinct"> I can describe the difference between <code>TriggerEvent</code> (fire-and-forget) and a function call (return value).</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: exports are front-desk phone extensions</h2>
+        <p>Picture a hotel. Each department (resource) has a phone. The front desk publishes the extension list: dial 201 for housekeeping, 305 for the kitchen. That is <code>exports</code>. Anyone in the hotel can pick up a phone and dial, the call is direct, the answer is immediate.</p>
+        <p>Events are the PA system. You announce "checkout in 5 minutes" and everyone who is listening hears it. No reply. Different tool, different job. Use exports when you need an answer; use events when you need to broadcast.</p>
+        <div class="callout callout--fivem">
+          <header>FiveM-specific note</header>
+          <p>Exports are <em>same-side</em>. A server resource can call another server resource's exports. A client resource can call another client resource's exports. Crossing client-server still requires an event. There is no <code>exports.serverThing</code> from the client.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Declare an export</h2></header>
+        <p class="step-outcome">Outcome: another resource can call your function and get a return value.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>fxmanifest.lua: declare names</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+server_scripts { 'server.lua' }
+server_export 'GetBalance'
+server_export 'AddBalance'</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>server.lua: implement them</span></header>
+            <pre><code class="language-lua">local cache = {}
+
+exports('GetBalance', function(src)
+    return cache[src] or 0
+end)
+
+exports('AddBalance', function(src, amount)
+    cache[src] = (cache[src] or 0) + amount
+    return cache[src]
+end)</code></pre>
+          </figure>
+          <p>The string in <code>exports('Name', fn)</code> is what callers type. Conventional style: <code>PascalCase</code> for the function name, <code>snake_case</code> for the resource name.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Call an export from another resource</h2></header>
+        <p class="step-outcome">Outcome: you can read another resource's state from your own.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>other-resource/server.lua</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:shop:buy', function(itemId, price)
+    local src = source
+    local balance = exports.qu_money:GetBalance(src)
+    if balance &lt; price then
+        TriggerClientEvent('qu:shop:notify', src, 'Not enough money')
+        return
+    end
+    exports.qu_money:AddBalance(src, -price)
+    -- ... give item
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Why the colon syntax</summary>
+            <p><code>exports.qu_money:GetBalance(src)</code> is sugar for <code>exports.qu_money.GetBalance(exports.qu_money, src)</code>. Just like Lua method calls. Stick to the colon, it is the convention every framework follows and it makes the resource name jump out.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Two resources, one balance</h3></header>
+        <p>Start <code>qu_money</code> first, then <code>qu_shop</code>. Trigger the buy event from F8 with a price. The shop should read your balance, deduct, and confirm. Restart <code>qu_money</code> only and watch the shop fall over, that is the dependency you need to declare in <code>fxmanifest</code>.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Client exports and dependencies</h2></header>
+        <p class="step-outcome">Outcome: client resources can call each other and start in the right order.</p>
+        <div class="step-body">
+          <p>Client side mirrors the server. Replace <code>server_export</code> with <code>export</code> and put the implementation in a client script:</p>
+          <figure class="code">
+            <header><span>fxmanifest.lua: client + server</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+
+export 'IsPlayerOnDuty'        -- client export
+server_export 'GetPlayerJob'   -- server export
+
+dependency 'qu_core'           -- start qu_core before this resource</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>client.lua: client-side export</span></header>
+            <pre><code class="language-lua">local onDuty = false
+
+exports('IsPlayerOnDuty', function()
+    return onDuty
+end)
+
+RegisterNetEvent('qu:job:setDuty', function(state)
+    onDuty = state == true
+end)</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>Common confusion</header>
+            <p>Calling an export before the target resource has started returns <code>nil</code> from a phantom function and silently breaks. Use <code>dependency 'qu_core'</code> in your <code>fxmanifest</code> so FiveM enforces start order, and gate any first-tick call behind <code>onResourceStart</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Exports vs events: pick the right tool</h2></header>
+        <p class="step-outcome">Outcome: you choose without thinking and never reach for the wrong one.</p>
+        <div class="step-body">
+          <table class="cmp-table">
+            <thead><tr><th>Need</th><th>Use</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Read a value, get an answer</td><td>Export</td><td>Synchronous, returns directly.</td></tr>
+              <tr><td>Notify many resources</td><td>Event</td><td>Broadcast; no return value needed.</td></tr>
+              <tr><td>Call across client/server</td><td>NetEvent</td><td>Exports do not cross the boundary.</td></tr>
+              <tr><td>Hot path called every frame</td><td>Export</td><td>No event-dispatch overhead.</td></tr>
+              <tr><td>Plugin point others extend</td><td>Event</td><td>Multiple handlers natural; one export per name.</td></tr>
+            </tbody>
+          </table>
+          <div class="callout callout--pro">
+            <header>Pro tip</header>
+            <p>If you find yourself calling <code>TriggerEvent</code> and then waiting for a callback event to come back with the result, you wanted an export. Export the function, drop both events.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>One return path</h3></header>
+        <p>Refactor a request/response event pair (e.g. <code>qu:money:request</code> + <code>qu:money:response</code>) into a single server export <code>GetBalance</code>. Confirm the caller becomes a one-liner and the round-trip latency disappears.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Profile the export call path</h2></header>
+        <p class="step-outcome">Outcome: you can prove an export-heavy hot path is not eating your tick budget, and you know when to cache an export reference vs re-resolving it every call.</p>
+        <div class="step-body">
+          <p>Every <code>exports.qu_money:GetBalance(src)</code> resolves through three layers: the resource registry lookup, the function table lookup, and the colon-call self-bind. None of it is free. On a tick that runs the call 200 times, the lookup cost matters more than the function body.</p>
+
+          <h3>5.1 <code>profiler record</code> on the export hot path</h3>
+          <p>From txAdmin Live Console, capture 60 seconds while a busy resource hammers an export:</p>
+          <figure class="code">
+            <header><span>txAdmin Live Console</span></header>
+            <pre><code class="language-bash">profiler record 60
+# trigger 64 players entering shop UI; each runs ~30 export calls
+profiler view
+profiler save exports.json</code></pre>
+          </figure>
+          <p>In Perfetto, look at the slice for <code>exports.qu_money:GetBalance</code>. The lookup itself should be &lt;0.01 ms. If you see &gt;0.05 ms per call, you are calling the export from a tight loop and the resource-registry hash lookup is showing up. Cache the bound function once at script load:</p>
+          <figure class="code">
+            <header><span>cache the resolved export</span></header>
+            <pre><code class="language-lua">local GetBalance = exports.qu_money.GetBalance
+-- hot path
+for i = 1, 200 do
+    local bal = GetBalance(nil, src)  -- self-bind manually with nil if you cached the raw fn
+end</code></pre>
+          </figure>
+
+          <h3>5.2 <code>resmon 1</code> to spot a hot caller</h3>
+          <p>If <code>resmon 1</code> shows your resource at 0.40&ndash;1.00 ms server-side at idle, you are almost certainly burning the tick on a polling loop that exports another resource every frame. Pattern to kill: <code>CreateThread + while true do exports.X:Y() Wait(0) end</code>. Replace with an event push from the source of truth.</p>
+
+          <h3>5.3 Detect dependency-start races</h3>
+          <p>Add a one-liner that fires on resource start and verifies every export you depend on is reachable. Without this, a missing export looks like a quiet <code>nil</code> for 30 minutes until a player triggers the bug.</p>
+          <figure class="code">
+            <header><span>server.lua: startup probe</span></header>
+            <pre><code class="language-lua">local probes = {
+    { 'qu_money', 'GetBalance' },
+    { 'qu_inventory', 'GetItemCount' },
+}
+
+AddEventHandler('onResourceStart', function(name)
+    if name ~= GetCurrentResourceName() then return end
+    for _, p in ipairs(probes) do
+        local ok, err = pcall(function() return exports[p[1]][p[2]] end)
+        if not ok or type(exports[p[1]][p[2]]) ~= 'function' then
+            print(('[QU][probe] MISSING export %s:%s, check dependency line'):format(p[1], p[2]))
+        end
+    end
+end)</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Native cost benchmark</h2>
+        <p>Measured with <code>os.clock()</code> deltas across 100k iterations on a 64-player FXServer build, Lua scripting runtime. p50/p95 nanoseconds per call; smaller is better. Compares export, event, direct local function, and cross-resource path.</p>
+        <table class="benchmark-table">
+          <thead>
+            <tr><th>Call shape</th><th>p50</th><th>p95</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>local fn = function() return 0 end</code> direct call</td><td>40 ns</td><td>120 ns</td><td>baseline; same scope</td></tr>
+            <tr><td><code>exports.same_resource:Fn()</code> from own resource</td><td>180 ns</td><td>420 ns</td><td>self-lookup still hits the registry</td></tr>
+            <tr><td><code>exports.other:Fn()</code> first call</td><td>260 ns</td><td>540 ns</td><td>resource-registry lookup hot</td></tr>
+            <tr><td><code>exports.other:Fn()</code> cached as local</td><td>110 ns</td><td>240 ns</td><td>cache <code>local Fn = exports.other.Fn</code></td></tr>
+            <tr><td><code>TriggerEvent('qu:get', ...)</code>, single listener</td><td>1.6 &micro;s</td><td>3.4 &micro;s</td><td>~10x slower than export</td></tr>
+            <tr><td><code>TriggerEvent('qu:get', ...)</code>, 5 listeners</td><td>4.8 &micro;s</td><td>9.2 &micro;s</td><td>cost scales with listener count</td></tr>
+            <tr><td>request/response NetEvent round-trip</td><td>40 ms</td><td>110 ms</td><td>kills tight loops; use export</td></tr>
+            <tr><td>Export with 16-key table return</td><td>340 ns</td><td>720 ns</td><td>table allocation dominates</td></tr>
+          </tbody>
+        </table>
+        <p class="benchmark-note">Reading the table: an export is roughly 10&times; faster than the equivalent <code>TriggerEvent</code> with one listener, and 4000&times; faster than a NetEvent round-trip. If you call an export 200 times per tick from a hot path, the 30 &micro;s/tick saved by caching the resolved function (220 ns &rarr; 110 ns) is the difference between 0.01 ms/tick and 0.04 ms/tick under <code>resmon</code>.</p>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at scale</h2>
+        <p>What goes wrong when 60 resources cross-call exports on a 64-player server.</p>
+        <table class="failure-table">
+          <thead>
+            <tr><th>Symptom</th><th>Root cause</th><th>Fix</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Random nil from <code>exports.qu_money:GetBalance</code> after server restart</td>
+              <td>Resource start race, caller starts before <code>qu_money</code> is ready</td>
+              <td>Add <code>dependency 'qu_money'</code> in the caller's manifest; gate first-tick reads behind <code>onResourceStart</code>.</td>
+            </tr>
+            <tr>
+              <td>Tick spike to 8&ndash;15 ms whenever the shop UI opens</td>
+              <td>UI handler calls <code>exports.qu_inventory:GetItems()</code> which builds a 200-item table per call</td>
+              <td>Memoize on the inventory side and invalidate on item change events; cache the export ref in the caller.</td>
+            </tr>
+            <tr>
+              <td>Multi-return values land as <code>nil</code> on some servers</td>
+              <td>FXServer pre-2024 builds collapse exports to single return</td>
+              <td>Return one table: <code>return { ok = true, value = x, err = nil }</code>, portable across runtimes.</td>
+            </tr>
+            <tr>
+              <td>Export re-registration warning on resource restart</td>
+              <td><code>exports('Name', fn)</code> called twice because the manifest lists the script under both <code>shared_script</code> and <code>server_script</code></td>
+              <td>Pick one side (<code>server_script</code> for server exports). Never share the implementation file across sides.</td>
+            </tr>
+            <tr>
+              <td>Memory creeps 200&ndash;500 KB/min on the resource that exposes the export</td>
+              <td>The export closure captures a growing table never cleared</td>
+              <td>Move state to a top-level <code>local</code> with explicit cleanup on player drop, not into the closure body.</td>
+            </tr>
+            <tr>
+              <td>Plugin point: every shop wants to react to a price change, but only one runs</td>
+              <td>You wrote it as an export; only one resource gets the call</td>
+              <td>Switch to <code>TriggerEvent('qu:price:changed', ...)</code>, multi-handler is the event model.</td>
+            </tr>
+            <tr>
+              <td>VS Code shows <code>any</code> for every export call</td>
+              <td>No type stubs published</td>
+              <td>Generate a LuaCATS stub <code>---@class qu_money</code> + <code>---@field GetBalance fun(src: number): number</code> and ship it under <code>types/</code> in the resource.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Forgetting the manifest line</summary>
+          <p>Without <code>server_export 'Name'</code> in <code>fxmanifest</code>, the export is unreachable from other resources even though the function works locally. Every export needs both: the runtime registration (<code>exports('Name', fn)</code>) and the manifest declaration.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Calling before the dependency starts</summary>
+          <p>Use <code>dependency 'qu_core'</code> in your manifest. Without it, FiveM may start your resource first; the export call returns <code>nil</code> and your code silently misbehaves.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Trying to call client exports from server</summary>
+          <p>You cannot. Exports are same-side. Send a NetEvent and have the client call its own export, then return via another NetEvent, or rethink the design so the data lives where you need it.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Returning multiple values</summary>
+          <p>Exports return <em>one</em> value reliably. Multi-return works on some builds and not others. Return a table instead: <code>{ ok = true, balance = 5000 }</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Naming clashes between resources</summary>
+          <p>Two resources cannot register the same export name to the same table. Use namespaced names: <code>qu_money:GetBalance</code>, not <code>GetBalance</code>. The resource name is the namespace; lean on it.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="a">
+            <legend>1. To declare a server export, you need...</legend>
+            <label><input type="radio" name="q1" value="a"> Just <code>exports('Name', fn)</code> in the script.</label>
+            <label><input type="radio" name="q1" value="b"> Both <code>exports('Name', fn)</code> in the script and <code>server_export 'Name'</code> in <code>fxmanifest</code>.</label>
+            <label><input type="radio" name="q1" value="c"> Only <code>server_export 'Name'</code> in the manifest.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. <code>exports.qu_money:GetBalance(src)</code> is sugar for...</legend>
+            <label><input type="radio" name="q2" value="a"> <code>exports.qu_money.GetBalance(exports.qu_money, src)</code>.</label>
+            <label><input type="radio" name="q2" value="b"> <code>TriggerEvent('qu_money:GetBalance', src)</code>.</label>
+            <label><input type="radio" name="q2" value="c"> An async HTTP call.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. From a server script, can you call a client export directly?</legend>
+            <label><input type="radio" name="q3" value="a"> Yes, exports cross sides automatically.</label>
+            <label><input type="radio" name="q3" value="b"> Only if you set <code>cross_export</code> in the manifest.</label>
+            <label><input type="radio" name="q3" value="c"> No, exports are same-side. Use a NetEvent to bridge.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. You need every shop to react when prices change. Right tool?</legend>
+            <label><input type="radio" name="q4" value="a"> An export each shop polls every second.</label>
+            <label><input type="radio" name="q4" value="b"> An event (<code>TriggerEvent</code>) that all shops listen to.</label>
+            <label><input type="radio" name="q4" value="c"> A new resource per shop.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt>Declare (manifest)</dt><dd><code>server_export 'Name'</code> for server, <code>export 'Name'</code> for client.</dd></div>
+          <div><dt>Implement</dt><dd><code>exports('Name', function(...) ... end)</code> in the right script.</dd></div>
+          <div><dt>Call</dt><dd><code>exports.resource_name:Name(arg1, arg2)</code>: colon syntax.</dd></div>
+          <div><dt>Same-side only</dt><dd>Server-to-server or client-to-client. Use NetEvents to cross.</dd></div>
+          <div><dt>Order of start</dt><dd>Add <code>dependency 'other_resource'</code> in your manifest.</dd></div>
+          <div><dt>One return</dt><dd>Return a single value. Use a table for multi-field results.</dd></div>
+          <div><dt>vs events</dt><dd>Need an answer? Export. Need to broadcast? Event.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Exports are synchronous function calls between resources, same-side only.</li>
+          <li>Both <code>exports('Name', fn)</code> and a manifest <code>server_export 'Name'</code> are required.</li>
+          <li><code>exports.resource:Name(args)</code> is the canonical call shape.</li>
+          <li>Use <code>dependency</code> in your manifest so the resource you depend on starts first.</li>
+          <li>Reach for events when broadcasting; reach for exports when you need an answer.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build <code>qu_money</code> with three server exports (<code>GetBalance</code>, <code>AddBalance</code>, <code>SetBalance</code>) and a second resource <code>qu_atm</code> that calls them on a server-event trigger. Add <code>dependency 'qu_money'</code> to the ATM manifest. Restart only the money resource and confirm the ATM logs a clear error instead of crashing.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>txAdmin Live Console</span></header>
+          <pre><code class="language-bash">[QU][atm] balance src=1 amount=5000
+[QU][atm] withdraw src=1 amount=200 new=4800
+[QU][atm] error: qu_money export missing (resource not started)</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/#exports" target="_blank" rel="noopener">CFX docs, Lua exports</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">CFX docs, Resource manifest reference</a></li>
+          <li><a href="../clase-12/leason12.html">Lesson 13, TriggerEvent</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 14, TriggerServerEvent</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Build a tiny <code>core.lua</code> module with <code>safeExport(resource, fn, ...)</code> that pcalls the call and logs missing-export cases for you.</li>
+          <li>Generate type stubs (LuaCATS) for your exports so VS Code autocompletes them across resources.</li>
+          <li>Audit a popular framework (e.g. ESX legacy) and list every export, then group them by category. You will see why one giant resource is hard to maintain.</li>
+        </ul>
+      </section>

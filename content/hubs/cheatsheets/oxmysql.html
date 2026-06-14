@@ -1,0 +1,216 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/">Quasar Academy</a> › <a href="/cheatsheets">Cheatsheets</a> › <span>oxmysql</span></div>
+        <h1>oxmysql: parameterized queries without injection</h1>
+        <p class="lede">Five queries you reuse in every FiveM resource that touches the database. Always with <code>?</code> placeholders. Never with string concatenation.</p>
+
+        <div class="hero-outcome">
+          <div><dt>Server only</dt><dd>oxmysql exposes server-side functions. Never load it on the client.</dd></div>
+          <div><dt>Use ?</dt><dd>Question-mark placeholders are filled by oxmysql, not by Lua.</dd></div>
+          <div><dt>Pick await</dt><dd>The <code>.await</code> variants pause until the result returns. Cleaner than callbacks.</dd></div>
+          <div><dt>Snapshot source</dt><dd>Inside an event handler, snapshot <code>source</code> before any await.</dd></div>
+        </div>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>One SQL rule</header>
+        <p>Use <code>?</code> placeholders for any value that came from a player. Never build SQL by joining strings. The whole point of parameterized queries is that the database parses the values, not the query string.</p>
+      </section>
+
+      <section id="setup">
+        <h2>Setup</h2>
+        <p>Add oxmysql as a server script in <code>fxmanifest.lua</code> and declare a dependency. Configure your connection string in oxmysql's <code>convars</code>.</p>
+        <pre><code>-- fxmanifest.lua
+server_scripts {
+  '@oxmysql/lib/MySQL.lua',
+  'server/*.lua',
+}
+
+dependencies {
+  'oxmysql',
+}
+
+-- server.cfg
+set mysql_connection_string "mysql://user:pass@127.0.0.1:3306/fivem"</code></pre>
+      </section>
+
+      <section id="insert">
+        <h2>Insert</h2>
+        <pre><code>-- await: returns insertId
+local insertId = MySQL.insert.await(
+  'INSERT INTO licenses (citizenid, type, issued_at) VALUES (?, ?, NOW())',
+  { citizenid, 'driver' }
+)
+
+-- callback variant
+MySQL.insert(
+  'INSERT INTO licenses (citizenid, type) VALUES (?, ?)',
+  { citizenid, 'driver' },
+  function(insertId)
+    print('new license id:', insertId)
+  end
+)</code></pre>
+      </section>
+
+      <section id="select-one">
+        <h2>Select one row</h2>
+        <pre><code>local row = MySQL.single.await(
+  'SELECT id, money, job FROM users WHERE citizenid = ? LIMIT 1',
+  { citizenid }
+)
+
+if not row then
+  return                                            -- no match
+end
+
+print(row.money, row.job)
+
+-- single value
+local money = MySQL.scalar.await(
+  'SELECT money FROM users WHERE citizenid = ?',
+  { citizenid }
+)</code></pre>
+        <div class="callout callout--tip">
+          <header>scalar vs single</header>
+          <p><code>scalar</code> returns the first column of the first row. <code>single</code> returns the whole row as a table. Use <code>scalar</code> when you only need one number or string.</p>
+        </div>
+      </section>
+
+      <section id="select-many">
+        <h2>Select many rows</h2>
+        <pre><code>local rows = MySQL.query.await(
+  'SELECT plate, model FROM player_vehicles WHERE citizenid = ? ORDER BY id DESC',
+  { citizenid }
+)
+
+for _, v in ipairs(rows) do
+  print(v.plate, v.model)
+end
+
+print('count:', #rows)</code></pre>
+      </section>
+
+      <section id="update">
+        <h2>Update</h2>
+        <pre><code>local affected = MySQL.update.await(
+  'UPDATE users SET money = money + ? WHERE citizenid = ?',
+  { 500, citizenid }
+)
+
+if affected == 0 then
+  print('no row matched')
+end</code></pre>
+        <div class="callout callout--tip">
+          <header>Always check affectedRows</header>
+          <p>If <code>UPDATE</code> returns <code>0</code>, the WHERE clause matched nothing. Either the row does not exist or you targeted the wrong key.</p>
+        </div>
+      </section>
+
+      <section id="delete">
+        <h2>Delete</h2>
+        <pre><code>local affected = MySQL.update.await(
+  'DELETE FROM player_vehicles WHERE plate = ? AND citizenid = ?',
+  { plate, citizenid }
+)
+
+if affected == 0 then
+  return false                                      -- nothing deleted, abort
+end</code></pre>
+        <div class="callout callout--warn">
+          <header>Always include the owner</header>
+          <p>Never delete by plate alone. A malicious client could pass a plate they do not own. Always include the citizenid (or whatever identifier ties the row to the player) in the WHERE clause.</p>
+        </div>
+      </section>
+
+      <section id="injection">
+        <h2>Why parameterized queries</h2>
+        <pre><code>-- WRONG: string concatenation
+local name = source.name                            -- player-controlled
+MySQL.query.await(
+  "SELECT * FROM users WHERE name = '" .. name .. "'"
+)
+-- if name is:  ' OR 1=1 --
+-- the query becomes:  SELECT * FROM users WHERE name = '' OR 1=1 --'
+-- every row returns
+
+-- RIGHT: ? placeholder
+MySQL.query.await(
+  'SELECT * FROM users WHERE name = ?',
+  { name }
+)
+-- the database treats name as a value, no matter what is in it</code></pre>
+        <div class="callout callout--warn">
+          <header>One bypass and you are done</header>
+          <p>SQL injection is not a theoretical concern. A single concatenated query lets a player rewrite your database, dump tables, or wipe accounts. There is no excuse to skip the placeholder.</p>
+        </div>
+      </section>
+
+      <section id="patterns">
+        <h2>Useful patterns</h2>
+        <pre><code>-- transaction (multiple queries atomically)
+MySQL.transaction({
+  { query = 'UPDATE users SET money = money - ? WHERE id = ?', values = { 500, fromId } },
+  { query = 'UPDATE users SET money = money + ? WHERE id = ?', values = { 500, toId } },
+}, function(success)
+  if not success then
+    print('transfer failed, rolled back')
+  end
+end)
+
+-- IN clause with a list
+local ids = { 1, 5, 9 }
+local placeholders = string.rep('?,', #ids):sub(1, -2)
+local rows = MySQL.query.await(
+  'SELECT * FROM users WHERE id IN (' .. placeholders .. ')',
+  ids
+)
+
+-- check exists without fetching the row
+local exists = MySQL.scalar.await(
+  'SELECT 1 FROM users WHERE citizenid = ? LIMIT 1',
+  { citizenid }
+) ~= nil</code></pre>
+      </section>
+
+      <section id="common-mistakes">
+        <h2>Common mistakes</h2>
+        <div class="callout callout--warn">
+          <header>Loading oxmysql on the client</header>
+          <p><code>@oxmysql/lib/MySQL.lua</code> belongs in <code>server_scripts</code>. On the client it throws <em>attempt to index a nil value (global &apos;MySQL&apos;)</em>.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Mixing .await inside a tight loop</header>
+          <p>One <code>MySQL.query.await</code> per iteration serializes every request. For batches, build one query with an <code>IN</code> clause or a <code>VALUES (?,?), (?,?)</code> insert.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>source after await</header>
+          <p>After <code>MySQL.query.await</code>, the global <code>source</code> may have changed. Snapshot <code>local src = source</code> on the first line of every event handler.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Skipping LIMIT 1</header>
+          <p>For single-row lookups, add <code>LIMIT 1</code>. The database short-circuits as soon as one row matches, instead of scanning the rest.</p>
+        </div>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/cheatsheets/ox-lib-ui">← ox_lib UI cheatsheet</a>
+        <a class="next" href="/cheatsheets/ox-target">Next: ox_target cheatsheet →</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#setup">Setup</a>
+        <a href="#insert">Insert</a>
+        <a href="#select-one">Select one</a>
+        <a href="#select-many">Select many</a>
+        <a href="#update">Update</a>
+        <a href="#delete">Delete</a>
+        <a href="#injection">Why parameterized</a>
+        <a href="#patterns">Useful patterns</a>
+        <a href="#common-mistakes">Common mistakes</a>
+      </nav>
+    </aside>
+  </div>

@@ -1,0 +1,482 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 09 &middot; Lesson 27</span></div>
+        <h1>Handling basics and safe edits</h1>
+        <p class="lede">Every vehicle in FiveM has a hidden file that controls how it drives: how fast it accelerates, how hard it brakes, how much grip the tires have. That file is called <code>handling.meta</code>. In this lesson you will learn what it is, where it lives, and how to change it safely without turning your car into a rocket (or a brick).</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A safely edited <code>handling.meta</code> for one vehicle, tested in-game, with a Git backup you can revert.</dd></div>
+          <div><dt>Time</dt><dd>~25 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>What handling.meta does, where it lives, the safe-edit workflow, common fields, and how to revert when things go wrong.</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 9b (Git &amp; GitHub Desktop), basic resource structure (Module 01).</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="26">
+        <h2>Before you start</h2>
+        <p>Quick check. Handling is XML, not Lua, if the editing basics are shaky, the whole lesson gets confusing fast.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have a vehicle resource that spawns successfully in-game (<a href="../clase-25/leason25.html">Lesson 25</a>)</label></li>
+          <li><label><input type="checkbox"> I have a Git commit or a copied backup of the untouched vehicle resource before editing <code>handling.meta</code></label></li>
+          <li><label><input type="checkbox"> My resource has a <code>stream/</code> folder (or I am happy to create one) and I know FiveM streams its contents to the client</label></li>
+          <li><label><input type="checkbox"> I am comfortable opening and editing an XML file in VS Code (or my editor of choice) without breaking tag balance</label></li>
+          <li><label><input type="checkbox"> I know what a <code>handlingId</code> is, the string that links a model to its handling block (e.g. <code>ADDER</code>, <code>SULTAN</code>)</label></li>
+        </ul>
+      </section>
+      <section class="callout callout--danger">
+        <header>Prerequisite: rollback proof</header>
+        <p>Do not edit handling values until you can prove rollback. In GitHub Desktop, the resource should have a clean baseline commit. If you are not using Git yet, copy the whole resource folder and name it <code>qu_vehicles_BACKUP_before_handling</code> before touching any XML.</p>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 27: Handling basics and safe edits</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Handling changes vehicle physics.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find values in handling.meta and vehicle docs.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Edit one value, test, then keep a rollback.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Change one safe value and compare.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small handling example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Handling</dt><dd>Vehicle physics settings.<br><span>Example: drive force changes acceleration.</span></dd></div>
+            <div><dt tabindex="0">Meta file</dt><dd>A data file loaded by the resource.<br><span>Example: handling.meta stores values.</span></dd></div>
+            <div><dt tabindex="0">Rollback</dt><dd>Returning to a known working version.<br><span>Example: restore before bad handling edits.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_handling</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_handling/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_handling</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][handling]">
+            <header><span class="file">qu_handling/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'handling'
+
+RegisterCommand('quiet_26', function()
+    print(('[QUIET][%s][command] client ran'):format(MODULE))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][handling]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_handling</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>handling_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][handling_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_handling' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section id="what-is-handling">
+        <h2>Step 0: What is handling.meta?</h2>
+        <p><code>handling.meta</code> is an XML file that GTA V (and FiveM) reads to decide how a vehicle behaves. Think of it as a recipe card for the car. Each line in the file is one ingredient: top speed, brake strength, tire grip, weight, and dozens more.</p>
+        <p>When you change a number in this file and restart the resource, the vehicle drives differently. That is all it does. No Lua code, no events, just data the game engine reads.</p>
+        <div class="callout callout--tip">
+          <header>Plain-English version</header>
+          <p>Handling.meta = a settings file. Each setting is one number that changes one thing about the car. Change the number, restart the resource, test the car.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Where handling.meta lives</h2></header>
+        <p class="step-outcome">Outcome: you know where to put (or find) the handling file in your resource.</p>
+        <div class="step-body">
+          <p>A handling file goes inside a <code>stream/</code> folder in your resource. The <code>stream/</code> folder is a special FiveM folder that replaces game files (models, textures, data) without touching the original game.</p>
+          <figure class="code">
+            <header><span>Resource folder structure</span></header>
+            <pre><code class="language-bash">resources/qu_vehicles/
+  fxmanifest.lua
+  stream/
+    handling.meta      &lt;-- the file we are editing
+  data/
+    vehicles.meta      &lt;-- optional: defines new vehicle models</code></pre>
+          </figure>
+          <p>Your <code>fxmanifest.lua</code> needs one line to tell FiveM about the data file:</p>
+          <figure class="code">
+            <header><span>qu_vehicles/fxmanifest.lua</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'Vehicle handling overrides'
+version '1.0.0'
+
+-- files in stream/ are loaded automatically
+-- but handling.meta needs an explicit data_file entry:
+data_file 'HANDLING_FILE' 'stream/handling.meta'</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Why stream/ is special</summary>
+            <p>Anything you put in a resource's <code>stream/</code> folder replaces the matching game file. FiveM does this automatically for models (<code>.yft</code>, <code>.ytd</code>). For data files like <code>handling.meta</code>, you also need the <code>data_file</code> line in the manifest so FiveM knows which type of data it is.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Common handling fields (the ones you will actually touch)</h2></header>
+        <p class="step-outcome">Outcome: you can read a handling.meta file and understand the four fields beginners change most.</p>
+        <div class="step-body">
+          <p>A handling.meta file is XML. Each vehicle has a block wrapped in <code>&lt;Item&gt;</code> tags. Inside that block are dozens of fields. Here are the four you will use the most:</p>
+          <figure class="code">
+            <header><span>handling.meta (simplified excerpt)</span></header>
+            <pre><code class="language-lua">-- These are XML tags, shown here for readability:
+-- &lt;fInitialDriveMaxFlatVel value="140.0" /&gt;   Top speed (in game units, not real km/h)
+-- &lt;fBrakeForce value="0.8" /&gt;                  How hard the brakes work (higher = stronger)
+-- &lt;fTractionCurveMax value="2.3" /&gt;            Tire grip at normal speed (higher = more grip)
+-- &lt;fMass value="1500.0" /&gt;                     Vehicle weight in kg (heavier = slower accel, harder to push)</code></pre>
+          </figure>
+          <dl>
+            <div>
+              <dt><code>fInitialDriveMaxFlatVel</code></dt>
+              <dd>Controls the top speed of the vehicle. A value of 140 is roughly average. Setting it to 300 makes the car extremely fast. Setting it to 20 makes it feel like a golf cart.</dd>
+            </div>
+            <div>
+              <dt><code>fBrakeForce</code></dt>
+              <dd>How strong the brakes are. A value around 0.5 to 1.0 is normal. Too low and the car slides through every stop. Too high and it stops instantly (feels unnatural).</dd>
+            </div>
+            <div>
+              <dt><code>fTractionCurveMax</code></dt>
+              <dd>How much grip the tires have. Around 2.0 to 2.5 is standard. Lower means the car slides on every turn. Higher means it sticks to the road like glue.</dd>
+            </div>
+            <div>
+              <dt><code>fMass</code></dt>
+              <dd>The weight of the vehicle in kilograms. Heavier cars accelerate slower but are harder to push around. Lighter cars are twitchy but quick.</dd>
+            </div>
+          </dl>
+          <div class="callout callout--danger">
+            <header>Do not change all four at once</header>
+            <p>If you change four values and the car feels wrong, you will not know which change caused it. Change one value at a time. Test. Then change the next. This is the single most important habit in this lesson.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>The safe workflow</h2></header>
+        <p class="step-outcome">Outcome: you have a repeatable, revertable process for editing handling files.</p>
+        <div class="step-body">
+          <p>Every handling edit follows these five moves. Do them in order, every time.</p>
+          <ol>
+            <li><strong>Backup.</strong> Copy the handling.meta file to a safe place (or just rely on step 2).</li>
+            <li><strong>Commit to Git.</strong> Open GitHub Desktop (Lesson 9b). Stage the current handling.meta and commit with a message like <code>chore: handling baseline before brake edit</code>. Now you have a snapshot you can always go back to.</li>
+            <li><strong>Change ONE small value.</strong> Open the file, find the field you want, change the number by a small amount. For example, change <code>fBrakeForce</code> from <code>0.8</code> to <code>1.0</code>.</li>
+            <li><strong>Test on a spawned vehicle.</strong> Restart the resource in your server console (<code>restart qu_vehicles</code>), spawn the vehicle in-game, and drive it. Does the change feel right?</li>
+            <li><strong>Revert on failure.</strong> If it feels wrong, open GitHub Desktop, right-click the commit, and choose "Revert changes in commit." Your file goes back to the previous state instantly.</li>
+          </ol>
+          <figure class="code">
+            <header><span>Server console</span></header>
+            <pre><code class="language-bash"># After editing handling.meta:
+restart qu_vehicles
+
+# In-game, spawn the vehicle to test:
+# /car adder   (or whatever vehicle model you changed)</code></pre>
+          </figure>
+          <div class="callout callout--tip">
+            <header>Why Git matters here</header>
+            <p>Without Git, "undo" means remembering what the old number was. With Git, "undo" is one click in GitHub Desktop. You already learned this in Lesson 9b. Now you are using it for real.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>You have a handling file in stream/</h3></header>
+        <p>At this point you should have:</p>
+        <ul>
+          <li>A resource with a <code>stream/</code> folder containing <code>handling.meta</code></li>
+          <li>A <code>fxmanifest.lua</code> with the <code>data_file</code> line pointing at it</li>
+          <li>An initial Git commit of the unmodified file</li>
+        </ul>
+        <div class="self-check">
+          <details>
+            <summary>How do I get a handling.meta to start with?</summary>
+            <p>You can extract one from the base game using OpenIV, or download a sample from a vehicle mod. Many car mods on gta5-mods.com include a handling.meta. For practice, any handling.meta will do.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="restore-drill">
+        <header><span class="chip">Restore drill</span><h3>Prove you can get back before changing values</h3></header>
+        <p>Before Step 4, do a harmless rollback test.</p>
+        <ol>
+          <li>Add a temporary comment near the top of <code>handling.meta</code>, save, and confirm GitHub Desktop shows exactly that file changed.</li>
+          <li>Use GitHub Desktop to discard that temporary change, or replace the file from your backup copy.</li>
+          <li>Reopen <code>handling.meta</code> and confirm the temporary comment is gone.</li>
+        </ol>
+        <p>If you cannot complete this drill, stop here and fix your backup process first.</p>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Make one change and test it</h2></header>
+        <p class="step-outcome">Outcome: you change a single brake value, restart, and feel the difference in-game.</p>
+        <div class="step-body">
+          <p>Open your <code>handling.meta</code> and find the <code>fBrakeForce</code> line for your vehicle. Change it by a small amount:</p>
+          <figure class="code">
+            <header><span>handling.meta (before)</span></header>
+            <pre><code class="language-lua">-- &lt;fBrakeForce value="0.800000" /&gt;</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>handling.meta (after)</span></header>
+            <pre><code class="language-lua">-- &lt;fBrakeForce value="1.200000" /&gt;</code></pre>
+          </figure>
+          <p>Now restart the resource and spawn the vehicle. Drive it fast, then brake. You should notice the car stops noticeably faster than before.</p>
+          <p>If you are happy, commit the change in GitHub Desktop with a message like <code>feat: increase brake force for adder</code>. If you are not happy, revert.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Test harness: a /testhandling command</h2></header>
+        <p class="step-outcome">Outcome: you have a quick command to spawn a vehicle for testing without opening menus.</p>
+        <div class="step-body">
+          <p>Typing commands in chat every time you want to test is slow. Let's make a small helper command that spawns a vehicle right in front of you:</p>
+          <figure class="code">
+            <header><span>qu_vehicles/client.lua</span></header>
+            <pre><code class="language-lua">RegisterCommand('testhandling', function(source, args)
+    local model = args[1] or 'adder'  -- default to adder if no model given
+    local hash = GetHashKey(model)
+
+    RequestModel(hash)
+    while not HasModelLoaded(hash) do
+        Wait(100)  -- wait until the model is ready (loaded into memory)
+    end
+
+    local playerPed = PlayerPedId()
+    local coords = GetEntityCoords(playerPed)
+    local heading = GetEntityHeading(playerPed)
+
+    -- spawn the vehicle 3 meters in front of the player
+    local vehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
+    SetPedIntoVehicle(playerPed, vehicle, -1)  -- -1 = driver seat
+    SetModelAsNoLongerNeeded(hash)  -- free the model from memory
+
+    print('[qu_vehicles] Spawned ' .. model .. ' for handling test')
+end, false)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>What each part does</summary>
+            <ul>
+              <li><code>args[1] or 'adder'</code>: the player can type <code>/testhandling sultan</code> to test a Sultan, or just <code>/testhandling</code> to get the default Adder.</li>
+              <li><code>RequestModel</code> + <code>HasModelLoaded</code>: FiveM needs to load the 3D model into memory before it can create it. The <code>while</code> loop waits until it is ready.</li>
+              <li><code>CreateVehicle</code>: places the car in the world at the player's position.</li>
+              <li><code>SetPedIntoVehicle</code>: puts the player in the driver seat so you can test immediately.</li>
+              <li><code>SetModelAsNoLongerNeeded</code>: tells the game it can unload the model from memory when it wants to. Good habit to prevent memory leaks.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Invalid handling symptoms</h2></header>
+        <p class="step-outcome">Outcome: you can recognize when a handling value has gone wrong, and know what to check.</p>
+        <div class="step-body">
+          <p>When a handling edit goes bad, the vehicle will do one of these things. Each symptom points to a specific field:</p>
+          <dl>
+            <div>
+              <dt>The car flies into the sky when you drive it</dt>
+              <dd><code>fMass</code> is way too low, or <code>fInitialDriveMaxFlatVel</code> is absurdly high. The engine pushes harder than gravity can hold. Revert and use smaller changes.</dd>
+            </div>
+            <div>
+              <dt>The car won't move at all</dt>
+              <dd><code>fInitialDriveMaxFlatVel</code> is set to 0 or near-zero, or <code>fMass</code> is extremely high. The car is too heavy to accelerate or has no top speed.</dd>
+            </div>
+            <div>
+              <dt>The car slides everywhere like it is on ice</dt>
+              <dd><code>fTractionCurveMax</code> is too low. The tires have no grip. Raise it back toward 2.0-2.5 for normal driving feel.</dd>
+            </div>
+            <div>
+              <dt>The car stops instantly (like hitting a wall)</dt>
+              <dd><code>fBrakeForce</code> is set too high. Lower it to something reasonable like 0.5 to 1.0.</dd>
+            </div>
+            <div>
+              <dt>The car clips through the ground</dt>
+              <dd>Suspension values are broken, or the vehicle model does not match the handling entry. Make sure the <code>handlingName</code> in the XML matches the vehicle you are spawning.</dd>
+            </div>
+          </dl>
+          <div class="callout callout--tip">
+            <header>The universal fix</header>
+            <p>If anything looks wrong and you committed before the change: open GitHub Desktop, revert the commit. You are back to a working state in two clicks. This is why Step 3 (the safe workflow) exists.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>You made a change and tested it</h3></header>
+        <p>Verify that you have:</p>
+        <ul>
+          <li>Changed one handling value (like <code>fBrakeForce</code>)</li>
+          <li>Restarted the resource and tested in-game</li>
+          <li>Either committed the change or reverted it using GitHub Desktop</li>
+        </ul>
+        <div class="self-check">
+          <details>
+            <summary>What if the change doesn't seem to do anything?</summary>
+            <p>Three common reasons: (1) you edited the wrong vehicle's block in the XML (check the <code>handlingName</code>), (2) you forgot to restart the resource, or (3) the <code>data_file</code> line in your manifest is wrong or missing.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Editing the wrong vehicle model hash</summary>
+          <p>A handling.meta file can contain entries for many vehicles. Each entry has a <code>handlingName</code> tag that links it to a specific vehicle. If you change the values inside the wrong <code>&lt;Item&gt;</code> block, your target vehicle won't change at all, and some other vehicle will act strange. Always double-check the <code>handlingName</code> matches the vehicle you are testing.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to restart the resource after a change</summary>
+          <p>FiveM reads handling.meta when the resource starts. If you edit the file but don't restart the resource, the old values are still loaded in memory. Run <code>restart qu_vehicles</code> in your server console after every edit. No restart = no change.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Massive value changes causing the vehicle to fly or clip</summary>
+          <p>Changing <code>fInitialDriveMaxFlatVel</code> from 140 to 9999 will send the car into orbit. Changing <code>fMass</code> from 1500 to 10 will make it weightless. Always change values by small amounts: 10-20% at a time. If the original value is 0.8, try 1.0 first, not 50.0.</p>
+        </details>
+
+        <details class="explain">
+          <summary>No Git commit before editing</summary>
+          <p>If you skip the commit step and make a bad edit, your only option is to remember what the old value was (good luck). Always commit the working version before you touch anything. It takes 10 seconds in GitHub Desktop and saves you 10 minutes of frustration.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What file controls how a vehicle drives in FiveM?</legend>
+            <label><input type="radio" name="q1" value="a"> vehicles.meta</label>
+            <label><input type="radio" name="q1" value="b"> handling.meta</label>
+            <label><input type="radio" name="q1" value="c"> fxmanifest.lua</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Why should you change only one value at a time?</legend>
+            <label><input type="radio" name="q2" value="a"> The game crashes if you change more than one.</label>
+            <label><input type="radio" name="q2" value="b"> It's faster to restart with fewer changes.</label>
+            <label><input type="radio" name="q2" value="c"> So you know exactly which change caused a problem (or improvement).</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. How do you revert a bad handling change?</legend>
+            <label><input type="radio" name="q3" value="a"> Open GitHub Desktop, right-click the commit, and revert it.</label>
+            <label><input type="radio" name="q3" value="b"> Delete the handling.meta file and restart.</label>
+            <label><input type="radio" name="q3" value="c"> Type /revert in the game console.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>handling.meta</code></dt><dd>XML file that defines how a vehicle drives. Lives in <code>stream/</code> inside your resource.</dd></div>
+          <div><dt><code>fInitialDriveMaxFlatVel</code></dt><dd>Top speed. Higher = faster car.</dd></div>
+          <div><dt><code>fBrakeForce</code></dt><dd>Brake strength. 0.5-1.0 is normal range.</dd></div>
+          <div><dt><code>fTractionCurveMax</code></dt><dd>Tire grip. 2.0-2.5 is normal. Lower = ice, higher = glue.</dd></div>
+          <div><dt><code>fMass</code></dt><dd>Vehicle weight in kg. Heavier = slower but stable.</dd></div>
+          <div><dt><code>data_file 'HANDLING_FILE' 'stream/handling.meta'</code></dt><dd>Manifest line that tells FiveM to load your handling overrides.</dd></div>
+          <div><dt>Safe workflow</dt><dd>Commit &rarr; change one value &rarr; restart &rarr; test &rarr; commit or revert.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>handling.meta</code> is a data file that controls vehicle physics: speed, braking, grip, and weight</li>
+          <li>It lives in the <code>stream/</code> folder of a resource and needs a <code>data_file</code> entry in the manifest</li>
+          <li>The four most common fields are <code>fInitialDriveMaxFlatVel</code>, <code>fBrakeForce</code>, <code>fTractionCurveMax</code>, and <code>fMass</code></li>
+          <li>The safe workflow: commit first, change one value, test, then commit or revert</li>
+          <li>Common symptoms (flying, stuck, sliding) each point to a specific field gone wrong</li>
+          <li>GitHub Desktop revert is your instant undo button</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Change the <code>fBrakeForce</code> for one vehicle from its current value to something noticeably different (for example, double it). Restart the resource, spawn the vehicle with <code>/testhandling</code>, and drive it into a wall at full speed. Notice how it stops. Then open GitHub Desktop, revert the commit, restart again, and test the same crash. Feel the difference.</p>
+        <p class="expected">Expected result</p>
+        <figure class="code"><header><span>What you should see</span></header>
+          <pre><code>-- With doubled fBrakeForce: car stops almost instantly
+-- After revert + restart: car takes noticeably longer to stop
+-- GitHub Desktop shows the revert commit in your history</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>If you can't feel the difference, you might not have restarted the resource after reverting. Remember: the game reads handling.meta at resource start, not live. Always <code>restart qu_vehicles</code> after any file change.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/game-references/handling-data/" target="_blank" rel="noopener">FiveM handling.meta documentation</a></li>
+          <li><a href="../clase-9b/leason9b.html">Lesson 9b: Git &amp; GitHub Desktop</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Try changing <code>fTractionCurveMax</code> to 0.5 and drive around corners. Notice how different grip feels compared to the default. Then revert.</li>
+          <li>Find a second vehicle in your handling.meta and change its <code>fMass</code> to be very light (200 kg). Spawn both vehicles and ram the light one with the heavy one. Physics are fun.</li>
+          <li>Write a Lua command that prints the current vehicle's handling values to the F8 console using <code>GetVehicleHandlingFloat</code>. Now you can check values without opening the XML.</li>
+        </ul>
+      </section>

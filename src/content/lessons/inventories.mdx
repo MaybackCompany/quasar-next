@@ -1,0 +1,132 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="Inventories: stack, weight, slot"
+  meta={[
+    { label: "You'll learn", value: "Slot vs weight model, stacking rules, item metadata, ox_inventory exports" },
+    { label: "Time", value: "~22 minutes" },
+    { label: "Prereqs", value: "P1 (oxmysql), P9 (persistence)" },
+    { label: "Outcome", value: "You can give a player 5 burgers, check if they have 50 kg free, and store crafting metadata on each unique item" },
+  ]}
+>
+  An inventory is a backpack with limited pockets and a scale. There are two dominant models in FiveM: slot-based (each item lives in a numbered pocket) and weight-based (only kg cap matters). Each has trade-offs. This lesson covers both, the stacking rules, item metadata, and how to integrate with `ox_inventory` without re-implementing it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds ox_inventory AddItem and Search on the server as a working FiveM resource named `qu_inventories`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_inventories
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_inventories/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+
+dependency 'ox_inventory'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterCommand('burger', function(src)
+    local ok = exports.ox_inventory:AddItem(src, 'burger', 5)
+    if not ok then print('[qu_inventories] add failed') return end
+    local count = exports.ox_inventory:Search(src, 'count', 'burger')
+    print('[qu_inventories] burger count ' .. count)
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_inventories
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_inventories
+    ```
+
+    Run this test:
+
+    ```text
+    /burger
+    ```
+
+    <ExpectedOutput>
+      [qu_inventories] burger count 5
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_inventories does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_inventories", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_inventories, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_inventories folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for ox_inventory AddItem and Search on the server.",
+    "Add ensure qu_inventories to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_inventories`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

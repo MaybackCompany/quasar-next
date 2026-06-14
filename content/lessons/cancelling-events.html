@@ -1,0 +1,297 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 04 &middot; Bonus</span></div>
+        <h1>Cancelling events: <code>CancelEvent()</code> &amp; <code>WasEventCanceled()</code></h1>
+        <p class="lede">Sometimes one handler needs to veto the rest. A spawn-protection script blocks the death-handler chain. An anti-cheat resource cancels <code>playerConnecting</code> for a banned UID before any other resource sees the join. <code>CancelEvent()</code> is the signal; <code>WasEventCanceled()</code> is how downstream handlers know.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>How <code>CancelEvent()</code> propagates through a handler chain, when downstream handlers still run, and the <code>playerConnecting</code> kick pattern</dd></div>
+          <div><dt>Time</dt><dd>~12 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 13 (TriggerEvent) and 14 (TriggerServerEvent / TriggerClientEvent)</dd></div>
+          <div><dt>Outcome</dt><dd>You can cancel an event from a handler, detect cancellation downstream, and pick the right tool between <em>cancel</em>, <em>return</em>, and <em>defer</em></dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="13c">
+        <h2>Before you start</h2>
+        <p>Tick these so the examples make sense as you read.</p>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="trigger-event"> I know <code>TriggerEvent</code> fires every handler registered for the same event name (Lesson 13).</label></li>
+          <li><label><input type="checkbox" data-prereq="server-net"> I have a server resource that uses <code>RegisterNetEvent</code> + <code>AddEventHandler</code> (Lesson 14).</label></li>
+          <li><label><input type="checkbox" data-prereq="console-ready"> My txAdmin Live Console is open so I can see <code>print</code> output as I test.</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: a relay race the captain can stop</h2>
+        <p>Every event fire is a relay. Each registered handler is a runner who gets the baton in registration order. <code>CancelEvent()</code> is the captain raising a flag, the rest of the runners still receive the baton, but they can check the flag (<code>WasEventCanceled()</code>) and choose to walk it across the line instead of running.</p>
+        <p>The flag does <strong>not</strong> stop the chain. Every handler still fires. What changes is the <em>signal</em>: downstream handlers know "someone vetoed this" and can branch on that.</p>
+        <div class="callout callout--fivem">
+          <header>FiveM-specific note</header>
+          <p>For events the engine itself listens to, <code>playerConnecting</code>, <code>weaponDamageEvent</code>, <code>entityCreating</code>, <code>onResourceStop</code>, cancellation is meaningful: the engine treats a cancelled <code>playerConnecting</code> as "reject the join". For your own custom events, cancellation is just a convention you and your other handlers agree on.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Cancel from inside a handler</h2></header>
+        <p class="step-outcome">Outcome: one handler raises the cancel flag; you watch it propagate.</p>
+        <div class="step-body">
+          <p>Two natives, both globally available on client and server:</p>
+          <ul>
+            <li><code>CancelEvent()</code>, sets the cancel flag on the current event invocation.</li>
+            <li><code>WasEventCanceled()</code>, returns <code>true</code> if any earlier handler in this invocation called <code>CancelEvent()</code>.</li>
+          </ul>
+          <figure class="code">
+            <header><span>server.lua: three handlers, middle one cancels</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:demo:hit')
+
+AddEventHandler('qu:demo:hit', function(reason)
+    print(('[QUIET][hit][1] reason=%s canceled=%s'):format(reason, tostring(WasEventCanceled())))
+end)
+
+AddEventHandler('qu:demo:hit', function(reason)
+    if reason == 'spawn-protect' then
+        CancelEvent()
+        print('[QUIET][hit][2] cancelled by spawn-protect')
+    end
+end)
+
+AddEventHandler('qu:demo:hit', function(reason)
+    if WasEventCanceled() then
+        print('[QUIET][hit][3] skipping, already cancelled')
+        return
+    end
+    print(('[QUIET][hit][3] applying damage for reason=%s'):format(reason))
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>What you should see in the console</summary>
+            <p>Trigger with <code>TriggerEvent('qu:demo:hit', 'spawn-protect')</code>. Output:</p>
+            <pre><code>[QUIET][hit][1] reason=spawn-protect canceled=false
+[QUIET][hit][2] cancelled by spawn-protect
+[QUIET][hit][3] skipping, already cancelled</code></pre>
+            <p>Handler #3 still ran. The cancel flag did not skip it, the explicit <code>WasEventCanceled()</code> check did.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Why <code>WasEventCanceled()</code> matters</h2></header>
+        <p class="step-outcome">Outcome: you can write a downstream handler that defers to upstream vetoes.</p>
+        <div class="step-body">
+          <p>Cancellation is <em>cooperative</em>. The chain keeps running. Every handler that does work after the cancel point should explicitly opt in to the veto:</p>
+          <figure class="code">
+            <header><span>damage-handler.lua: defensive pattern</span></header>
+            <pre><code class="language-lua">AddEventHandler('qu:player:damaged', function(victim, attacker, amount)
+    if WasEventCanceled() then return end          -- respect upstream veto
+    if amount &lt;= 0 then return end                  -- normal early-return
+
+    ApplyDamage(victim, amount)
+end)</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>Common confusion</header>
+            <p><code>CancelEvent()</code> does <strong>not</strong> stop the chain or throw. Old Garry's Mod muscle memory expects it to. Here, <em>nothing skips the next handler for you</em>. You must check the flag yourself in every handler that should respect the veto.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>The chain keeps running</h3></header>
+        <p>Trigger <code>qu:demo:hit</code> with <code>'spawn-protect'</code>, then with <code>'normal'</code>. The first run prints all three handlers (with handler #3 skipping). The second run prints all three (with handler #3 applying damage).</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>The <code>playerConnecting</code> kick pattern</h2></header>
+        <p class="step-outcome">Outcome: you can reject a join from a banned UID before any gameplay resource sees the player.</p>
+        <div class="step-body">
+          <p><code>playerConnecting</code> is one of the rare events the FiveM engine itself observes. If you cancel it, the engine refuses the connection. The handler signature is <code>(name, setKickReason, deferrals)</code>. Three ways to reject:</p>
+          <ol>
+            <li><code>setKickReason('reason')</code>, sets the message shown to the player. Optional.</li>
+            <li><code>CancelEvent()</code>, tells the engine to drop the connection.</li>
+            <li><code>deferrals.done('reason')</code>, the modern, async-friendly way. Returning a reason here also cancels the join.</li>
+          </ol>
+          <figure class="code">
+            <header><span>server.lua: classic cancel-based kick</span></header>
+            <pre><code class="language-lua">local BANNED = { ['license:abc123'] = 'You are banned.' }
+
+AddEventHandler('playerConnecting', function(name, setKickReason)
+    local src = source
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        local reason = BANNED[id]
+        if reason then
+            setKickReason(reason)
+            CancelEvent()
+            return
+        end
+    end
+end)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>server.lua: modern deferrals version (preferred)</span></header>
+            <pre><code class="language-lua">AddEventHandler('playerConnecting', function(name, _, deferrals)
+    deferrals.defer()
+    Wait(0)                          -- yield once so deferrals.update works
+    deferrals.update(('Checking %s...'):format(name))
+
+    local src = source
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        if BANNED[id] then
+            deferrals.done(BANNED[id])  -- rejecting with a reason
+            return
+        end
+    end
+
+    deferrals.done()                 -- accept the join
+end)</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Pro tip</header>
+            <p>Prefer <code>deferrals</code> for any join check that needs IO (database lookup, HTTP call). <code>CancelEvent()</code> is fine for synchronous rules. Mixing both inside the same handler is allowed but rarely needed, pick one and stay consistent.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Cancel vs return vs defer</h2></header>
+        <p class="step-outcome">Outcome: you reach for the right tool without thinking about it.</p>
+        <div class="step-body">
+          <table class="cmp-table">
+            <thead><tr><th>You want to...</th><th>Use</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Skip the rest of <em>this</em> handler</td><td><code>return</code></td><td>Cheapest, no side effects, no signal to other handlers.</td></tr>
+              <tr><td>Tell the engine "reject this <code>playerConnecting</code>"</td><td><code>CancelEvent()</code> or <code>deferrals.done(reason)</code></td><td>Engine-observed cancel is the only way to refuse the connection.</td></tr>
+              <tr><td>Tell other handlers "veto this gameplay action"</td><td><code>CancelEvent()</code> + check <code>WasEventCanceled()</code> downstream</td><td>Cooperative pattern across resources you do not own.</td></tr>
+              <tr><td>Run an async check before deciding</td><td><code>deferrals.defer()</code> then <code>deferrals.done()</code></td><td>Only deferrals can hold the join open while you wait on a DB / HTTP call.</td></tr>
+              <tr><td>Block one client from triggering an event</td><td>Validate inside the handler, <code>return</code></td><td>Cancellation is not auth. Use <code>source</code> + permission check.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Reject a fake identifier</h3></header>
+        <p>Add your own license to <code>BANNED</code>, restart the resource, and reconnect. The kick reason should appear in your client. Remove yourself from <code>BANNED</code> and reconnect, the join should succeed.</p>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Assuming <code>CancelEvent()</code> stops the chain</summary>
+          <p>It does not. Every later handler still runs. The flag is a signal, not a break. You must check <code>WasEventCanceled()</code> in every handler that should opt out.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Cancelling a handler-only custom event and expecting a refund</summary>
+          <p>For events you defined yourself, cancelling has no engine effect. The data you already wrote (DB rows, file changes) does not roll back. Treat <code>CancelEvent()</code> as a coordination flag, not a transaction.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using <code>CancelEvent()</code> as security</summary>
+          <p>If a malicious client triggers a server event, cancelling it inside one handler does not protect the others if they do not check the flag. Always validate <code>source</code> and permissions in each handler. See Lesson 12 (Trust &amp; authority).</p>
+        </details>
+
+        <details class="explain">
+          <summary>Mixing <code>CancelEvent()</code> and <code>deferrals.done()</code> inconsistently</summary>
+          <p>Inside <code>playerConnecting</code>, calling <code>CancelEvent()</code> after <code>deferrals.defer()</code> can leave the connection in a stuck state on some builds. Pick one path: synchronous (<code>CancelEvent</code>) or asynchronous (<code>deferrals</code>). Do not interleave.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to <code>return</code> after cancelling</summary>
+          <p>Calling <code>CancelEvent()</code> does not exit your function. Code below it still executes in the same handler. Add an explicit <code>return</code> when you mean "we are done here".</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. After one handler calls <code>CancelEvent()</code>, what happens to the remaining handlers?</legend>
+            <label><input type="radio" name="q1" value="a"> They are skipped automatically.</label>
+            <label><input type="radio" name="q1" value="b"> They still run; they can check <code>WasEventCanceled()</code> to opt out.</label>
+            <label><input type="radio" name="q1" value="c"> They run once more then stop.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Which event, when cancelled, actually causes the FiveM engine to refuse a player connection?</legend>
+            <label><input type="radio" name="q2" value="a"> <code>onResourceStart</code></label>
+            <label><input type="radio" name="q2" value="b"> A custom event you registered yourself.</label>
+            <label><input type="radio" name="q2" value="c"> <code>playerConnecting</code></label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. You want to reject a join based on a database lookup. The right tool is...</legend>
+            <label><input type="radio" name="q3" value="a"> <code>deferrals.defer()</code> then <code>deferrals.done(reason)</code> after the lookup resolves.</label>
+            <label><input type="radio" name="q3" value="b"> <code>CancelEvent()</code> immediately, then run the lookup.</label>
+            <label><input type="radio" name="q3" value="c"> Ignore the join and rely on <code>playerJoining</code> to handle it.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. What does <code>CancelEvent()</code> guarantee about the <em>side effects</em> already written by an earlier handler?</legend>
+            <label><input type="radio" name="q4" value="a"> The runtime rolls them back automatically.</label>
+            <label><input type="radio" name="q4" value="b"> Nothing, cancel is a signal, not a transaction. Earlier writes stay.</label>
+            <label><input type="radio" name="q4" value="c"> Only DB writes are rolled back; file writes persist.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>CancelEvent()</code></dt><dd>Sets the cancel flag on the current event invocation. Does not stop the handler chain.</dd></div>
+          <div><dt><code>WasEventCanceled()</code></dt><dd>Returns <code>true</code> if any earlier handler called <code>CancelEvent()</code> in this invocation.</dd></div>
+          <div><dt>Engine-observed events</dt><dd><code>playerConnecting</code>, <code>weaponDamageEvent</code>, <code>entityCreating</code>, <code>onResourceStop</code>: engine acts on the cancel flag.</dd></div>
+          <div><dt>Custom events</dt><dd>Cancellation is a convention. Every handler that should respect it must check <code>WasEventCanceled()</code>.</dd></div>
+          <div><dt>Kick a player at join</dt><dd><code>setKickReason('msg')</code> + <code>CancelEvent()</code> inside <code>playerConnecting</code>.</dd></div>
+          <div><dt>Async kick</dt><dd><code>deferrals.defer()</code> then <code>deferrals.done(reason)</code> rejects the join after a DB / HTTP call.</dd></div>
+          <div><dt>Don't forget</dt><dd>Add <code>return</code> after <code>CancelEvent()</code> if you do not want code below to run.</dd></div>
+          <div><dt>Not security</dt><dd>Cancellation is not auth. Validate <code>source</code> and permissions in each handler.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>CancelEvent()</code> raises a flag; <code>WasEventCanceled()</code> reads it, the chain itself never stops.</li>
+          <li>Engine-observed events (<code>playerConnecting</code>, <code>weaponDamageEvent</code>) treat the cancel flag as a real veto.</li>
+          <li>The <code>playerConnecting</code> kick pattern: <code>setKickReason</code> + <code>CancelEvent()</code> for sync; <code>deferrals.done(reason)</code> for async.</li>
+          <li>Cancel is a coordination signal, not a transaction, side effects already written stay written.</li>
+          <li>Always pair <code>CancelEvent()</code> with an explicit <code>return</code> when you mean "done here".</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build a one-file resource <code>qu_demo_cancel</code> with three handlers on the same event <code>qu:demo:purchase</code>: a logger that prints the buyer, a fraud-check that calls <code>CancelEvent()</code> when the price is negative, and a charge-handler that respects <code>WasEventCanceled()</code>. Trigger it from F8 with both a positive and a negative price and confirm the charge-handler skips on the negative case.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>txAdmin Live Console</span></header>
+          <pre><code>-- Trigger 1: TriggerEvent('qu:demo:purchase', 'kishi', 50)
+[QUIET][cancel][log] buyer=kishi price=50
+[QUIET][cancel][charge] charging 50 to kishi
+
+-- Trigger 2: TriggerEvent('qu:demo:purchase', 'kishi', -10)
+[QUIET][cancel][log] buyer=kishi price=-10
+[QUIET][cancel][fraud] cancelling: negative price
+[QUIET][cancel][charge] skipping (cancelled)</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/natives/?_0xFA29D35D" target="_blank" rel="noopener">CFX natives, CancelEvent &amp; WasEventCanceled</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/events/list-of-events/playerConnecting/" target="_blank" rel="noopener">CFX docs, playerConnecting (deferrals + cancel)</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 14, TriggerServerEvent &amp; TriggerClientEvent</a></li>
+          <li><a href="../clase-11/leason11.html">Lesson 12, Trust &amp; authority</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Wrap the cancel pattern in a small helper: <code>function CancelWith(reason) print(('[%s] cancel'):format(GetCurrentResourceName())); CancelEvent() end</code>, one place to log every veto.</li>
+          <li>Read the engine source for <code>weaponDamageEvent</code>: cancelling it on the server prevents damage. Build a 5-second spawn-protection that cancels damage by player ID.</li>
+          <li>Build a join-queue with <code>deferrals.update()</code>: show the player their position every second while you wait for a slot to open, then <code>deferrals.done()</code> to admit them.</li>
+        </ul>
+      </section>

@@ -1,0 +1,175 @@
+<main class="day-main">
+    <a class="kit-back" href="/starter-kit">← Back to the 7-day path</a>
+
+    <section style="margin-top: 20px">
+      <div class="day-eyebrow">Day 3 · Events &amp; net messaging · ~30 min</div>
+      <h1 class="day-title">Events and net messaging</h1>
+      <p class="day-lede">This is the day where FiveM stops being "just Lua" and becomes multiplayer scripting. One side talks. The other side answers. That is all an event is. If you are starting from zero, keep one sentence in your head the whole time: <strong>the client asks, the server decides</strong>.</p>
+    </section>
+
+    <h2 class="day-section-title">Day 3 in plain English</h2>
+    <div class="prose">
+      <p>Imagine pressing a doorbell.</p>
+      <p>The <strong>button press</strong> is the event.</p>
+      <p>The <strong>wire carrying the signal</strong> is the net message.</p>
+      <p>The <strong>person inside deciding whether to open the door</strong> is the server.</p>
+      <p>That is the whole mental model. Events are just named signals. Some stay on one machine. Some travel over the wire between client and server.</p>
+    </div>
+
+    <h2 class="day-section-title">Concepts</h2>
+    <div class="prose">
+      <div class="concept">
+        <h4>Local vs net events</h4>
+        <p>A plain <code class="inline">AddEventHandler</code> is local: it only fires on the machine that raised it. A <strong>net event</strong> travels between client and server. You mark it with <code class="inline">RegisterNetEvent('name')</code> so FiveM knows it's allowed over the wire.</p>
+      </div>
+      <div class="concept">
+        <h4>Who talks to whom</h4>
+        <p>From the <strong>client</strong>, call <code class="inline">TriggerServerEvent('name', args...)</code> to send to the server. From the <strong>server</strong>, call <code class="inline">TriggerClientEvent('name', targetId, args...)</code> to reach one player (or <code class="inline">-1</code> for everyone).</p>
+      </div>
+      <div class="concept">
+        <h4>Never trust the client</h4>
+        <p>When the client says "give me $1000", assume they're lying. The server is the source of truth. Check permissions, check state, then act. This is the single most-broken rule in beginner code.</p>
+      </div>
+    </div>
+
+    <h2 class="day-section-title">The goal of Lab 1 -> in plain English</h2>
+    <div class="prose">
+      <p>You are making your own doorbell signal called <code class="inline">qu:greet</code>.</p>
+      <ul>
+        <li>First you tell FiveM that this event name is allowed over the network.</li>
+        <li>Then you attach a handler, the code that runs when the event fires.</li>
+        <li>When the test fires the event with the name <code class="inline">Alex</code>, your handler should print <code class="inline">greeted: Alex</code>.</li>
+      </ul>
+      <p>One event name. One handler. One print. Small on purpose.</p>
+    </div>
+
+    <h2 class="day-section-title">Lab 1 · Register a net event with a handler</h2>
+    <p class="prose">Register a net event called <code class="inline">qu:greet</code>. When it fires, print <code class="inline">greeted: &lt;name&gt;</code>, where name is the argument.</p>
+    <p class="prose"><strong>What to do:</strong></p>
+    <ol class="prose">
+      <li>Write <code class="inline">RegisterNetEvent('qu:greet')</code>.</li>
+      <li>Below it, write <code class="inline">AddEventHandler('qu:greet', function(name) ... end)</code>.</li>
+      <li>Inside the function, print <code class="inline">greeted: </code> plus the name value.</li>
+      <li>Run the test. The harness will fire the event for you.</li>
+    </ol>
+
+    <div class="lab"
+         data-day-id="day-3"
+         data-lab-id="lab1"
+         data-lab-title="Register a net event 'qu:greet' that prints the name it receives"
+         data-lab-objective="Use RegisterNetEvent to mark 'qu:greet' as a net event. Use AddEventHandler to attach a function that prints 'greeted: <name>'.">
+      <template class="lab-template">-- Register the event, then attach a handler.
+
+-- your code here
+
+-- The test harness will fire the event after your code loads.
+</template>
+      <template class="lab-tests">[
+        { "name": "Event 'qu:greet' is registered as a net event", "assert": { "type": "hasNetEvent", "name": "qu:greet" } },
+        { "name": "'qu:greet' has at least one handler",           "assert": { "type": "hasEventHandler", "name": "qu:greet" } },
+        { "name": "Firing qu:greet with 'Alex' prints 'greeted: Alex'", "run": "TriggerEvent('qu:greet', 'Alex')", "assert": { "type": "hasPrint", "text": "greeted: Alex" } }
+      ]</template>
+    </div>
+
+    <div class="hint">
+      <strong>Pattern.</strong> <code class="inline">RegisterNetEvent('qu:greet')</code> then <code class="inline">AddEventHandler('qu:greet', function(name) print('greeted: ' .. name) end)</code>.
+      <p style="margin: 10px 0 0 0;"><strong>If the handler test fails:</strong> you may have registered the event but never attached the function, or you attached the function to the wrong event name.</p>
+    </div>
+
+    <h2 class="day-section-title">The goal of Lab 2 -> in plain English</h2>
+    <div class="prose">
+      <p>Now you flip the direction. Instead of the test firing an event for you, your own command will fire one.</p>
+      <ul>
+        <li>The player types <code class="inline">/ping</code>.</li>
+        <li>Your command handler runs.</li>
+        <li>Inside the handler, you send a message to the server: <code class="inline">qu:ping</code> with the word <code class="inline">pong</code>.</li>
+      </ul>
+      <p>This is the pattern behind most real features: command or key press on the client, validation and real action on the server.</p>
+    </div>
+
+    <h2 class="day-section-title">Lab 2 · Client-side command that pings the server</h2>
+    <p class="prose">Register a <code class="inline">/ping</code> command. When the player runs it, fire a server event called <code class="inline">qu:ping</code> with the string <code class="inline">pong</code> as its one argument, then print <code class="inline">sent pong to server</code> so the learner sees a clear success message.</p>
+    <p class="prose"><strong>What to do:</strong></p>
+    <ol class="prose">
+      <li>Keep the existing <code class="inline">RegisterCommand('ping', ...)</code> wrapper.</li>
+      <li>Inside the function, call <code class="inline">TriggerServerEvent('qu:ping', 'pong')</code>.</li>
+      <li>After that, print <code class="inline">sent pong to server</code> so the result is visible to the learner.</li>
+    </ol>
+
+    <div class="lab"
+         data-day-id="day-3"
+         data-lab-id="lab2"
+         data-lab-title="/ping command fires qu:ping on the server"
+         data-lab-objective="RegisterCommand 'ping'. Inside the handler, call TriggerServerEvent('qu:ping', 'pong'), then print 'sent pong to server'.">
+      <template class="lab-template">RegisterCommand('ping', function(source, args, rawCommand)
+  TriggerServerEvent('qu:ping', 'pong')
+  -- print a learner-facing success line here
+end, false)
+</template>
+      <template class="lab-tests">[
+        { "name": "'ping' command is registered",        "assert": { "type": "hasCommand", "name": "ping" } },
+        { "name": "Running /ping triggers qu:ping once", "run": "_sandbox_run_command('ping', 1)", "assert": { "type": "callCount", "fn": "TriggerServerEvent", "expected": 1 } },
+        { "name": "qu:ping was fired with 'pong'",       "assert": { "type": "lua", "expr": "return _sandbox.serverEvents[1] and _sandbox.serverEvents[1].name == 'qu:ping' and _sandbox.serverEvents[1].args[1] == 'pong'" } },
+        { "name": "Sandbox output says 'sent pong to server'", "assert": { "type": "hasExactPrint", "text": "sent pong to server" } }
+      ]</template>
+    </div>
+
+    <div class="prose">
+      <p><strong>If the call-count test fails:</strong> you probably used <code class="inline">TriggerEvent</code> instead of <code class="inline">TriggerServerEvent</code>. <code class="inline">TriggerEvent</code> stays local. <code class="inline">TriggerServerEvent</code> crosses the wall.</p>
+      <p><strong>If the argument test fails:</strong> check the exact event name and exact string. The test wants <code class="inline">qu:ping</code> and <code class="inline">pong</code>.</p>
+    </div>
+
+    <h2 class="day-section-title">Before you move on</h2>
+    <div class="prose">
+      <p>Stop and say these out loud:</p>
+      <ul>
+        <li>"<code class="inline">RegisterNetEvent</code> marks an event name as allowed over the network."</li>
+        <li>"<code class="inline">AddEventHandler</code> attaches the code that runs when the event fires."</li>
+        <li>"<code class="inline">TriggerServerEvent</code> sends a message from client to server."</li>
+        <li>"The client can ask, but the server is the source of truth."</li>
+      </ul>
+      <p>If those four lines feel natural now, Day 4 will make much more sense.</p>
+    </div>
+
+    <section class="lesson-recap" id="recap">
+      <h2>What you learned today</h2>
+      <ul>
+        <li><code class="inline">RegisterNetEvent</code> declares an event name so FiveM allows it to travel over the network between client and server.</li>
+        <li><code class="inline">AddEventHandler</code> attaches a function that runs when that event fires. No handler means the event does nothing.</li>
+        <li><code class="inline">TriggerServerEvent</code> sends a message from the client to the server. This is how the client asks the server to do something.</li>
+        <li>The server is the source of truth. Always validate data on the server side before acting on it.</li>
+      </ul>
+    </section>
+
+    <section id="mistakes">
+      <h2>Common mistakes</h2>
+      <details class="explain">
+        <summary>Handler never fires, no error in console</summary>
+        <div class="callout callout--danger">
+          <p>You forgot to call <code class="inline">RegisterNetEvent('yourEventName')</code> before <code class="inline">AddEventHandler</code>. Without registering the event first, FiveM silently blocks it from arriving over the network. Always register, then attach.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Event fires but the wrong handler runs (or nothing happens)</summary>
+        <div class="callout callout--danger">
+          <p>The event name string does not match. <code class="inline">'qu:greet'</code> and <code class="inline">'qu:Greet'</code> are two different events. Copy-paste the exact same string into both <code class="inline">RegisterNetEvent</code> and <code class="inline">AddEventHandler</code>. One typo and the wires are disconnected.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Server event handler runs but anyone can trigger it from the client</summary>
+        <div class="callout callout--danger">
+          <p>You are not checking <code class="inline">source</code> on the server. A cheater can fire any registered net event from their client. On the server side, always verify that <code class="inline">source</code> is a valid player and that the request makes sense before changing any state.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="reading-panel" style="margin-top: 32px;">
+      <h3>Before you move on</h3>
+      <p>Write one sentence that explains what you built today and how it works. If you cannot explain it simply, redo the labs until it clicks.</p>
+    </section>
+
+    <nav class="day-nav">
+      <a href="/starter-kit/day-2/day2">← Day 2</a>
+      <a class="day-nav-next" href="/starter-kit/day-4/day4">Day 4 · ox_lib toolkit →</a>
+    </nav>
+  </main>

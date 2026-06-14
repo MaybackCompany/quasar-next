@@ -1,0 +1,167 @@
+<LessonHero
+  crumbs="/"
+  title="NUI advanced: messages, callbacks, focus"
+  meta={[
+    { label: "You will learn", value: "Open/close, two-way messages, callbacks, focus, dev reload." },
+    { label: "Time", value: "~30 min" },
+    { label: "Prereqs", value: "NUI from scratch, P3 exports, and P8 server validation." },
+    { label: "Pass condition", value: "/phone opens, Escape releases focus, and one NUI callback returns { ok = true }." },
+    { label: "Project", value: "qu_phone" },
+  ]}
+>
+  NUI is a tablet glued over the windshield. Lua talks to it with `SendNUIMessage` (a walkie-talkie); the page talks back with `fetch` to `RegisterNUICallback`. Focus and cursor are how you decide whether the player is driving or typing.
+</LessonHero>
+
+<YouTube id="6sRWkqon048" title="UI/UX masterclass" caption="RED: FiveM UI/UX masterclass." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds NUI focus, messages, and callback response as a working FiveM resource named `qu_nui_advanced`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_nui_advanced
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_nui_advanced/
+  fxmanifest.lua
+  client.lua
+  web/index.html
+  web/app.js
+  web/style.css
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+ui_page 'web/index.html'
+files {
+    'web/index.html',
+    'web/app.js',
+    'web/style.css'
+}
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('openui', function()
+    SetNuiFocus(true, true)
+    SendNUIMessage({ show = true })
+    print('[qu_nui_advanced] opened')
+end, false)
+
+RegisterNUICallback('close', function(_, cb)
+    SetNuiFocus(false, false)
+    print('[qu_nui_advanced] closed')
+    cb({ ok = true })
+end)
+    ```
+
+    Open `web/index.html` and paste this:
+
+    ```text
+<!doctype html>
+<html><body><button id="close">Close</button><script src="app.js"></script></body></html>
+    ```
+
+    Open `web/app.js` and paste this:
+
+    ```text
+document.getElementById('close').addEventListener('click', () => { fetch('https://qu_nui_advanced/close', { method: 'POST', body: '{}' }) })
+    ```
+
+    Open `web/style.css` and paste this:
+
+    ```text
+body { display: grid; place-items: center; min-height: 100vh; }
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_nui_advanced
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_nui_advanced
+    ```
+
+    Run this test:
+
+    ```text
+    /openui, then click Close
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_nui_advanced] opened
+F8: [qu_nui_advanced] closed
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_nui_advanced does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_nui_advanced", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_nui_advanced, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_nui_advanced folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for NUI focus, messages, and callback response.",
+    "Add ensure qu_nui_advanced to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_nui_advanced`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

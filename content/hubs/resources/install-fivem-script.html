@@ -1,0 +1,237 @@
+<div class="shell shell--no-sidebar install-guide-shell">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/resources">Resources</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Install a FiveM script</span></div>
+        <h1>How to install a FiveM script</h1>
+        <p class="lede">A script is not just one file. It is a resource folder with a manifest, code, configs, assets, SQL, and dependencies. Install it like a lab: read, inspect, place, ensure, test, document.</p>
+        <div class="hero-outcome">
+          <div><dt>Outcome</dt><dd>You can install one script without missing references, wrong order, or silent dependency failures.</dd></div>
+          <div><dt>Method</dt><dd>Notes, worked examples, problem set, and grading rubric.</dd></div>
+          <div><dt>Core rule</dt><dd>Dependencies start before the script that needs them.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card">
+        <span class="tldr-card__chip">The install algorithm</span>
+        <div class="tldr-card__body">
+          <ol>
+            <li>Read the provider documentation first. Most serious paid scripts include docs; missing docs are a red flag.</li>
+            <li>Open the script folder and identify <code>fxmanifest.lua</code>, configs, SQL, client files, server files, shared files, assets, and locales.</li>
+            <li>List dependencies: framework, database bridge, UI library, inventory, target, dispatch, menu, phone, or clothing/vehicle systems.</li>
+            <li>Put dependencies above the script in <code>server.cfg</code>.</li>
+            <li>Place the script in <code>resources/</code>, organized by provider, intention, or system.</li>
+            <li>Run <code>refresh</code>, <code>ensure resource_name</code>, then check txAdmin console, F8, and the in-game result.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="notes">
+        <h2>Notes</h2>
+        <h3>What files does a FiveM script contain?</h3>
+        <p>A FiveM script is usually a <strong>resource</strong>. A resource is a folder that FiveM can start, stop, restart, and load from <code>server.cfg</code>. The resource manifest, normally <code>fxmanifest.lua</code>, tells FiveM what files belong to that resource.</p>
+        <dl class="vocab-list">
+          <div><dt><code>fxmanifest.lua</code></dt><dd>The resource manifest. It names the game, resource version, client scripts, server scripts, shared scripts, files, data files, dependencies, and escrow settings.</dd></div>
+          <div><dt><code>config.lua</code></dt><dd>Owner-editable settings: prices, coordinates, jobs, commands, language, feature toggles, webhook names, and framework options.</dd></div>
+          <div><dt><code>client.lua</code></dt><dd>Runs on each player's PC. UI, peds, cameras, markers, keybinds, client natives, and F8 errors live here.</dd></div>
+          <div><dt><code>server.lua</code></dt><dd>Runs on the server. Permissions, database saves, money, inventory, protected events, and txAdmin console errors live here.</dd></div>
+          <div><dt><code>shared.lua</code></dt><dd>Configuration or constants used by both sides. Never put secrets here because clients can read shared files.</dd></div>
+          <div><dt><code>sql/</code></dt><dd>Database migrations. Import these before testing scripts that save characters, vehicles, houses, inventory, or accounts.</dd></div>
+          <div><dt><code>stream/</code></dt><dd>Models and textures sent to players: vehicles, clothing, props, peds, maps, and MLO assets.</dd></div>
+          <div><dt><code>locales/</code></dt><dd>Translation tables. Pick the server language and verify fallback text before launch.</dd></div>
+        </dl>
+      </section>
+
+      <section id="documentation">
+        <h2>1 · Read the documentation first</h2>
+        <p>Provider documentation is not decoration. It usually tells you the framework version, dependency list, SQL import order, required config changes, item names, events, exports, and known conflicts. If the script has no docs, slow down and ask support before installing it on production.</p>
+        <div class="callout callout--tip">
+          <header>Documentation pass</header>
+          <p>Before touching <code>server.cfg</code>, write down the provider, version, supported frameworks, required dependencies, SQL files, config files, and exact resource folder name.</p>
+        </div>
+      </section>
+
+      <section id="dependencies">
+        <h2>2 · Dependencies decide the order</h2>
+        <p>A dependency is a tool your script relies on before it can start. If a phone needs <code>ox_lib</code>, <code>qb-core</code>, and <code>oxmysql</code>, those resources must start before the phone. If they start after, the script may fail with missing export errors, nil framework objects, SQL failures, or menus that never open.</p>
+        <figure class="code">
+          <header><span class="file">server.cfg</span><span class="lang">CFG</span></header>
+          <pre><code># base systems first
+ensure oxmysql
+ensure ox_lib
+
+# one framework next
+ensure qb-core
+# or: ensure es_extended
+
+# shared gameplay dependencies
+ensure ox_inventory
+ensure ox_target
+
+# provider scripts after dependencies
+ensure qs-smartphone-pro
+ensure qs-multicharacter</code></pre>
+        </figure>
+        <p>Read dependency clues in three places: the provider docs, the <code>dependencies</code> block in <code>fxmanifest.lua</code>, and any shared imports such as <code>@ox_lib/init.lua</code>.</p>
+      </section>
+
+      <section id="folders">
+        <h2>3 · Place the resource and organize folders</h2>
+        <p>Put scripts inside <code>resources/</code>. You can organize by provider, intention, or system. This keeps production readable and makes broken installs easier to isolate.</p>
+        <figure class="code">
+          <header><span class="file">resources/</span><span class="lang">Folder</span></header>
+          <pre><code>resources/
+  [standalone]/
+    oxmysql/
+    ox_lib/
+  [framework]/
+    qb-core/
+  [quasar]/
+    qs-smartphone-pro/
+    qs-multicharacter/
+    qs-vehiclekeys/
+  [jobs]/
+    qb-policejob/
+    qb-ambulancejob/
+  [assets]/
+    police_car_pack/
+    custom_clothing_pack/</code></pre>
+        </figure>
+        <p>Cfx resource commands can start a category folder, so <code>ensure [quasar]</code> starts the resources inside <code>resources/[quasar]</code>. That cleans up <code>server.cfg</code> space and organization. It does not magically remove dependency order. Only group scripts that share the same dependency level.</p>
+      </section>
+
+      <section id="server-cfg">
+        <h2>4 · Write server.cfg like a boot checklist</h2>
+        <p>Think of <code>server.cfg</code> as the opening order of your city. Database first, libraries second, framework third, framework add-ons fourth, assets and jobs after their dependencies.</p>
+        <figure class="code">
+          <header><span class="file">server.cfg</span><span class="lang">CFG</span></header>
+          <pre><code># networking and identity
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+sv_hostname "Quasar Training City"
+sv_maxclients 48
+set onesync on
+
+# database and libraries
+ensure oxmysql
+ensure ox_lib
+
+# framework
+ensure qb-core
+
+# systems
+ensure ox_inventory
+ensure ox_target
+
+# grouped scripts
+ensure [quasar]
+ensure [jobs]
+ensure [assets]</code></pre>
+        </figure>
+        <p>After adding a new folder, run <code>refresh</code> in txAdmin so the server rescans resource manifests. Then use <code>ensure resource_name</code> to start one resource without restarting the whole server.</p>
+      </section>
+
+      <section id="txadmin">
+        <h2>5 · txAdmin, OneSync, and permissions</h2>
+        <p>txAdmin is your control room. Use it to read the live console, restart resources, watch player connection issues, manage scheduled restarts, and confirm whether a script starts cleanly.</p>
+        <ul>
+          <li><strong>OneSync:</strong> keep <code>set onesync on</code> in <code>server.cfg</code> for modern servers, large player counts, server-side entities, and routing buckets.</li>
+          <li><strong>Players:</strong> txAdmin can manage player sessions, moderation actions, and server access tools depending on your setup.</li>
+          <li><strong>Admin powers:</strong> FiveM permissions use ACE principals. Your framework may add its own permission layer on top.</li>
+        </ul>
+        <figure class="code">
+          <header><span class="file">server.cfg</span><span class="lang">ACE</span></header>
+          <pre><code># Example shape only. Replace the identifier with a real license.
+add_principal identifier.license:xxxxxxxxxxxxxxxx group.admin
+add_ace group.admin command allow
+add_ace group.admin command.quit deny</code></pre>
+        </figure>
+        <p>Do not paste admin identifiers into public channels. Keep staff access in a private staff matrix and review it before launch.</p>
+      </section>
+
+      <section id="frameworks">
+        <h2>6 · QBCore and ESX checks</h2>
+        <p>Framework commands are not universal. They depend on the framework version and admin resources installed on your server. Use these as checks, not as blind copy-paste.</p>
+        <dl class="vocab-list">
+          <div><dt>QBCore</dt><dd>Confirm <code>qb-core</code> starts before QBCore scripts. Many QB servers use commands such as <code>/setjob</code>, <code>/givemoney</code>, <code>/giveitem</code>, or admin menus, but exact permissions depend on your admin resource.</dd></div>
+          <div><dt>ESX</dt><dd>Confirm <code>es_extended</code> starts before ESX scripts. ESX servers often manage jobs, groups, accounts, and inventory through ESX commands or database-backed admin tools.</dd></div>
+          <div><dt>Bridge files</dt><dd>Many paid scripts include framework bridge files. Pick one bridge, configure it once, and do not enable QBCore and ESX modes at the same time.</dd></div>
+        </dl>
+      </section>
+
+      <section id="assets">
+        <h2>7 · Clothes, peds, cars, and maps</h2>
+        <p>Assets are resources too, but they often depend on metadata and stream files instead of Lua logic.</p>
+        <dl class="vocab-list">
+          <div><dt>Clothes</dt><dd>Usually streamed files plus clothing metadata. Test in a clothing menu, check texture slots, and verify no invisible torsos or missing textures.</dd></div>
+          <div><dt>Peds</dt><dd>Ped models require correct model names, stream files, and sometimes shop or spawn config entries. Test model loading and cleanup after resource restart.</dd></div>
+          <div><dt>Cars</dt><dd>Vehicle resources often include <code>vehicles.meta</code>, <code>handling.meta</code>, textures, and model files. Test spawn code, handling, fuel, keys, trunk, garage, and <code>resmon</code>.</dd></div>
+          <div><dt>Maps and MLOs</dt><dd>Check collision, portals, ymap conflicts, doors, garages, and nearby map conflicts. Walk every entrance before launch.</dd></div>
+        </dl>
+      </section>
+
+      <section id="worked-example">
+        <h2>Worked example · Quasar folder</h2>
+        <p>You want to add three Quasar scripts. The clean owner move is to group them under <code>[quasar]</code>, but still place dependencies above the group.</p>
+        <figure class="code">
+          <header><span class="file">server.cfg</span><span class="lang">CFG</span></header>
+          <pre><code>ensure oxmysql
+ensure ox_lib
+ensure qb-core
+ensure ox_inventory
+ensure ox_target
+
+# All Quasar scripts in resources/[quasar] start here.
+# Only do this once every script inside the folder has the same required base order.
+ensure [quasar]</code></pre>
+        </figure>
+        <p>If one Quasar script must start before another, ensure them individually instead of relying on a category folder.</p>
+      </section>
+
+      <section id="problem-set">
+        <h2>Problem set</h2>
+        <ol>
+          <li><strong>Dependency order:</strong> A script needs <code>ox_lib</code>, <code>oxmysql</code>, and <code>qb-core</code>. Write the correct <code>server.cfg</code> order.</li>
+          <li><strong>Manifest reading:</strong> Open a script's <code>fxmanifest.lua</code>. List every client, server, shared, file, data file, and dependency entry.</li>
+          <li><strong>Folder strategy:</strong> Design a <code>resources/</code> tree for Quasar scripts, jobs, vehicles, maps, and standalone libraries.</li>
+          <li><strong>txAdmin lab:</strong> Run <code>refresh</code>, then <code>ensure</code> one test resource. Record the first txAdmin error if it fails.</li>
+          <li><strong>Framework check:</strong> Identify whether a script is configured for QBCore, ESX, or standalone. Explain the clue that proved it.</li>
+          <li><strong>Asset QA:</strong> Install one vehicle or ped in staging and write the spawn name, F8 result, txAdmin result, and rollback path.</li>
+        </ol>
+      </section>
+
+      <section id="evaluation">
+        <h2>Evaluation rubric</h2>
+        <div class="cheatsheet">
+          <span class="label">A-grade install</span>
+          <ol>
+            <li>Documentation was read before install.</li>
+            <li>Dependencies were listed and ordered before the script.</li>
+            <li><code>fxmanifest.lua</code> was inspected.</li>
+            <li>SQL was imported before testing persistence.</li>
+            <li>The resource folder name matches the <code>ensure</code> line.</li>
+            <li>txAdmin and F8 were checked after first start.</li>
+            <li>One normal-player test proved the feature works.</li>
+            <li>Backup, rollback, and result notes exist.</li>
+          </ol>
+        </div>
+        <p><strong>Fail condition:</strong> If you cannot explain what the script depends on, you are not ready to install it in production.</p>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">Cfx.re docs · Resource manifest</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">Cfx.re docs · Server commands</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/onesync/" target="_blank" rel="noopener">Cfx.re docs · OneSync</a></li>
+          <li><a href="/server/resources-assets">Quasar Academy · Resources and assets</a></li>
+          <li><a href="/server/txadmin-server-cfg">Quasar Academy · txAdmin and server.cfg</a></li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/resources">← Resources</a>
+        <a class="next" href="/server/resources-assets">Next: asset QA →</a>
+      </nav>
+    </main>
+
+  </div>

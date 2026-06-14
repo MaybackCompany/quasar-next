@@ -1,0 +1,145 @@
+<LessonHero
+  crumbs="Module 07 · Bonus"
+  title="Convars: server.cfg config you can read from Lua"
+  meta={[
+    { label: "You'll learn", value: "The three convar types (set, setr, sets), how each replicates, and which API to call from server vs client." },
+    { label: "You'll ship", value: "A debug toggle and a configurable starting balance for the banking script: both flippable from server.cfg with no code redeploy." },
+    { label: "Time", value: "~15 minutes" },
+    { label: "Why now", value: "You finished the banking lesson with a hard-coded starting balance. Convars let you tune that per server." },
+  ]}
+>
+  A **convar** (configuration variable) is a server-side key/value pair you set in `server.cfg` or at runtime, then read from any resource. Convars are how you externalize things that *change per server*, debug flags, database name, max stack size, Discord invite, owner ID, without editing Lua and without rebuilding the resource. Three flavors decide who sees them, the API is four functions, and you already use them every time you write `sv_hostname`.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds server.cfg convars read from server and client Lua as a working FiveM resource named `qu_convars_server_cfg`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_convars_server_cfg
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_convars_server_cfg/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+    ```
+
+    Add these lines to server.cfg above `ensure qu_convars_server_cfg`:
+
+    ```text
+set qu_convars_server_cfg_cash 750
+setr qu_convars_server_cfg_debug true
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterCommand('cashcfg', function()
+    print('[qu_convars_server_cfg] cash ' .. GetConvarInt('qu_convars_server_cfg_cash', 500))
+end, true)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('debugcfg', function()
+    print('[qu_convars_server_cfg] debug ' .. GetConvar('qu_convars_server_cfg_debug', 'false'))
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_convars_server_cfg
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_convars_server_cfg
+    ```
+
+    Run this test:
+
+    ```text
+    cashcfg, then /debugcfg
+    ```
+
+    <ExpectedOutput>
+      [qu_convars_server_cfg] cash 750
+F8: [qu_convars_server_cfg] debug true
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_convars_server_cfg does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_convars_server_cfg", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_convars_server_cfg, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_convars_server_cfg folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for server.cfg convars read from server and client Lua.",
+    "Add ensure qu_convars_server_cfg to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_convars_server_cfg`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

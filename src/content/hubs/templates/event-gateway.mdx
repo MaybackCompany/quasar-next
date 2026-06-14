@@ -1,0 +1,74 @@
+<LessonHero
+  crumbs="Event gateway"
+  title="Event gateway"
+  meta={[
+    { label: "Purpose", value: "Validated client to server to client round trip." },
+    { label: "Dependencies", value: "ox_lib (optional). FiveM server runtime." },
+    { label: "Files", value: "1 server-side script." },
+    { label: "First log", value: "[QUIET][gateway][accept] on a valid payload." },
+    { label: "Lesson", value: "Lesson 13: events: the four verbs" },
+  ]}
+>
+  Client asks. Server checks every field. Server answers with a result event. The shape every safe net interaction reuses.
+</LessonHero>
+
+<Callout variant="warn" title="Security warning">
+  The client can send any payload. Reject when `source` is 0. Validate every field type and bound. Apply a per-source cooldown before doing real work.
+</Callout>
+
+## Files
+
+Drop these into a new resource folder. Add the resource to `server.cfg` after `ox_lib`.
+
+- **server.lua**, net event handler with payload validation.
+
+## server.lua
+
+```
+-- PURPOSE: Client event to server validation to result callback.
+-- DEPENDENCIES: ox_lib.
+-- WARNING: Never trust amount, item, job, or coords from the client.
+-- Expand this: add framework permission checks.
+-- SECURITY:
+--   - Reject when source is 0, that path is server console or a spoof.
+--   - Validate every payload field server-side, do not trust the client.
+--   - Apply a per-source cooldown before doing real work.
+
+local MODULE = 'gateway'
+
+RegisterNetEvent('quasar:gateway:claim', function(payload)
+    local src = source
+    if type(payload) ~= 'table' or type(payload.amount) ~= 'number' then
+        print(('[QUIET][%s][reject] source=%s invalid payload'):format(MODULE, src))
+        TriggerClientEvent('quasar:gateway:result', src, { ok = false, reason = 'invalid_payload' })
+        return
+    end
+
+    local amount = math.floor(payload.amount)
+    if amount < 1 or amount > 100 then
+        print(('[QUIET][%s][reject] source=%s amount=%s'):format(MODULE, src, amount))
+        TriggerClientEvent('quasar:gateway:result', src, { ok = false, reason = 'bad_amount' })
+        return
+    end
+
+    print(('[QUIET][%s][accept] source=%s amount=%s'):format(MODULE, src, amount))
+    TriggerClientEvent('quasar:gateway:result', src, { ok = true, amount = amount })
+end)
+```
+
+[View raw server.lua](/templates/event-gateway/server.lua)
+
+## Install
+
+1. Create a folder `resources/[local]/qu_gateway/`.
+2. Copy `server.lua` into it.
+3. Add a minimal `fxmanifest.lua` with `server_script 'server.lua'`.
+4. Add `ensure qu_gateway` to `server.cfg` after `ensure ox_lib`.
+5. Restart the resource and trigger from a client with `TriggerServerEvent('quasar:gateway:claim', { amount = 5 })`.
+6. Match the log line `[QUIET][gateway][accept] source=… amount=5`.
+
+## Next steps
+
+- Read [Lesson 13](/lessons/trigger-event) for the four event verbs side by side.
+- Pair with [SQL save and load](/templates/sql-save-load) when the server should persist the validated payload.
+- Replace `ok = true` with a real action (give item, set job, change money) only after the validation passes.

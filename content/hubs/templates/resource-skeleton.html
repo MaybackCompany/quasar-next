@@ -1,0 +1,123 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Resource skeleton</span>
+        </div>
+        <h1>Resource skeleton</h1>
+        <p class="lede">The minimum FiveM resource: a manifest, a shared logger, and the client / server split. Start every new resource from this shape.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Boot a new resource with the right files in the right places.</dd></div>
+          <div><dt>Dependencies</dt><dd>ox_lib (optional). FiveM server <code>cerulean</code> or newer.</dd></div>
+          <div><dt>Files</dt><dd>2 starters: <code>fxmanifest.lua</code>, <code>logger.lua</code>.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][&lt;resource&gt;:boot][ok] resource started</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/anatomy-of-a-resource">Lesson 7: a real resource</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Wall rule</header>
+        <p>Server-only files (SQL, money, job changes) must never appear in <code>client_scripts</code>. The wall is the one rule that protects everything else.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>fxmanifest.lua</strong>, declares fx_version, game, scripts. Lives in the resource root.</li>
+          <li><strong>logger.lua</strong>, shared structured logger. Loads on both sides via <code>shared_scripts</code>.</li>
+        </ul>
+      </section>
+
+      <section id="fxmanifest-lua">
+        <h2>fxmanifest.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">fxmanifest.lua</span></header>
+<pre><code>-- PURPOSE: Production-ready resource skeleton.
+-- DEPENDENCIES: ox_lib optional.
+-- WARNING: Keep server-only files out of client_scripts.
+-- Expand this: add config.lua, logger.lua, client.lua, and server.lua.
+
+fx_version 'cerulean'
+game 'gta5'
+
+shared_scripts {
+    '@ox_lib/init.lua',
+    'config.lua',
+    'logger.lua'
+}
+
+client_script 'client.lua'
+server_script 'server.lua'</code></pre>
+        </figure>
+        <p><a href="/templates/resource-skeleton/fxmanifest.lua">View raw fxmanifest.lua</a></p>
+      </section>
+
+      <section id="logger-lua">
+        <h2>logger.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">logger.lua</span></header>
+<pre><code>-- PURPOSE: Shared structured logger.
+-- DEPENDENCIES: none.
+-- WARNING: Do not log secrets or tokens.
+-- Expand this: add JSON encode when you need machine-readable logs.
+
+local RESOURCE = GetCurrentResourceName()
+
+Logger = {}
+
+function Logger.info(moduleName, action, message)
+    print(('[QUIET][%s:%s][%s] %s'):format(RESOURCE, moduleName, action, message))
+end
+
+function Logger.capture(moduleName, action, fn)
+    local ok, result = pcall(fn)
+    if not ok then
+        Logger.info(moduleName, action, result)
+        Logger.info(moduleName, 'trace', debug.traceback(result))
+        return false, result
+    end
+    return true, result
+end</code></pre>
+        </figure>
+        <p><a href="/templates/resource-skeleton/logger.lua">View raw logger.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_starter/</code>.</li>
+          <li>Copy <code>fxmanifest.lua</code> and <code>logger.lua</code> into it.</li>
+          <li>Add empty <code>config.lua</code>, <code>client.lua</code>, <code>server.lua</code> beside them.</li>
+          <li>Add <code>ensure qu_starter</code> to <code>server.cfg</code> after <code>ensure ox_lib</code>.</li>
+          <li>Restart the server and watch for the resource start line.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/client-server-shared">Lesson 8</a> for the client / server / shared wall.</li>
+          <li>Add <a href="/templates/event-gateway">the event gateway</a> next so the client can ask the server safely.</li>
+          <li>Replace <code>config.lua</code> with real values only when a feature needs them.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates">&larr; Templates hub</a>
+        <a class="next" href="/templates/event-gateway">Next: event gateway &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#fxmanifest-lua">fxmanifest.lua</a>
+        <a href="#logger-lua">logger.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

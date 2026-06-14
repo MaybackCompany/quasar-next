@@ -1,0 +1,185 @@
+<LessonHero
+  crumbs="Tables"
+  title="Tables: lists, maps, and pairs"
+  meta={[
+    { label: "Lists start at 1", value: "Sequential numeric keys begin at 1, not 0." },
+    { label: "ipairs is for lists", value: "Stops at the first nil gap. Ordered." },
+    { label: "pairs is for maps", value: "Walks every key. Order is not guaranteed." },
+    { label: "One nil ruins ipairs", value: "A hole at t[3] = nil stops the loop early." },
+  ]}
+>
+  Lua has one collection type. The same table can act as a list, a map, or a struct. The bug most beginners hit is mixing the two and breaking the iterator.
+</LessonHero>
+
+## Creating tables
+
+Three styles, same data structure under the hood.
+
+```
+local list = { "apple", "banana", "cherry" }
+
+local map = {
+  name = "Maria",
+  age = 32,
+  online = true,
+}
+
+local mixed = {
+  "first",                    -- list[1]
+  "second",                   -- list[2]
+  type = "fruit",             -- map key
+}
+
+local empty = {}
+empty[1] = "added later"
+```
+
+## Reading and writing
+
+Two syntaxes, same table.
+
+```
+local player = { name = "Maria", money = 500 }
+
+print(player.name)              -- dot syntax for known keys
+print(player["name"])           -- bracket syntax for dynamic keys
+
+local key = "money"
+print(player[key])              -- 500
+
+player.job = "mechanic"         -- add a field
+player.money = nil              -- delete a field
+```
+
+## ipairs vs pairs
+
+Use case
+
+ipairs
+
+pairs
+
+Note
+
+Walk a list
+
+Yes
+
+Works but unordered
+
+Prefer ipairs for ordered lists
+
+Walk a map
+
+No
+
+Yes
+
+String keys are invisible to ipairs
+
+Stops at nil
+
+Yes
+
+No
+
+Sparse arrays break ipairs
+
+Order
+
+1, 2, 3, ...
+
+Undefined
+
+Do not rely on pairs order
+
+```
+local list = { "a", "b", "c" }
+for i, v in ipairs(list) do
+  print(i, v)                  -- 1 a / 2 b / 3 c
+end
+
+local map = { name = "Maria", age = 32 }
+for k, v in pairs(map) do
+  print(k, v)                  -- name Maria / age 32 (any order)
+end
+```
+
+## Sparse arrays break ipairs
+
+<Callout variant="warn" title="The silent loop bug">
+  If you delete an item from the middle of a list with `t[3] = nil`, `ipairs` stops at index 2. The rest of the list is invisible.
+</Callout>
+
+```
+local items = { "a", "b", "c", "d", "e" }
+items[3] = nil
+
+for i, v in ipairs(items) do
+  print(i, v)                  -- prints a, b only, stops at the gap
+end
+
+for i, v in pairs(items) do
+  print(i, v)                  -- prints all five except 3
+end
+```
+
+Two safe alternatives: rebuild the array with `table.remove(items, 3)`, or accept the gap and walk with `pairs`.
+
+## The length operator
+
+`#t` returns the length of a list. It returns *any* valid length when the table has gaps. Treat it as defined only for dense lists.
+
+```
+local list = { "a", "b", "c" }
+print(#list)                  -- 3
+
+local sparse = { "a", "b", nil, "d" }
+print(#sparse)                -- 2 or 4, both are valid
+```
+
+<Callout variant="tip" title="Counting a map">
+  `#t` does not count string keys. To count a map, walk it with `pairs` and increment a counter.
+</Callout>
+
+## Useful patterns
+
+```
+-- append to a list
+table.insert(list, "new item")
+list[#list + 1] = "also append"
+
+-- remove by index
+table.remove(list, 2)         -- shifts the rest down
+
+-- check if a map has a key
+if map.name ~= nil then ... end
+if map.name then ... end       -- shorter, but watch falsy values
+
+-- shallow copy
+local copy = {}
+for k, v in pairs(original) do copy[k] = v end
+
+-- table as a set
+local visited = {}
+visited[playerId] = true
+if visited[playerId] then ... end
+```
+
+## Common mistakes
+
+<Callout variant="warn" title="Indexing from 0">
+  `list[0]` is `nil`. Lua lists start at 1. JavaScript habit, easy fix.
+</Callout>
+
+<Callout variant="warn" title="Using ipairs on a map">
+  String keys are invisible to `ipairs`. The loop runs zero times and you wonder why.
+</Callout>
+
+<Callout variant="warn" title="Mixing list and map keys">
+  It works, but `#t` only counts the numeric part. Pick one shape per table.
+</Callout>
+
+<Callout variant="warn" title="Setting nil in the middle of a list">
+  Use `table.remove` to keep the array dense. `= nil` creates a gap that breaks `ipairs`.
+</Callout>

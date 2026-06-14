@@ -1,0 +1,212 @@
+<LessonHero
+  crumbs="Module 09 · Lesson 27"
+  title="Handling basics and safe edits"
+  meta={[
+    { label: "You'll ship", value: "A safely edited handling.meta for one vehicle, tested in-game, with a Git backup you can revert." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You'll learn", value: "What handling.meta does, where it lives, the safe-edit workflow, the four fields beginners touch, and how to revert when things go wrong." },
+    { label: "Prereqs", value: "Lesson 9b (Git & GitHub Desktop), basic resource structure (Module 01)." },
+  ]}
+>
+  Every vehicle in FiveM has a hidden file that controls how it drives: how fast it accelerates, how hard it brakes, how much grip the tires have. That file is `handling.meta`, and it is **XML, not Lua**. In this lesson you build a tiny streaming resource called `qu_handling`, change one safe value, test it, and prove you can revert it with one click in GitHub Desktop.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a vehicle that already spawns in-game, or I can spawn one with a /car command.",
+    "I have GitHub Desktop set up and I can make a commit (Lesson 9b).",
+    "I am comfortable editing an XML file in VS Code without breaking tag balance.",
+    "I can run server commands in the txAdmin Live Console and restart one resource."
+  ]}
+/>
+
+<Callout variant="fivem" title="Backup first, edit second">
+  Handling is physics data the game reads at resource start. One bad number turns a car into a rocket or a brick. Before you touch any value, make a Git commit (or copy the whole folder) so a broken car is always one revert away. Do one step, read the proof, then move to the next.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder and the stream folder" outcome="You have an empty qu_handling resource with a stream/ folder ready for the handling file.">
+    Handling files live inside a `stream/` folder. The `stream/` folder is a special FiveM folder: anything inside it replaces the matching base-game file without modifying the game itself. Inside your server's `resources` folder, create this layout:
+
+    ```text
+    resources/qu_handling/
+      fxmanifest.lua
+      stream/
+        handling.meta
+      client.lua
+    ```
+
+    Leave the files empty for now. You fill them in the next steps.
+  </Step>
+
+  <Step num={2} title="Write fxmanifest.lua" outcome="FiveM knows this resource ships a handling override and a client script.">
+    A file in `stream/` is loaded automatically for models, but a data file like `handling.meta` needs an explicit `data_file` line so FiveM knows what kind of data it is. Open `fxmanifest.lua` and paste this exactly:
+
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
+
+    author 'You'
+    description 'Vehicle handling overrides'
+    version '1.0.0'
+
+    -- Tells FiveM to load our handling override from stream/
+    data_file 'HANDLING_FILE' 'stream/handling.meta'
+
+    client_script 'client.lua'
+    ```
+
+    Do not add a `lua54 'yes'` line. Lua 5.4 is the only runtime on modern FXServer, so that line is deprecated and ignored.
+  </Step>
+
+  <Step num={3} title="Add one vehicle handling block" outcome="stream/handling.meta contains a single, valid handling entry you can edit.">
+    A real `handling.meta` is XML wrapped in `<CHandlingDataMgr>`. Each vehicle has one `<Item>` block, and the `<handlingName>` tag links that block to a vehicle model (here, the `ADDER`). Paste this minimal, valid file into `stream/handling.meta`:
+
+    ```text
+    <?xml version="1.0" encoding="UTF-8"?>
+    <CHandlingDataMgr>
+      <HandlingData>
+        <Item type="CHandlingData">
+          <handlingName>ADDER</handlingName>
+          <fMass value="1800.000000" />
+          <fInitialDriveForce value="0.350000" />
+          <fInitialDriveMaxFlatVel value="155.000000" />
+          <fBrakeForce value="0.800000" />
+          <fTractionCurveMax value="2.350000" />
+        </Item>
+      </HandlingData>
+    </CHandlingDataMgr>
+    ```
+
+    These are the four fields beginners change most:
+
+    - `fInitialDriveMaxFlatVel` is top speed in game units. About 140-155 is normal. 300 is extremely fast, 20 feels like a golf cart.
+    - `fBrakeForce` is brake strength. 0.5 to 1.0 is the normal range.
+    - `fTractionCurveMax` is tire grip. 2.0 to 2.5 is standard. Lower slides like ice, higher sticks like glue.
+    - `fMass` is weight in kg. Heavier accelerates slower but is harder to push around.
+  </Step>
+
+  <Step num={4} title="Commit the untouched baseline to Git" outcome="GitHub Desktop holds a clean snapshot you can revert to before any edit.">
+    This is the step that makes every later edit safe. Open the resource folder in GitHub Desktop (Lesson 9b), stage `qu_handling`, and commit it with a clear message:
+
+    ```text
+    chore: handling baseline before brake edit
+    ```
+
+    Now prove the revert works before you trust it. Add a temporary comment line near the top of `handling.meta`, save, and confirm GitHub Desktop shows exactly that one file changed. Then right-click the change and choose **Discard changes**. Reopen the file and confirm the comment is gone.
+
+    <ExpectedOutput>
+      GitHub Desktop history shows: chore: handling baseline before brake edit
+      After Discard changes, handling.meta has no temporary comment.
+    </ExpectedOutput>
+
+    If you are not using Git yet, copy the whole folder and name the copy `qu_handling_BACKUP` before touching any XML.
+  </Step>
+
+  <Step num={5} title="Add a /testhandling command" outcome="One command spawns a test car in front of you so you can feel each edit fast.">
+    Typing spawn menus every time is slow. Paste this helper into `client.lua`. It spawns a vehicle right in front of you and puts you in the driver seat:
+
+    ```lua
+    RegisterCommand('testhandling', function(_, args)
+        local model = args[1] or 'adder' -- default to adder if no model given
+        local hash = GetHashKey(model)
+
+        RequestModel(hash)
+        while not HasModelLoaded(hash) do
+            Wait(100) -- wait until the model is loaded into memory
+        end
+
+        local ped = PlayerPedId()
+        local coords = GetEntityCoords(ped)
+        local heading = GetEntityHeading(ped)
+
+        local vehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
+        SetPedIntoVehicle(ped, vehicle, -1) -- -1 = driver seat
+        SetModelAsNoLongerNeeded(hash) -- let the game unload the model later
+
+        print('[qu_handling] spawned ' .. model .. ' for handling test')
+    end, false)
+    ```
+  </Step>
+
+  <Step num={6} title="Start the resource and spawn the baseline car" outcome="The car spawns with the unedited handling so you have something to compare against.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_handling
+    ```
+
+    Save, then in the txAdmin Live Console run:
+
+    ```text
+    restart qu_handling
+    ```
+
+    Join the server, then run the test command in-game chat:
+
+    ```text
+    /testhandling adder
+    ```
+
+    You should drop into an Adder. Drive it, then brake. Remember how long it takes to stop, because the next step changes exactly that.
+
+    <ExpectedOutput>
+      [qu_handling] spawned adder for handling test
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={7} title="Change ONE value, restart, and feel the difference" outcome="The car brakes noticeably harder, and you know the brake field caused it.">
+    Open `stream/handling.meta` and change only the brake force. Leave every other number alone:
+
+    ```text
+    <fBrakeForce value="1.400000" />
+    ```
+
+    The game reads handling only at resource start, so the edit does nothing until you restart. In the txAdmin Live Console run:
+
+    ```text
+    restart qu_handling
+    ```
+
+    Spawn the car again with `/testhandling adder`, drive fast, then brake. It should stop clearly sooner than the baseline. If you like it, commit in GitHub Desktop with `feat: increase brake force for adder`. If not, revert and you are back to the baseline in two clicks. Changing one value at a time is the single most important habit in this lesson: if you ever change four numbers and the car feels wrong, you cannot tell which one broke it.
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Could not load resource qu_handling", fix: "Open fxmanifest.lua and check the data_file line and quotes; the path must be 'stream/handling.meta' exactly." },
+    { symptom: "The car drives exactly the same after editing", fix: "You forgot restart qu_handling, or you edited the wrong &lt;handlingName&gt; block, or the data_file line is missing from the manifest." },
+    { symptom: "The car launches into the sky", fix: "fMass went too low or fInitialDriveMaxFlatVel went absurdly high. Revert the commit and change by 10 to 20 percent at a time." },
+    { symptom: "The car slides everywhere like it is on ice", fix: "fTractionCurveMax is too low. Raise it back toward 2.0 to 2.5." },
+    { symptom: "attempt to call a nil value at /testhandling", fix: "Type /testhandling in in-game chat (client side), not the server console, and confirm client.lua is listed in the manifest." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Build a qu_handling streaming resource with a stream/ folder and a data_file 'HANDLING_FILE' line in the manifest.",
+    "Read a handling.meta block and recognize fInitialDriveMaxFlatVel, fBrakeForce, fTractionCurveMax, and fMass.",
+    "Follow the safe workflow: commit a baseline, change one value, restart qu_handling, test, then commit or revert.",
+    "Match a broken-car symptom (flying, stuck, sliding) to the field that caused it, and undo it with a GitHub Desktop revert."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Revert back to the baseline commit and restart `qu_handling`. Then change `fTractionCurveMax` from `2.350000` to `0.700000`, restart, spawn with `/testhandling adder`, and take a tight corner. Write down how the grip feels, then revert the commit so the car is back to normal.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM handling.meta documentation", href: "https://gtamods.com/wiki/Handling.meta" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
+  ]}
+/>

@@ -1,0 +1,142 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="Exports: sharing functions across resources"
+  meta={[
+    { label: "You'll learn", value: "exports('name', fn), exports.resource:fn() call syntax, fxmanifest export vs server_export, when to choose events instead" },
+    { label: "Time", value: "~18 minutes" },
+    { label: "Prereqs", value: "Lessons 13 & 14 (events)" },
+    { label: "Outcome", value: "You can build a money resource everyone else can read from with exports.qu_money:GetBalance(src)" },
+  ]}
+>
+  Events fire and forget. Exports are *function calls*: synchronous, return-a-value, same-side. They are how every framework you have ever used wires resources together, `exports.ox_inventory:GetItemCount`, `exports.ESX:getPlayerFromId`. This lesson teaches you to expose them safely and consume them without surprises.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds server exports shared across resources as a working FiveM resource named `qu_exports`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_exports
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_exports/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local balances = {}
+
+function GetBalance(src)
+    balances[src] = balances[src] or 0
+    return balances[src]
+end
+
+function AddBalance(src, amount)
+    balances[src] = GetBalance(src) + amount
+    return balances[src]
+end
+
+exports('GetBalance', GetBalance)
+exports('AddBalance', AddBalance)
+
+RegisterCommand('exportmoney', function(src)
+    print('[qu_exports] balance ' .. AddBalance(src, 50))
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_exports
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_exports
+    ```
+
+    Run this test:
+
+    ```text
+    /exportmoney
+    ```
+
+    <ExpectedOutput>
+      [qu_exports] balance 50
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_exports does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_exports", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_exports, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_exports folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for server exports shared across resources.",
+    "Add ensure qu_exports to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_exports`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

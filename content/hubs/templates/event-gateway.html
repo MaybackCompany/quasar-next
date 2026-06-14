@@ -1,0 +1,106 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Event gateway</span>
+        </div>
+        <h1>Event gateway</h1>
+        <p class="lede">Client asks. Server checks every field. Server answers with a result event. The shape every safe net interaction reuses.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Validated client to server to client round trip.</dd></div>
+          <div><dt>Dependencies</dt><dd>ox_lib (optional). FiveM server runtime.</dd></div>
+          <div><dt>Files</dt><dd>1 server-side script.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][gateway][accept]</code> on a valid payload.</dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/trigger-event">Lesson 13: events: the four verbs</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Security warning</header>
+        <p>The client can send any payload. Reject when <code>source</code> is 0. Validate every field type and bound. Apply a per-source cooldown before doing real work.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <p>Drop these into a new resource folder. Add the resource to <code>server.cfg</code> after <code>ox_lib</code>.</p>
+        <ul class="lesson-list">
+          <li><strong>server.lua</strong>, net event handler with payload validation.</li>
+        </ul>
+      </section>
+
+      <section id="server-lua">
+        <h2>server.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server.lua</span></header>
+<pre><code>-- PURPOSE: Client event to server validation to result callback.
+-- DEPENDENCIES: ox_lib.
+-- WARNING: Never trust amount, item, job, or coords from the client.
+-- Expand this: add framework permission checks.
+-- SECURITY:
+--   - Reject when source is 0, that path is server console or a spoof.
+--   - Validate every payload field server-side, do not trust the client.
+--   - Apply a per-source cooldown before doing real work.
+
+local MODULE = 'gateway'
+
+RegisterNetEvent('quasar:gateway:claim', function(payload)
+    local src = source
+    if type(payload) ~= 'table' or type(payload.amount) ~= 'number' then
+        print(('[QUIET][%s][reject] source=%s invalid payload'):format(MODULE, src))
+        TriggerClientEvent('quasar:gateway:result', src, { ok = false, reason = 'invalid_payload' })
+        return
+    end
+
+    local amount = math.floor(payload.amount)
+    if amount &lt; 1 or amount &gt; 100 then
+        print(('[QUIET][%s][reject] source=%s amount=%s'):format(MODULE, src, amount))
+        TriggerClientEvent('quasar:gateway:result', src, { ok = false, reason = 'bad_amount' })
+        return
+    end
+
+    print(('[QUIET][%s][accept] source=%s amount=%s'):format(MODULE, src, amount))
+    TriggerClientEvent('quasar:gateway:result', src, { ok = true, amount = amount })
+end)</code></pre>
+        </figure>
+        <p><a href="/templates/event-gateway/server.lua">View raw server.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create a folder <code>resources/[local]/qu_gateway/</code>.</li>
+          <li>Copy <code>server.lua</code> into it.</li>
+          <li>Add a minimal <code>fxmanifest.lua</code> with <code>server_script 'server.lua'</code>.</li>
+          <li>Add <code>ensure qu_gateway</code> to <code>server.cfg</code> after <code>ensure ox_lib</code>.</li>
+          <li>Restart the resource and trigger from a client with <code>TriggerServerEvent('quasar:gateway:claim', { amount = 5 })</code>.</li>
+          <li>Match the log line <code>[QUIET][gateway][accept] source=&hellip; amount=5</code>.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/trigger-event">Lesson 13</a> for the four event verbs side by side.</li>
+          <li>Pair with <a href="/templates/sql-save-load">SQL save and load</a> when the server should persist the validated payload.</li>
+          <li>Replace <code>ok = true</code> with a real action (give item, set job, change money) only after the validation passes.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates">&larr; Templates hub</a>
+        <a class="next" href="/templates/entity-registry">Next: entity registry &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#server-lua">server.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

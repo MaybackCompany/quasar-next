@@ -1,0 +1,347 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <a href="../index.html#server-development">Track 0</a> › <span>Step 06</span></div>
+        <h1>Connect, restart, read console</h1>
+        <p class="lede">The last 15 minutes of Track 0. You'll join your own server, learn the three "reload" commands every dev memorises, and start reading the server console with confidence. After this you're ready for Lua.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll do</dt><dd>Direct-connect to <code>localhost</code>, open the in-game console (F8), call <code>tx</code>, distinguish <code>ensure</code> / <code>restart</code> / <code>refresh</code>, and read a real server log line by line.</dd></div>
+          <div><dt>Time</dt><dd>~15 minutes</dd></div>
+          <div><dt>You need</dt><dd>Steps 03, 04, 05 done. txAdmin online (green badge), FiveM client installed.</dd></div>
+          <div><dt>You'll learn</dt><dd>F8 console &rarr; <code>connect localhost</code> &rarr; <code>tx</code> command &rarr; <code>ensure</code> vs <code>restart</code> vs <code>refresh</code> &rarr; how to read info / warn / error lines &rarr; where crash logs live</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="00f">
+        <h2>Before you start</h2>
+        <p>Each box below is a thing the next steps assume. Don't skip.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="server-online"> txAdmin shows green "Server Online" badge</label></li>
+          <li><label><input type="checkbox" data-id="fivem-client"> The FiveM client is installed (Step 01)</label></li>
+          <li><label><input type="checkbox" data-id="cfg-clean"> My <code>server.cfg</code> has no red errors in the Live Console</label></li>
+        </ul>
+      </section>
+
+      <section id="mental-model">
+        <h2>Two consoles, two jobs: in one minute</h2>
+        <p>You are about to deal with two consoles. Don't confuse them.</p>
+
+        <ul>
+          <li><strong>Server console</strong> (txAdmin's Live Console, or the OS window where FXServer.exe runs). Prints what the <em>server</em> is doing. You read it to debug script crashes.</li>
+          <li><strong>Client console</strong> (in-game, press <kbd>F8</kbd>). Prints what your <em>client</em> is seeing. You read it to debug your own connection issues. You also use it to run <code>connect</code>.</li>
+        </ul>
+
+        <p>Mental model: server console = the chef's pass. Client console = your dinner table receipt. Different views of the same kitchen.</p>
+
+        <div class="callout callout--fivem">
+          <header>FiveM note: the <code>tx</code> shortcut</header>
+          <p>Once you're connected to your own server with admin rights, the in-game console takes one magic command: <code>tx</code>. It opens the txAdmin admin menu (same thing F1 does, but via console). Useful when you're testing keybinds and F1 is busy.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Connect to your own server</h2></header>
+        <p class="step-outcome">Outcome: you're in your server's loading screen, then in-game.</p>
+        <div class="step-body">
+          <ol>
+            <li>Open the FiveM client.</li>
+            <li>Top tab &rarr; <strong>Play</strong>.</li>
+            <li>Right side &rarr; <strong>Direct Connect</strong>.</li>
+            <li>Type <code>localhost</code> in the address bar &rarr; click <strong>Connect</strong>.</li>
+            <li>Wait. The first connection downloads any custom resources you've added. The loading screen shows progress.</li>
+            <li>When you spawn in-game, you'll see the default airport intro from the CFX recipe.</li>
+          </ol>
+
+          <div class="callout callout--tip">
+            <header>Why <code>localhost</code>?</header>
+            <p><code>localhost</code> = "this same computer". You're running both the server and the client on one PC. Real players connect using your public IP or a CFX join code. For now, <code>localhost</code> is the friction-free dev loop.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Open F8 and run <code>tx</code></h2></header>
+        <p class="step-outcome">Outcome: the txAdmin in-game menu opens via the console.</p>
+        <div class="step-body">
+          <ol>
+            <li>While in-game, press <kbd>F8</kbd>. A black console drops down from the top.</li>
+            <li>Type <code>tx</code> &rarr; <kbd>Enter</kbd>. The txAdmin menu opens (same as F1).</li>
+            <li>Press <kbd>F8</kbd> again to close the console.</li>
+          </ol>
+
+          <p>F8 is also where you'll run client-side commands later: <code>showposition</code>, <code>noclip</code>, your own custom <code>RegisterCommand</code> callbacks. Get used to opening it.</p>
+
+          <div class="callout callout--gotcha">
+            <header>F8 is text, F1 is a menu</header>
+            <p>F8 = type-and-enter console. F1 = mouse-driven menu. They both reach the same admin tools, but F8 is faster for repeat actions ("teleport here", "spawn this") and lets you copy/paste IDs.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2><code>ensure</code> vs <code>restart</code> vs <code>refresh</code></h2></header>
+        <p class="step-outcome">Outcome: you'll never confuse these three again.</p>
+        <div class="step-body">
+          <p>Three different commands. Three different jobs. Memorize this:</p>
+
+          <table>
+            <thead><tr><th>Command</th><th>What it does</th><th>When to use</th></tr></thead>
+            <tbody>
+              <tr><td><code>ensure my-resource</code></td><td>Start if stopped. Restart if running.</td><td>In <code>server.cfg</code>, always. Safe re-bounce.</td></tr>
+              <tr><td><code>restart my-resource</code></td><td>Stop + start the running resource.</td><td>After editing a Lua / JS file. Live Console or in-game F8.</td></tr>
+              <tr><td><code>refresh</code></td><td>Re-scans the <code>resources/</code> folder for new sub-folders. Doesn't start anything.</td><td>After dropping a brand-new resource folder in. Then <code>ensure new-resource</code>.</td></tr>
+            </tbody>
+          </table>
+
+          <p>Try them now:</p>
+          <ol>
+            <li>In txAdmin Live Console (or F8 in-game), type <code>restart chat</code>. Watch the console echo.</li>
+            <li>Type <code>refresh</code>. Watch FXServer rescan the folder.</li>
+            <li>Type <code>ensure scoreboard</code>. If running it stops + starts; if stopped it just starts.</li>
+          </ol>
+
+          <div class="callout callout--warn">
+            <header>Don't <code>stop</code> a resource you're about to <code>start</code></header>
+            <p>Beginners often type <code>stop chat</code> then <code>start chat</code>. That's two commands and a window where chat is dead. <code>restart chat</code> does both atomically. Faster, fewer mistakes.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>You're inside your own server</h3></header>
+        <p>You ran <code>connect localhost</code> from FiveM, you spawned in, you opened F8 and ran <code>tx</code>, and you triggered a <code>restart chat</code> from somewhere (Live Console or F8). If yes, you've closed the loop: you can edit, restart, observe.</p>
+        <div class="self-check">
+          <details>
+            <summary>"Connection failed: timed out"</summary>
+            <p>Your <code>endpoint_add_udp "0.0.0.0:30120"</code> line is missing or the txAdmin server is on a different port. Check txAdmin's Live Console for "Started UDP listener on port 30120". If it's a different port, use <code>connect localhost:PORT</code>.</p>
+          </details>
+          <details>
+            <summary>F8 doesn't open</summary>
+            <p>Your keyboard layout might map F8 elsewhere. In FiveM go to Settings &rarr; Key Bindings &rarr; search "console". Re-bind to <kbd>~</kbd> if you prefer.</p>
+          </details>
+          <details>
+            <summary>I can connect but the screen is black with no UI</summary>
+            <p>The recipe's <code>basic-gamemode</code> resource crashed. Check the Live Console for red lines. Often a missing dependency in <code>fxmanifest.lua</code>. Run <code>refresh</code> then <code>ensure basic-gamemode</code>.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Read the server console: one line at a time</h2></header>
+        <p class="step-outcome">Outcome: you can look at any console line and label it info / warn / error.</p>
+        <div class="step-body">
+          <p>Open txAdmin &rarr; Live Console. You'll see lines like these. Read them top to bottom:</p>
+
+<pre><code class="language-bash">[    info] Console: Resource scoreboard started.
+[    info] Player [Kishi] connected from 127.0.0.1.
+[    warn] CFX: dependency 'es_extended' not found, scoreboard may misbehave
+[   error] SCRIPT ERROR: @scoreboard/cl_score.lua:42: attempt to index nil value (global 'PlayerData')
+stack traceback:
+    @scoreboard/cl_score.lua:42: in function &lt;@scoreboard/cl_score.lua:40&gt;</code></pre>
+
+          <p>How to read these:</p>
+          <ul>
+            <li><strong><code>info</code></strong>, FYI. Resource starts, players join, no problem.</li>
+            <li><strong><code>warn</code></strong>, "you should know". Server still runs, but something's off (missing dependency, deprecated API).</li>
+            <li><strong><code>error</code></strong>, something broke. Almost always tells you the file + line number. Open it. Read the line. Fix it.</li>
+            <li><strong>stack traceback</strong>, the call chain that led to the error. The top line is where it actually exploded; the lines below are who called it.</li>
+          </ul>
+
+          <div class="callout callout--tip">
+            <header>Triage rule</header>
+            <p>Red &gt; yellow &gt; white. Always read all red lines first. A single error often cascades into dozens of warnings. Fix the error, the warnings vanish.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Where logs actually live on disk</h2></header>
+        <p class="step-outcome">Outcome: when txAdmin can't show you something, you know where to look on disk.</p>
+        <div class="step-body">
+          <p>txAdmin's Live Console only shows recent output (about the last 5,000 lines). For older logs, FXServer writes to disk:</p>
+
+          <table>
+            <thead><tr><th>File</th><th>What's in it</th></tr></thead>
+            <tbody>
+              <tr><td><code>server-data/.txAdmin/data/default/logs/fxserver.log</code></td><td>Full FXServer console rolling log. Searchable.</td></tr>
+              <tr><td><code>server-data/.txAdmin/data/default/logs/admin.log</code></td><td>Admin actions: who ran <code>kick</code>, <code>ban</code>, restarts.</td></tr>
+              <tr><td><code>server-data/CitizenFX_log_*.log</code></td><td>Generated on crash. Send this to support if FXServer dies.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout--gotcha">
+            <header>The log path can move</header>
+            <p>If you started txAdmin with a non-default profile or moved <code>server-data</code>, log paths shift. The constant: they always sit under <code>server-data/.txAdmin/data/&lt;profile&gt;/logs/</code>. Search the folder with <code>dir /s admin.log</code> on Windows or <code>find . -name admin.log</code> on Linux/Mac.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>The "edit &rarr; restart &rarr; observe" loop</h2></header>
+        <p class="step-outcome">Outcome: you internalize the dev loop you'll repeat thousands of times.</p>
+        <div class="step-body">
+          <p>Every script change you make from now on follows this loop:</p>
+
+          <ol>
+            <li><strong>Edit</strong> the Lua file in VS Code. Save (<kbd>Ctrl</kbd>+<kbd>S</kbd>).</li>
+            <li><strong>Restart</strong> the resource. Two ways:
+              <ul>
+                <li>txAdmin &rarr; Resources tab &rarr; <strong>Restart</strong> on the row.</li>
+                <li>In-game F8 &rarr; <code>restart my-resource</code>.</li>
+              </ul>
+            </li>
+            <li><strong>Observe</strong>. Check the Live Console for new errors. Trigger the feature you changed (run a command, drive into a zone, fire an event). Did it work?</li>
+            <li>If broken &rarr; read the red line. Edit. Repeat.</li>
+          </ol>
+
+          <p>Every Lua course on the planet drills this loop. Build it as muscle memory now, and the rest of the curriculum is just "what to type in step 1".</p>
+
+          <div class="callout callout--pro">
+            <header>Pro habit: keep two windows side by side</header>
+            <p>Left half of your monitor: VS Code with the Lua file. Right half: txAdmin Live Console (or FiveM with F8 open). You edit on the left, you watch on the right, you save and the right side reacts. No alt-tab. Massive speed-up.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>You read the console like an adult</h3></header>
+        <p>Open the Live Console. Find one <code>info</code> line, one (likely no) <code>warn</code> line, and zero <code>error</code> lines (if you have errors, fix them now, that's the whole point of this lesson). Open Resources, restart any resource, watch its lifecycle in the console: <code>Stopping resource X</code> &rarr; <code>Started resource X</code>. If you can label every line type, you've leveled up from "scared of the black screen" to "developer".</p>
+        <div class="self-check">
+          <details>
+            <summary>The Live Console is empty</summary>
+            <p>Possibly your txAdmin lost its connection to FXServer. Click <strong>Restart Server</strong> top-right. If still empty, check the OS console where you started <code>FXServer.exe</code>, it might have crashed silently.</p>
+          </details>
+          <details>
+            <summary>I see only red errors and don't know which to fix first</summary>
+            <p>Scroll up. The <strong>first</strong> red line is usually the root cause; everything after is fallout. Fix the topmost error, restart, see what's left.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes &amp; what they look like</h2>
+
+        <details class="explain">
+          <summary>I edited the file but the server still runs the old code</summary>
+          <div class="callout callout--danger">
+            <p>You forgot to <code>restart</code> the resource. Saving the file doesn't reload it, FXServer caches the loaded version until you tell it to reload.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Console says "could not find resource"</summary>
+          <div class="callout callout--danger">
+            <p>Folder name typo, or you forgot <code>refresh</code> after dropping a new folder in. <code>refresh</code> first, <code>ensure</code> second. Names are case-sensitive on Linux servers.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Server runs fine, but I can't connect: "rejected, banlist server-side"</summary>
+          <div class="callout callout--danger">
+            <p>You banned yourself by accident in the Players panel. Open <code>server-data/.txAdmin/data/default/playersDB.json</code>, find your identifier, set the ban entry to <code>"revoked"</code>. Or simpler: txAdmin &rarr; Players &rarr; Bans &rarr; revoke.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>"FXServer.exe has stopped working": whole window vanished</summary>
+          <div class="callout callout--danger">
+            <p>Look for a <code>CitizenFX_log_*.log</code> in <code>server-data/</code>. The bottom of that file shows the crash. Often a Lua resource ran an infinite loop or hit a memory limit. Disable suspect resources in <code>server.cfg</code> (comment out the <code>ensure</code> line), restart, isolate the bad one.</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. You're in-game and want to open the txAdmin admin menu via console. What do you type in F8?</legend>
+            <label><input type="radio" name="q1" value="a"> <code>txadmin</code></label>
+            <label><input type="radio" name="q1" value="b"> <code>tx</code></label>
+            <label><input type="radio" name="q1" value="c"> <code>open admin</code></label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. You drop a brand-new resource folder into <code>resources/</code>. Which command sequence reflects it?</legend>
+            <label><input type="radio" name="q2" value="a"> <code>start my-resource</code> alone</label>
+            <label><input type="radio" name="q2" value="b"> <code>restart my-resource</code></label>
+            <label><input type="radio" name="q2" value="c"> <code>refresh</code> then <code>ensure my-resource</code></label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. You see a red <code>error</code> line and four yellow <code>warn</code> lines underneath. Where do you start?</legend>
+            <label><input type="radio" name="q3" value="a"> Fix the topmost error first, warnings often disappear with it</label>
+            <label><input type="radio" name="q3" value="b"> Fix the warnings first because there are more of them</label>
+            <label><input type="radio" name="q3" value="c"> Restart the server and see if it goes away</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. You change one line in <code>cl_score.lua</code>. What's the fastest way to apply it?</legend>
+            <label><input type="radio" name="q4" value="a"> Restart the entire server</label>
+            <label><input type="radio" name="q4" value="b"> <code>restart scoreboard</code> from F8 or txAdmin Resources tab</label>
+            <label><input type="radio" name="q4" value="c"> Re-run the recipe</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: the dev loop</h2>
+        <dl>
+          <div><dt>Direct Connect &rarr; <code>localhost</code></dt><dd>Join your own server from the FiveM client.</dd></div>
+          <div><dt><kbd>F8</kbd></dt><dd>In-game console. Type-and-enter commands.</dd></div>
+          <div><dt><kbd>F1</kbd> or <code>tx</code></dt><dd>Open the txAdmin admin menu (mouse / via console).</dd></div>
+          <div><dt><code>ensure X</code></dt><dd>Start if stopped, restart if running. Use in <code>server.cfg</code>.</dd></div>
+          <div><dt><code>restart X</code></dt><dd>Stop + start. Use after editing a script.</dd></div>
+          <div><dt><code>refresh</code></dt><dd>Re-scan <code>resources/</code> for new folders. Then <code>ensure</code>.</dd></div>
+          <div><dt><code>status</code></dt><dd>Players online + uptime, from Live Console.</dd></div>
+          <div><dt><code>fxserver.log</code></dt><dd>Persistent log at <code>server-data/.txAdmin/data/default/logs/</code>.</dd></div>
+          <div><dt><code>info</code> / <code>warn</code> / <code>error</code></dt><dd>White / yellow / red. Triage red first.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Connect to your own server with Direct Connect &rarr; <code>localhost</code></li>
+          <li>F8 = client console (text). F1 = txAdmin menu (mouse). <code>tx</code> = same as F1 from the F8 console.</li>
+          <li><code>ensure</code> for cfg, <code>restart</code> for hot reload, <code>refresh</code> for new folders</li>
+          <li>Server console lines are <code>info</code> / <code>warn</code> / <code>error</code>, fix red first</li>
+          <li>Persistent logs sit at <code>server-data/.txAdmin/data/default/logs/</code></li>
+          <li>The loop you'll repeat forever: <strong>edit &rarr; restart &rarr; observe</strong></li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Run the full dev loop once, end to end:</p>
+        <ol>
+          <li>Direct-connect to <code>localhost</code> in FiveM.</li>
+          <li>Open <kbd>F8</kbd>, type <code>tx</code>, confirm the menu opens, close it.</li>
+          <li>Alt-tab to txAdmin. In Resources, click <strong>Restart</strong> on <code>chat</code>.</li>
+          <li>Alt-tab back. In-game chat should auto-rejoin (you might see a brief "chat reconnecting" notice).</li>
+          <li>Open the Live Console. Find the <code>Started resource chat</code> info line.</li>
+        </ol>
+        <p class="expected">Expected outcome</p>
+        <p>You connected once, opened the admin menu via F8, restarted one resource without dropping the session, and read the corresponding console line. That is the daily life of a FiveM developer in five minutes.</p>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">CFX docs · Server commands (start, stop, restart, ensure, refresh)</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" target="_blank" rel="noopener">CFX docs · Lua scripting runtime (next track)</a></li>
+        </ul>
+      </section>
+
+      <section class="callout callout--tip" id="next-lua">
+        <header>Next: create your first Lua resource</header>
+        <p>You now have the loop that Lesson 01 expects: connect, restart a resource, and read the console. Go to <a href="../clase-0/leason0.html">Your first line of Lua</a> or, in the new app route, <a href="/lessons/first-line-of-lua">first-line-of-lua</a>. The first proof is small: a resource folder, <code>fxmanifest.lua</code>, <code>server.lua</code>, and one console message.</p>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Create a tiny resource: a folder in <code>resources/</code> called <code>hello</code>, with an <code>fxmanifest.lua</code> (<code>fx_version 'cerulean' game 'gta5' client_script 'main.lua'</code>) and a <code>main.lua</code> printing <code>print("hello world")</code>. <code>refresh</code> + <code>ensure hello</code>. Watch <code>hello world</code> appear in the F8 client console. You've shipped your first script.</li>
+          <li>Add a second admin in txAdmin. Have them <code>connect</code> to your server (give them your IPv4). Watch their join in the Live Console. This is what production looks like.</li>
+          <li>Stop one resource intentionally (<code>stop chat</code>). Try to send a chat message. Confirm nothing happens. <code>start chat</code>. It works again. You've just experienced "a feature is one resource".</li>
+        </ul>
+      </section>

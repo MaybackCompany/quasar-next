@@ -1,0 +1,73 @@
+<LessonHero
+  crumbs="Module A3 · Operate & secure"
+  title="DDoS, proxy, and networking basics"
+  meta={[
+    { label: "You'll learn", value: "Why your server is unreachable or laggy, what a proxy/filter actually does, and which ports matter." },
+    { label: "Time", value: "~20 minutes." },
+    { label: "You need", value: "A server you can reach (local or VPS) and access to its firewall settings." },
+    { label: "You'll learn", value: "Ports -> why connections fail -> what DDoS protection does -> when to use a proxy/filter -> what hosting handles for you" },
+  ]}
+>
+  Owners ask the same three questions: why can nobody join, why does it lag under load, and why am I getting attacked. This lesson gives you the mental model. You will not become a network engineer, but you will stop guessing and know what to check and what to ask your host.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a server running (local or on a VPS).",
+    "I can open my firewall or VPS network settings.",
+    "I know my server's public address and port."
+  ]}
+/>
+
+<Callout variant="fivem" title="The ports that matter">
+  FiveM uses TCP and UDP on the same port (default `30120`). Both must be open and forwarded to your server machine. If only TCP is open, players see the server but cannot fully connect; UDP carries the game traffic.
+</Callout>
+
+## How connections actually work
+
+<StepGroup>
+  <Step num={1} title="Open the port on both TCP and UDP" outcome="Players can reach the server at all.">
+    Forward `30120` (or your `endpoint_add` port) on **both TCP and UDP** from the firewall/router to the server machine. A server that boots fine but nobody can join is almost always a closed UDP port or a missing port forward.
+  </Step>
+
+  <Step num={2} title="Understand what causes the lag" outcome="You can tell a network problem from a server-side one.">
+    Lag has two homes. **Server-side** lag (high server thread time, resmon over budget) is a script problem, not a network one. **Network** lag (high ping, packet loss) is bandwidth, distance, or an attack. Check resmon first; if the server thread is healthy but ping is bad, it is the network.
+  </Step>
+
+  <Step num={3} title="Know what DDoS protection does" outcome="You can ask your host the right question.">
+    A DDoS attack floods your connection so real players cannot get through. Protection (filtering, scrubbing, a proxy in front of your server) absorbs and drops the junk traffic before it reaches you. This is mainly a **hosting feature**, not something a beginner configures by hand. The practical move is to pick a host that includes filtered/anti-DDoS networking.
+  </Step>
+
+  <Step num={4} title="Hide the origin behind a proxy when needed" outcome="Attackers cannot target your real machine directly.">
+    If attackers know your raw server IP, they can target it directly. A proxy or filtered IP keeps the origin private and only exposes the protected front. Good FiveM hosts provide this; if you self-host, it is significant extra work.
+  </Step>
+</StepGroup>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Server boots but nobody can connect", fix: "Open and forward the port on BOTH TCP and UDP. UDP is the one beginners forget." },
+    { symptom: "Everyone lags at once", fix: "Check resmon. If a resource is over budget it is server-side, not network. Fix the script first." },
+    { symptom: "Constant targeted attacks", fix: "Your raw IP is exposed. Move to a host with filtered/anti-DDoS networking or a proxy that hides the origin." },
+    { symptom: "Only some regions can join", fix: "Likely a routing/firewall rule or ISP issue; confirm the port is open to the public internet, not just your LAN." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Forward your server port on both TCP and UDP.",
+    "Separate server-side lag (resmon) from network lag (ping/packet loss).",
+    "Explain what DDoS protection does and treat it as a hosting choice.",
+    "Keep your origin IP private behind a proxy/filtered IP when attacked."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "Cfx.re docs · server.cfg endpoints", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" }
+  ]}
+/>

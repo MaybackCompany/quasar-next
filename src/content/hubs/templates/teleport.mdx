@@ -1,0 +1,251 @@
+<LessonHero
+  crumbs="Teleport command"
+  title="Teleport command"
+  meta={[
+    { label: "Purpose", value: "Give players a quick way to jump between fixed map locations." },
+    { label: "Dependencies", value: "None. Pure native calls, no framework, no ox_lib, no oxmysql." },
+    { label: "Files", value: "2 starters: fxmanifest.lua, client/client.lua." },
+    { label: "Command", value: "/tp 1 teleports to the first location in the table." },
+    { label: "Build note", value: "The advanced version needs game build 2372 or newer for the effect." },
+  ]}
+>
+  A drop-in `/tp` command. Players type a number, the script reads a table of named spots, and `SetEntityCoords` moves them there. Ships with a plain version and an advanced version that adds a particle burst on arrival.
+</LessonHero>
+
+<Callout variant="tip" title="How to drop it in">
+  Make a folder like `resources/[local]/qu_teleport/`, drop in `fxmanifest.lua` and a `client/` folder holding `client.lua`, then add `ensure qu_teleport` to your `server.cfg`. Restart and type `/tp 1` in chat. That is the whole install.
+</Callout>
+
+<Callout variant="fivem" title="Why this is client-only">
+  Teleporting moves your own ped, and your ped lives on the client. There is no money, no database, no job change here, so nothing needs the server. That is why the manifest only declares `client_scripts`. Keep it that way: a teleport that runs through the server is slower and gives exploiters a free event to spam.
+</Callout>
+
+## fxmanifest.lua
+
+The manifest is the entry point. It tells FiveM the FX version, the game, and which files to load on the client. This is the minimum a teleport resource needs.
+
+```
+fx_version 'cerulean'
+game 'gta5'
+
+name "kee_gan"
+description "quasar university - prologue"
+author "kee_ga"
+version "1.0.0"
+
+lua54 'yes'
+
+client_scripts {
+    'client/*.lua'
+}
+```
+
+- `fx_version`: the FXServer version this resource targets.
+- `client_scripts`: the files that run on the client. The `*` glob loads every `.lua` in `client/`.
+
+## The moving parts
+
+Before the full file, here is each piece on its own so you know what every line is doing.
+
+### RegisterCommand
+
+This creates the in-game command players type to trigger the teleport.
+
+```
+RegisterCommand('tpplayer', function(source, args)
+    -- Code executed when the command is used
+end)
+```
+
+- `source`: the ID of the player who ran the command.
+- `args`: a table of the extra words typed after the command.
+
+### The locations table
+
+A table keeps your teleport spots in one tidy place. Each entry holds coordinates and a readable name.
+
+```
+local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = "Main Rooftop" },
+    { x = -428.0, y = 1111.0, z = 327.0, name = "Vinewood" }
+}
+```
+
+- `x, y, z`: the destination coordinates.
+- `name`: a friendly label you show in chat.
+
+### Validating input
+
+Before you move anyone, check the input is real. This guard is what keeps a typo from crashing the script.
+
+```
+if targetId and locationIndex and teleportLocations[locationIndex] then
+    -- Execute teleport logic
+else
+    -- Show error message
+end
+```
+
+- `targetId`: confirms the player ID is present.
+- `locationIndex`: confirms a number was passed.
+- `teleportLocations[locationIndex]`: confirms that slot actually exists.
+
+<Callout variant="warn" title="Always validate input">
+  Validate the index before you touch coordinates. If a player types `/tp banana` or `/tp 99`, an unguarded lookup feeds `nil` into `SetEntityCoords` and the script errors. The `if` check above is not optional polish, it is what stops the crash.
+</Callout>
+
+### SetEntityCoords
+
+This native is the actual teleport. It picks up the player ped and drops it at your coordinates.
+
+```
+SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)
+```
+
+- `PlayerPedId()`: returns the current player entity.
+- `location.x, location.y, location.z`: where to put them.
+- The first three `false` flags skip axis rotation; the trailing `true` clears the area at the destination.
+
+### Server-to-client events
+
+If you ever want one player to teleport another, the server hands the work to the target client with an event. The plain template below stays fully client-side, but this is the shape you reach for when an admin teleports someone else.
+
+```
+TriggerClientEvent('teleportPlayer', targetId, location)
+```
+
+- `'teleportPlayer'`: the name of your custom event.
+- `targetId`: the player who receives it.
+- `location`: the data sent along, here the destination.
+
+<Callout variant="tip" title="Name events clearly">
+  Use descriptive event names like `qu:teleport:toSpot` instead of `tp1`. Six months from now the long name still tells you what fires it.
+</Callout>
+
+### Error messages
+
+When the input fails, tell the player why instead of going silent. A red chat line plus a console print covers both the player and you.
+
+```
+TriggerClientEvent('chat:addMessage', source, {
+    color = { 255, 0, 0 },
+    args = { "Error", "Invalid player ID or location index!" }
+})
+
+print("Position not valid! Use /tp [1-3].")
+```
+
+## Beginner version: simple teleport
+
+This is the whole thing in one file. It registers `/tp`, reads the number you type, validates it, and moves you. No effects, no extras. Start here.
+
+```
+-- Configuration for teleport locations
+local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = "Main Rooftop" },
+    { x = -428.0, y = 1111.0, z = 327.0, name = "Vinewood" },
+    { x = 402.0, y = -996.0, z = -100.0, name = "Hidden Bunker" }
+}
+
+-- Register the /tp command
+RegisterCommand('tp', function(source, args)
+    local locationIndex = tonumber(args[1])
+    if locationIndex and teleportLocations[locationIndex] then
+        local location = teleportLocations[locationIndex]
+        SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)
+        TriggerEvent('chat:addMessage', {
+            color = { 0, 255, 0 },
+            multiline = true,
+            args = { "Teleport", "You've been teleported in: " .. location.name }
+        })
+        print("You've been teleported in: " .. location.name)
+    else
+        TriggerEvent('chat:addMessage', {
+            color = { 255, 0, 0 },
+            multiline = true,
+            args = { "Error", "Position not valid! Use /tp [1-3]." }
+        })
+        print("Position not valid! Use /tp [1-3].")
+    end
+end)
+```
+
+- `RegisterCommand`: wires up the `/tp` command.
+- `teleportLocations`: your list of destinations with coordinates and names.
+- `SetEntityCoords`: moves the player to the chosen spot.
+
+<Callout variant="tip" title="Good enough to ship">
+  This plain version is complete on its own. Add the effects below only when you actually want the visual flourish.
+</Callout>
+
+## Advanced version: teleport with a particle burst
+
+Same logic, with a particle effect played at the player before they jump. It loads a named PTFX asset, waits for it, fires it, and then teleports.
+
+<Callout variant="fivem" title="Game build requirement">
+  This version needs game build 2372 or newer and the particle dictionary loaded before use. On older builds the effect calls fail. If you are not sure of your build, ship the beginner version instead.
+</Callout>
+
+```
+-- Configuration for teleport locations
+local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = "Main Rooftop" },
+    { x = -428.0, y = 1111.0, z = 327.0, name = "Vinewood" },
+    { x = 402.0, y = -996.0, z = -100.0, name = "Hidden Bunker" }
+}
+
+-- Register the /tp command
+RegisterCommand('tp', function(source, args)
+    local locationIndex = tonumber(args[1])
+    if locationIndex and teleportLocations[locationIndex] then
+        local location = teleportLocations[locationIndex]
+        RequestNamedPtfxAsset("scr_rcbarry2")
+        while not HasNamedPtfxAssetLoaded("scr_rcbarry2") do
+            Citizen.Wait(0)
+        end
+        UseParticleFxAssetNextCall("scr_rcbarry2")
+        StartParticleFxNonLoopedAtCoord(
+            "scr_clown_appears",
+            GetEntityCoords(PlayerPedId()),
+            0.0, 0.0, 0.0,
+            1.0, false, false, false
+        )
+        SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)
+        TriggerEvent('chat:addMessage', {
+            color = { 0, 255, 0 },
+            multiline = true,
+            args = { "Teleport", "You've been teleported in: " .. location.name }
+        })
+        print("You've been teleported in: " .. location.name)
+    else
+        TriggerEvent('chat:addMessage', {
+            color = { 255, 0, 0 },
+            multiline = true,
+            args = { "Error", "Position not valid! Use /tp [1-3]." }
+        })
+        print("Position not valid! Use /tp [1-3].")
+    end
+end)
+```
+
+- `RegisterCommand`: registers the `/tp` command.
+- `teleportLocations`: the list of destinations with coordinates and names.
+- `SetEntityCoords`: teleports the player to the chosen location.
+- `StartParticleFxNonLoopedAtCoord`: plays the visual burst at the player before they move.
+
+## Test it
+
+1. Add the resource to `server.cfg` with `ensure keegan_university_1` (or whatever you named the folder).
+2. Start your FiveM server and join as a player.
+3. Type `/tp 1` to jump to the first location in the table.
+
+<Callout variant="warn" title="Test locally first">
+  Run this on a local or test server before you put it on a live one. A bad coordinate or a missing build feature is much easier to catch when no players are watching.
+</Callout>
+
+## Make it yours
+
+- Edit the `teleportLocations` table: add, remove, or rename spots and drop in your own coordinates.
+- Rename the command from `tp` to whatever fits your server, and update the help text in the error message to match the number of locations.
+- Want one player to teleport another? Move the logic behind a server event using the `TriggerClientEvent` pattern shown above, and add an admin check before you trust the caller.
+- Swap the particle dictionary in the advanced version for any effect your build supports, or delete the effect block entirely to keep things plain.

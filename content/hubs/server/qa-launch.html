@@ -1,0 +1,258 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/server">Server Owner Path</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Lesson 7</span></div>
+        <h1>QA and launch</h1>
+        <p class="lede">Public launch is a gate, not a guess. This rehearsal proves backups, saves, staff permissions, rollback, and support paths before real players depend on the server.</p>
+        <div class="hero-outcome">
+          <div><dt>Outcome</dt><dd>A pass/fail launch sheet, backup restore proof, rollback proof, and escalation path.</dd></div>
+          <div><dt>Owner role</dt><dd>Approves scope, watches player path, confirms staff and support readiness.</dd></div>
+          <div><dt>Developer role</dt><dd>Runs technical checks, fixes errors, owns rollback commands, and signs off console health.</dd></div>
+          <div><dt>Duration</dt><dd>60-90 minutes.</dd></div>
+          <div><dt>Prerequisites</dt><dd>Staging server, backup access, staff matrix, and rollback target.</dd></div>
+          <div><dt>Pass condition</dt><dd><code>launch-report.md</code> shows backup restore, rollback, permissions, and console health all passing.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card">
+        <span class="tldr-card__chip">Stop rule</span>
+        <div class="tldr-card__body">
+          <p>Do not launch with broken saves, unknown red console errors, missing backups, staff permission leaks, exposed secrets, or no rollback path.</p>
+        </div>
+      </section>
+
+      <section id="roles">
+        <h2>Launch rehearsal roles</h2>
+        <table>
+          <thead><tr><th>Person</th><th>Owns</th><th>Must not skip</th></tr></thead>
+          <tbody>
+            <tr><td>Owner</td><td>Launch decision, community messaging, support escalation, budget risk</td><td>First-hour loop and refund/incident rules</td></tr>
+            <tr><td>Developer</td><td>Server health, resource order, database backup, rollback commands</td><td>Console errors, SQL import state, artifact version</td></tr>
+            <tr><td>Moderator</td><td>Reports, whitelist if used, player behavior, staff test account</td><td>Permission boundary tests</td></tr>
+            <tr><td>Tester</td><td>Normal player flow with no admin tools</td><td>Saving money, inventory, vehicles, and reconnect state</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Create a launch rehearsal folder</h2></header>
+        <p class="step-outcome">Outcome: every proof file lands in one place.</p>
+        <div class="step-body">
+          <ol>
+            <li>Create <code>Documents\FiveM\Launch-Rehearsal\</code>.</li>
+            <li>Inside it create <code>launch-report.md</code>, <code>backup-proof.md</code>, <code>rollback-proof.md</code>, and <code>support-escalation.md</code>.</li>
+            <li>Open the folder in VS Code.</li>
+          </ol>
+          <p class="expected">Visual check</p>
+          <p>VS Code shows the four launch-rehearsal files in the folder.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Prove database backup and restore</h2></header>
+        <p class="step-outcome">Outcome: the team knows a backup can actually restore, not just exist.</p>
+        <div class="step-body">
+          <ol>
+            <li>Open HeidiSQL.</li>
+            <li>Right-click the production or staging database, for example <code>fivem</code>.</li>
+            <li>Click <strong>Export database as SQL</strong>.</li>
+            <li>Choose <strong>Structure and data</strong>.</li>
+            <li>Save to <code>Launch-Rehearsal\backup-before-launch.sql</code>.</li>
+            <li>Create a new test database named <code>restore_test</code>.</li>
+            <li>Import the SQL into <code>restore_test</code>.</li>
+            <li>Open several important tables, such as players, owned vehicles, inventory, and jobs.</li>
+          </ol>
+          <p class="expected">Expected proof</p>
+          <p><code>restore_test</code> contains the same key tables and recent test rows. To confirm, HeidiSQL shows the <code>restore_test</code> database with its tables visible.</p>
+          <div class="callout callout--danger">
+            <header>If restore fails</header>
+            <p>Stop the launch. Fix the export settings, missing permissions, or broken SQL file first. A backup that cannot restore is not a launch backup.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Run the first-hour player test</h2></header>
+        <p class="step-outcome">Outcome: a normal player can finish the core loop without staff teleporting them.</p>
+        <div class="step-body">
+          <ol>
+            <li>Ask a tester to join with a normal account.</li>
+            <li>Do not give them admin, noclip, money, or item grants.</li>
+            <li>Watch them create a character, spawn, get ID, start legal work, earn money, buy or rent a vehicle, and reconnect.</li>
+            <li>After reconnect, verify money, inventory, job state, and vehicle state saved.</li>
+            <li>Write pass/fail beside every step.</li>
+          </ol>
+          <figure class="code">
+            <header><span class="file">launch-report.md</span><span class="lang">Markdown</span></header>
+            <pre><code># First-hour test
+Character creation: pass / fail
+Spawn location: pass / fail
+ID received: pass / fail
+Starter job starts: pass / fail
+First payment received: pass / fail
+Inventory saved after reconnect: pass / fail
+Money saved after reconnect: pass / fail
+Vehicle state saved: pass / fail
+No admin help used: pass / fail</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Check txAdmin, F8, and performance</h2></header>
+        <p class="step-outcome">Outcome: launch health is measured, not guessed.</p>
+        <div class="step-body">
+          <ol>
+            <li>Open txAdmin &rarr; <strong>Live Console</strong>.</li>
+            <li>Scroll from server start to current time. Copy the first red error into the report, or write <code>none</code>.</li>
+            <li>Ask each tester to press F8 and screenshot any repeating error.</li>
+            <li>In-game, type <code>resmon 1</code> in F8.</li>
+            <li>Visit spawn, first job, police station, hospital, vehicle rental, and one map interior.</li>
+            <li>Write the worst constantly-running resource cost you see.</li>
+          </ol>
+          <p class="expected">Pass criteria</p>
+          <p>No unknown red server errors, no constant F8 spam, no broken spawn route, and no script constantly spiking during idle testing.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Prove rollback commands</h2></header>
+        <p class="step-outcome">Outcome: the developer can undo the last risky change under pressure.</p>
+        <div class="step-body">
+          <p>Rollback crosses three different consoles. Run the steps in order and never paste a command into the wrong one. Replace <code>&lt;backup-date&gt;</code> with the folder name of the backup you are restoring.</p>
+
+          <h3>Resource rollback: restore one bad resource</h3>
+          <ol>
+            <li>In the <strong>txAdmin Live Console</strong>, stop the resource:
+              <figure class="code">
+                <header><span class="file">txAdmin Live Console</span><span class="lang">txAdmin</span></header>
+                <pre><code>stop qs-smartphone-pro</code></pre>
+              </figure>
+            </li>
+            <li>In <strong>PowerShell</strong>, with the working directory set to your <code>server-data</code> folder, move the broken copy aside and restore the backup:
+              <figure class="code">
+                <header><span class="file">PowerShell: cd into server-data/</span><span class="lang">PowerShell</span></header>
+                <pre><code>Rename-Item resources/[quasar]/qs-smartphone-pro qs-smartphone-pro_bad_&lt;backup-date&gt;
+Copy-Item -Recurse backups/&lt;backup-date&gt;/qs-smartphone-pro resources/[quasar]/qs-smartphone-pro</code></pre>
+              </figure>
+            </li>
+            <li>Back in the <strong>txAdmin Live Console</strong>, reload the resource list and start it:
+              <figure class="code" data-expected-output="Started resource qs-smartphone-pro">
+                <header><span class="file">txAdmin Live Console</span><span class="lang">txAdmin</span></header>
+                <pre><code>refresh
+ensure qs-smartphone-pro</code></pre>
+              </figure>
+            </li>
+          </ol>
+
+          <h3>Config rollback: restore server.cfg</h3>
+          <ol>
+            <li>In <strong>PowerShell</strong>, working directory <code>server-data</code>:
+              <figure class="code">
+                <header><span class="file">PowerShell: cd into server-data/</span><span class="lang">PowerShell</span></header>
+                <pre><code>Copy-Item backups/&lt;backup-date&gt;/server.cfg server.cfg</code></pre>
+              </figure>
+            </li>
+            <li>In the <strong>txAdmin Live Console</strong>, restart the affected resource:
+              <figure class="code">
+                <header><span class="file">txAdmin Live Console</span><span class="lang">txAdmin</span></header>
+                <pre><code>restart qs-smartphone-pro</code></pre>
+              </figure>
+            </li>
+          </ol>
+
+          <h3>Git rollback: only if server-data is a private git repo</h3>
+          <p>Run these in a <strong>Git terminal</strong> opened inside the tracked <code>server-data</code> folder. Inspect first, then revert the bad commit:</p>
+          <figure class="code">
+            <header><span class="file">Git terminal: in server-data/</span><span class="lang">Git</span></header>
+            <pre><code>git status
+git log --oneline -5
+git revert &lt;commit_sha&gt;</code></pre>
+          </figure>
+
+          <p class="expected">Expected output</p>
+          <p>After the resource rollback, the txAdmin console prints <code>Started resource qs-smartphone-pro</code> and the original error is gone.</p>
+        </div>
+      </section>
+
+      <section id="support">
+        <h2>Support escalation path</h2>
+        <p>Write this before launch so staff do not improvise during an incident.</p>
+        <figure class="code">
+          <header><span class="file">support-escalation.md</span><span class="lang">Markdown</span></header>
+          <pre><code># Support escalation
+Player issue:
+1. Moderator collects player name, identifier, clip, time, and symptom.
+2. Admin checks txAdmin logs and staff logs.
+3. Developer checks server console, F8 screenshot, resource docs, and recent change notes.
+4. Owner approves refunds, database edits, payment disputes, and public announcements.
+
+Vendor issue:
+1. Reproduce on staging.
+2. Collect artifact version, framework, script version, config diff, console error, and screenshots.
+3. Open seller ticket with proof.
+4. Roll back production if players are affected.</code></pre>
+        </figure>
+      </section>
+
+      <section id="pass-fail">
+        <h2>Launch pass/fail criteria</h2>
+        <table>
+          <thead><tr><th>Gate</th><th>Pass</th><th>Fail means</th></tr></thead>
+          <tbody>
+            <tr><td>Backup restore</td><td>SQL imports into <code>restore_test</code> and key tables open</td><td>No public launch</td></tr>
+            <tr><td>First-hour loop</td><td>Tester finishes without admin help</td><td>Fix onboarding before launch</td></tr>
+            <tr><td>Saves</td><td>Money, inventory, vehicle, and job survive reconnect</td><td>Fix DB/framework before launch</td></tr>
+            <tr><td>Permissions</td><td>Normal account cannot use staff tools</td><td>Fix staff matrix before launch</td></tr>
+            <tr><td>Rollback</td><td>Developer can restore one changed resource</td><td>Write and test rollback first</td></tr>
+            <tr><td>Support</td><td>Staff know who handles tickets, refunds, bugs, and vendor escalation</td><td>Delay launch or narrow launch group</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="recovery">
+        <h2>Failure recovery</h2>
+        <details class="explain">
+          <summary>A save test fails</summary>
+          <div class="callout callout--danger">
+            <p>Stop public launch. Check <code>mysql_connection_string</code>, <code>oxmysql</code> ensure order, SQL import status, and framework console errors. Re-test only after a clean restart.</p>
+          </div>
+        </details>
+        <details class="explain">
+          <summary>The launch breaks after several new resources</summary>
+          <div class="callout callout--danger">
+            <p>Use binary search: comment out half of the new <code>ensure</code> lines, restart, and see if the error disappears. Repeat until one resource remains, then roll that one back.</p>
+          </div>
+        </details>
+        <details class="explain">
+          <summary>Players report a paid script bug</summary>
+          <div class="callout callout--danger">
+            <p>Move the report into the vendor path. Collect script version, framework, artifact version, console line, F8 screenshot, reproduction steps, and whether rollback fixed it.</p>
+          </div>
+        </details>
+      </section>
+
+      <section id="decision">
+        <h2>Final launch decision</h2>
+        <figure class="code">
+          <header><span class="file">launch-report.md</span><span class="lang">Markdown</span></header>
+          <pre><code># Launch report
+Date:
+Owner:
+Developer:
+Backup restore proof: pass / fail
+First-hour loop: pass / fail
+Saves: pass / fail
+Permissions: pass / fail
+Rollback proof: pass / fail
+Support escalation: pass / fail
+Top txAdmin error: none / describe
+Top F8 error: none / describe
+Decision: launch / delay
+If delayed, next fix:</code></pre>
+        </figure>
+      </section>
+
+      <nav class="lesson-nav"><a class="prev" href="/server/staff-permissions">&larr; Staff</a><a class="next" href="/resources">Next: Resources &rarr;</a></nav>
+    </main>
+  </div>

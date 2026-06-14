@@ -1,0 +1,145 @@
+<LessonHero
+  crumbs="Module 07 · Lesson 23"
+  title="Server-only banking with audit logs"
+  meta={[
+    { label: "You'll ship", value: "A SQL-backed banking resource with persistent balances and a complete audit trail." },
+    { label: "Time", value: "~40 minutes" },
+    { label: "You'll learn", value: "Migration pattern -> audit log table -> server-computed balance -> INSERT on every action -> reading the trail" },
+    { label: "Prereqs", value: "Lesson 21 (mini banking) and Lesson 22 (SQL from zero) complete. oxmysql running." },
+  ]}
+>
+  In Lesson 21 you built a mini bank that held balances in memory. Restart the server and all the money vanished. Now you fix that. This lesson reworks the banking script to persist balances in SQL, adds an audit log that records every deposit and withdrawal, and enforces the rule that the server computes everything. The client never sends an amount. Ever.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds bank balance table plus audit log transaction as a working FiveM resource named `qu_server_only_banking_audit`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_server_only_banking_audit
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_server_only_banking_audit/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script '@oxmysql/lib/MySQL.lua'
+server_script 'server.lua'
+
+dependency 'oxmysql'
+    ```
+
+    Run this SQL before starting the resource:
+
+    ```sql
+CREATE TABLE IF NOT EXISTS qu_server_only_banking_audit_rows (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  amount INT NOT NULL DEFAULT 0
+);
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterCommand('dbtest', function(src)
+    local id = MySQL.insert.await('INSERT INTO qu_server_only_banking_audit_rows (name, amount) VALUES (?, ?)', { 'lesson', 100 })
+    local row = MySQL.single.await('SELECT * FROM qu_server_only_banking_audit_rows WHERE id = ?', { id })
+    print('[qu_server_only_banking_audit] selected ' .. row.name .. ' ' .. row.amount)
+    MySQL.update.await('UPDATE qu_server_only_banking_audit_rows SET amount = ? WHERE id = ?', { 150, id })
+    print('[qu_server_only_banking_audit] updated ' .. id)
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_server_only_banking_audit
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_server_only_banking_audit
+    ```
+
+    Run this test:
+
+    ```text
+    dbtest
+    ```
+
+    <ExpectedOutput>
+      [qu_server_only_banking_audit] selected lesson 100
+[qu_server_only_banking_audit] updated rowId
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_server_only_banking_audit does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_server_only_banking_audit", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_server_only_banking_audit, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_server_only_banking_audit folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for bank balance table plus audit log transaction.",
+    "Add ensure qu_server_only_banking_audit to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_server_only_banking_audit`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

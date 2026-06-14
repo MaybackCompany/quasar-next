@@ -1,0 +1,131 @@
+<main class="day-main">
+    <a class="kit-back" href="/starter-kit">← Back to the 7-day path</a>
+
+    <section style="margin-top: 20px">
+      <div class="day-eyebrow">Day 6 · QBCore · ~35 min</div>
+      <h1 class="day-title">QBCore fundamentals</h1>
+      <p class="day-lede">QBCore (<code class="inline">qb-core</code>) is the other big framework. The names are different from ESX, but the idea is the same: get the player, check the cash, move money safely. Today you write the same <code class="inline">/deposit</code> command again, this time in QBCore language.</p>
+    </section>
+
+    <h2 class="day-section-title">Day 6 in plain English</h2>
+    <div class="prose">
+      <p>Day 6 is Day 5 with different method names.</p>
+      <p>You still get the player. You still check the cash first. You still move 100 from cash to bank. You still stop immediately if the player cannot afford it.</p>
+      <p>The beginner trap here is thinking the longer names mean a different idea. They do not. Only the API spelling changed.</p>
+    </div>
+
+    <section class="reading-panel">
+      <h3>How to use Day 6</h3>
+      <p>Think of this as the QBCore translation day. Reuse the same mental model from Day 5: get player, check cash, move money. If the names change but the logic stays the same, you are understanding it correctly.</p>
+    </section>
+
+    <h2 class="day-section-title">Concepts</h2>
+    <div class="prose">
+      <div class="concept">
+        <h4>Get the core, then the player</h4>
+        <p>At the top of a server script you usually write <code class="inline">local QBCore = exports['qb-core']:GetCoreObject()</code>. Then <code class="inline">QBCore.Functions.GetPlayer(source)</code> gives you the player object.</p>
+      </div>
+      <div class="concept">
+        <h4><code style="background:transparent;border:0;padding:0">PlayerData</code> and <code style="background:transparent;border:0;padding:0">Functions</code></h4>
+        <p>The QB player has two halves. <code class="inline">Player.PlayerData</code> is read-only data (citizenid, money, job, items). <code class="inline">Player.Functions</code> has the methods that <em>change</em> that data: <code class="inline">AddMoney(account, amount, reason)</code>, <code class="inline">RemoveMoney(...)</code>, <code class="inline">GetMoney(account)</code>, <code class="inline">AddItem(...)</code>.</p>
+      </div>
+      <div class="concept">
+        <h4>Callbacks: <code style="background:transparent;border:0;padding:0">CreateCallback</code></h4>
+        <p>Same pattern as ESX, different name. <code class="inline">QBCore.Functions.CreateCallback('name', function(source, cb, ...) cb(value) end)</code>.</p>
+      </div>
+      <div class="concept" style="border-left: 3px solid var(--danger); padding-left: 14px;">
+        <h4>Same rule, different API: check the balance first</h4>
+        <p>QBCore's <code class="inline">Player.Functions.RemoveMoney</code> is happy to drive cash negative if you let it. <strong>Always check before you remove:</strong> <code class="inline">if Player.Functions.GetMoney('cash') &lt; 100 then return end</code>. Money moves live on the server; the server is the one thing cheaters can't patch. Your <code class="inline">/deposit</code> must refuse when the player can't afford it.</p>
+      </div>
+    </div>
+
+    <h2 class="day-section-title">Lab 1 · <code class="inline" style="font-size:0.9em">/deposit</code>, the QB way</h2>
+    <p class="prose">Register a <code class="inline">/deposit</code>. Step one: guard with <code class="inline">GetMoney('cash') &gt;= 100</code>, otherwise <code class="inline">return</code>. Step two: <code class="inline">RemoveMoney('cash', 100)</code> and <code class="inline">AddMoney('bank', 100)</code>. Starting state: 500 cash, 1000 bank. Guard must refuse when cash is below 100.</p>
+    <p class="prose"><strong>What to do:</strong> get <code class="inline">Player</code>, guard on <code class="inline">GetMoney('cash')</code>, then move the money with <code class="inline">RemoveMoney</code> and <code class="inline">AddMoney</code>.</p>
+    <p class="prose"><strong>The before-and-after story is the same as ESX:</strong> start at <code class="inline">500 / 1000</code>, end at <code class="inline">400 / 1100</code> if the guard passes, or leave both numbers alone if the guard fails.</p>
+
+    <div class="lab"
+         data-day-id="day-6"
+         data-lab-id="lab1"
+         data-lab-title="/deposit using QBCore.Functions"
+         data-lab-objective="RegisterCommand 'deposit'. Guard first: if Player.Functions.GetMoney('cash') < 100 then return end. Then RemoveMoney('cash', 100) and AddMoney('bank', 100).">
+      <template class="lab-template">RegisterCommand('deposit', function(source, args, rawCommand)
+  local Player = QBCore.Functions.GetPlayer(source)
+  -- step 1: guard. refuse if GetMoney('cash') is below 100.
+
+  -- step 2: move 100 cash -> bank
+end, false)
+</template>
+      <template class="lab-tests">[
+        { "name": "'deposit' command is registered",                    "assert": { "type": "hasCommand", "name": "deposit" } },
+        { "name": "Uses QBCore.Functions.GetPlayer",                    "run": "_sandbox_run_command('deposit', 1)", "assert": { "type": "callAtLeast", "fn": "QBCore.Functions.GetPlayer", "min": 1 } },
+        { "name": "Happy path: cash 500 -> 400",                        "assert": { "type": "lua", "expr": "return _sandbox.qbPlayer and _sandbox.qbPlayer.PlayerData.money.cash == 400" } },
+        { "name": "Happy path: bank 1000 -> 1100",                      "assert": { "type": "lua", "expr": "return _sandbox.qbPlayer and _sandbox.qbPlayer.PlayerData.money.bank == 1100" } },
+        { "name": "Guard: with 50 cash, deposit is refused",            "run": "_sandbox.qbPlayer.PlayerData.money.cash = 50; _sandbox.qbPlayer.PlayerData.money.bank = 0; _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.qbPlayer.PlayerData.money.cash == 50 and _sandbox.qbPlayer.PlayerData.money.bank == 0" } }
+      ]</template>
+    </div>
+
+    <div class="hint">
+      <p><strong>If the guard test fails</strong> (<em>Guard: with 50 cash, deposit is refused</em>): you are calling <code class="inline">RemoveMoney</code> before checking the balance. Read <code class="inline">Player.PlayerData.money.cash</code> first, or call <code class="inline">Player.Functions.GetMoney('cash')</code>. If it is below 100, use <code class="inline">return</code>. If you skip that check, <code class="inline">RemoveMoney</code> can push the balance negative in this sandbox -> and sometimes in real setups too.</p>
+    </div>
+
+    <h2 class="day-section-title">Lab 2 · QBCore callback for current cash</h2>
+    <p class="prose">Create a QB callback called <code class="inline">qu:getCash</code> that returns the current cash for the invoking player.</p>
+    <p class="prose"><strong>What to do:</strong> register the callback, fetch the player, then send <code class="inline">Player.Functions.GetMoney('cash')</code> into <code class="inline">cb(...)</code>.</p>
+    <p class="prose">The test will call your callback and then print <code class="inline">cash=500</code>. That visible line is the proof that the callback returned a real answer instead of just registering silently.</p>
+
+    <div class="lab"
+         data-day-id="day-6"
+         data-lab-id="lab2"
+         data-lab-title="QBCore.Functions.CreateCallback returns cash"
+         data-lab-objective="QBCore.Functions.CreateCallback('qu:getCash', function(source, cb) ... end). Inside: GetPlayer(source) then cb(Player.Functions.GetMoney('cash')).">
+      <template class="lab-template">-- Your code here
+</template>
+      <template class="lab-tests">[
+        { "name": "Callback 'qu:getCash' is registered",         "assert": { "type": "lua", "expr": "return _sandbox.callbacks['qu:getCash'] ~= nil" } },
+        { "name": "Invoking it returns 500 for the test player", "run": "local got; QBCore.Functions.TriggerCallback('qu:getCash', function(v) got = v end); _sandbox.prints[#_sandbox.prints+1] = 'cash=' .. tostring(got)", "assert": { "type": "hasPrint", "text": "cash=500" } }
+      ]</template>
+    </div>
+
+    <section class="lesson-recap" id="recap">
+      <h2>What you learned today</h2>
+      <ul>
+        <li><code class="inline">QBCore.Functions.GetPlayer(source)</code> gets the player object on the server. You need the core object first, then use its <code class="inline">Functions</code> table.</li>
+        <li><code class="inline">Player.Functions</code> methods like <code class="inline">GetMoney('cash')</code>, <code class="inline">RemoveMoney('cash', amount)</code>, and <code class="inline">AddMoney('bank', amount)</code> handle all money changes.</li>
+        <li><code class="inline">QBCore.Functions.CreateCallback</code> registers a server callback. The client calls it, the server answers with a value through <code class="inline">cb(...)</code>.</li>
+        <li>Same rule as ESX: never trust the client, always check the balance on the server before moving money.</li>
+      </ul>
+    </section>
+
+    <section id="mistakes">
+      <h2>Common mistakes</h2>
+      <details class="explain">
+        <summary>GetMoney returns nil or zero when it should not</summary>
+        <div class="callout callout--danger">
+          <p>You passed the wrong money type string. QBCore uses <code class="inline">'cash'</code> and <code class="inline">'bank'</code> as account names. Writing <code class="inline">'money'</code> or <code class="inline">'Cash'</code> (capital C) returns nothing because the account name does not match. Use the exact lowercase string the framework expects.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Script error: attempt to index a nil value (Player)</summary>
+        <div class="callout callout--danger">
+          <p>You called <code class="inline">QBCore.Functions.GetPlayer</code> with the wrong source value. If <code class="inline">source</code> does not match a connected player, the function returns <code class="inline">nil</code> and the next line crashes when you try to use <code class="inline">Player.Functions</code>. Make sure you are passing the real <code class="inline">source</code> from the command handler, not a hardcoded number.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Callback registers but the client gets nil back</summary>
+        <div class="callout callout--danger">
+          <p>You forgot to call <code class="inline">cb(value)</code> inside the callback function. <code class="inline">CreateCallback</code> expects you to pass your answer into <code class="inline">cb</code>. If you just <code class="inline">return</code> the value instead of calling <code class="inline">cb(value)</code>, the client never receives the answer.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="reading-panel" style="margin-top: 32px;">
+      <h3>Before you move on</h3>
+      <p>Write one sentence that explains what you built today and how it works. If you cannot explain it simply, redo the labs until it clicks.</p>
+    </section>
+
+    <nav class="day-nav">
+      <a href="/starter-kit/day-5/day5">← Day 5</a>
+      <a class="day-nav-next" href="/starter-kit/day-7/day7">Day 7 · Qbox &amp; framework-agnostic →</a>
+    </nav>
+  </main>

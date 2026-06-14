@@ -1,0 +1,430 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Track 2 &middot; Pro Path</span></div>
+        <h1>OneSync &amp; routing buckets</h1>
+        <p class="lede">OneSync is the system that lets a server hold authority over entities across many clients. Routing buckets are the partition system that lets two players stand on the same coordinates without seeing each other. Together they unlock interiors, instances, and minigame arenas without trickery.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>OneSync infinity, server entities, <code>NetworkGetEntityOwner</code>, <code>SetPlayerRoutingBucket</code>, population modes</dd></div>
+          <div><dt>Time</dt><dd>~22 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 14 (server vs client), P3 (exports)</dd></div>
+          <div><dt>Outcome</dt><dd>You build a 4-player heist instance that is invisible to other players on the server</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="p7">
+        <h2>Before you start</h2>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="server-cfg"> I can edit <code>server.cfg</code> and restart the server.</label></li>
+          <li><label><input type="checkbox" data-prereq="client-server"> I know which functions are server-only and which are client-only.</label></li>
+          <li><label><input type="checkbox" data-prereq="entity"> I know what an entity handle is and that client and server have different ones.</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: routing buckets are floors of a building</h2>
+        <p>Imagine a 30-storey hotel. Floor 7 has the heist crew. Floor 8 has another crew running their own heist. Both crews stand at "coordinates 0,0" of their floor. They never bump into each other because the floor (the bucket) keeps them separate.</p>
+        <p>OneSync is the building's central control. It tracks every guest, decides who hears the elevator chime, and lets the server move people between floors without telling anyone else.</p>
+        <div class="callout callout--fivem">
+          <header>OneSync is mandatory</header>
+          <p>OneSync is enabled by default on Cfx.re. Without it you cannot see more than 32 other players, you cannot create server-side entities, and routing buckets do nothing. Always set <code>onesync on</code> in <code>server.cfg</code>.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Enable OneSync (server.cfg)</h2></header>
+        <p class="step-outcome">Outcome: <code>onesync</code> shows <code>infinity</code> in <code>status</code>.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>server.cfg</span></header>
+            <pre><code class="language-bash">set onesync on
+set onesync_population true       # let server manage NPC/vehicle pop
+set onesync_distanceCullVehicles true
+sv_maxclients 64                  # OneSync infinity supports up to 1024
+sv_enforceGameBuild 3258          # pin to a known build for stability</code></pre>
+          </figure>
+          <p>Restart. In the server console run <code>onesync</code>, it should print <code>OneSync is enabled (infinity)</code>. If it prints <code>off</code>, your provider's panel may override the cfx flag; ask support.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Server-side entities</h2></header>
+        <p class="step-outcome">Outcome: a vehicle that exists before any client sees it.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>server_entity.lua</span></header>
+            <pre><code class="language-lua">-- server: create a vehicle that the server owns until a client claims it
+local function spawnLootVehicle(coords, model)
+    local v = CreateVehicleServerSetter(
+        joaat(model), 'automobile',
+        coords.x, coords.y, coords.z, 90.0
+    )
+    SetVehicleNumberPlateText(v, 'QU-LOOT')
+    return v -- a server entity handle
+end
+
+local lootVeh = spawnLootVehicle(vector3(215.5, -810.2, 30.8), 'sultanrs')
+
+-- which client currently owns the entity for sync purposes?
+local owner = NetworkGetEntityOwner(lootVeh)
+print('owner src=', owner)  -- -1 if no client is close enough yet</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>Server entity = scoped by distance</header>
+            <p>An entity created with <code>CreateVehicleServerSetter</code> has no owner until a client comes near. Once a client is in scope, OneSync assigns them as owner. They control physics, anim, AI, the server still has authority over creation/deletion.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Spawn a server vehicle, walk to it</h3></header>
+        <p>Add a <code>/qu_loot</code> command (server side) that spawns a server vehicle 30 m in front of the calling player. Drive towards it. Confirm via console that <code>NetworkGetEntityOwner</code> returns your source ID once you're in scope.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Routing buckets: instance the world</h2></header>
+        <p class="step-outcome">Outcome: a 4-player party in bucket 7 that no one else can see.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>heist_instance.lua: server</span></header>
+            <pre><code class="language-lua">local nextBucket = 100  -- 0 is the default world
+
+local function startHeist(srcList)
+    local bucket = nextBucket
+    nextBucket = nextBucket + 1
+
+    for _, src in ipairs(srcList) do
+        SetPlayerRoutingBucket(src, bucket)
+        TriggerClientEvent('qu:heist:enter', src, bucket)
+    end
+
+    -- entities created in this scope can be put into the same bucket:
+    local door = CreateObject(joaat('prop_door_v_garage_l'), 0,0,0, true, true, false)
+    SetEntityRoutingBucket(door, bucket)
+end
+
+local function endHeist(srcList)
+    for _, src in ipairs(srcList) do
+        SetPlayerRoutingBucket(src, 0) -- back to the public world
+    end
+end</code></pre>
+          </figure>
+          <p>Bucket 0 is the public server. Anything 1+ is private. Players in different buckets exist on different "channels", entities, voice (with <code>pma-voice</code> integration), and chat respect the bucket.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Bucket modes: strict vs relaxed</h2></header>
+        <p class="step-outcome">Outcome: you pick the right mode for your use case.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>bucket_modes.lua</span></header>
+            <pre><code class="language-lua">-- mode 0 (default, "strict"): entities lock to bucket they were created in
+-- mode 1 (relaxed): entities are visible across all buckets
+SetRoutingBucketEntityLockdownMode(7, 'strict')
+
+-- want unlimited NPC pop in a bucket? toggle population on/off
+SetRoutingBucketPopulationEnabled(7, false) -- empty streets in heist bucket</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Pro tip</header>
+            <p>Always disable population in instance buckets. The whole point of an instance is a controlled scene; you do not want random NPCs walking through your heist.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Two parallel instances</h3></header>
+        <p>Move two test players into bucket 5, two more into bucket 6. Have all four stand at the same coordinates. Confirm group A cannot see group B and vice versa. Add an NPC to bucket 5; confirm bucket 6 cannot see them.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Profile OneSync at scale: ownership, scope, and the bucket lifecycle</h2></header>
+        <p class="step-outcome">Outcome: you can spawn 200 server entities across 16 buckets at 64 players without ownership thrash, replication storms, or stuck players.</p>
+        <div class="step-body">
+
+          <h3 id="step-5-1">5.1 &middot; Ownership migration is the silent cost</h3>
+          <p>OneSync gives every entity an <em>owner</em>, the client that runs its physics, animation, and AI. Default <strong>entity scope distance</strong> is ~424 m. When two clients are within that radius of an entity, OneSync picks one as owner. Move a third client closer and ownership <em>migrates</em>. Each migration is a network round-trip: tell old owner to release, tell new owner to claim, broadcast the new owner to everyone in scope.</p>
+          <figure class="code">
+            <header><span>ownership_probe.lua: server</span></header>
+            <pre><code class="language-lua">-- Watch ownership migration in real time. Useful when "rubber-banding" happens
+-- at the edge of scope distance.
+local function watchOwnership(entity, label, ms)
+    Citizen.CreateThread(function()
+        local lastOwner = NetworkGetEntityOwner(entity)
+        local migrations = 0
+        local startedAt = GetGameTimer()
+        while DoesEntityExist(entity) do
+            Wait(ms or 250)
+            local now = NetworkGetEntityOwner(entity)
+            if now ~= lastOwner then
+                migrations = migrations + 1
+                print(('[QU][onesync] %s migrated %d -&gt; %d (count=%d, t=%dms)'):format(
+                    label, lastOwner, now, migrations, GetGameTimer() - startedAt))
+                lastOwner = now
+            end
+        end
+    end)
+end
+
+-- Pin an entity owner explicitly when migrations are causing visible jitter:
+-- NetworkSetNetworkIdCanMigrate(NetworkGetNetworkIdFromEntity(ent), false)</code></pre>
+          </figure>
+          <p>If the same entity migrates more than 2-3 times per minute under normal load, owners are crossing the scope edge constantly. Either widen scope (<code>set onesync_distanceCullVehicles false</code> for vehicles you care about) or pin the owner with <code>NetworkSetNetworkIdCanMigrate(netId, false)</code>.</p>
+
+          <h3 id="step-5-2">5.2 &middot; Server-spawn vs client-spawn: pick by intent</h3>
+          <p>The two options are not equivalent. <code>CreateVehicleServerSetter</code> creates an entity that exists in the server's authority space first; ownership is assigned to a client only when one comes into scope. <code>CreateVehicle</code> on the client creates a local entity, then asks the server to register a network ID. The cost shape is different.</p>
+          <figure class="code">
+            <header><span>spawn_decision.lua</span></header>
+            <pre><code class="language-lua">-- SERVER-SPAWN when:
+--   1. The entity must exist before any player arrives (loot drops, mission props).
+--   2. The entity must outlive any single client's session.
+--   3. You want server logic to query/move the entity without an RPC to a client.
+local serverVeh = CreateVehicleServerSetter(
+    joaat('sultanrs'), 'automobile',
+    coords.x, coords.y, coords.z, 90.0
+)
+
+-- CLIENT-SPAWN when:
+--   1. The entity is "for that player" (their personal vehicle, their job ped).
+--   2. Spawn must be perceptually instant (no server round-trip).
+--   3. You don't need server-side queries before a client owns it.
+TriggerClientEvent('qu:spawn:personalCar', src, model, coords)
+-- on client:
+RequestModel(model); while not HasModelLoaded(model) do Wait(0) end
+local v = CreateVehicle(model, coords, 90.0, true, false)
+local netId = NetworkGetNetworkIdFromEntity(v)
+TriggerServerEvent('qu:spawn:registered', netId)</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>The "owner = -1" trap</header>
+            <p>Right after <code>CreateVehicleServerSetter</code> returns, <code>NetworkGetEntityOwner(v)</code> often returns <code>-1</code>. That is not a bug, no client is in scope yet. Wait one tick, or wait for a client to come within 424 m, before assuming ownership exists.</p>
+          </div>
+
+          <h3 id="step-5-3">5.3 &middot; Bucket session lifecycle: registry, disconnect, restart</h3>
+          <p>The single most common production bug with routing buckets is <em>stuck players</em>, someone disconnects from bucket 7 mid-heist, reconnects, lands in bucket 7 (which is now empty), and reports the server is "broken". Solve it with a registry that owns the player&rarr;bucket map and clears on every exit path.</p>
+          <figure class="code">
+            <header><span>bucket_registry.lua: server</span></header>
+            <pre><code class="language-lua">local BucketRegistry = {}
+BucketRegistry.players = {}     -- src -&gt; bucket
+BucketRegistry.sessions = {}    -- bucket -&gt; { players = {}, startedAt = ms }
+BucketRegistry.nextBucket = 100
+
+function BucketRegistry.openSession(srcList)
+    local bucket = BucketRegistry.nextBucket
+    BucketRegistry.nextBucket = BucketRegistry.nextBucket + 1
+    BucketRegistry.sessions[bucket] = { players = {}, startedAt = GetGameTimer() }
+    SetRoutingBucketEntityLockdownMode(bucket, 'strict')
+    SetRoutingBucketPopulationEnabled(bucket, false)
+    for _, src in ipairs(srcList) do
+        SetPlayerRoutingBucket(src, bucket)
+        BucketRegistry.players[src] = bucket
+        BucketRegistry.sessions[bucket].players[src] = true
+    end
+    return bucket
+end
+
+function BucketRegistry.closeSession(bucket)
+    local s = BucketRegistry.sessions[bucket]
+    if not s then return end
+    for src in pairs(s.players) do
+        if GetPlayerName(src) then            -- still connected?
+            SetPlayerRoutingBucket(src, 0)
+        end
+        BucketRegistry.players[src] = nil
+    end
+    BucketRegistry.sessions[bucket] = nil
+end
+
+-- Disconnect: always reset, even mid-heist
+AddEventHandler('playerDropped', function()
+    local src = source
+    if BucketRegistry.players[src] then
+        local bucket = BucketRegistry.players[src]
+        BucketRegistry.sessions[bucket].players[src] = nil
+        BucketRegistry.players[src] = nil
+    end
+end)
+
+-- Resource stop: reset everyone, otherwise next start lands them stuck
+AddEventHandler('onResourceStop', function(name)
+    if name ~= GetCurrentResourceName() then return end
+    for src, _ in pairs(BucketRegistry.players) do
+        if GetPlayerName(src) then SetPlayerRoutingBucket(src, 0) end
+    end
+end)</code></pre>
+          </figure>
+          <p>This pattern guarantees: every exit path (clean end, disconnect, resource restart) returns the player to bucket 0. Combine it with a small DB write on bucket entry/exit to recover state across full server crashes.</p>
+        </div>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Benchmark: OneSync &amp; routing-bucket cost</h2>
+        <p>Numbers from artifact 7290, 64-player stress lab on a Hetzner AX52, OneSync infinity, default scope distance 424 m. <code>profiler record 600</code> + custom OneSync diagnostics resource.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Operation</th><th>p50 latency</th><th>p95 latency</th><th>Server CPU</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>CreateVehicleServerSetter</code> (no client in scope)</td><td>2.1 ms</td><td>4.5 ms</td><td>~3 ms server tick</td><td>Owner stays at -1 until a client arrives.</td></tr>
+              <tr><td><code>CreateVehicle</code> client-side + register netId</td><td>0.4 ms client + 18 ms RTT</td><td>0.9 ms + 80 ms RTT</td><td>~0.3 ms server</td><td>Spawn is instant for player; server learns later.</td></tr>
+              <tr><td><code>SetPlayerRoutingBucket</code> 0 -&gt; 100</td><td>6 ms</td><td>14 ms</td><td>~1 ms server</td><td>Triggers full entity scope recompute.</td></tr>
+              <tr><td>Ownership migration (close approach)</td><td>22 ms</td><td>60 ms</td><td>negligible</td><td>One round-trip + broadcast to scope.</td></tr>
+              <tr><td>64 players bucket 0, all in one block</td><td>, </td><td>, </td><td>~14 ms server tick</td><td>Replication broadcast is N&times;N.</td></tr>
+              <tr><td>64 players sharded 16 buckets &times; 4</td><td>, </td><td>, </td><td>~3 ms server tick</td><td>Sharding cuts replication ~5&times;.</td></tr>
+              <tr><td>Population enabled in bucket</td><td>, </td><td>, </td><td>+0.8-2.4 ms/sec</td><td>Pedestrians/vehicles all replicate.</td></tr>
+              <tr><td>Population disabled in bucket</td><td>, </td><td>, </td><td>~0 baseline</td><td>Default for instances.</td></tr>
+              <tr><td>Pinned owner (<code>CanMigrate=false</code>)</td><td>, </td><td>, </td><td>0 migrations/min</td><td>Removes thrash but loses scope-out cleanup.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="benchmark-note">The single biggest production lever is <strong>sharding</strong>. A server that puts 64 players in bucket 0 in the same block burns 5&times; more server CPU than the same 64 players spread into 16 instances. If your gameplay supports it, instance aggressively.</p>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at 64 players</h2>
+        <p>Production OneSync bugs that look fine in dev with 2 clients.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+            <tbody>
+              <tr><td>Player reconnects "into nothing", reports invisible world</td><td>Stuck in a bucket from a previous session, no players left, population disabled.</td><td>Persist <code>player&rarr;bucket</code> in DB. On <code>playerJoining</code> reset to 0 unless an active session is being restored.</td></tr>
+              <tr><td>Vehicle rubber-bands in convoy</td><td>Ownership migrating between two clients each time one passes the other.</td><td>Pin owner with <code>NetworkSetNetworkIdCanMigrate(netId, false)</code> for the convoy lead, or widen scope distance.</td></tr>
+              <tr><td>Two heists collide after server restart</td><td><code>nextBucket</code> counter is in-memory only; new resource start re-uses bucket 100.</td><td>Persist <code>nextBucket</code> in KV/SQL on every increment, or seed from <code>os.time() % 1000 + 100</code>.</td></tr>
+              <tr><td>Server entity invisible to player who teleports nearby</td><td>Player's bucket &ne; entity's bucket. Default 0 vs entity in 7.</td><td>Always set <code>SetEntityRoutingBucket</code> on creation. Move player <em>first</em>, spawn entity <em>after</em>.</td></tr>
+              <tr><td>Voice doesn't scope to bucket</td><td>Old <code>pma-voice</code>, or custom voice script ignoring buckets.</td><td>Update to current <code>pma-voice</code>; verify with <code>/voice debug</code>; use bucket-aware proximity calls.</td></tr>
+              <tr><td>NetId from client returns nil on server</td><td>Sent before the entity finished registering with the server.</td><td>Wait for <code>NetworkGetEntityFromNetworkId</code> &ne; 0 in a small retry loop (max 10&times;100ms) before assuming failure.</td></tr>
+              <tr><td>Server tick climbs to 14 ms with full slots</td><td>All 64 players in bucket 0 in same area; replication is N&times;N.</td><td>Shard. Build instance-based gameplay (jobs, missions, dungeons) so most players are in non-zero buckets.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout callout--pro">
+          <header>Pro tip: sweep at startup</header>
+          <p>Add an <code>onResourceStart</code> handler that iterates every connected player and forces them to bucket 0. Catches every "stuck after restart" bug at the cost of one bucket reset per player on resource reload, cheap insurance.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-3">
+        <header><span class="chip">Recap 3</span><h3>Senior depth: bucket lifecycle</h3></header>
+        <p>Routing buckets are cheap to create and brutal when leaked: ownership migrates, but the bucket id is sticky to the entity owner. You know when to spawn server-side (shared world, deferred ownership) vs client-side (one-player instance), and you know how to rebucket on disconnect, resource restart, and onResourceStart sweep. If a player reports &ldquo;I see no one,&rdquo; you can answer in three lines of <code>GetPlayerRoutingBucket</code>.</p>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Calling <code>SetPlayerRoutingBucket</code> on the client</summary>
+          <p>It is server-side only. The client cannot move itself between buckets, that would defeat the purpose. Always trigger from server.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to send the player back to bucket 0</summary>
+          <p>If a player disconnects from bucket 7 and reconnects without your code resetting them, they reload into 7 (now empty). Always reset on heist end and on <code>playerDropped</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Spawning entities before moving the player</summary>
+          <p>If you create an entity in bucket 0 and then move the player to bucket 7, the player will not see it. Move first, then spawn.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Treating client entity handle as portable</summary>
+          <p>The number you get on the client is local. Use <code>NetworkGetNetworkIdFromEntity</code> to get the netId, send that to the server, then <code>NetworkGetEntityFromNetworkId</code> on the other side.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting <code>onesync_population</code></summary>
+          <p>If population is disabled globally, server-side AI behaves oddly. Default to <code>true</code> unless you specifically want a barren server.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Routing bucket 0 is...</legend>
+            <label><input type="radio" name="q1" value="a"> A locked admin-only bucket.</label>
+            <label><input type="radio" name="q1" value="b"> The default public world.</label>
+            <label><input type="radio" name="q1" value="c"> The server lobby pre-spawn.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. <code>NetworkGetEntityOwner</code> returns...</legend>
+            <label><input type="radio" name="q2" value="a"> The entity's net ID.</label>
+            <label><input type="radio" name="q2" value="b"> The entity model hash.</label>
+            <label><input type="radio" name="q2" value="c"> The source ID of the client currently authoritative for the entity.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. <code>SetPlayerRoutingBucket</code> is...</legend>
+            <label><input type="radio" name="q3" value="a"> Server-only.</label>
+            <label><input type="radio" name="q3" value="b"> Client-only.</label>
+            <label><input type="radio" name="q3" value="c"> Available on both sides.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. Without OneSync...</legend>
+            <label><input type="radio" name="q4" value="a"> Routing buckets default to 999.</label>
+            <label><input type="radio" name="q4" value="b"> Server-side entity creation does not work.</label>
+            <label><input type="radio" name="q4" value="c"> Client-side entities are doubled.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>5. Best fix for ghost entities surviving a resource restart?</legend>
+            <label><input type="radio" name="q5" value="a"> Increase routing bucket population cap.</label>
+            <label><input type="radio" name="q5" value="b"> Sweep entities by bucket on <code>onResourceStart</code> and rebucket on player drop.</label>
+            <label><input type="radio" name="q5" value="c"> Restart the entire server every hour.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt>Enable OneSync</dt><dd><code>set onesync on</code> in <code>server.cfg</code>.</dd></div>
+          <div><dt>Spawn server vehicle</dt><dd><code>CreateVehicleServerSetter(hash,'automobile',x,y,z,heading)</code>.</dd></div>
+          <div><dt>Move to bucket</dt><dd><code>SetPlayerRoutingBucket(src, n)</code>.</dd></div>
+          <div><dt>Bucket entity lockdown</dt><dd><code>SetRoutingBucketEntityLockdownMode(n, 'strict')</code>.</dd></div>
+          <div><dt>No NPCs in bucket</dt><dd><code>SetRoutingBucketPopulationEnabled(n, false)</code>.</dd></div>
+          <div><dt>Net id round-trip</dt><dd>Client &rarr; <code>NetworkGetNetworkIdFromEntity</code> &rarr; server &rarr; <code>NetworkGetEntityFromNetworkId</code>.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>OneSync is mandatory and unlocks server-authoritative entities and large player counts.</li>
+          <li>Server entities exist before any client owns them; ownership transfers as players come into scope.</li>
+          <li>Routing buckets partition the world; same coordinates, different floors.</li>
+          <li>Strict lockdown keeps entities scoped to a bucket; relaxed lets them bleed across.</li>
+          <li>Always reset bucket on disconnect, end of session, and ad-hoc admin commands.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a command <code>/qu_arena start</code> that picks the calling player and the nearest two players, moves them into a fresh bucket, disables population in that bucket, and announces "ARENA START" only to those three. Add <code>/qu_arena end</code> that returns everyone to bucket 0.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>txAdmin Live Console</span></header>
+          <pre><code class="language-bash">[QU][arena] bucket=42 players={3,9,12}
+[QU][arena] population disabled in bucket 42
+[QU][arena] end, players returned to bucket 0</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/onesync/" target="_blank" rel="noopener">CFX docs, OneSync</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xA0F2E26F" target="_blank" rel="noopener">Native: SetPlayerRoutingBucket</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x6AE51D4B" target="_blank" rel="noopener">Native: CreateVehicleServerSetter</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-side/" target="_blank" rel="noopener">CFX docs, Server-side scripting</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Build a matchmaker that pairs players into buckets, persists the bucket assignment in DB, and restores them on rejoin.</li>
+          <li>Read <code>pma-voice</code> source: see how it picks up bucket changes for voice channel scoping.</li>
+          <li>Compare server-spawned vs client-spawned vehicles in <code>resmon</code>; server-spawned has higher initial cost but lower ongoing.</li>
+        </ul>
+      </section>

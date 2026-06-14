@@ -1,0 +1,85 @@
+<LessonHero
+  crumbs="Module B8 · Ship, sell & maintain"
+  title="Production code review checklist"
+  meta={[
+    { label: "You'll build", value: "A checklist to review a FiveM resource before it ships or merges, so the same mistakes stop reaching production." },
+    { label: "Time", value: "~20 minutes." },
+    { label: "You need", value: "A resource to review (yours or a teammate's) and the core concepts from Track B." },
+    { label: "You'll learn", value: "Security checks -> performance checks -> correctness checks -> the questions to ask on every review" },
+  ]}
+>
+  Code review is how teams keep quality up without heroics. This is the FiveM-specific checklist: the handful of things that, if you check them every time, catch most of what blows up a server. Use it on your own code before shipping and on teammates' pull requests before merging.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I understand client vs server authority.",
+    "I know what resmon and the tick budget are.",
+    "I can read a fxmanifest and a resource's file split."
+  ]}
+/>
+
+<Callout variant="fivem" title="Review server trust first">
+  The first question on every FiveM review is the same: does the client decide anything that should be the server's call? Money, items, jobs, admin, prices. If yes, that is the bug, no matter how clean the rest looks.
+</Callout>
+
+## The checklist
+
+<Cheatsheet
+  title="Security"
+  rows={[
+    { cmd: "Server authority", desc: "Does the server validate every money/item/job/admin action, or trust a client event?" },
+    { cmd: "Event safety", desc: "Are net events validated for source and inputs? No raw client value used as truth." },
+    { cmd: "SQL", desc: "Parameterized queries via oxmysql only. No string-concatenated SQL." },
+    { cmd: "Secrets", desc: "No keys, passwords, or webhooks in the code. Read from convars." },
+  ]}
+/>
+
+<Cheatsheet
+  title="Performance"
+  rows={[
+    { cmd: "Threads and Wait", desc: "No tight loops without a Wait. Idle loops use long waits, not Wait(0)." },
+    { cmd: "resmon budget", desc: "Does the resource stay well under budget at idle and under load?" },
+    { cmd: "Cleanup", desc: "Every spawned entity has a delete path on stop, drop, and timeout." },
+    { cmd: "Distance work", desc: "Heavy per-frame work is gated by distance or state, not always running." },
+  ]}
+/>
+
+<Cheatsheet
+  title="Correctness"
+  rows={[
+    { cmd: "Config", desc: "Tunables live in a config, not hardcoded magic numbers." },
+    { cmd: "Errors", desc: "Failures are handled and logged, not swallowed silently." },
+    { cmd: "Docs", desc: "A README explains install, dependencies, and config." },
+    { cmd: "Versioning", desc: "Version bumped and changelog updated for the change." },
+  ]}
+/>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Clean code that still gets exploited", fix: "You reviewed style, not trust. Check server authority on every value-bearing action first." },
+    { symptom: "Approved a resource that tanks resmon", fix: "Add the performance section to every review: threads, budget, cleanup, distance gating." },
+    { symptom: "Merged code with hardcoded secrets", fix: "Block it. Secrets come from convars; the review fails if a key is in the source." },
+    { symptom: "No README, buyers cannot install", fix: "Docs are part of the review. No install/dependency/config doc, no merge." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Review server authority and event/SQL safety before anything else.",
+    "Check threads, resmon budget, cleanup, and distance gating for performance.",
+    "Require config, error handling, docs, and a version bump.",
+    "Run the same checklist on your own code and on every pull request."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · scripting manual", href: "https://docs.fivem.net/docs/scripting-manual/" },
+    { label: "oxmysql · parameterized queries", href: "https://overextended.dev/oxmysql" }
+  ]}
+/>

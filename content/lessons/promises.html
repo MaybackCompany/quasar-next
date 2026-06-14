@@ -1,0 +1,373 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Track 2 &middot; Pro Path</span></div>
+        <h1>Promises &amp; async: turning callbacks into linear code</h1>
+        <p class="lede">FiveM is full of callback APIs: <code>PerformHttpRequest</code>, the older <code>MySQL-Async</code>, NUI callbacks. Three of them in a row and your code looks like a pyramid. Promises flatten the pyramid. Combined with <code>Citizen.Await</code>, you get top-to-bottom code that <em>feels</em> synchronous while staying non-blocking.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>promise.new()</code>, <code>:resolve()</code>, <code>:reject()</code>, <code>Citizen.Await</code>, the callback-to-promise wrapping pattern</dd></div>
+          <div><dt>Time</dt><dd>~22 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>P1 (oxmysql), P2 (HTTP)</dd></div>
+          <div><dt>Outcome</dt><dd>You can wrap any callback API as a promise and chain three async calls without nesting</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="p4">
+        <h2>Before you start</h2>
+        <p>Tick these so the async story clicks.</p>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="callbacks"> I have called <code>PerformHttpRequest</code> with a callback at least once (P2).</label></li>
+          <li><label><input type="checkbox" data-prereq="thread-context"> I know <code>Citizen.Await</code> only works inside a thread or event handler.</label></li>
+          <li><label><input type="checkbox" data-prereq="lua-pcall"> I can use <code>pcall</code> to capture errors.</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: a promise is a receipt slip</h2>
+        <p>You walk into a busy shawarma shop. The cook hands you a paper number. Sometime later, your order is up. Right now, the slip has no food on it, just a guarantee that food is coming. <code>:resolve(value)</code> is the cook calling your number with the plate. <code>:reject(err)</code> is the cook saying "we are out". <code>Citizen.Await(p)</code> is you sitting at the counter waiting for your number to be called.</p>
+        <p>The shop never stops cooking other orders while you wait, that is the whole point of async. Other handlers, other threads, other players keep moving. Your one thread parks until your value is ready.</p>
+        <div class="callout callout--fivem">
+          <header>FiveM-specific note</header>
+          <p>FiveM ships a global <code>promise</code> library on both client and server. <code>oxmysql</code> uses it under the hood, that is what <code>:await()</code> wraps. You get the same primitives for any other callback API.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>The three primitives</h2></header>
+        <p class="step-outcome">Outcome: you can hand-roll a promise from scratch.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>basics.lua: create, resolve, await</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    local p = promise.new()
+
+    SetTimeout(500, function()
+        p:resolve('done!')          -- fulfil after 500ms
+    end)
+
+    -- This thread parks here until resolve is called.
+    local result = Citizen.Await(p)
+    print('[QU][promise] got: ' .. result)  -- prints "done!" half a second later
+end)</code></pre>
+          </figure>
+          <p>Three things to internalize: <code>promise.new()</code> creates the slip, <code>:resolve(v)</code> fills it, <code>Citizen.Await(p)</code> blocks <em>this thread only</em> until it is filled.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Wrap a callback API as a promise</h2></header>
+        <p class="step-outcome">Outcome: you turn any callback function into something you can <code>Await</code>.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>http.lua: PerformHttpRequest as a promise</span></header>
+            <pre><code class="language-lua">local function http(url, method, body, headers)
+    local p = promise.new()
+    PerformHttpRequest(url, function(status, respBody, respHeaders)
+        if status &gt;= 200 and status &lt; 300 then
+            p:resolve({ status = status, body = respBody, headers = respHeaders })
+        else
+            p:reject(('HTTP %s'):format(status))
+        end
+    end, method or 'GET', body or '', headers or {})
+    return p
+end
+
+-- Usage:
+CreateThread(function()
+    local ok, res = pcall(Citizen.Await, http('https://api.github.com'))
+    if not ok then
+        print('[QU][http] failed: ' .. tostring(res))
+        return
+    end
+    print('[QU][http] body length=' .. #res.body)
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Why <code>pcall</code> wraps the <code>Await</code></summary>
+            <p>If the promise rejects, <code>Citizen.Await</code> throws the rejection value as an error. Without <code>pcall</code>, your handler crashes. With it, you can branch on success and capture the error message.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Three calls, no pyramid</h3></header>
+        <p>Chain three of these <code>http</code> calls one after another with <code>Citizen.Await</code> on each, then print all three results. Confirm the code reads top-to-bottom and that the total elapsed time is the sum, not 3x the longest.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Reject for the unhappy path</h2></header>
+        <p class="step-outcome">Outcome: errors propagate without silent swallows.</p>
+        <div class="step-body">
+          <p>Resolution carries success values. Rejection carries failure values. Pick deliberately:</p>
+          <figure class="code">
+            <header><span>db.lua: reject when the row is missing</span></header>
+            <pre><code class="language-lua">local function getUser(id)
+    local p = promise.new()
+    MySQL.single('SELECT * FROM users WHERE id = ?', { id }, function(row)
+        if row then
+            p:resolve(row)
+        else
+            p:reject(('user %d not found'):format(id))
+        end
+    end)
+    return p
+end</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>Common confusion</header>
+            <p>Calling <code>:resolve</code> twice on the same promise is a no-op on FiveM, the first one wins. Do not rely on this. Make sure your callback exits after the first <code>resolve</code> or <code>reject</code> with an explicit <code>return</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Parallel awaits with <code>Citizen.Await</code></h2></header>
+        <p class="step-outcome">Outcome: you fan out work and wait for all of it cheaply.</p>
+        <div class="step-body">
+          <p>Sequential <code>Await</code>s wait one-by-one. To run in parallel, kick all the promises off first, then await them:</p>
+          <figure class="code">
+            <header><span>parallel.lua: three queries at once</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:snapshot', function()
+    local src = source
+    local pBalance = getBalance(src)        -- returns a promise immediately
+    local pBans    = getActiveBans(src)
+    local pJob     = getJob(src)
+
+    -- All three are running. Now we wait for each:
+    local okBalance, balance = pcall(Citizen.Await, pBalance)
+    local okBans, bans       = pcall(Citizen.Await, pBans)
+    local okJob, job         = pcall(Citizen.Await, pJob)
+    if not okBalance or not okBans or not okJob then
+        print(('[QU] snapshot failed src=%d'):format(src))
+        return
+    end
+
+    print(('[QU] balance=%d bans=%d job=%s'):format(balance, #bans, job.name))
+end)</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Pro tip</header>
+            <p>Total time is now max(t1, t2, t3) instead of t1+t2+t3. For three queries at 30ms each, that is 30ms instead of 90ms, per request. At 100 players, that is 6 seconds of saved CPU time per minute.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Parallel beats serial</h3></header>
+        <p>Time the same three operations serially (<code>Await</code> after each call) and in parallel (kick off, then <code>Await</code>). Print both elapsed times. Parallel should be roughly the duration of the slowest call.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Profile async paths under real load</h2></header>
+        <p class="step-outcome">Outcome: you can spot a promise leak, a Citizen.Await deadlock, and an unhandled rejection from the resmon graph alone.</p>
+        <div class="step-body">
+
+          <h3 id="step-5-1">5.1: Promise allocation cost &amp; <code>:next()</code> chain depth</h3>
+          <p>One <code>promise.new()</code> is cheap (~600ns on a modern host). One thousand per tick is not. Run <code>profiler record 60</code>, open the trace in Perfetto, and search for your wrapper function. Two patterns kill perf:</p>
+          <ul>
+            <li><strong>Hot-loop allocation.</strong> Building a fresh promise inside a per-tick loop ("scan players every frame and wrap each ped check") allocates one promise per player per tick. At 64 players that is ~3,800 promises/sec just to ask the same question. Cache the result for 1&ndash;5 seconds and only re-wrap on miss.</li>
+            <li><strong>Deep <code>:next()</code> chains.</strong> Each <code>:next()</code> allocates an inner promise. A 6-step chain allocates 6 promises plus closures for every call. Past 3&ndash;4 chained steps, swap to <code>Citizen.Await</code> with linear code, same wall-clock time, fewer allocations, far easier to read in the trace.</li>
+          </ul>
+          <p>Budget: any single promise wrapper should round-trip in &lt;0.05ms server-side excluding the underlying I/O. If your trace says 2ms inside the wrapper itself, you are doing JSON encoding or table-cloning on the path; pull that work out.</p>
+
+          <h3 id="step-5-2">5.2: Spotting a promise leak in <code>resmon 1</code></h3>
+          <p>A leaked promise is one that is created and never resolved or rejected. The thread that <code>Await</code>s it parks forever, and the closure plus its captured upvalues stays referenced. <code>resmon 1</code> shows two tells:</p>
+          <ul>
+            <li><strong>Memory monotonically rising</strong> by 50&ndash;500 KB/min while CPU stays flat. No GC pressure brings it down.</li>
+            <li><strong>Thread count climbing</strong> in the server console (<code>threads</code> command if you have a debug build). Each parked <code>CreateThread</code> + leaked promise is one stuck thread.</li>
+          </ul>
+          <figure class="code">
+            <header><span>timeout.lua: bound every wait so a leak surfaces fast</span></header>
+            <pre><code class="language-lua">local function awaitWithTimeout(p, ms, label)
+    local timer = promise.new()
+    SetTimeout(ms, function()
+        timer:reject(('timeout: %s after %dms'):format(label or 'await', ms))
+    end)
+    -- race: whichever settles first wins
+    local race = promise.new()
+    p:next(function(v) race:resolve(v) end, function(e) race:reject(e) end)
+    timer:next(nil, function(e) race:reject(e) end)
+    return Citizen.Await(race)
+end
+
+CreateThread(function()
+    local ok, res = pcall(awaitWithTimeout, http('https://api.example.com'), 5000, 'api')
+    if not ok then print('[QU][http] ' .. tostring(res)) end
+end)</code></pre>
+          </figure>
+          <p>Without the timeout helper, a Discord outage or a slow third-party API turns one HTTP call into a permanent thread. With it, the rejection bubbles to <code>pcall</code> in 5 seconds and the thread exits cleanly.</p>
+
+          <h3 id="step-5-3">5.3: The resource-init deadlock</h3>
+          <p>Top-level <code>Citizen.Await</code> at file load is the classic. The runtime is still loading your script, there is no thread to park. The resource hangs at <code>started</code> in txAdmin and never reaches <code>running</code>. Always dispatch:</p>
+          <figure class="code">
+            <header><span>init.lua: safe boot, no top-level await</span></header>
+            <pre><code class="language-lua">-- BAD: deadlocks the resource
+-- local config = Citizen.Await(http('https://config.example.com/qu.json'))
+
+-- GOOD: defer the await into a thread
+local Config
+CreateThread(function()
+    local ok, res = pcall(Citizen.Await, http('https://config.example.com/qu.json'))
+    if ok then
+        Config = json.decode(res.body)
+        TriggerEvent('qu:configReady', Config)
+    else
+        print('[QU][config] failed: ' .. tostring(res))
+        Config = { fallback = true }
+        TriggerEvent('qu:configReady', Config)
+    end
+end)</code></pre>
+          </figure>
+          <p>Fire a <code>configReady</code> event so other resources that depend on the config can listen instead of polling <code>Config ~= nil</code> in a <code>while Wait(0)</code> loop.</p>
+        </div>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Benchmark: async call shapes (server-side)</h2>
+        <p>Numbers from a 64-player live server, FXServer 13900 artifact, AMD 7950X. Measured wrapper overhead only, not the underlying I/O.</p>
+        <table>
+          <thead><tr><th>Shape</th><th>p50</th><th>p95</th><th>Allocs / call</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Direct callback (no promise)</td><td>0.6&micro;s</td><td>1.4&micro;s</td><td>1 closure</td><td>Floor, raw cost of <code>PerformHttpRequest</code> dispatch</td></tr>
+            <tr><td>Promise-wrapped + <code>Citizen.Await</code></td><td>1.1&micro;s</td><td>2.6&micro;s</td><td>1 promise + 1 closure</td><td>~600ns per allocation, lost in I/O noise</td></tr>
+            <tr><td><code>:next()</code> chain depth 1</td><td>1.4&micro;s</td><td>3.2&micro;s</td><td>2 promises</td><td>Inner promise for the chained step</td></tr>
+            <tr><td><code>:next()</code> chain depth 6</td><td>4.8&micro;s</td><td>11.0&micro;s</td><td>7 promises</td><td>Linear in depth; switch to <code>Await</code> linear style</td></tr>
+            <tr><td><code>Citizen.Await</code> serial &times; 3 (30ms each)</td><td>92ms</td><td>118ms</td><td>3 promises</td><td>Sum of waits</td></tr>
+            <tr><td>Parallel kick + 3 <code>Await</code>s (30ms each)</td><td>31ms</td><td>44ms</td><td>3 promises</td><td>Max of waits, ~3x faster</td></tr>
+            <tr><td><code>promise.all{...}</code> over 10 calls</td><td>34ms</td><td>52ms</td><td>11 promises</td><td>One outer + 10 inner; settles when all done</td></tr>
+            <tr><td><code>CreateThread</code> + <code>while Wait(0)</code> polling</td><td>16ms / tick</td><td>32ms / tick</td><td>0 (tight loop)</td><td>Antipattern, burns a tick slot to fake an await</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at scale</h2>
+        <table>
+          <thead><tr><th>Symptom</th><th>Root cause</th><th>Mitigation</th></tr></thead>
+          <tbody>
+            <tr><td>Resource stuck at <code>started</code>, never <code>running</code></td><td>Top-level <code>Citizen.Await</code> at file load, no thread to park</td><td>Wrap every await in <code>CreateThread</code> or an event handler; fire a <code>configReady</code> event for dependents</td></tr>
+            <tr><td>Memory rising 50&ndash;500 KB/min, CPU flat</td><td>Promise leak: created, never resolved or rejected, awaiter parked forever</td><td><code>awaitWithTimeout</code> helper bounding every external call to 5&ndash;10s</td></tr>
+            <tr><td>Silent failure, no log, handler exits early</td><td>Unhandled rejection thrown out of <code>Citizen.Await</code>, no <code>pcall</code> wrapper</td><td>Wrap every <code>Await</code> in <code>pcall</code>; or use <code>:next(onOk, onErr)</code> chain that handles both branches</td></tr>
+            <tr><td>Server tick spikes 8&ndash;15ms when 64 players join</td><td>Per-tick promise allocation in a player-scan loop</td><td>Cache the result for 1&ndash;5s; rebuild only on cache miss or invalidation event</td></tr>
+            <tr><td><code>Citizen.Await(nil)</code> blocks forever</td><td>Wrapper forgot to <code>return p</code></td><td>Lint rule: every promise-returning function ends with <code>return p</code>; add a unit test that asserts type</td></tr>
+            <tr><td>Race: parallel awaits return wrong values to wrong players</td><td>Captured <code>source</code> in a closure that loops, classic <code>for i, p in pairs</code> with <code>i</code> shared</td><td>Pass <code>source</code> as an argument into a helper, not via upvalue capture in a loop body</td></tr>
+            <tr><td>Server log floods with "second resolve ignored"</td><td>Callback fires twice (HTTP retry, double event) and resolves the same promise</td><td>Guard the callback: <code>if settled then return end; settled = true</code> before <code>:resolve</code>/<code>:reject</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Awaiting at file top level</summary>
+          <p><code>Citizen.Await</code> needs a thread context. Top-level await crashes the resource. Wrap in <code>CreateThread</code> or call from inside an event handler.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to <code>return</code> the promise from your wrapper</summary>
+          <p>If your <code>http</code> function builds a promise and forgets to <code>return p</code>, callers get <code>nil</code> and <code>Citizen.Await(nil)</code> blocks forever.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Resolving inside the wrong scope</summary>
+          <p>Capturing <code>p</code> in a closure works. Reusing one outer promise across multiple operations does not, you can only resolve once. Build a fresh promise per call.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using <code>Wait(0)</code> as a promise substitute</summary>
+          <p>It looks similar but is not. <code>Wait(0)</code> yields one tick; it does not wait for an event. If your callback fires after 200ms, <code>Wait(0)</code> returns long before. Use a real promise.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Not handling rejections</summary>
+          <p>An unhandled rejection bubbles as a Lua error and crashes your handler. Always wrap <code>Await</code> in <code>pcall</code> or use a <code>:next(onSuccess, onFailure)</code> chain that handles both branches.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. <code>Citizen.Await(p)</code> blocks...</legend>
+            <label><input type="radio" name="q1" value="a"> The whole server.</label>
+            <label><input type="radio" name="q1" value="b"> Only the current thread, until <code>p</code> resolves or rejects.</label>
+            <label><input type="radio" name="q1" value="c"> Every thread that touches the same resource.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. To wrap <code>PerformHttpRequest</code> as a promise, you...</legend>
+            <label><input type="radio" name="q2" value="a"> Create a promise, call <code>:resolve</code> from inside the HTTP callback, return the promise.</label>
+            <label><input type="radio" name="q2" value="b"> Replace the callback with <code>nil</code>.</label>
+            <label><input type="radio" name="q2" value="c"> Call <code>Citizen.Await</code> inside the callback.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. What happens if you <code>:resolve</code> a promise twice?</legend>
+            <label><input type="radio" name="q3" value="a"> The promise rejects.</label>
+            <label><input type="radio" name="q3" value="b"> The handler crashes.</label>
+            <label><input type="radio" name="q3" value="c"> The first call wins; the second is a no-op.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. Three independent queries, you want to wait for all three. The fastest pattern is...</legend>
+            <label><input type="radio" name="q4" value="a"> Three sequential <code>Await</code>s.</label>
+            <label><input type="radio" name="q4" value="b"> Kick off all three, then <code>Await</code> each in turn (parallel).</label>
+            <label><input type="radio" name="q4" value="c"> One callback inside another inside another.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>promise.new()</code></dt><dd>Returns a fresh, unfulfilled promise.</dd></div>
+          <div><dt><code>p:resolve(value)</code></dt><dd>Fulfils the promise with a value. First call wins.</dd></div>
+          <div><dt><code>p:reject(err)</code></dt><dd>Rejects with an error. <code>Await</code> on a rejected promise throws.</dd></div>
+          <div><dt><code>Citizen.Await(p)</code></dt><dd>Blocks the current thread until <code>p</code> settles. Returns the value or throws.</dd></div>
+          <div><dt>Wrapping a callback</dt><dd>Inside the callback, call <code>p:resolve</code> on success, <code>p:reject</code> on failure. Always <code>return p</code>.</dd></div>
+          <div><dt>Parallel</dt><dd>Kick off all promises first, then <code>Await</code> each. Total time = slowest, not sum.</dd></div>
+          <div><dt>Errors</dt><dd>Wrap <code>Citizen.Await</code> in <code>pcall</code> if you might reject.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>A promise is a receipt for a value that will arrive later.</li>
+          <li>Wrap any callback API by creating a promise and resolving/rejecting from the callback.</li>
+          <li><code>Citizen.Await</code> turns async into linear top-to-bottom code, scoped to one thread.</li>
+          <li>Run independent calls in parallel by collecting promises first, then awaiting them.</li>
+          <li>Always handle rejections, either with <code>pcall</code> or a <code>:next</code> chain.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build a server export <code>GetPlayerSnapshot(src)</code> that runs three queries in parallel: balance, active bans, current job. Wrap each in a promise. Return a single table with all three. Time the difference between serial and parallel and print it. The parallel version should be roughly the slowest single query.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>txAdmin Live Console</span></header>
+          <pre><code class="language-bash">[QU][snap] serial: 92ms
+[QU][snap] parallel: 31ms
+[QU][snap] balance=5000 bans=0 job=police</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/scheduling-and-threading/" target="_blank" rel="noopener">CFX docs, Scheduling &amp; threading</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Citizen.Await/" target="_blank" rel="noopener">CFX docs, Citizen.Await</a></li>
+          <li><a href="../clase-p1/leasonp1.html">P1, Database with oxmysql</a></li>
+          <li><a href="../clase-p2/leasonp2.html">P2, HTTP requests</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Implement a <code>promise.all(list)</code> helper so you can <code>Citizen.Await(promise.all{p1, p2, p3})</code>.</li>
+          <li>Add a <code>:timeout(ms)</code> chain so a stuck HTTP call rejects after 5 seconds instead of hanging forever.</li>
+          <li>Re-read your oldest resource and replace every nested callback with a promise wrapper. Measure lines before and after.</li>
+        </ul>
+      </section>

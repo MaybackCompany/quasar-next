@@ -1,0 +1,252 @@
+<LessonHero
+  crumbs="Module 02 · Bonus"
+  title="Version control with GitHub Desktop"
+  meta={[
+    { label: "You'll build", value: "A git repository for qu_hello, a .gitignore tuned for FiveM, two commits, a feature branch, and a published private repo on github.com." },
+    { label: "Time", value: "~35 minutes" },
+    { label: "You need", value: "Your qu_hello resource from Module 02 and a free github.com account." },
+    { label: "You'll learn", value: "Install & sign-in -> init repo -> .gitignore for FiveM -> first commit -> branches -> revert -> publish -> the daily rhythm" },
+  ]}
+>
+  This is the lesson that saves your afternoon. You have a working resource from Module 02. One careless edit, one corrupted file, one "I'll just try this", and it's gone. **Git is the safety net.** The mental model is trivial: git takes snapshots of your folder, and each snapshot is called a `commit`. GitHub Desktop is the button-based way to start using git right now, no terminal required.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a working qu_hello folder with fxmanifest.lua, client/main.lua, and server/main.lua.",
+    "I have a free github.com account with my email verified.",
+    "I have GitHub Desktop installed and signed in to that account.",
+    "I will not edit unrelated files while working through this lesson."
+  ]}
+/>
+
+<Callout variant="fivem" title="Git is a camera for your folder">
+  Forget every intimidating thing you have read about git. It takes a snapshot of your folder; each snapshot is a commit; you can jump back to any of them at any time. Branches, merges, and pushes are just plumbing on top of that, and GitHub Desktop hides the plumbing behind buttons. Do one step, read the proof, then move to the next.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Install GitHub Desktop and sign in" outcome="GitHub Desktop is open, signed in, and ready to receive your first repository.">
+    Go to [desktop.github.com](https://desktop.github.com/) and download the installer for your operating system (Windows or macOS). Run it and accept the defaults.
+
+    On first launch it asks you to sign in. Click **Sign in to GitHub.com**, authorise in the browser tab that opens, then return to the app. When it asks for your name and email, use anything you like; these become the author shown on your commits.
+
+    You land on the home screen with three buttons: **Clone a repository**, **Create a new repository**, and **Add an existing repository**. The third one is the one you want next.
+
+    <ExpectedOutput>
+    Welcome to GitHub Desktop
+    Signed in as &lt;your-username&gt;
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Turn qu_hello into a repository" outcome="GitHub Desktop tracks every file inside qu_hello and lists them ready to commit.">
+    Use either safe path to add your folder:
+
+    ```text
+    Home screen:  Add an existing repository from your hard drive
+    Menu:         File -> Add local repository
+    ```
+
+    Browse to your `resources/qu_hello` folder. GitHub Desktop says the directory does not appear to be a git repository and offers a **create a repository** link. Click it, then fill the dialog:
+
+    ```text
+    Name:                   qu_hello        (must match the folder name)
+    Description:            my first FiveM resource
+    Local path:             the parent of qu_hello (already filled in)
+    Initialize with README: ticked
+    Git Ignore:             None            (you write a custom one in Step 3)
+    License:                None
+    ```
+
+    Click **Create repository**. On the main screen the left pane lists every file inside `qu_hello`, all ticked, ready for the first snapshot.
+
+    <Callout variant="fivem" title="One resource, one repo">
+      The FiveM community convention is that each resource is its own git repository. Do not put every resource inside one mega-repo. This is also how you install community scripts (clone the repo into `resources/`), so you are adopting the shape the whole ecosystem already uses.
+    </Callout>
+
+    <ExpectedOutput>
+    Changes (3+)
+      README.md
+      fxmanifest.lua
+      client/main.lua
+      server/main.lua
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Write a .gitignore for FiveM" outcome="Git stops tracking editor junk, logs, secrets, and large stream assets.">
+    A `.gitignore` lists patterns git will not track. It is the difference between a clean repo and one full of `.DS_Store`, editor config, and streaming assets nobody wants in version control.
+
+    In GitHub Desktop click **Repository -> Open in Visual Studio Code** (or open the folder in your editor by hand). Create a new file in the root of `qu_hello` called `.gitignore` and paste this:
+
+    ```bash
+    # Editor / OS cruft
+    .DS_Store
+    Thumbs.db
+    .vscode/
+    .idea/
+    *.swp
+    *.bak
+    *.tmp
+    *.log
+
+    # Secrets (never commit these)
+    *.env
+    config.secret.*
+
+    # Node / build artefacts, if a resource uses NUI tooling later
+    node_modules/
+    dist/
+    build/
+    *.tsbuildinfo
+
+    # FiveM things that do not belong in a resource repo
+    cache/
+    logs/
+
+    # Large streaming assets -> keep these in a separate asset-pack repo
+    stream/**/*.ytyp
+    stream/**/*.ydr
+    stream/**/*.ydd
+    stream/**/*.ytd
+    ```
+
+    Save. Back in GitHub Desktop the changes list updates: `.gitignore` is now tracked, and anything matching its patterns disappears from the list.
+
+    <Callout variant="fivem" title="Never commit an .env">
+      Any file holding secrets (API keys, database passwords, license tokens) must be in `.gitignore` before you ever commit. If you accidentally commit a secret, rotate it immediately even after you delete the file, because the history still contains it. Your Cfx.re license key, your database password, and any Tebex secret all belong here.
+    </Callout>
+
+    <ExpectedOutput>
+    Changes (4)
+      .gitignore
+      README.md
+      fxmanifest.lua
+      client/main.lua
+      server/main.lua
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Make your first commit" outcome="A snapshot of qu_hello is captured with a readable message.">
+    Look at the bottom-left of GitHub Desktop. There are two fields: **Summary** (required, a one-line description under 70 characters in the imperative tense) and **Description** (optional longer prose). Skip the description for now and type this summary:
+
+    ```text
+    feat: add /hello command and manifest
+    ```
+
+    Click the blue **Commit to main** button. That is a snapshot. Open the **History** tab (top-left) and you see one entry: your commit, your name, the timestamp, and every file captured. Click any file to see exactly what was stored.
+
+    <Callout variant="fivem" title="Quasar commit-message style">
+      Use a type prefix: `feat:` new feature, `fix:` bug fix, `refactor:` code tidy-up, `docs:` docs only, `chore:` housekeeping like gitignore and configs. Example: `feat: add cooldown to /heal command`. One line, present tense, under 70 characters. Future-you reading the history will thank you.
+    </Callout>
+
+    Now make a second commit the right way. Open `server/main.lua` and add one line at the top:
+
+    ```lua
+    print('qu_hello loaded')
+    ```
+
+    Save. The **Changes** tab shows `server/main.lua` with exactly one green added line in the diff on the right. Commit it:
+
+    ```text
+    chore: log when resource starts
+    ```
+
+    Check **History**: two commits now. Click the new one and confirm only that single line was captured.
+
+    <ExpectedOutput>
+    History
+      chore: log when resource starts   &lt;you&gt;   just now
+      feat: add /hello command and manifest   &lt;you&gt;   1 minute ago
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Branch, then revert" outcome="You can experiment on a side branch and undo any bad commit in one click.">
+    A **branch** is a parallel line of commits that does not affect `main` until you merge it. In the top bar click **Current branch: main**, type a new name in the field, and click **Create new branch**:
+
+    ```text
+    feature/cooldown
+    ```
+
+    You are now on the new branch. Add a line to the top of `server/main.lua` and commit it:
+
+    ```lua
+    local lastHealAt = 0
+    ```
+
+    ```text
+    feat: scaffold heal cooldown
+    ```
+
+    Switch back to `main` (branch dropdown -> pick **main**) and open `server/main.lua`. The line is gone. That is not a bug, that is branches working: `main` is untouched. Switch back to `feature/cooldown` and the line returns.
+
+    When a branch breaks something you cannot explain, you do not guess. Open **History**, find the commit where the code last worked, right-click it, and choose **Revert changes in commit**. That creates a new commit undoing the bad one, history intact. Inspect the diff first so you can see exactly which lines were the culprit.
+
+    <Callout variant="fivem" title="The daily workflow">
+      For every non-trivial change: branch off `main`, commit as you go, merge back when the change is proven (**Branch -> Merge into current branch**), then delete the feature branch (**Branch -> Delete**). Six clicks. When something breaks mysteriously, open **History** and revert the most recent commit, then re-test. Revert is the beginner-safe button; you do not need destructive history tools in this course.
+    </Callout>
+
+    <ExpectedOutput>
+    On main: line not present at top of server/main.lua
+    On feature/cooldown: local lastHealAt = 0 visible at line 1
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Publish to GitHub as a private repo" outcome="Your repo lives on github.com, backed up and ready to sync between machines.">
+    Right now the repo is local only. If your drive dies, your commits die with it. In the top bar click **Publish repository** and fill the dialog:
+
+    ```text
+    Name:                    qu_hello        (pre-filled, leave it)
+    Keep this code private:  ticked
+    Organization:            None
+    ```
+
+    Click **Publish Repository**. A few seconds later it is live at `github.com/<your-username>/qu_hello`, private, visible only to you. From now on: after any local commit click **Push origin** to sync up; before a session on another machine click **Fetch origin** then **Pull origin** to pull down.
+
+    <Callout variant="fivem" title="Why private for now">
+      Your first FiveM code will have bugs, security holes, and embarrassing comments. Keep the repo private until the resource is actually useful, then flip to public via **Settings -> Change repository visibility**. Convention: open-source finished resources, keep works-in-progress private, never commit anything with secrets in its history.
+    </Callout>
+
+    <ExpectedOutput>
+    Successfully published repository
+    github.com/&lt;your-username&gt;/qu_hello (Private)
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "This directory does not appear to be a Git repository", fix: "That is expected for a fresh folder. Click the create a repository link in the same dialog to initialise git." },
+    { symptom: ".gitignore changes nothing in the file list", fix: "Confirm the file is named exactly .gitignore (no .txt extension) and sits in the root of qu_hello, not in a subfolder." },
+    { symptom: "The diff shows more than the one line you changed", fix: "Your editor normalised line endings or added a trailing newline. It is harmless; commit as-is, or add a .editorconfig later." },
+    { symptom: "My file does not appear in Changes", fix: "Save it (check the editor dirty-dot), and confirm it lives inside the qu_hello folder, which is the repository boundary." },
+    { symptom: "Publish repository button is missing", fix: "You must commit at least once first. Make your initial commit, then Publish repository appears in the top bar." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Turn any resource folder into its own git repository with GitHub Desktop, no terminal needed.",
+    "Write a FiveM-tuned .gitignore that keeps secrets, editor junk, and stream assets out of history.",
+    "Commit snapshots with clear feat / fix / chore messages and read the diff for any commit in History.",
+    "Branch to experiment safely, revert a bad commit in one click, and publish a private backup to github.com."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Open your `qu_hello` repo in GitHub Desktop. Create a branch called `feature/test-exercise`, add the comment `-- exercise branch test` to the top of `server/main.lua`, and commit it. Switch back to `main` and confirm the comment is gone, then switch back to `feature/test-exercise` and confirm it reappears. Finally, delete the branch.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "GitHub Desktop documentation", href: "https://docs.github.com/en/desktop" },
+    { label: "What is version control (Atlassian)", href: "https://www.atlassian.com/git/tutorials/what-is-version-control" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+  ]}
+/>

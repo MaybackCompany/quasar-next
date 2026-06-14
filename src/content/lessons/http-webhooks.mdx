@@ -1,0 +1,139 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="HTTP requests &amp; webhooks: PerformHttpRequest"
+  meta={[
+    { label: "You'll learn", value: "PerformHttpRequest signature, JSON encode/decode, Discord webhook posts, retry on 429, hiding the URL from clients" },
+    { label: "Time", value: "~20 minutes" },
+    { label: "Prereqs", value: "P1 (oxmysql) and Lesson 14 (server events)" },
+    { label: "Outcome", value: "You can post a ban event to Discord, retry on rate-limit, and never leak a webhook URL to a client" },
+  ]}
+>
+  Talking to the outside world, Discord, your panel API, a license-check service, means HTTP. CFX gives you exactly one native: `PerformHttpRequest`. It is callback-based, will surprise you with rate limits, and JSON requires manual encode/decode. This lesson teaches the pattern that scales from a single ban-log to a 50-server fleet.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds PerformHttpRequest Discord webhook hidden in server.cfg as a working FiveM resource named `qu_http_webhooks`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_http_webhooks
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_http_webhooks/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+
+    Add these lines to server.cfg above `ensure qu_http_webhooks`:
+
+    ```text
+set qu_http_webhooks_webhook YOUR_DISCORD_WEBHOOK_URL
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local webhook = GetConvar('qu_http_webhooks_webhook', '')
+
+RegisterCommand('webhooktest', function(src)
+    if webhook == '' then print('[qu_http_webhooks] missing webhook') return end
+    local name = src == 0 and 'console' or GetPlayerName(src)
+    PerformHttpRequest(webhook, function(code)
+        print('[qu_http_webhooks] Discord status ' .. code)
+    end, 'POST', json.encode({ username = 'qu_http_webhooks', content = 'test from ' .. name }), { ['Content-Type'] = 'application/json' })
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_http_webhooks
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_http_webhooks
+    ```
+
+    Run this test:
+
+    ```text
+    /webhooktest
+    ```
+
+    <ExpectedOutput>
+      [qu_http_webhooks] Discord status 204
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_http_webhooks does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_http_webhooks", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_http_webhooks, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_http_webhooks folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for PerformHttpRequest Discord webhook hidden in server.cfg.",
+    "Add ensure qu_http_webhooks to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_http_webhooks`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

@@ -1,0 +1,81 @@
+<LessonHero
+  crumbs="SQL save and load"
+  title="SQL save and load"
+  meta={[
+    { label: "Purpose", value: "Parameterized save and load against MariaDB / MySQL." },
+    { label: "Dependencies", value: "oxmysql." },
+    { label: "Files", value: "1 server-side script." },
+    { label: "First log", value: "[QUIET][sql_save][save] citizenid=…" },
+    { label: "Lesson", value: "Lesson 22: parameterized SQL" },
+  ]}
+>
+  One save, one load. Always with `?` placeholders and a params array. Citizenid as the key. The shape every persistence query reuses.
+</LessonHero>
+
+<Callout variant="warn" title="SQL injection">
+  Never join player input into the query string. Always pass values through the params array. `'WHERE citizenid = ?'` with `{ citizenid }`, never `'WHERE citizenid = ' .. citizenid`.
+</Callout>
+
+## Files
+
+- **server.lua**, `saveNote` with `MySQL.insert`, `loadNotes` with `MySQL.query`.
+
+## Schema
+
+```
+CREATE TABLE IF NOT EXISTS qu_notes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    citizenid VARCHAR(64) NOT NULL,
+    note TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_citizenid (citizenid)
+);
+```
+
+## server.lua
+
+```
+-- PURPOSE: Parameterized SQL save and load.
+-- DEPENDENCIES: oxmysql.
+-- WARNING: Never join player input into SQL strings.
+-- Expand this: add audit rows and transactions.
+-- SECURITY:
+--   - Always use ? placeholders, never concatenate input into SQL.
+--   - Use citizenid or license identifier as the primary key, not display name.
+--   - Wrap multi-row writes in MySQL.transaction.await for atomicity.
+
+local MODULE = 'sql_save'
+
+local function saveNote(citizenid, note)
+    if type(citizenid) ~= 'string' or type(note) ~= 'string' then
+        print(('[QUIET][%s][reject] invalid note payload'):format(MODULE))
+        return
+    end
+
+    MySQL.insert('INSERT INTO qu_notes (citizenid, note) VALUES (?, ?)', { citizenid, note })
+    print(('[QUIET][%s][save] citizenid=%s'):format(MODULE, citizenid))
+end
+
+local function loadNotes(citizenid, cb)
+    MySQL.query('SELECT note FROM qu_notes WHERE citizenid = ?', { citizenid }, function(rows)
+        print(('[QUIET][%s][load] rows=%s'):format(MODULE, rows and #rows or 0))
+        cb(rows or {})
+    end)
+end
+```
+
+[View raw server.lua](/templates/sql-save-load/server.lua)
+
+## Install
+
+1. Run the schema in your database client.
+2. Create `resources/[local]/qu_notes/`.
+3. Copy `server.lua` and add a manifest with `server_script 'server.lua'` and `dependency 'oxmysql'`.
+4. Add `ensure qu_notes` after `ensure oxmysql` in `server.cfg`.
+5. Wire the gateway from [event gateway](/templates/event-gateway) so the client can request `saveNote` safely.
+
+## Next steps
+
+- Read [Lesson 22](/lessons/sql-from-zero) for the five queries: insert, update, select one, select many, delete.
+- Wrap `saveNote` + `loadNotes` in `MySQL.transaction.await` when you write multiple rows.
+- Index any column you filter by. `citizenid` is already indexed in the schema above.

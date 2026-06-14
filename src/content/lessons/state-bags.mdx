@@ -1,0 +1,141 @@
+<LessonHero
+  crumbs="Module 04 · Bonus"
+  title="State bags: Entity(x).state, Player(s).state, GlobalState"
+  meta={[
+    { label: "You'll learn", value: "Entity state, Player state, and GlobalState; who can write each; and how to react to changes with AddStateBagChangeHandler" },
+    { label: "Time", value: "~15 minutes" },
+    { label: "Prereqs", value: "Lesson 14 (events) and Lesson 12 (trust & authority)" },
+    { label: "Outcome", value: "You can replace ad-hoc broadcast events with state bags and pick the right scope (entity vs player vs global)" },
+  ]}
+>
+  Half the time you reach for `TriggerClientEvent`, what you actually want is a **state bag**: a key/value blob attached to an entity, a player, or the whole server, automatically replicated across the network. Set the value once on the server; every client sees it. Hook a handler; you get notified when it changes.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds Player state bag set and AddStateBagChangeHandler as a working FiveM resource named `qu_state_bags`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_state_bags
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_state_bags/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterCommand('setmood', function(src, args)
+    local mood = args[1] or 'calm'
+    Player(src).state:set('qu_state_bags_mood', mood, true)
+    print('[qu_state_bags] set mood ' .. mood)
+end, false)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+AddStateBagChangeHandler('qu_state_bags_mood', nil, function(bagName, key, value)
+    local player = GetPlayerFromStateBagName(bagName)
+    if player == PlayerId() then print('[qu_state_bags] mood ' .. tostring(value)) end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_state_bags
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_state_bags
+    ```
+
+    Run this test:
+
+    ```text
+    /setmood focused
+    ```
+
+    <ExpectedOutput>
+      Server: [qu_state_bags] set mood focused
+F8: [qu_state_bags] mood focused
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_state_bags does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_state_bags", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_state_bags, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_state_bags folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for Player state bag set and AddStateBagChangeHandler.",
+    "Add ensure qu_state_bags to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_state_bags`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

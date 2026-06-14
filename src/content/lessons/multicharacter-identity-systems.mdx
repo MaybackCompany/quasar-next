@@ -1,0 +1,78 @@
+<LessonHero
+  crumbs="Module B9 · Migrations & identity"
+  title="Multi-character and identity systems"
+  meta={[
+    { label: "You'll learn", value: "How player identity and multi-character systems work across frameworks, and how to choose and wire one." },
+    { label: "Time", value: "~25 minutes." },
+    { label: "You need", value: "A framework server and the database lessons." },
+    { label: "You'll learn", value: "What identity means -> how characters map to a license -> multichar resources -> how it touches every other script" },
+  ]}
+>
+  Identity is the spine of a roleplay server: who is this player, which character are they on, and what belongs to that character. Most framework installs hinge on getting this right, because every other script (money, inventory, jobs) keys off the character identifier. This lesson explains the model and how to choose a system.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a framework running (ESX, QBCore, or Qbox).",
+    "I understand oxmysql and how data persists.",
+    "I know money/inventory/jobs are stored per character."
+  ]}
+/>
+
+<Callout variant="fivem" title="The identifier that everything hangs on">
+  A player connects with a stable license identifier. A multi-character system maps that one license to several characters, each with its own citizenid/charid. Every other resource stores data against that character id, so if the identity layer is wrong, everything downstream is wrong.
+</Callout>
+
+## How identity works
+
+<StepGroup>
+  <Step num={1} title="Separate the player from the character" outcome="You can explain license vs character id.">
+    The **license** identifies the human/account; the **character id** identifies one of their characters. Money, inventory, and jobs belong to the character id, not the license. Multi-character means many character ids per license.
+  </Step>
+
+  <Step num={2} title="Pick the system your framework expects" outcome="The multichar resource matches your framework.">
+    Each framework has its conventional multichar resource and character-id field. Use the one your framework documents; bolting a foreign system on is where the pain starts. Qbox/QBCore use a citizenid; ESX uses its identifier scheme.
+  </Step>
+
+  <Step num={3} title="Confirm downstream scripts use the right id" outcome="Other resources store data against the character, not the license.">
+    Audit your key scripts (banking, inventory, jobs): do they key off the character id? A script that stores money against the license will share money across all characters, a classic bug.
+  </Step>
+
+  <Step num={4} title="Test creating and switching characters" outcome="Data follows the correct character.">
+    Make two characters, give one money/items, switch, and confirm the second does not see them. This single test catches most identity wiring mistakes.
+
+    <ExpectedOutput>
+      Character A's money and items do not appear on Character B after switching.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "All characters share money or items", fix: "A downstream script keys off the license, not the character id. Fix it to use the character id." },
+    { symptom: "Multichar resource fights the framework", fix: "Use the multichar system your framework documents; do not mix schemes." },
+    { symptom: "Characters do not save", fix: "The character id is not persisting to the database. Check the multichar resource's tables and oxmysql connection." },
+    { symptom: "New scripts break identity", fix: "Audit each new script for which id it stores data against before trusting it." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Separate the player (license) from the character (character id).",
+    "Pick the multichar system your framework expects.",
+    "Confirm downstream scripts store data against the character id.",
+    "Test character creation and switching so data follows the right character."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "Qbox documentation", href: "https://docs.qbox.re/" },
+    { label: "ESX Legacy documentation", href: "https://docs.esx-framework.org/" },
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" }
+  ]}
+/>

@@ -1,0 +1,152 @@
+<LessonHero
+  crumbs="Module 02 · Lesson 08"
+  title="Client, server, shared: three folders, one resource"
+  meta={[
+    { label: "You'll build", value: "A refactor of qu_hello into a proper three-folder resource with a shared config." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "The qu_hello resource from Lesson 07 and your text editor." },
+    { label: "You'll learn", value: "The three-folder convention -> how to decide what goes where -> glob imports -> what should never go in shared" },
+  ]}
+>
+  Open almost any serious FiveM resource and you will see the same three folders: `client/`, `server/`, and `shared/`. Think of them as three rooms with three different jobs. This lesson teaches what belongs in each room so your scripts stop feeling mixed up.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds client, server, and shared folders with shared config as a working FiveM resource named `qu_client_server_shared`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_client_server_shared
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_client_server_shared/
+  fxmanifest.lua
+  config.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+shared_script 'config.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `config.lua` and paste this:
+
+    ```lua
+Config = {}
+Config.Label = 'qu_client_server_shared shared config'
+    ```
+
+    Open `server.lua` and paste this:
+
+    ```lua
+print('[qu_client_server_shared] server loaded ' .. Config.Label)
+
+RegisterCommand('splitproof', function(src)
+    TriggerClientEvent('qu_client_server_shared:clientProof', src)
+    print('[qu_client_server_shared] server handled splitproof')
+end, false)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+print('[qu_client_server_shared] client loaded ' .. Config.Label)
+
+RegisterNetEvent('qu_client_server_shared:clientProof', function()
+    print('[qu_client_server_shared] client ped ' .. PlayerPedId())
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_client_server_shared
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_client_server_shared
+    ```
+
+    Run this test:
+
+    ```text
+    /splitproof
+    ```
+
+    <ExpectedOutput>
+      Server: [qu_client_server_shared] server handled splitproof
+F8: [qu_client_server_shared] client ped playerPedId
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_client_server_shared does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_client_server_shared", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_client_server_shared, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_client_server_shared folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for client, server, and shared folders with shared config.",
+    "Add ensure qu_client_server_shared to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_client_server_shared`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

@@ -1,0 +1,189 @@
+<LessonHero
+  crumbs="Events"
+  title="Events: trigger, listen, secure"
+  meta={[
+    { label: "Same-side: TriggerEvent", value: "Fires inside the same script process. No network." },
+    { label: "Client → server: TriggerServerEvent", value: "Always validate on the server. Client can fake any payload." },
+    { label: "Server → client: TriggerClientEvent", value: "First arg is event name, second is target source, then the payload." },
+    { label: "Net listener needs Register", value: "Across the wire requires RegisterNetEvent before AddEventHandler." },
+  ]}
+>
+  Four verbs for FiveM events. Pick one based on which side fires and which side listens. The secure wrapper goes on top once the basic flow works.
+</LessonHero>
+
+## The flow at a glance
+
+<Callout variant="info">
+  TriggerEvent stays on one side. TriggerServerEvent crosses from client to server. TriggerClientEvent crosses from server to one or every client.
+
+  Same-side calls stay inside one box. Cross-network calls travel the wire and need `RegisterNetEvent` on the receiving side.
+</Callout>
+
+## The four verbs
+
+Verb
+
+Crosses network
+
+Side
+
+Use for
+
+TriggerEvent
+
+No
+
+Either
+
+Same-side broadcast
+
+TriggerServerEvent
+
+Yes
+
+Client only
+
+Ask server to do something
+
+TriggerClientEvent
+
+Yes
+
+Server only
+
+Tell one or all clients
+
+TriggerLatentClientEvent
+
+Yes
+
+Server only
+
+Big payloads, throttled bandwidth
+
+## Same-side events
+
+```
+-- listen
+AddEventHandler('myresource:hello', function(name)
+  print('hello ' .. name)
+end)
+
+-- fire (same side, same resource or another resource on the same side)
+TriggerEvent('myresource:hello', 'Maria')
+```
+
+<Callout variant="tip" title="Same-side broadcast">
+  Use this when you want other resources on the same side to react to something. No network cost.
+</Callout>
+
+## Client to server
+
+```
+-- client.lua
+TriggerServerEvent('shop:buy', itemId)
+
+-- server.lua
+RegisterNetEvent('shop:buy', function(itemId)
+  local source = source                            -- snapshot before any await
+  local item = Config.Items[itemId]
+  if not item then return end                      -- validate input
+  if not removeMoney(source, item.price) then return end
+  exports['ox_inventory']:AddItem(source, item.name, 1)
+end)
+```
+
+<Callout variant="warn" title="Always snapshot source">
+  Inside a `RegisterNetEvent` handler, `source` is the player who triggered. After any `await` or callback, it can change. Snapshot it on the first line.
+</Callout>
+
+## Server to client
+
+```
+-- server.lua
+local source = 5                                   -- one player
+TriggerClientEvent('notify:show', source, 'Welcome')
+
+TriggerClientEvent('shop:close', -1)               -- -1 means every client
+
+-- client.lua
+RegisterNetEvent('notify:show', function(message)
+  lib.notify({ description = message })
+end)
+```
+
+The second argument is the target. `-1` broadcasts to all connected clients. Use sparingly: every connected player runs the handler.
+
+## RegisterNetEvent vs AddEventHandler
+
+For events that cross the network, you must call both. `RegisterNetEvent` declares that the event can be triggered from the other side. `AddEventHandler` binds the function.
+
+```
+-- shorter: register and bind in one
+RegisterNetEvent('shop:buy', function(itemId)
+  -- handler body
+end)
+
+-- equivalent to
+RegisterNetEvent('shop:buy')
+AddEventHandler('shop:buy', function(itemId)
+  -- handler body
+end)
+```
+
+<Callout variant="warn" title="Missing register">
+  If you forget `RegisterNetEvent`, the event fires but nothing happens. The console logs *NetEvent 'X' was not safe for network use*.
+</Callout>
+
+## Naming convention
+
+Use the `resource:action` shape. It prevents collisions across resources and makes the event obvious in logs.
+
+```
+-- good
+'qb-shops:server:buyItem'
+'ox_inventory:client:openInventory'
+'myresource:server:savePosition'
+
+-- bad
+'buy'                                               -- collides with everything
+'doStuff'                                           -- meaningless
+```
+
+## ox_lib secure net wrappers
+
+The `lib.callback` and `lib.triggerClientEvent` wrappers add rate limiting, version checks, and structured arguments. Use them once the basic flow works.
+
+```
+-- server: callback with response
+lib.callback.register('shop:price', function(source, itemId)
+  local item = Config.Items[itemId]
+  return item and item.price or 0
+end)
+
+-- client: ask and wait
+local price = lib.callback.await('shop:price', 100, 'bread')
+print('bread costs', price)
+```
+
+<Callout variant="tip" title="When to upgrade">
+  Plain events for one-shot triggers. Callbacks when you need a response. Both can coexist in the same resource.
+</Callout>
+
+## Common mistakes
+
+<Callout variant="warn" title="Trusting client payload">
+  The client can fire `TriggerServerEvent('shop:buy', 'free-money')`. The server must look up the price from its own config, not from the payload.
+</Callout>
+
+<Callout variant="warn" title="source after await">
+  Inside a server handler, `source` is a magic global. After any `Citizen.Wait`, callback, or `MySQL.query.await`, it may have changed. Always `local source = source` on the first line.
+</Callout>
+
+<Callout variant="warn" title="Using AddEventHandler on a net event">
+  Without `RegisterNetEvent` first, the handler runs only for same-side events. Cross-network triggers are silently ignored and logged as unsafe.
+</Callout>
+
+<Callout variant="warn" title="Broadcasting with -1 every tick">
+  `TriggerClientEvent('hud:update', -1, ...)` in a 100ms loop floods the network. Send only when the value actually changes.
+</Callout>

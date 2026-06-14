@@ -1,0 +1,133 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Vehicle spawn</span>
+        </div>
+        <h1>Vehicle spawn</h1>
+        <p class="lede">Client asks. Server checks job, money, and cooldown. Server spawns and networks the vehicle. Client takes ownership and cleans up on resource stop.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Authorized vehicle spawn with cleanup.</dd></div>
+          <div><dt>Dependencies</dt><dd>FiveM client runtime. Optional framework for permission checks.</dd></div>
+          <div><dt>Files</dt><dd><code>fxmanifest.lua</code>, <code>client.lua</code>.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][vehicle_spawn][owned] vehicle=&hellip;</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/vehicles-spawn-modify-store">Lesson 26: vehicles: spawn, modify, store</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Server owns the decision</header>
+        <p>Never spawn from client input. The server checks job, money, or cooldown, then sends the netId back. The client only receives the result and takes ownership.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>fxmanifest.lua</strong>, client-only manifest. Add a <code>server_script</code> when you wire the gate.</li>
+          <li><strong>client.lua</strong>, receives <code>spawnResult</code>, takes ownership, cleans up.</li>
+        </ul>
+      </section>
+
+      <section id="fxmanifest-lua">
+        <h2>fxmanifest.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">fxmanifest.lua</span></header>
+<pre><code>-- PURPOSE: Manifest for the vehicle-spawn template.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Server must validate who may request the vehicle.
+-- Expand this: add server.lua that gates spawn requests by job, money, or cooldown.
+-- SECURITY:
+--   - Never spawn from client input, the server must own the decision.
+--   - Apply a per-source cooldown server-side before granting a spawn.
+--   - Despawn owned entities on resource stop and on player disconnect.
+
+fx_version 'cerulean'
+game 'gta5'
+
+author 'Quasar Academy'
+description 'Template: vehicle spawn with ownership and cleanup'
+version '1.0.0'
+
+client_script 'client.lua'</code></pre>
+        </figure>
+        <p><a href="/templates/vehicle-spawn/fxmanifest.lua">View raw fxmanifest.lua</a></p>
+      </section>
+
+      <section id="client-lua">
+        <h2>client.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>-- PURPOSE: Vehicle spawn with ownership and cleanup.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Server must validate who may request the vehicle.
+-- Expand this: save plate, mods, fuel, and damage.
+-- SECURITY:
+--   - Never spawn directly from client input, ask the server first.
+--   - Server must check job, money, or cooldown before granting a spawn.
+--   - Despawn owned entities on resource stop and on player disconnect.
+
+local MODULE = 'vehicle_spawn'
+local spawnedVehicle = nil
+
+RegisterNetEvent('quasar:vehicle:spawnResult', function(netId)
+    local vehicle = NetToVeh(netId)
+    if vehicle == 0 or not DoesEntityExist(vehicle) then
+        print(('[QUIET][%s][missing] netId=%s'):format(MODULE, netId))
+        return
+    end
+
+    spawnedVehicle = vehicle
+    SetEntityAsMissionEntity(vehicle, true, true)
+    print(('[QUIET][%s][owned] vehicle=%s'):format(MODULE, vehicle))
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+        DeleteEntity(spawnedVehicle)
+        print(('[QUIET][%s][cleanup] deleted vehicle'):format(MODULE))
+    end
+end)</code></pre>
+        </figure>
+        <p><a href="/templates/vehicle-spawn/client.lua">View raw client.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_vehicle/</code>.</li>
+          <li>Copy both files in.</li>
+          <li>Add a <code>server.lua</code> that listens on <code>quasar:vehicle:request</code>, validates job and cooldown, then <code>CreateVehicleServerSetter</code> and <code>TriggerClientEvent('quasar:vehicle:spawnResult', src, NetworkGetNetworkIdFromEntity(veh))</code>.</li>
+          <li>Add <code>ensure qu_vehicle</code> after the framework in <code>server.cfg</code>.</li>
+          <li>Trigger from a client and match <code>[QUIET][vehicle_spawn][owned]</code>.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/vehicles-spawn-modify-store">Lesson 26</a> for the full vehicle flow.</li>
+          <li>Pair with <a href="/templates/entity-registry">the entity registry</a>, register the vehicle so cleanup is automatic.</li>
+          <li>Save plate, mods, fuel, and damage with <a href="/templates/sql-save-load">SQL save and load</a>.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/entity-registry">&larr; Entity registry</a>
+        <a class="next" href="/templates/sql-save-load">Next: SQL save and load &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#fxmanifest-lua">fxmanifest.lua</a>
+        <a href="#client-lua">client.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

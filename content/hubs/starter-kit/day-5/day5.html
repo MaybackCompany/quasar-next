@@ -1,0 +1,131 @@
+<main class="day-main">
+    <a class="kit-back" href="/starter-kit">← Back to the 7-day path</a>
+
+    <section style="margin-top: 20px">
+      <div class="day-eyebrow">Day 5 · ESX · ~35 min</div>
+      <h1 class="day-title">ESX fundamentals</h1>
+      <p class="day-lede">ESX (<code class="inline">es_extended</code>) is one of the big FiveM frameworks. Framework code can look heavy at first, but today's idea is still small: get the player, check the cash, move money between two buckets. That is all your <code class="inline">/deposit</code> command is doing.</p>
+    </section>
+
+    <h2 class="day-section-title">Day 5 in plain English</h2>
+    <div class="prose">
+      <p>Framework code can look scary because the object names are longer, but the idea is still tiny.</p>
+      <p>Get the player object. Check their cash. If they have enough, move money from one bucket to another. If they do not, stop.</p>
+      <p>That is the whole day.</p>
+    </div>
+
+    <section class="reading-panel">
+      <h3>How to use Day 5</h3>
+      <p>Read the plain-English section first. Then do Lab 1 until the guard rule makes sense. Only after that should you do the callback lab. The balance check matters more than the framework name.</p>
+    </section>
+
+    <h2 class="day-section-title">Concepts</h2>
+    <div class="prose">
+      <div class="concept">
+        <h4>Server side: <code style="background:transparent;border:0;padding:0">ESX.GetPlayerFromId(src)</code></h4>
+        <p>Takes a server ID, returns an <code class="inline">xPlayer</code> object. That object has methods like <code class="inline">xPlayer.addMoney(amount)</code>, <code class="inline">xPlayer.removeMoney(amount)</code>, <code class="inline">xPlayer.getMoney()</code>, <code class="inline">xPlayer.addAccountMoney(account, amount)</code>. All money mutations happen through these.</p>
+      </div>
+      <div class="concept">
+        <h4>Accounts are just named pots</h4>
+        <p>An xPlayer has several accounts: <code class="inline">money</code> (on-hand cash), <code class="inline">bank</code>, and <code class="inline">black_money</code>. To move cash to bank: <code class="inline">xPlayer.removeMoney(100)</code> then <code class="inline">xPlayer.addAccountMoney('bank', 100)</code>. No magic, just arithmetic on two accounts.</p>
+      </div>
+      <div class="concept">
+        <h4>Callbacks: client asks, server answers</h4>
+        <p>When the client needs a value the server owns (like "how much money do I have?"), the server exposes a callback: <code class="inline">ESX.RegisterServerCallback('name', function(source, cb) cb(value) end)</code>. The client calls it and gets the value back.</p>
+      </div>
+      <div class="concept" style="border-left: 3px solid var(--danger); padding-left: 14px;">
+        <h4>Guard the balance before you move it</h4>
+        <p>Day 3 said <strong>"never trust the client"</strong>. Here's where that rule earns its keep. A cheater can spam <code class="inline">/deposit</code> with <strong>0 cash</strong>; a beginner's script happily calls <code class="inline">removeMoney(100)</code> and drives cash negative, then adds 100 to the bank from thin air. <strong>Always check first:</strong> <code class="inline">if xPlayer.getMoney() &lt; 100 then return end</code>. No balance, no deposit. The lab tests this, you can't skip it.</p>
+      </div>
+    </div>
+
+    <h2 class="day-section-title">Lab 1 · <code class="inline" style="font-size:0.9em">/deposit</code> command (ESX)</h2>
+    <p class="prose">Write a server-side <code class="inline">/deposit</code> command. Step one: guard with <code class="inline">xPlayer.getMoney() &gt;= 100</code>, otherwise <code class="inline">return</code>. Step two: remove 100 cash, add 100 to <code class="inline">bank</code>. The sandbox's mock xPlayer starts with 500 cash and 1000 bank. Valid run: 400 cash, 1100 bank. If cash is below 100 the deposit must not happen, bank must not grow.</p>
+    <p class="prose"><strong>What to do:</strong> fetch <code class="inline">xPlayer</code>, write the guard first, then write the two money-moving lines. Guard first is non-negotiable.</p>
+    <p class="prose"><strong>Read this like a story:</strong> start at <code class="inline">cash = 500</code> and <code class="inline">bank = 1000</code>. A valid deposit ends at <code class="inline">cash = 400</code> and <code class="inline">bank = 1100</code>. An invalid deposit ends with both numbers unchanged.</p>
+
+    <div class="lab"
+         data-day-id="day-5"
+         data-lab-id="lab1"
+         data-lab-title="/deposit: remove 100 cash, add 100 to bank"
+         data-lab-objective="RegisterCommand 'deposit'. Guard first: if xPlayer.getMoney() < 100 then return end. Then xPlayer.removeMoney(100) and xPlayer.addAccountMoney('bank', 100).">
+      <template class="lab-template">RegisterCommand('deposit', function(source, args, rawCommand)
+  local xPlayer = ESX.GetPlayerFromId(source)
+  -- step 1: guard. if the player has less than 100 cash, return early.
+
+  -- step 2: move 100 cash -> bank
+end, false)
+</template>
+      <template class="lab-tests">[
+        { "name": "'deposit' command is registered",             "assert": { "type": "hasCommand", "name": "deposit" } },
+        { "name": "Uses ESX.GetPlayerFromId(source)",            "run": "_sandbox_run_command('deposit', 1)", "assert": { "type": "callAtLeast", "fn": "ESX.GetPlayerFromId", "min": 1 } },
+        { "name": "Happy path: cash 500 -> 400",                 "assert": { "type": "lua", "expr": "return _sandbox.esxXPlayer and _sandbox.esxXPlayer.money.cash == 400" } },
+        { "name": "Happy path: bank 1000 -> 1100",               "assert": { "type": "lua", "expr": "return _sandbox.esxXPlayer and _sandbox.esxXPlayer.money.bank == 1100" } },
+        { "name": "Guard: with 50 cash, deposit is refused",     "run": "_sandbox.esxXPlayer.money.cash = 50; _sandbox.esxXPlayer.money.bank = 0; _sandbox_run_command('deposit', 1)", "assert": { "type": "lua", "expr": "return _sandbox.esxXPlayer.money.cash == 50 and _sandbox.esxXPlayer.money.bank == 0" } }
+      ]</template>
+    </div>
+
+    <div class="hint">
+      <p><strong>If the guard test fails</strong> (<em>Guard: with 50 cash, deposit is refused</em>): you are moving money before checking the balance. Add <code class="inline">if xPlayer.getMoney() &lt; 100 then return end</code> above the <code class="inline">removeMoney</code> line. Do not delete the guard just to make the test green -> the whole reason for this lesson is to stop players from using commands their cash cannot cover.</p>
+    </div>
+
+    <h2 class="day-section-title">Lab 2 · Server callback for current cash</h2>
+    <p class="prose">Register a server callback called <code class="inline">qu:getCash</code>. When a client invokes it, return the current cash of the invoking player. Signature: <code class="inline">ESX.RegisterServerCallback(name, function(source, cb) cb(value) end)</code>.</p>
+    <p class="prose"><strong>What to do:</strong> register the callback, get the player from <code class="inline">source</code>, then hand the cash value into <code class="inline">cb(...)</code>.</p>
+    <p class="prose">The test will pretend to be the client, call the callback, and then print <code class="inline">cash=500</code>. That print line is your learner-facing proof that the answer came back from the server correctly.</p>
+
+    <div class="lab"
+         data-day-id="day-5"
+         data-lab-id="lab2"
+         data-lab-title="Server callback that returns xPlayer cash"
+         data-lab-objective="Call ESX.RegisterServerCallback('qu:getCash', function(source, cb) ... end). Inside: GetPlayerFromId(source) then cb(xPlayer.getMoney()).">
+      <template class="lab-template">-- Your code here
+</template>
+      <template class="lab-tests">[
+        { "name": "Callback 'qu:getCash' is registered",          "assert": { "type": "lua", "expr": "return _sandbox.callbacks['qu:getCash'] ~= nil" } },
+        { "name": "Invoking it returns 500 for the test player",  "run": "local got; ESX.TriggerServerCallback('qu:getCash', function(v) got = v end); _sandbox.prints[#_sandbox.prints+1] = 'cash=' .. tostring(got)", "assert": { "type": "hasPrint", "text": "cash=500" } }
+      ]</template>
+    </div>
+
+    <section class="lesson-recap" id="recap">
+      <h2>What you learned today</h2>
+      <ul>
+        <li><code class="inline">ESX.GetPlayerFromId(source)</code> gets a player object on the server. That object holds all the methods you need to read and change money.</li>
+        <li><code class="inline">xPlayer</code> methods like <code class="inline">getMoney()</code>, <code class="inline">removeMoney()</code>, and <code class="inline">addAccountMoney()</code> handle cash and bank. All money changes go through these.</li>
+        <li>Server callbacks let the client ask the server a question and get an answer back. <code class="inline">ESX.RegisterServerCallback</code> on the server, <code class="inline">ESX.TriggerServerCallback</code> on the client.</li>
+        <li>Always check the balance before removing money. If you skip the guard, a player with zero cash can generate money from nothing.</li>
+      </ul>
+    </section>
+
+    <section id="mistakes">
+      <h2>Common mistakes</h2>
+      <details class="explain">
+        <summary>Script error: attempt to call method 'getMoney' (a nil value)</summary>
+        <div class="callout callout--danger">
+          <p>You are calling ESX player methods on the client side. <code class="inline">xPlayer</code> objects only exist on the server. If your code is in a client script, you cannot use <code class="inline">xPlayer.getMoney()</code>. Use a server callback to ask the server for the value instead.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Player's cash goes negative after running the command</summary>
+        <div class="callout callout--danger">
+          <p>You called <code class="inline">removeMoney</code> without checking the balance first. Add <code class="inline">if xPlayer.getMoney() &lt; 100 then return end</code> before any money removal. No balance check means a player with $0 can deposit $100 they do not have.</p>
+        </div>
+      </details>
+      <details class="explain">
+        <summary>Server event handler works but any random client can trigger it</summary>
+        <div class="callout callout--danger">
+          <p>You forgot to use <code class="inline">source</code> in the server event. Always pass <code class="inline">source</code> to <code class="inline">ESX.GetPlayerFromId</code> so the server knows which player is making the request. Never let the client send their own player ID as an argument -- a cheater will send someone else's ID.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="reading-panel" style="margin-top: 32px;">
+      <h3>Before you move on</h3>
+      <p>Write one sentence that explains what you built today and how it works. If you cannot explain it simply, redo the labs until it clicks.</p>
+    </section>
+
+    <nav class="day-nav">
+      <a href="/starter-kit/day-4/day4">← Day 4</a>
+      <a class="day-nav-next" href="/starter-kit/day-6/day6">Day 6 · QBCore →</a>
+    </nav>
+  </main>

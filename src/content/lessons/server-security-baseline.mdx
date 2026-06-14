@@ -1,0 +1,80 @@
+<LessonHero
+  crumbs="Module A3 · Operate & secure"
+  title="Server security baseline"
+  meta={[
+    { label: "You'll do", value: "Lock down the things that get new servers wiped or robbed: admin permissions, secrets, resource trust, and webhook hygiene." },
+    { label: "Time", value: "~25 minutes." },
+    { label: "You need", value: "A running server with txAdmin and a server.cfg you can edit." },
+    { label: "You'll learn", value: "ACE permissions -> secret handling -> txAdmin roles -> resource trust -> a baseline you re-run before every launch" },
+  ]}
+>
+  Most beginner servers are not hacked by geniuses. They leak a license key on Discord, give every staffer god-mode, run a random script with a backdoor, or post their database webhook in a public channel. This is the baseline that closes those doors. Treat it as a checklist you run before you ever go public, and again after any big change.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can edit server.cfg and restart the server.",
+    "I have txAdmin admin access.",
+    "I know where my license key and database password live."
+  ]}
+/>
+
+<Callout variant="danger" title="The one rule under all of this">
+  The server is the only thing you trust. Never let the client decide money, items, jobs, or admin power. Every check that matters happens server-side. Most exploits are just a client lying to a server that believed it.
+</Callout>
+
+## The baseline
+
+<StepGroup>
+  <Step num={1} title="Give permissions by role, not by person" outcome="Admin power flows through ACE groups, not hardcoded names.">
+    Use ACE permissions and groups so you can add or remove a staffer in one line. Grant the narrowest power that does the job; only owners get `command.*` style access.
+
+    ```text
+    add_ace group.admin command allow
+    add_principal identifier.fivem:00000 group.admin
+    ```
+
+    In txAdmin, give moderators a limited role, not full admin. Review the admin list monthly and remove anyone who left.
+  </Step>
+
+  <Step num={2} title="Keep secrets out of the repo and out of chat" outcome="No key, password, or webhook is ever pasted where others can read it.">
+    License key, database password, and Discord webhooks are secrets. Read them at runtime with convars in `server.cfg` (which is not in your public repo) and never paste them in Discord, screenshots, or videos. If one leaks, rotate it the same hour.
+  </Step>
+
+  <Step num={3} title="Trust only resources you can read or vouch for" outcome="No unknown script runs with full server access.">
+    Every resource you `ensure` runs with full server power. Install from the official author only. Skim server-side files for suspicious `PerformHttpRequest` calls to unknown URLs, base64 blobs, or `load()`/`assert(load(...))` running fetched code. If you cannot read it and cannot trust the source, do not run it.
+  </Step>
+
+  <Step num={4} title="Lock down webhooks and logging" outcome="Your Discord logs cannot be spammed or read by outsiders.">
+    Store webhook URLs in convars, send them only from the server side, and never expose them to clients. Anyone with the URL can post to that channel, so treat it like a password.
+  </Step>
+</StepGroup>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Every staffer can run any command", fix: "Replace blanket admin with scoped ACE groups. Give moderators a limited txAdmin role." },
+    { symptom: "License key or DB password seen in Discord", fix: "Rotate it now (new key at portal.cfx.re, new DB password), then move it to a convar in server.cfg." },
+    { symptom: "A free script you installed phones home", fix: "Stop the resource, read its server files for unknown HTTP calls or load() of fetched code, and remove it if you cannot verify it." },
+    { symptom: "Players give themselves money or items", fix: "Move the decision server-side. The client may request; only the server may grant, after a check." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Grant admin power through ACE groups and roles, not hardcoded names.",
+    "Keep the license key, DB password, and webhooks in convars and never in chat.",
+    "Vet every resource before you ensure it, because it runs with full access.",
+    "Re-run this baseline before launch and after any major change."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Server commands and ACE permissions", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "Cfx.re docs · txAdmin", href: "https://docs.fivem.net/docs/resources/txAdmin/" }
+  ]}
+/>

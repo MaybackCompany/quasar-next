@@ -1,0 +1,76 @@
+<LessonHero
+  crumbs="Module B8 · Ship, sell & maintain"
+  title="Webhooks and privacy"
+  meta={[
+    { label: "You'll learn", value: "How to log to Discord webhooks without leaking secrets, spamming channels, or exposing player data." },
+    { label: "Time", value: "~20 minutes." },
+    { label: "You need", value: "The HTTP/webhooks lesson and a server you can configure." },
+    { label: "You'll learn", value: "Webhooks are secrets -> server-side only -> what NOT to log -> rate limits and redaction" },
+  ]}
+>
+  Webhooks are how your server tells Discord what happened: a sale, a ban, an error. Done carelessly they leak the webhook URL, dump player data into a channel, or spam Discord until it rate-limits you. This lesson keeps logging useful and safe.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can send a PerformHttpRequest from the server (the HTTP/webhooks lesson).",
+    "I read secrets from convars (the convars lesson).",
+    "I have a private Discord channel for logs."
+  ]}
+/>
+
+<Callout variant="danger" title="A webhook URL is a password">
+  Anyone with the webhook URL can post to that channel. Never put it in client code, never commit it, never paste it in public. Store it in a convar and read it server-side only. If it leaks, delete the webhook in Discord and make a new one.
+</Callout>
+
+## Log safely
+
+<StepGroup>
+  <Step num={1} title="Send only from the server" outcome="The webhook URL never reaches a client.">
+    All webhook calls happen in server scripts, with the URL read from a convar. A client never sees the URL and never triggers the send directly without a server check.
+
+    ```lua
+    local hook = GetConvar('logs_webhook', '')
+    ```
+  </Step>
+
+  <Step num={2} title="Decide what NOT to log" outcome="No private or sensitive data goes to a channel.">
+    Log events, not secrets. Never send license keys, passwords, full IPs, tokens, or anything that identifies a real person beyond what you actually need. Redact or hash identifiers where you can.
+  </Step>
+
+  <Step num={3} title="Rate-limit your sends" outcome="Discord does not throttle or block your webhook.">
+    Discord rate-limits webhooks. Batch or throttle high-frequency events instead of firing one request per tick. A log that spams itself stops logging when Discord cuts it off.
+  </Step>
+  <Step num={4} title="Separate channels by severity" outcome="Important logs are not buried in noise.">
+    Send errors and security events to a private staff channel, routine activity to another. Mixing a critical ban alert into a firehose of chat logs means nobody sees it.
+  </Step>
+</StepGroup>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Webhook URL leaked", fix: "Delete the webhook in Discord, create a new one, and move the URL into a server convar read server-side only." },
+    { symptom: "Player personal data dumped to a channel", fix: "Log events, not identities. Redact or hash IPs/tokens; never send secrets." },
+    { symptom: "Discord throttled or blocked the webhook", fix: "You are sending too fast. Batch or throttle high-frequency logs." },
+    { symptom: "Critical alerts lost in noise", fix: "Split channels by severity; errors and security to a quiet staff channel." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Treat webhook URLs as secrets: convar-stored, server-side, never committed.",
+    "Log events, not secrets or personal data; redact identifiers.",
+    "Throttle or batch high-frequency logs to avoid Discord rate limits.",
+    "Separate channels by severity so critical alerts are seen."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · PerformHttpRequest", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/PerformHttpRequest/" },
+    { label: "Discord · webhook resources", href: "https://discord.com/developers/docs/resources/webhook" }
+  ]}
+/>

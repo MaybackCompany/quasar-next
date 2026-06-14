@@ -1,0 +1,277 @@
+<LessonHero
+  crumbs="Entity cleanup"
+  title="Entity cleanup: spawn, register, delete"
+  meta={[
+    { label: "One registry per resource", value: "A single table holds every spawned handle." },
+    { label: "Delete on stop", value: "Loop the registry in onResourceStop. No exceptions." },
+    { label: "Networked vs local", value: "Local entities die with the client. Networked need server-side cleanup." },
+    { label: "SetAsNoLongerNeeded", value: "Hands the entity back to the engine for natural cleanup." },
+  ]}
+>
+  Every entity you spawn must be deleted. Every blip you add must be removed. Without an `onResourceStop` sweep, restarts stack ghosts on the map until the server reboots.
+</LessonHero>
+
+<Callout variant="warn" title="The leak that ruins reloads">
+  Every `CreatePed`, `CreateVehicle`, `CreateObject`, `AddBlipForCoord`, `addBoxZone`, and `RegisterKeyMapping` is a thing you own. Stop the resource without deleting them and the next start spawns a fresh copy on top of the old one.
+</Callout>
+
+## The lifecycle in one picture
+
+<Callout variant="info">
+  Every spawned entity passes through three stages: spawn the handle, push the handle into a registry, delete it on resource stop. Skipping any stage leaks the entity.
+
+  Three stages, one direction. Skip any stage and the resource leaks on every `restart`.
+</Callout>
+
+## The spawn-register-delete pattern
+
+Three lines. Spawn, push the handle into a registry table, delete the table on stop.
+
+```
+local spawned = { peds = {}, vehicles = {}, objects = {}, blips = {} }
+
+local function spawnShopkeeper(coords)
+  local model = `mp_m_shopkeep_01`
+  RequestModel(model)
+  while not HasModelLoaded(model) do Wait(10) end
+
+  local ped = CreatePed(4, model, coords.x, coords.y, coords.z, 0.0, false, true)
+  SetEntityInvincible(ped, true)
+  FreezeEntityPosition(ped, true)
+  SetBlockingOfNonTemporaryEvents(ped, true)
+  SetModelAsNoLongerNeeded(model)
+
+  spawned.peds[#spawned.peds + 1] = ped                -- register
+  return ped
+end
+```
+
+## Cleanup on resource stop
+
+```
+AddEventHandler('onResourceStop', function(name)
+  if name ~= GetCurrentResourceName() then return end
+
+  for _, ped in ipairs(spawned.peds) do
+    if DoesEntityExist(ped) then DeleteEntity(ped) end
+  end
+
+  for _, veh in ipairs(spawned.vehicles) do
+    if DoesEntityExist(veh) then DeleteEntity(veh) end
+  end
+
+  for _, obj in ipairs(spawned.objects) do
+    if DoesEntityExist(obj) then DeleteEntity(obj) end
+  end
+
+  for _, blip in ipairs(spawned.blips) do
+    if DoesBlipExist(blip) then RemoveBlip(blip) end
+  end
+end)
+```
+
+<Callout variant="tip" title="Always guard with DoesEntityExist">
+  An entity may have been deleted by another resource, despawned by streaming, or left a chunk that unloaded. `DeleteEntity` on a stale handle throws. Guard every delete.
+</Callout>
+
+## DeleteEntity vs SetEntityAsNoLongerNeeded
+
+Function
+
+What it does
+
+Use when
+
+DeleteEntity
+
+Removes immediately
+
+You own the entity and want it gone now
+
+SetEntityAsNoLongerNeeded
+
+Hands ownership back to the engine
+
+Entity should despawn naturally when out of range
+
+SetPedAsNoLongerNeeded
+
+Same, ped-specific
+
+Spawned ped that walks off and you stop tracking
+
+SetVehicleAsNoLongerNeeded
+
+Same, vehicle-specific
+
+Player drives away in a vehicle you spawned
+
+```
+-- pass the handle by reference
+local pedRef = ped
+SetPedAsNoLongerNeeded(pedRef)                        -- nils the variable too
+
+-- the engine now decides when to despawn
+```
+
+## Networked vs local entities
+
+```
+-- local: visible only on this client, dies with the client
+local ped = CreatePed(4, model, coords.x, coords.y, coords.z, 0.0, false, true)
+
+-- networked: visible to all clients, persists until deleted
+local ped = CreatePed(4, model, coords.x, coords.y, coords.z, 0.0, true, true)
+--                                                              ^networked
+
+-- only the entity owner can delete a networked entity
+local netId = NetworkGetNetworkIdFromEntity(ped)
+SetNetworkIdCanMigrate(netId, false)                  -- pin ownership to spawner
+```
+
+<Callout variant="warn" title="Wrong client deletes nothing">
+  Only the client that owns a networked entity can delete it. If ownership migrated, your `DeleteEntity` call silently does nothing. Pin ownership with `SetNetworkIdCanMigrate(netId, false)` if you need to delete it later.
+</Callout>
+
+## Server-side deletion
+
+The server can delete any networked entity by net ID, regardless of who owns it. This is the safest pattern for cleanup that must work even after disconnects.
+
+```
+-- server.lua
+local trackedEntities = {}
+
+RegisterNetEvent('shop:registerPed', function(netId)
+  local source = source
+  trackedEntities[#trackedEntities + 1] = netId
+end)
+
+AddEventHandler('onResourceStop', function(name)
+  if name ~= GetCurrentResourceName() then return end
+  for _, netId in ipairs(trackedEntities) do
+    local entity = NetworkGetEntityFromNetworkId(netId)
+    if DoesEntityExist(entity) then
+      DeleteEntity(entity)
+    end
+  end
+end)
+```
+
+## Blips, zones, key bindings
+
+```
+-- blips
+local blip = AddBlipForCoord(coords.x, coords.y, coords.z)
+SetBlipSprite(blip, 52)
+SetBlipColour(blip, 2)
+spawned.blips[#spawned.blips + 1] = blip
+
+-- ox_target zones (see ox_target cheatsheet)
+local zoneId = exports.ox_target:addBoxZone({ ... })
+spawned.zones[#spawned.zones + 1] = zoneId
+
+-- key mappings: register once, do not re-register on resource start
+RegisterKeyMapping('+openShop', 'Open shop', 'keyboard', 'E')
+-- there is no UnregisterKeyMapping; the binding persists across reloads
+```
+
+<Callout variant="tip" title="RegisterKeyMapping is idempotent">
+  Unlike entities, key mappings are stored per-player by FiveM. Calling `RegisterKeyMapping` twice does not stack. No cleanup needed for keys, only for the entities they trigger.
+</Callout>
+
+## Loops and threads
+
+A `CreateThread` with `while true` keeps running until the resource stops. FiveM tears the thread down for you. But watch for spawned entities inside the loop.
+
+```
+CreateThread(function()
+  while true do
+    local ped = CreatePed(...)                        -- LEAK: every tick spawns a ped
+    Wait(60000)
+  end
+end)
+
+-- right shape
+CreateThread(function()
+  local ped
+  while true do
+    if not ped or not DoesEntityExist(ped) then
+      ped = CreatePed(...)
+      spawned.peds[#spawned.peds + 1] = ped
+    end
+    Wait(5000)
+  end
+end)
+```
+
+## Cleanup checklist
+
+Created
+
+Cleanup with
+
+CreatePed
+
+/
+
+CreateVehicle
+
+/
+
+CreateObject
+
+DeleteEntity
+
+AddBlipForCoord
+
+RemoveBlip
+
+ox_target:addBoxZone
+
+ox_target:removeZone
+
+ox_target:addEntity
+
+ox_target:removeEntity
+
+ox_target:addModel
+
+ox_target:removeModel
+
+ox_target:addGlobalVehicle
+
+ox_target:removeGlobalVehicle
+
+RegisterCommand
+
+(none, freed on stop)
+
+RegisterKeyMapping
+
+(none, persisted by FiveM)
+
+CreateThread
+
+with
+
+while true
+
+(none, FiveM kills the thread)
+
+## Common mistakes
+
+<Callout variant="warn" title="No registry, no cleanup">
+  If you do not push the handle into a table, you cannot delete it on stop. After a few reloads the map is full of duplicate peds standing inside each other.
+</Callout>
+
+<Callout variant="warn" title="Spawning inside a tight loop">
+  `CreatePed` in a loop without an existence check spawns one per tick. The leak runs at 60fps. Always guard with `if not ped or not DoesEntityExist(ped) then`.
+</Callout>
+
+<Callout variant="warn" title="Deleting a networked entity from the wrong client">
+  Only the owning client can `DeleteEntity` on a networked handle. Either pin ownership with `SetNetworkIdCanMigrate(netId, false)` or do the cleanup on the server.
+</Callout>
+
+<Callout variant="warn" title="Forgetting blips">
+  Blips do not despawn on resource stop. They stay on the minimap forever. Add them to the registry the same way as entities and call `RemoveBlip` on stop.
+</Callout>

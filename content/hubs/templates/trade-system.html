@@ -1,0 +1,525 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Player trade system</span>
+        </div>
+        <h1>Player trade system</h1>
+        <p class="lede">A drop-in trade resource: one player runs a command, the other sees an NUI menu, and the server moves the item between their inventories. The item-handling functions are framework-agnostic, so the same code runs on ESX, QB, ox_inventory, or qs-inventory by flipping a config value.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Let one player request an item from another and confirm the transfer through a menu.</dd></div>
+          <div><dt>Dependencies</dt><dd>One framework (ESX or QB) and one inventory (qs-inventory, ox_inventory, ESX, or QB). No oxmysql, no ox_lib required.</dd></div>
+          <div><dt>Files</dt><dd>9: manifest, config, server, client, NUI html / css / js, and two locale files.</dd></div>
+          <div><dt>Command</dt><dd><code>/tradeRequest [targetId] [itemName] [itemCount]</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/anatomy-of-a-resource">Lesson 7: a real resource</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>How the flow works</header>
+        <p>Player A runs <code>/tradeRequest</code>. The server tells Player B's client to open the menu, pre-filled with A's player ID, the item, and the count. When B clicks the button, the NUI posts back to the client, the client asks the server to confirm, and the server checks B's inventory, removes the item from B, and gives it to A. The whole transfer happens server-side, which is the only place item amounts can be trusted.</p>
+      </section>
+
+      <section class="callout callout--danger">
+        <header>Read this before you ship it</header>
+        <p>This template is a teaching base, not a hardened release. It does not check distance between the two players, does not stop a player from trading with themselves, and trusts the item name and count that arrive in the server event. Before production, validate that both players exist and are near each other, clamp the count to a positive integer server-side, and never let the client decide which inventory function runs. Treat every value that crosses the net event boundary as hostile.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>fxmanifest.lua</strong>, declares the load order: shared config and locales, then client and server, then the NUI page.</li>
+          <li><strong>config/config.lua</strong>, picks the language, the inventory system, and the framework.</li>
+          <li><strong>server/server.lua</strong>, the command, the confirm event, and the framework-agnostic item functions.</li>
+          <li><strong>client/client.lua</strong>, receives the request, opens the NUI, relays the accept callback, and shows notifications.</li>
+          <li><strong>html/index.html</strong>, <strong>css/index.css</strong>, <strong>js/index.js</strong>, the trade menu interface.</li>
+          <li><strong>locales/en.lua</strong>, <strong>locales/es.lua</strong>, the translated message strings.</li>
+        </ul>
+      </section>
+
+      <section id="fxmanifest-lua">
+        <h2>fxmanifest.lua</h2>
+        <p>The manifest sets the load order. Config and locales are shared so both sides can read them, the inventory logic stays server-only, and the three NUI files are registered under both <code>ui_page</code> and <code>files</code> so the game can serve them.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">fxmanifest.lua</span></header>
+<pre><code>fx_version 'bodacious'
+game 'gta5'
+
+name "__.seerrgiioo.__"
+description "quasar university - leason 7"
+author "__.seerrgiioo.__"
+version "1.0.0"
+
+client_scripts {
+    'client/*.lua'
+}
+
+server_scripts {
+    'server/*.lua'
+}
+
+shared_scripts {
+    'config/*.lua',
+    'locales/*.lua'
+}
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/js/index.js',
+    'html/css/index.css',
+}</code></pre>
+        </figure>
+      </section>
+
+      <section id="config-lua">
+        <h2>config/config.lua</h2>
+        <p>Three switches drive the whole resource. <code>Config.Locale</code> picks the language table, <code>Config.Inventory</code> selects which inventory exports run, and <code>Config.Framework</code> tells the server which core object to load. Set these once to match your server.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">config/config.lua</span></header>
+<pre><code>Config = Config or {}
+Locales = Locales or {}
+
+Config.Locale = 'en'
+
+Config.Inventory = 'qs' -- 'esx', 'ox', 'qs', 'qb'
+
+Config.Framework = 'esx' -- 'esx', 'qb'</code></pre>
+        </figure>
+      </section>
+
+      <section id="server-lua">
+        <h2>server/server.lua</h2>
+        <p>This is the heart of the resource. It registers the trade command, listens for the confirm event, and exposes three item functions that branch on <code>Config.Inventory</code>. Because the transfer runs entirely here, the client can never fake a successful trade.</p>
+
+        <h3>2.1 The trade command</h3>
+        <p>It reads three arguments, rejects anything missing or a non-positive count, then tells the target player's client to open the menu and confirms back to the sender.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server/server.lua</span></header>
+<pre><code>Core = {}
+PlayerTrades = {}
+
+RegisterCommand('tradeRequest', function(source, args)
+    local targetId = tonumber(args[1])
+    local itemName = args[2]
+    local itemCount = tonumber(args[3])
+
+    if not targetId or not itemName or not itemCount or itemCount &lt;= 0 then
+        TriggerClientEvent('trade:client:notify', source, _U('usage_trade_request'))
+        return
+    end
+
+    TriggerClientEvent('trade:client:receiveRequest', targetId, source, itemName, itemCount)
+    TriggerClientEvent('trade:client:notify', source, string.format(_U('trade_request_sent'), targetId))
+end)</code></pre>
+        </figure>
+
+        <h3>2.2 Confirming the trade</h3>
+        <p>When the accepting player confirms, the server checks their inventory, and only if the item is there does it remove from one side and give to the other. Both players get a notification about the outcome.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server/server.lua</span></header>
+<pre><code>RegisterNetEvent('trade:server:confirmTrade')
+AddEventHandler('trade:server:confirmTrade', function(sourcePlayer, itemName, itemCount)
+    local source = source
+    local targetPlayer = sourcePlayer
+
+    if HasItem(targetPlayer, itemName, itemCount) then
+        RemoveItem(targetPlayer, itemName, itemCount)
+        GiveItem(source, itemName, itemCount)
+        TriggerClientEvent('trade:client:notify', targetPlayer, _U('trade_success'))
+        TriggerClientEvent('trade:client:notify', source, _U('trade_received'))
+    else
+        TriggerClientEvent('trade:client:notify', source, _U('trade_failed'))
+    end
+end)</code></pre>
+        </figure>
+
+        <h3>2.3 Loading the framework</h3>
+        <p>Based on the config value, the server grabs the right shared object so the ESX and QB inventory branches have something to call.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server/server.lua</span></header>
+<pre><code>if Config.Framework == 'esx' then
+    ESX = exports['es_extended']:getSharedObject()
+elseif Config.Framework == 'qb' then
+    QBCore = exports['qb-core']:GetCoreObject()
+end</code></pre>
+        </figure>
+
+        <h3>2.4 The item functions</h3>
+        <p>These three functions are the part you reuse everywhere. Each one branches on <code>Config.Inventory</code> and calls the matching exports for qs-inventory, ox_inventory, ESX, or QB. Swap inventories without touching the trade logic above.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server/server.lua</span></header>
+<pre><code>function HasItem(playerId, itemName, itemCount)
+    local playerId = tonumber(playerId) -- Convert playerId
+    local itemCount = tonumber(itemCount) -- Convert itemCount
+    if not playerId or not itemName or not itemCount or itemCount &lt;= 0 then
+        return false
+    end
+
+    if Config.Inventory == 'qs' then
+        local totalAmount = exports['qs-inventory']:GetItemTotalAmount(playerId, itemName)
+        return totalAmount &gt;= itemCount
+    elseif Config.Inventory == 'ox' then
+        local itemCountOX = exports.ox_inventory:GetItemCount(playerId, itemName)
+        return itemCountOX &gt;= itemCount
+    elseif Config.Inventory == 'esx' then
+        local player = ESX.GetPlayerFromId(playerId)
+        local item = player.getInventoryItem(itemName)
+        return item and item.count &gt;= itemCount
+    elseif Config.Inventory == 'qb' then
+        local player = QBCore.Functions.GetPlayer(playerId)
+        local item = player.Functions.GetItemByName(itemName)
+        return item and item.amount &gt;= itemCount
+    else
+        return false
+    end
+end
+
+function RemoveItem(playerId, itemName, itemCount)
+    if Config.Inventory == 'qs' then
+        exports['qs-inventory']:RemoveItem(playerId, itemName, itemCount)
+    elseif Config.Inventory == 'ox' then
+        exports.ox_inventory:RemoveItem(playerId, itemName, itemCount)
+    elseif Config.Inventory == 'esx' then
+        local player = ESX.GetPlayerFromId(playerId)
+        player.removeInventoryItem(itemName, itemCount)
+    elseif Config.Inventory == 'qb' then
+        local player = QBCore.Functions.GetPlayer(playerId)
+        player.Functions.RemoveItem(itemName, itemCount)
+    end
+end
+
+function GiveItem(playerId, itemName, itemCount)
+    if Config.Inventory == 'qs' then
+        exports['qs-inventory']:AddItem(playerId, itemName, itemCount)
+    elseif Config.Inventory == 'ox' then
+        exports.ox_inventory:AddItem(playerId, itemName, itemCount)
+    elseif Config.Inventory == 'esx' then
+        local player = ESX.GetPlayerFromId(playerId)
+        player.addInventoryItem(itemName, itemCount)
+    elseif Config.Inventory == 'qb' then
+        local player = QBCore.Functions.GetPlayer(playerId)
+        player.Functions.AddItem(itemName, itemCount)
+    end
+end</code></pre>
+        </figure>
+
+        <h3>2.5 The locale helper</h3>
+        <p>A tiny helper that looks up a key in the active language table and falls back to the raw key if no translation exists, so a missing string never crashes the resource.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server/server.lua</span></header>
+<pre><code>function _U(str)
+    if Locales and Locales[Config.Locale] and Locales[Config.Locale][str] then
+        return Locales[Config.Locale][str]
+    else
+        return str
+    end
+end</code></pre>
+        </figure>
+
+        <section class="callout callout--warn">
+          <header>The ESX and QB branches assume a valid player</header>
+          <p>In the ESX and QB cases, <code>HasItem</code> calls methods on <code>player</code> directly. If the target ID is offline or invalid, that lookup returns nil and the call errors. Add a nil check on <code>player</code> before reading the inventory item if your server lets stale IDs reach this code.</p>
+        </section>
+      </section>
+
+      <section id="client-lua">
+        <h2>client/client.lua</h2>
+        <p>The client is a thin relay. It receives the request, opens the NUI with focus, forwards the accept callback to the server, and draws notifications using the native game UI. It holds no trade logic of its own, which is exactly what you want.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>RegisterNetEvent('trade:client:receiveRequest')
+AddEventHandler('trade:client:receiveRequest', function(requesterId, itemName, itemCount)
+    TriggerEvent('trade:client:showMenu', requesterId, itemName, itemCount)
+end)
+
+RegisterNetEvent('trade:client:showMenu')
+AddEventHandler('trade:client:showMenu', function(requesterId, itemName, itemCount)
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        action = 'showMenu',
+        requesterId = requesterId,
+        itemName = itemName,
+        itemCount = itemCount
+    })
+end)
+
+RegisterNetEvent('trade:client:notify')
+AddEventHandler('trade:client:notify', function(message)
+    SetNotificationTextEntry("STRING")
+    AddTextComponentString(message)
+    DrawNotification(false, true)
+end)
+
+RegisterNUICallback('acceptRequest', function(data, cb)
+    TriggerServerEvent('trade:server:confirmTrade', data.playerId, data.itemName, data.itemCount)
+    cb({ success = true })
+    SetNuiFocus(false, false)
+end)</code></pre>
+        </figure>
+
+        <section class="callout callout--fivem">
+          <header>Always release NUI focus</header>
+          <p>The callback calls <code>SetNuiFocus(false, false)</code> after sending the event. If you add early returns or error paths, make sure focus is released on every one of them, otherwise the player gets stuck with a frozen cursor and no way to close the menu.</p>
+        </section>
+      </section>
+
+      <section id="nui-html">
+        <h2>html/index.html</h2>
+        <p>The NUI page is a single hidden panel. It loads its own script and stylesheet, then waits for the client to reveal it. The inputs are filled from the trade data and the button kicks off the accept request.</p>
+        <figure class="code">
+          <header><span class="lang">html</span><span class="file">html/index.html</span></header>
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;script src="/templates/trade-system/js/index.js"&gt;&lt;/script&gt;
+    &lt;link rel="stylesheet" href="/templates/trade-system/css/index.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;div id="RequestTradeMenu" style="display: none;"&gt;
+        &lt;div id="RequestTradeMenuTitle"&gt;
+            &lt;h1&gt;Request Trade&lt;/h1&gt;
+        &lt;/div&gt;
+        &lt;div id="RequestTradeMenuContent"&gt;
+            &lt;input id="RequestTradeMenuPlayerId" type="text" placeholder="Player ID" /&gt;
+            &lt;input id="RequestTradeMenuItemName" type="text" placeholder="Item Name" /&gt;
+            &lt;input id="RequestTradeMenuItemCount" type="number" placeholder="Item Count" /&gt;
+            &lt;button id="AcceptTradeButton"&gt;Request Trade&lt;/button&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+        </figure>
+
+        <section class="callout callout--warn">
+          <header>Button and CSS ID mismatch</header>
+          <p>The button in the HTML has the id <code>AcceptTradeButton</code>, but the stylesheet targets <code>#RequestTradeMenuButton</code>. That means the button hover and active styles never apply to the real button. If you want the blue styling, rename one so they match. The script is fine, it listens on <code>AcceptTradeButton</code>.</p>
+        </section>
+      </section>
+
+      <section id="nui-css">
+        <h2>html/css/index.css</h2>
+        <p>The styling gives the panel a centered card with a dark gradient, a gold title, stacked inputs, and a blue button with hover and active states. The comments are in Spanish in the source, kept here as-is.</p>
+        <figure class="code">
+          <header><span class="lang">css</span><span class="file">html/css/index.css</span></header>
+<pre><code>/* Estilo general del contenedor del men&uacute; */
+#RequestTradeMenu {
+    width: 400px;
+    margin: 50px auto;
+    padding: 20px;
+    background: linear-gradient(135deg, #1e1e2f, #252540);
+    border-radius: 8px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+    font-family: Arial, sans-serif;
+    color: #fff;
+    text-align: center;
+}
+
+/* T&iacute;tulo del men&uacute; */
+#RequestTradeMenuTitle {
+    margin-bottom: 20px;
+}
+
+#RequestTradeMenuTitle h1 {
+    font-size: 24px;
+    font-weight: bold;
+    margin: 0;
+    color: #ffd700;
+}
+
+/* Contenido del men&uacute; */
+#RequestTradeMenuContent {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Inputs de texto y n&uacute;mero */
+#RequestTradeMenuContent input {
+    width: calc(100% - 20px);
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    background: #2c2c3e;
+    color: #fff;
+    font-size: 16px;
+}
+
+#RequestTradeMenuContent input::placeholder {
+    color: #888;
+}
+
+#RequestTradeMenuButton {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    background: #00aaff;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#RequestTradeMenuButton:hover {
+    background: #007acc;
+}
+
+#RequestTradeMenuButton:active {
+    background: #005f99;
+}</code></pre>
+        </figure>
+      </section>
+
+      <section id="nui-js">
+        <h2>html/js/index.js</h2>
+        <p>The script listens for the <code>showMenu</code> message from the client, fills the inputs, and disables them so the values cannot be edited by hand. On button click it posts the data to the <code>acceptRequest</code> callback and hides the menu when the server replies. The inline comments are Spanish in the source, preserved here.</p>
+        <figure class="code">
+          <header><span class="lang">js</span><span class="file">html/js/index.js</span></header>
+<pre><code>window.addEventListener('message', (event) =&gt; {
+    const data = event.data;
+    if (typeof data !== 'object' || !data.action) return;
+
+    switch (data.action) {
+        case 'showMenu':
+            ShowRequestEventMenu(data.requesterId, data.itemName, data.itemCount);
+            break;
+    }
+});
+
+function ShowRequestEventMenu(requesterId, itemName, itemCount) {
+    const menu = document.getElementById('RequestTradeMenu');
+    menu.style.display = 'block';
+
+    const playerIdInput = document.getElementById('RequestTradeMenuPlayerId');
+    const itemNameInput = document.getElementById('RequestTradeMenuItemName');
+    const itemCountInput = document.getElementById('RequestTradeMenuItemCount');
+
+    // Rellenar los campos con los datos recibidos
+    playerIdInput.value = requesterId;
+    itemNameInput.value = itemName;
+    itemCountInput.value = itemCount;
+
+    // Deshabilitar los campos para evitar modificaciones accidentales
+    playerIdInput.disabled = true;
+    itemNameInput.disabled = true;
+    itemCountInput.disabled = true;
+}
+
+document.addEventListener('DOMContentLoaded', () =&gt; {
+    document.getElementById('AcceptTradeButton').addEventListener('click', () =&gt; {
+        const playerId = document.getElementById('RequestTradeMenuPlayerId').value;
+        const itemName = document.getElementById('RequestTradeMenuItemName').value;
+        const itemCount = document.getElementById('RequestTradeMenuItemCount').value;
+
+        // Enviar la solicitud al servidor para aceptar la solicitud de intercambio
+        fetch(`http://${GetParentResourceName()}/acceptRequest`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ playerId, itemName, itemCount })
+    })
+        .then(response =&gt; {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data =&gt; {
+            if (data.success) {
+                document.getElementById('RequestTradeMenu').style.display = 'none';
+            } else {
+                console.error('Trade request failed:', data.message);
+            }
+        })
+
+    });
+});</code></pre>
+        </figure>
+
+        <section class="callout callout--tip">
+          <header>Disabled inputs are a nice touch</header>
+          <p>After filling the fields, the script disables them so the accepting player cannot quietly change the player ID, item, or count before confirming. It is a small guard, but it keeps the menu honest. The real enforcement still happens server-side in <code>HasItem</code>.</p>
+        </section>
+      </section>
+
+      <section id="locales">
+        <h2>locales/en.lua and locales/es.lua</h2>
+        <p>The message strings live in per-language tables. The <code>_U</code> helper on the server pulls from whichever table <code>Config.Locale</code> points at. Add a language by dropping another file that fills <code>Locales['xx']</code>.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">locales/en.lua</span></header>
+<pre><code>Locales['en'] = {
+    usage_trade_request = "Usage: /tradeRequest [targetId] [itemName] [itemCount]",
+    trade_request_sent = "Trade request sent to Player ID: %s.",
+    trade_success = "Trade completed successfully!",
+    trade_failed = "Trade failed. Check item availability.",
+    trade_received = "You received an item from a trade."
+}</code></pre>
+        </figure>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">locales/es.lua</span></header>
+<pre><code>Locales['es'] = {
+    ['usage_trade_request'] = "Uso: /tradeRequest [targetId] [itemName] [itemCount]",
+    ['trade_request_sent'] = "Solicitud de intercambio enviada al jugador con ID: %s.",
+    ['trade_success'] = "&iexcl;Intercambio completado con &eacute;xito!",
+    ['trade_failed'] = "El intercambio fall&oacute;. Verifica la disponibilidad del art&iacute;culo.",
+    ['trade_received'] = "Has recibido un art&iacute;culo de un intercambio."
+}</code></pre>
+        </figure>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/trade-system/</code> and copy all nine files into it, keeping the folder layout (<code>client/</code>, <code>server/</code>, <code>config/</code>, <code>locales/</code>, <code>html/</code>).</li>
+          <li>Open <code>config/config.lua</code> and set <code>Config.Framework</code> and <code>Config.Inventory</code> to match your server. Set <code>Config.Locale</code> to <code>'en'</code> or <code>'es'</code>.</li>
+          <li>Add <code>ensure trade-system</code> to <code>server.cfg</code> after your framework and your inventory resource.</li>
+          <li>Restart the server.</li>
+        </ol>
+      </section>
+
+      <section id="testing">
+        <h2>Test it</h2>
+        <ol class="lesson-list">
+          <li>Get two players (or two characters) on the server and note their IDs.</li>
+          <li>As player A, run <code>/tradeRequest [B's id] [itemName] [count]</code>, for example <code>/tradeRequest 2 water 1</code>.</li>
+          <li>Player B sees the menu pre-filled. Click the button to confirm.</li>
+          <li>Check both inventories: the item should move from B to A, and both players should get a notification.</li>
+        </ol>
+      </section>
+
+      <section id="make-it-yours">
+        <h2>Make it yours</h2>
+        <p>The fastest wins are in three spots. First, set the three values in <code>config/config.lua</code> to your stack. Second, fix the button id mismatch between the HTML and the CSS if you want the styled button. Third, before going live, harden the server: confirm both players exist and are close, block self-trades, and clamp the count to a positive whole number inside <code>trade:server:confirmTrade</code> so the menu cannot send junk. Once that is in place, this is a solid base for a two-way trade where both players have to approve.</p>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates">&larr; Templates hub</a>
+        <a class="next" href="/templates/sql-save-load">Next: SQL save and load &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#fxmanifest-lua">fxmanifest.lua</a>
+        <a href="#config-lua">config.lua</a>
+        <a href="#server-lua">server.lua</a>
+        <a href="#client-lua">client.lua</a>
+        <a href="#nui-html">NUI html</a>
+        <a href="#nui-css">NUI css</a>
+        <a href="#nui-js">NUI js</a>
+        <a href="#locales">Locales</a>
+        <a href="#install">Install</a>
+        <a href="#testing">Test it</a>
+        <a href="#make-it-yours">Make it yours</a>
+      </nav>
+    </aside>
+  </div>

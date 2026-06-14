@@ -1,0 +1,291 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Teleport command</span>
+        </div>
+        <h1>Teleport command</h1>
+        <p class="lede">A drop-in <code>/tp</code> command. Players type a number, the script reads a table of named spots, and <code>SetEntityCoords</code> moves them there. Ships with a plain version and an advanced version that adds a particle burst on arrival.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Give players a quick way to jump between fixed map locations.</dd></div>
+          <div><dt>Dependencies</dt><dd>None. Pure native calls, no framework, no ox_lib, no oxmysql.</dd></div>
+          <div><dt>Files</dt><dd>2 starters: <code>fxmanifest.lua</code>, <code>client/client.lua</code>.</dd></div>
+          <div><dt>Command</dt><dd><code>/tp 1</code> teleports to the first location in the table.</dd></div>
+          <div><dt>Build note</dt><dd>The advanced version needs game build 2372 or newer for the effect.</dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>How to drop it in</header>
+        <p>Make a folder like <code>resources/[local]/qu_teleport/</code>, drop in <code>fxmanifest.lua</code> and a <code>client/</code> folder holding <code>client.lua</code>, then add <code>ensure qu_teleport</code> to your <code>server.cfg</code>. Restart and type <code>/tp 1</code> in chat. That is the whole install.</p>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>Why this is client-only</header>
+        <p>Teleporting moves your own ped, and your ped lives on the client. There is no money, no database, no job change here, so nothing needs the server. That is why the manifest only declares <code>client_scripts</code>. Keep it that way: a teleport that runs through the server is slower and gives exploiters a free event to spam.</p>
+      </section>
+
+      <section id="manifest">
+        <h2>fxmanifest.lua</h2>
+        <p>The manifest is the entry point. It tells FiveM the FX version, the game, and which files to load on the client. This is the minimum a teleport resource needs.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">fxmanifest.lua</span></header>
+<pre><code>fx_version 'cerulean'
+game 'gta5'
+
+name "kee_gan"
+description "quasar university - prologue"
+author "kee_ga"
+version "1.0.0"
+
+lua54 'yes'
+
+client_scripts {
+    'client/*.lua'
+}</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>fx_version</code>: the FXServer version this resource targets.</li>
+          <li><code>client_scripts</code>: the files that run on the client. The <code>*</code> glob loads every <code>.lua</code> in <code>client/</code>.</li>
+        </ul>
+      </section>
+
+      <section id="parts">
+        <h2>The moving parts</h2>
+        <p>Before the full file, here is each piece on its own so you know what every line is doing.</p>
+
+        <h3>RegisterCommand</h3>
+        <p>This creates the in-game command players type to trigger the teleport.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>RegisterCommand('tpplayer', function(source, args)
+    -- Code executed when the command is used
+end)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>source</code>: the ID of the player who ran the command.</li>
+          <li><code>args</code>: a table of the extra words typed after the command.</li>
+        </ul>
+
+        <h3>The locations table</h3>
+        <p>A table keeps your teleport spots in one tidy place. Each entry holds coordinates and a readable name.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = "Main Rooftop" },
+    { x = -428.0, y = 1111.0, z = 327.0, name = "Vinewood" }
+}</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>x, y, z</code>: the destination coordinates.</li>
+          <li><code>name</code>: a friendly label you show in chat.</li>
+        </ul>
+
+        <h3>Validating input</h3>
+        <p>Before you move anyone, check the input is real. This guard is what keeps a typo from crashing the script.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>if targetId and locationIndex and teleportLocations[locationIndex] then
+    -- Execute teleport logic
+else
+    -- Show error message
+end</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>targetId</code>: confirms the player ID is present.</li>
+          <li><code>locationIndex</code>: confirms a number was passed.</li>
+          <li><code>teleportLocations[locationIndex]</code>: confirms that slot actually exists.</li>
+        </ul>
+
+        <section class="callout callout--warn">
+          <header>Always validate input</header>
+          <p>Validate the index before you touch coordinates. If a player types <code>/tp banana</code> or <code>/tp 99</code>, an unguarded lookup feeds <code>nil</code> into <code>SetEntityCoords</code> and the script errors. The <code>if</code> check above is not optional polish, it is what stops the crash.</p>
+        </section>
+
+        <h3>SetEntityCoords</h3>
+        <p>This native is the actual teleport. It picks up the player ped and drops it at your coordinates.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>PlayerPedId()</code>: returns the current player entity.</li>
+          <li><code>location.x, location.y, location.z</code>: where to put them.</li>
+          <li>The first three <code>false</code> flags skip axis rotation; the trailing <code>true</code> clears the area at the destination.</li>
+        </ul>
+
+        <h3>Server-to-client events</h3>
+        <p>If you ever want one player to teleport another, the server hands the work to the target client with an event. The plain template below stays fully client-side, but this is the shape you reach for when an admin teleports someone else.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server.lua</span></header>
+<pre><code>TriggerClientEvent('teleportPlayer', targetId, location)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>'teleportPlayer'</code>: the name of your custom event.</li>
+          <li><code>targetId</code>: the player who receives it.</li>
+          <li><code>location</code>: the data sent along, here the destination.</li>
+        </ul>
+
+        <section class="callout callout--tip">
+          <header>Name events clearly</header>
+          <p>Use descriptive event names like <code>qu:teleport:toSpot</code> instead of <code>tp1</code>. Six months from now the long name still tells you what fires it.</p>
+        </section>
+
+        <h3>Error messages</h3>
+        <p>When the input fails, tell the player why instead of going silent. A red chat line plus a console print covers both the player and you.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>TriggerClientEvent('chat:addMessage', source, {
+    color = { 255, 0, 0 },
+    args = { "Error", "Invalid player ID or location index!" }
+})
+
+print("Position not valid! Use /tp [1-3].")</code></pre>
+        </figure>
+      </section>
+
+      <section id="beginner">
+        <h2>Beginner version: simple teleport</h2>
+        <p>This is the whole thing in one file. It registers <code>/tp</code>, reads the number you type, validates it, and moves you. No effects, no extras. Start here.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>-- Configuration for teleport locations
+local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = "Main Rooftop" },
+    { x = -428.0, y = 1111.0, z = 327.0, name = "Vinewood" },
+    { x = 402.0, y = -996.0, z = -100.0, name = "Hidden Bunker" }
+}
+
+-- Register the /tp command
+RegisterCommand('tp', function(source, args)
+    local locationIndex = tonumber(args[1])
+    if locationIndex and teleportLocations[locationIndex] then
+        local location = teleportLocations[locationIndex]
+        SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)
+        TriggerEvent('chat:addMessage', {
+            color = { 0, 255, 0 },
+            multiline = true,
+            args = { "Teleport", "You've been teleported in: " .. location.name }
+        })
+        print("You've been teleported in: " .. location.name)
+    else
+        TriggerEvent('chat:addMessage', {
+            color = { 255, 0, 0 },
+            multiline = true,
+            args = { "Error", "Position not valid! Use /tp [1-3]." }
+        })
+        print("Position not valid! Use /tp [1-3].")
+    end
+end)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>RegisterCommand</code>: wires up the <code>/tp</code> command.</li>
+          <li><code>teleportLocations</code>: your list of destinations with coordinates and names.</li>
+          <li><code>SetEntityCoords</code>: moves the player to the chosen spot.</li>
+        </ul>
+        <section class="callout callout--tip">
+          <header>Good enough to ship</header>
+          <p>This plain version is complete on its own. Add the effects below only when you actually want the visual flourish.</p>
+        </section>
+      </section>
+
+      <section id="advanced">
+        <h2>Advanced version: teleport with a particle burst</h2>
+        <p>Same logic, with a particle effect played at the player before they jump. It loads a named PTFX asset, waits for it, fires it, and then teleports.</p>
+        <section class="callout callout--fivem">
+          <header>Game build requirement</header>
+          <p>This version needs game build 2372 or newer and the particle dictionary loaded before use. On older builds the effect calls fail. If you are not sure of your build, ship the beginner version instead.</p>
+        </section>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client/client.lua</span></header>
+<pre><code>-- Configuration for teleport locations
+local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = "Main Rooftop" },
+    { x = -428.0, y = 1111.0, z = 327.0, name = "Vinewood" },
+    { x = 402.0, y = -996.0, z = -100.0, name = "Hidden Bunker" }
+}
+
+-- Register the /tp command
+RegisterCommand('tp', function(source, args)
+    local locationIndex = tonumber(args[1])
+    if locationIndex and teleportLocations[locationIndex] then
+        local location = teleportLocations[locationIndex]
+        RequestNamedPtfxAsset("scr_rcbarry2")
+        while not HasNamedPtfxAssetLoaded("scr_rcbarry2") do
+            Citizen.Wait(0)
+        end
+        UseParticleFxAssetNextCall("scr_rcbarry2")
+        StartParticleFxNonLoopedAtCoord(
+            "scr_clown_appears",
+            GetEntityCoords(PlayerPedId()),
+            0.0, 0.0, 0.0,
+            1.0, false, false, false
+        )
+        SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)
+        TriggerEvent('chat:addMessage', {
+            color = { 0, 255, 0 },
+            multiline = true,
+            args = { "Teleport", "You've been teleported in: " .. location.name }
+        })
+        print("You've been teleported in: " .. location.name)
+    else
+        TriggerEvent('chat:addMessage', {
+            color = { 255, 0, 0 },
+            multiline = true,
+            args = { "Error", "Position not valid! Use /tp [1-3]." }
+        })
+        print("Position not valid! Use /tp [1-3].")
+    end
+end)</code></pre>
+        </figure>
+        <ul class="lesson-list">
+          <li><code>RegisterCommand</code>: registers the <code>/tp</code> command.</li>
+          <li><code>teleportLocations</code>: the list of destinations with coordinates and names.</li>
+          <li><code>SetEntityCoords</code>: teleports the player to the chosen location.</li>
+          <li><code>StartParticleFxNonLoopedAtCoord</code>: plays the visual burst at the player before they move.</li>
+        </ul>
+      </section>
+
+      <section id="testing">
+        <h2>Test it</h2>
+        <ol class="lesson-list">
+          <li>Add the resource to <code>server.cfg</code> with <code>ensure keegan_university_1</code> (or whatever you named the folder).</li>
+          <li>Start your FiveM server and join as a player.</li>
+          <li>Type <code>/tp 1</code> to jump to the first location in the table.</li>
+        </ol>
+        <section class="callout callout--warn">
+          <header>Test locally first</header>
+          <p>Run this on a local or test server before you put it on a live one. A bad coordinate or a missing build feature is much easier to catch when no players are watching.</p>
+        </section>
+      </section>
+
+      <section id="make-it-yours">
+        <h2>Make it yours</h2>
+        <ul class="lesson-list">
+          <li>Edit the <code>teleportLocations</code> table: add, remove, or rename spots and drop in your own coordinates.</li>
+          <li>Rename the command from <code>tp</code> to whatever fits your server, and update the help text in the error message to match the number of locations.</li>
+          <li>Want one player to teleport another? Move the logic behind a server event using the <code>TriggerClientEvent</code> pattern shown above, and add an admin check before you trust the caller.</li>
+          <li>Swap the particle dictionary in the advanced version for any effect your build supports, or delete the effect block entirely to keep things plain.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates">&larr; Templates hub</a>
+        <a class="next" href="/templates/revive-command">Next: revive command &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#manifest">fxmanifest.lua</a>
+        <a href="#parts">The moving parts</a>
+        <a href="#beginner">Beginner version</a>
+        <a href="#advanced">Advanced version</a>
+        <a href="#testing">Test it</a>
+        <a href="#make-it-yours">Make it yours</a>
+      </nav>
+    </aside>
+  </div>

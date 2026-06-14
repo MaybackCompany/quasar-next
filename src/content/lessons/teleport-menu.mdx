@@ -1,0 +1,148 @@
+<LessonHero
+  crumbs="Module 06 · Lesson 20"
+  title="Build a teleport menu, step by step"
+  meta={[
+    { label: "You will build", value: "qu_tp: a teleport menu with permission checks and a smooth fade" },
+    { label: "Time", value: "About 45 minutes the first time" },
+    { label: "You should know", value: "How to start a FiveM resource and that ox_lib is installed on your server" },
+    { label: "You will not need", value: "Any prior teleport experience. Every term is defined the first time it is used." },
+  ]}
+>
+  By the end of this lesson you will type `/tpmenu`, click a place name, and watch your character arrive there with a smooth fade.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds ox_lib teleport menu with server validation and screen fade as a working FiveM resource named `qu_teleport_menu`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_teleport_menu
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_teleport_menu/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@ox_lib/init.lua'
+client_script 'client.lua'
+server_script 'server.lua'
+
+dependency 'ox_lib'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu_teleport_menu:request', function(destination)
+    if destination ~= 'legion' and destination ~= 'airport' then return end
+    TriggerClientEvent('qu_teleport_menu:approved', source, destination)
+end)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+local spots = { legion = vec3(215.76, -810.12, 30.73), airport = vec3(-1037.62, -2737.86, 20.17) }
+RegisterCommand('tpmenu', function()
+    lib.registerContext({ id = 'qu_teleport_menu_menu', title = 'Teleport', options = { { title = 'Legion', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'legion') end }, { title = 'Airport', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'airport') end } } })
+    lib.showContext('qu_teleport_menu_menu')
+end, false)
+RegisterNetEvent('qu_teleport_menu:approved', function(destination)
+    local c = spots[destination]
+    DoScreenFadeOut(500) Wait(600) SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false) DoScreenFadeIn(500)
+    print('[qu_teleport_menu] moved to ' .. destination)
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_teleport_menu
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_teleport_menu
+    ```
+
+    Run this test:
+
+    ```text
+    /tpmenu and choose Legion
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_teleport_menu] moved to legion
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_teleport_menu does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_teleport_menu", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_teleport_menu, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_teleport_menu folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for ox_lib teleport menu with server validation and screen fade.",
+    "Add ensure qu_teleport_menu to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_teleport_menu`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

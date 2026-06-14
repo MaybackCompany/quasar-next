@@ -1,0 +1,175 @@
+<LessonHero
+  crumbs="Module 02 · Lesson 07"
+  title="Anatomy of a resource"
+  meta={[
+    { label: "You'll build", value: "A working resource named qu_hello: a folder with a manifest and three script files that each print on the correct side." },
+    { label: "Time", value: "~15 minutes" },
+    { label: "You need", value: "Your server's resources folder open, txAdmin running, and the F8 console ready in game." },
+    { label: "You'll learn", value: "What fxmanifest.lua is, every line it needs, and how FiveM decides which file runs where." },
+  ]}
+>
+  A FiveM resource is nothing more than a folder with a label card inside it. The label card is a file called `fxmanifest.lua`. It tells the server three things: what this folder is, which files belong to it, and which side each file runs on. In this lesson you build that folder by hand, one file at a time, and watch it start.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server's resources folder.",
+    "I have a server I can restart (txAdmin or a console).",
+    "I can open the in game console with F8.",
+  ]}
+/>
+
+<Callout variant="tip" title="Before you touch anything">
+  Find your server's `resources` folder first. Everything below happens inside it. With txAdmin it is usually `.../txData/your-server/resources/`.
+</Callout>
+
+## Build it, one file at a time
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="An empty folder the server can find.">
+    Inside your `resources` folder, make a new folder named exactly:
+
+    ```text
+    resources/qu_hello
+    ```
+
+    The folder name *is* the resource name. Keep it lowercase with no spaces. You type this same name in `server.cfg` later, so spell it the same everywhere.
+  </Step>
+
+  <Step num={2} title="Create the manifest file" outcome="FiveM now recognises the folder as a resource.">
+    Inside `qu_hello`, create a new file named exactly:
+
+    ```text
+    fxmanifest.lua
+    ```
+
+    This is the label card. Without it, FiveM ignores the folder. The name must be exactly `fxmanifest.lua`, not `manifest.lua`, and not the old `__resource.lua`.
+  </Step>
+
+  <Step num={3} title="Write the manifest, line by line" outcome="The server knows which files to load and where.">
+    Open `fxmanifest.lua` and type this. Each line is explained underneath.
+
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
+
+    author 'you'
+    description 'My first resource'
+
+    shared_script 'config.lua'
+    client_script 'client.lua'
+    server_script 'server.lua'
+    ```
+
+    - `fx_version 'cerulean'`: the manifest format version. Always use the latest, `cerulean` is current.
+    - `game 'gta5'`: which game this runs on. For FiveM it is always `gta5`.
+    - `shared_script`: runs on *both* the server and every client. Use it for config and constants only.
+    - `client_script`: runs on each player's PC. Drawing, key presses, NUI.
+    - `server_script`: runs once on the server. Database, money, anything players must not control.
+  </Step>
+
+  <Step num={4} title="Create the three script files" outcome="Each side has one file with one print.">
+    Still inside `qu_hello`, create three more files and put one print in each, so you can see where it runs.
+
+    ```lua
+    -- config.lua  (shared)
+    print('[qu_hello] shared loaded')
+    ```
+
+    ```lua
+    -- client.lua
+    print('[qu_hello] hello from your CLIENT')
+    ```
+
+    ```lua
+    -- server.lua
+    print('[qu_hello] hello from the SERVER')
+    ```
+
+    Your folder now looks like this:
+
+    ```text
+    resources/qu_hello/
+      fxmanifest.lua
+      config.lua
+      client.lua
+      server.lua
+    ```
+  </Step>
+
+  <Step num={5} title="Tell the server to start it" outcome="The resource starts when the server boots.">
+    Open your `server.cfg` file (it sits next to the `resources` folder). Add this line near the other `ensure` lines:
+
+    ```text
+    ensure qu_hello
+    ```
+
+    `ensure` means "start this resource, and restart it if it was already running". The name after it must match the folder name exactly.
+  </Step>
+
+  <Step num={6} title="Restart and read the proof" outcome="You see your three prints split across two consoles.">
+    Save every file. Then, in the live server console (or the txAdmin console), type:
+
+    ```text
+    restart qu_hello
+    ```
+
+    Now watch both consoles.
+
+    <ExpectedOutput>
+      In the server console:
+
+      [qu_hello] shared loaded
+      [qu_hello] hello from the SERVER
+
+      In your F8 game console:
+
+      [qu_hello] shared loaded
+      [qu_hello] hello from your CLIENT
+    </ExpectedOutput>
+
+    The shared line prints on *both* sides. The server line prints only on the server. The client line prints only on your screen. That split is the whole point of the three script types.
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_hello doesn't exist", fix: "The folder name and the ensure line don't match, or there is no fxmanifest.lua. Check the spelling and the file name." },
+    { symptom: "Could not load resource qu_hello", fix: "fxmanifest.lua has a typo. A missing quote or a stray character breaks the whole manifest." },
+    { symptom: "Nothing prints at all", fix: "You added ensure but didn't restart, or you edited the wrong server.cfg. Run restart qu_hello and look again." },
+    { symptom: "Only the server line shows", fix: "That is correct. The client line only appears in the F8 console in game, not in the server console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make a resource folder and a fxmanifest.lua by hand.",
+    "Read every manifest line and say what it controls.",
+    "Choose shared, client, or server for a file on purpose.",
+    "Start a resource from server.cfg and prove it ran.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a fourth print to `server.lua` that shows the resource name, using the native `GetCurrentResourceName()`:
+
+  ```lua
+  print('[qu_hello] my name is ' .. GetCurrentResourceName())
+  ```
+
+  Restart and confirm it prints `qu_hello`. You just read a value FiveM handed you instead of hard coding it.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "Manifest: script loading order", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" },
+  ]}
+/>

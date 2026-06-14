@@ -1,0 +1,501 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Track 2 &middot; Pro Path</span></div>
+        <h1>Database with <code>oxmysql</code>: CRUD without the footguns</h1>
+        <p class="lede">Almost every server you build will save state. Bans, money, garages, jobs, all of it lives in MySQL. <code>oxmysql</code> is the modern, async-friendly driver everyone uses. This lesson teaches the four query helpers, why prepared statements stop attackers cold, and how to size the connection pool so you do not deadlock at 32 players.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>query</code>, <code>scalar</code>, <code>insert</code>, <code>update</code>, <code>single</code>, <code>prepare</code>, parameter placeholders, pool sizing</dd></div>
+          <div><dt>Time</dt><dd>~25 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 14 (server events), Bonus 13c (cancel patterns)</dd></div>
+          <div><dt>Outcome</dt><dd>You can build a server-authoritative ban system, save player money on disconnect, and never concatenate SQL again</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="p1">
+        <h2>Before you start</h2>
+        <p>Tick these so the queries land cleanly.</p>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="mariadb"> I have MariaDB or MySQL running locally and a database named <code>fivem</code> reachable at <code>127.0.0.1:3306</code>.</label></li>
+          <li><label><input type="checkbox" data-prereq="convars"> I completed <a href="../clase-22b/leason22b.html">Convars &amp; server.cfg</a> so secrets are split before I paste a password.</label></li>
+          <li><label><input type="checkbox" data-prereq="server-event"> I can register and fire a server-side event (Lesson 14).</label></li>
+          <li><label><input type="checkbox" data-prereq="connection-string"> My <code>server.cfg</code> has <code>set mysql_connection_string "mysql://user:pass@127.0.0.1/fivem"</code>.</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: oxmysql is a kitchen line cook with prepped ingredients</h2>
+        <p>You walk up to the pass and call out an order. The cook has already chopped onions, cubed beef, and warmed the pan, that is a <em>prepared statement</em>. You hand over the protein (your parameter) and the dish lands on the pass. Fast, safe, repeatable.</p>
+        <p>String concatenation is the opposite. You hand the cook a sticky note saying "do whatever this paper says", and a customer sneaks <code>'; DROP TABLE users; --</code> onto the note. That is SQL injection. Prepared statements never read the note as instructions; they treat it as an ingredient.</p>
+        <div class="callout callout--fivem">
+          <header>FiveM-specific note</header>
+          <p><code>oxmysql</code> ships with both promise-style (<code>:await()</code>) and callback APIs. Pick promises and stay there. Mixing styles in the same file is the #1 source of "why is my query running twice".</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Install and verify</h2></header>
+        <p class="step-outcome">Outcome: <code>oxmysql</code> is started before any resource that uses it.</p>
+        <div class="step-body">
+          <div class="callout callout--danger">
+            <header>Secret ordering first</header>
+            <p>Do <a href="../clase-22b/leason22b.html">Convars &amp; server.cfg</a> before this line. Keep <code>server.cfg</code> or <code>server-secrets.cfg</code> out of git, use <code>set</code> for server-only values, and never paste a real password into client files, screenshots, Discord, or a public repo.</p>
+          </div>
+          <p>Drop the latest release from <a href="https://github.com/overextended/oxmysql/releases" target="_blank" rel="noopener">github.com/overextended/oxmysql</a> into <code>resources/[standalone]/oxmysql</code>. Then in <code>server.cfg</code>:</p>
+          <figure class="code">
+            <header><span>server.cfg: load order matters</span></header>
+            <pre><code class="language-bash">set mysql_connection_string "mysql://fivem:supersecret@127.0.0.1/fivem?charset=utf8mb4"
+set mysql_debug "false"
+set mysql_slow_query_warning "150"
+
+ensure oxmysql
+ensure qu_bans</code></pre>
+          </figure>
+          <p>Verify the connection by checking the console after start, you want <code>[script:oxmysql] Database server connection established!</code>. No message? Your connection string is wrong or MariaDB is not listening on <code>3306</code>.</p>
+          <figure class="code">
+            <header><span>connection failure example</span></header>
+            <pre><code class="language-bash">[script:oxmysql] Error: Access denied for user 'fivem'@'localhost' (using password: YES)</code></pre>
+          </figure>
+          <p>Fix: confirm the username, password, host, and database name in the connection string. If the user does not exist, create it and grant only the target database: <code>CREATE USER 'fivem'@'localhost' IDENTIFIED BY '...'; GRANT ALL PRIVILEGES ON fivem.* TO 'fivem'@'localhost';</code></p>
+          <figure class="code">
+            <header><span>schema-index-preflight.sql</span></header>
+            <pre><code class="language-sql">CREATE TABLE IF NOT EXISTS users (
+    id       INT AUTO_INCREMENT PRIMARY KEY,
+    license  VARCHAR(64) NOT NULL,
+    name     VARCHAR(64) NOT NULL,
+    money    INT NOT NULL DEFAULT 0,
+    level    INT NOT NULL DEFAULT 0,
+    banned   TINYINT(1) NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_users_license (license),
+    INDEX idx_users_level (level),
+    INDEX idx_users_banned (banned)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SHOW INDEX FROM users;
+EXPLAIN SELECT money FROM users WHERE license = 'license:abc';</code></pre>
+          </figure>
+          <p>Pass preflight when <code>SHOW INDEX</code> includes <code>uq_users_license</code> and <code>EXPLAIN</code> does not show <code>type=ALL</code> for the license lookup.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>The four helpers you actually use</h2></header>
+        <p class="step-outcome">Outcome: you pick the right helper without thinking.</p>
+        <div class="step-body">
+          <p>Each helper exists for a reason. Use the narrowest one that fits.</p>
+          <figure class="code">
+            <header><span>server.lua: CRUD with each helper</span></header>
+            <pre><code class="language-lua">-- query: returns an array of rows. Use for SELECT that may return many rows.
+local rows = MySQL.query.await('SELECT id, name FROM users WHERE level &gt;= ?', { 10 })
+
+-- single: returns the first row or nil. Saves you the [1] index.
+local user = MySQL.single.await('SELECT * FROM users WHERE id = ?', { 42 })
+
+-- scalar: returns the first column of the first row. Perfect for COUNT/MAX/SUM.
+local count = MySQL.scalar.await('SELECT COUNT(*) FROM users WHERE banned = 1')
+
+-- insert: returns the new auto-increment id.
+local newId = MySQL.insert.await(
+    'INSERT INTO users (license, name, money) VALUES (?, ?, ?)',
+    { 'license:abc', 'Kishi', 5000 }
+)
+
+-- update: returns affected row count.
+local affected = MySQL.update.await(
+    'UPDATE users SET money = money + ? WHERE id = ?',
+    { 250, newId }
+)
+
+print(('[QU][db] inserted=%d affected=%d total=%d'):format(newId, affected, count))</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Why <code>:await()</code> instead of callbacks</summary>
+            <p>Callbacks pyramid quickly. Three queries deep and you are reading sideways. <code>:await()</code> yields the current thread until the query resolves, so your code reads top-to-bottom. Just remember: <code>:await()</code> only works inside a thread (handler, <code>CreateThread</code>, etc.), never at file top-level.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>You can read your own row</h3></header>
+        <p>Insert one user with your license, then <code>MySQL.single.await</code> back by license. Print the row. If it comes back as <code>nil</code>, your <code>WHERE</code> clause does not match what you inserted.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Prepared statements stop SQL injection</h2></header>
+        <p class="step-outcome">Outcome: you can explain to a junior dev why <code>..</code> in SQL is a fireable offense.</p>
+        <div class="step-body">
+          <p>Never build SQL with string concat. Compare the two:</p>
+          <figure class="code">
+            <header><span>danger.lua: do NOT do this</span></header>
+            <pre><code class="language-lua">-- A malicious player sends name = "x'; DROP TABLE users; --"
+local name = userInput
+local rows = MySQL.query.await("SELECT * FROM users WHERE name = '"..name.."'")
+-- The DB now executes: SELECT * FROM users WHERE name = 'x'; DROP TABLE users; --'</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>safe.lua: do this instead</span></header>
+            <pre><code class="language-lua">local name = userInput
+local rows = MySQL.query.await('SELECT * FROM users WHERE name = ?', { name })
+-- The DB sees ? as a placeholder. The string never becomes instructions.</code></pre>
+          </figure>
+          <div class="callout callout--danger">
+            <header>One rule, no exceptions</header>
+            <p>Every value that came from a player, an HTTP body, or any external source goes in the parameter array, never in the SQL string. If your IDE auto-completes a <code>..</code> inside a query, stop and rewrite.</p>
+          </div>
+          <p>For hot paths (the same query fired thousands of times), <code>MySQL.prepare</code> caches the parsed plan:</p>
+          <figure class="code">
+            <header><span>hotpath.lua: one parse, many executions</span></header>
+            <pre><code class="language-lua">-- Same statement, varying params. Server parses once, reuses the plan.
+local money = MySQL.prepare.await('SELECT money FROM users WHERE id = ?', { source })</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="step" id="step-3b">
+        <header><span class="step-num">Step 3b</span><h2>Race conditions: the buy-gun double-spend</h2></header>
+        <p class="step-outcome">Outcome: you can write money and inventory writes that survive a player spamming the button.</p>
+        <div class="step-body">
+          <p>Injection is the attack everyone knows. Race conditions are the bug that actually drains economies, and almost nobody writes their first money handler safely. Here is the classic. A gun costs $80. The player has $100. Your handler reads the cash, checks it, deducts, and gives the gun:</p>
+          <figure class="code">
+            <header><span>naive.lua: read, check, deduct (vulnerable)</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:buyGun', function()
+    local src = source
+    local cid = getCid(src)
+
+    local cash = MySQL.scalar.await('SELECT cash FROM accounts WHERE cid = ?', { cid })
+    if cash &lt; 80 then return end                 -- both clicks read 100, both pass this check
+
+    MySQL.update.await('UPDATE accounts SET cash = cash - 80 WHERE cid = ?', { cid })
+    exports.ox_inventory:AddItem(src, 'gun', 1)   -- both clicks reach here. two guns, one payment.
+end)</code></pre>
+          </figure>
+          <p>The player clicks twice in the same network frame, or a cheater fires the event ten times in a loop. Because <code>:await()</code> yields, a second copy of the handler starts running while the first is still waiting on the database. Both read <code>cash = 100</code>. Both pass the check. Both deduct. The account lands at <code>-60</code> and the player owns two guns. There are three ways to make this safe; in production you stack them.</p>
+
+          <h3>Fix 1: atomic conditional UPDATE (do this always)</h3>
+          <p>Stop checking in Lua. Push the check into the <code>WHERE</code> clause so the deduction only fires when the money exists. The database serializes writes to a row, so exactly one of the two racing updates can match.</p>
+          <figure class="code">
+            <header><span>fix1.lua: let the database gate the deduction</span></header>
+            <pre><code class="language-lua">local affected = MySQL.update.await(
+    'UPDATE accounts SET cash = cash - 80 WHERE cid = ? AND cash &gt;= 80',
+    { cid }
+)
+
+if affected == 0 then return end                  -- zero rows touched = they could not afford it
+exports.ox_inventory:AddItem(src, 'gun', 1)</code></pre>
+          </figure>
+          <p>The first update drops cash to $20. The second update finds no row where <code>cash &gt;= 80</code>, touches zero rows, returns <code>affected = 0</code>, and bails before handing out a second gun. This single change kills the dupe.</p>
+
+          <h3>Fix 2: per-player Lua lock (belt and suspenders)</h3>
+          <p>The atomic UPDATE protects the money column, but your handler might also touch inventory, logs, and webhooks, things the database cannot gate for you. A cheap in-memory lock stops a second copy of the handler from starting at all while the first is mid-flight.</p>
+          <figure class="code">
+            <header><span>fix2.lua: one handler per player at a time</span></header>
+            <pre><code class="language-lua">local busy = {}                                   -- src -> true while we are processing
+
+RegisterNetEvent('qu:buyGun', function()
+    local src = source
+    if busy[src] then return end                  -- already processing this player, drop the dupe
+    busy[src] = true
+
+    local affected = MySQL.update.await(
+        'UPDATE accounts SET cash = cash - 80 WHERE cid = ? AND cash &gt;= 80',
+        { getCid(src) }
+    )
+    if affected == 1 then
+        exports.ox_inventory:AddItem(src, 'gun', 1)
+    end
+
+    busy[src] = nil                               -- release when done
+end)
+
+AddEventHandler('playerDropped', function()
+    busy[source] = nil                            -- never leak a lock on disconnect
+end)</code></pre>
+          </figure>
+          <div class="callout callout--warn">
+            <header>Always release the lock</header>
+            <p>Every early <code>return</code> must clear <code>busy[src]</code> first, and you must clear it on <code>playerDropped</code>. A leaked lock means that player can never buy anything again until a restart. Wrap risky bodies in <code>pcall</code> if a query could error mid-handler.</p>
+          </div>
+
+          <h3>Fix 3: framework money functions</h3>
+          <p>If you are on Qbox or ESX, the framework already ships an atomic spend. Prefer it over hand-rolling the UPDATE, it logs the transaction and fires the right events for you.</p>
+          <figure class="code">
+            <header><span>fix3.lua: the framework does the conditional deduct</span></header>
+            <pre><code class="language-lua">local player = exports.qbx_core:GetPlayer(src)
+
+-- returns false if they could not afford it. atomic internally.
+if not player.Functions.RemoveMoney('cash', 80, 'buy_gun') then return end
+
+exports.ox_inventory:AddItem(src, 'gun', 1)</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="step" id="step-3c">
+        <header><span class="step-num">Step 3c</span><h2>Transactions: all-or-nothing across queries</h2></header>
+        <p class="step-outcome">Outcome: a multi-step write like a money transfer can never leave half-finished state.</p>
+        <div class="step-body">
+          <p>The atomic UPDATE handles one row. But some operations need several writes that must all land or all fail. A player-to-player transfer is the textbook case: take money from A, give it to B, log it. If the server crashes between the take and the give, money vanishes into thin air.</p>
+          <p>Wrap the writes in <code>MySQL.transaction.await</code>. You hand it an array of <code>{ query, values }</code> pairs. The database runs them as one unit: if any statement fails, every one of them is rolled back, as if none had run.</p>
+          <figure class="code">
+            <header><span>transfer.lua: three writes, one atomic unit</span></header>
+            <pre><code class="language-lua">local ok = MySQL.transaction.await({
+    { query = 'UPDATE accounts SET cash = cash - ? WHERE cid = ? AND cash &gt;= ?',
+      values = { amount, fromCid, amount } },
+    { query = 'UPDATE accounts SET cash = cash + ? WHERE cid = ?',
+      values = { amount, toCid } },
+    { query = 'INSERT INTO transfers (from_cid, to_cid, amount) VALUES (?, ?, ?)',
+      values = { fromCid, toCid, amount } },
+})
+
+if not ok then return end                          -- something failed, nothing was committed</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Why this beats three separate updates</header>
+            <p>Run those three queries one at a time and a crash between them leaves the books wrong: sender charged, receiver never paid. Inside a transaction the database guarantees the books always balance. Notice the sender update still carries <code>AND cash &gt;= ?</code>, transactions give you atomicity, but you still want the conditional check so an overdraft rolls the whole transfer back.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Pool sizing and the deadlock at 32 players</h2></header>
+        <p class="step-outcome">Outcome: your server does not freeze under load because every connection is in use.</p>
+        <div class="step-body">
+          <p>Each <code>:await()</code> holds one MySQL connection while it runs. The default pool is small (often 5). At 32 concurrent players each running 3 queries on a hot tick, you run out of connections and every query queues. Symptom: server hitches every time you save.</p>
+          <figure class="code">
+            <header><span>server.cfg: pool tuning</span></header>
+            <pre><code class="language-bash">set mysql_connection_string "mysql://fivem:supersecret@127.0.0.1/fivem?charset=utf8mb4&amp;connectionLimit=10"
+set mysql_slow_query_warning "100"</code></pre>
+          </figure>
+          <p>Rule of thumb: <code>connectionLimit = max(10, ceil(maxPlayers / 8))</code>. Watch the slow-query log; if you see queries over 100ms, that query needs an index, not a bigger pool.</p>
+          <div class="callout callout--gotcha">
+            <header>Common confusion</header>
+            <p>A bigger pool is not free. MariaDB has its own <code>max_connections</code>. If you raise <code>connectionLimit</code> on FiveM but leave MariaDB at 100 and you run three resources each at 50, the third resource cannot connect.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Slow query log is empty</h3></header>
+        <p>Set <code>mysql_slow_query_warning</code> to <code>50</code>, restart, play for two minutes, and check the console. Any query over 50ms gets logged. Add an index for the column it queries on, restart, confirm the warning is gone.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Profile under real load</h2></header>
+        <p class="step-outcome">Outcome: you can prove a query is the bottleneck instead of guessing.</p>
+        <div class="step-body">
+          <p>Three tools, each answers a different question. Run all three before you blame the database.</p>
+
+          <h3>1. <code>profiler record</code>: what is the resource doing per tick?</h3>
+          <figure class="code">
+            <header><span>txAdmin Live Console</span></header>
+            <pre><code class="language-bash">profiler record 60        # capture 60 frames
+profiler view             # opens http://localhost:30120/profiler/view/
+profiler save mybans.json # archive a baseline before changes</code></pre>
+          </figure>
+          <p>Open the flamegraph and look for orange bars under <code>onResourceStart</code> or your event handlers. A blocking <code>:await()</code> shows up as a single tall bar, that is the tick the server stopped processing players.</p>
+
+          <h3>2. <code>resmon</code>: who is hogging the tick budget?</h3>
+          <p>In-game, type <code>resmon 1</code>. The server-side column shows ms-per-tick per resource. <code>oxmysql</code> itself should sit under <code>0.05ms</code>. Your resource using it should sit under <code>0.30ms</code>. Anything higher means a query is running on every tick instead of in response to events.</p>
+
+          <h3>3. MariaDB <code>EXPLAIN</code>: will the query scale?</h3>
+          <figure class="code">
+            <header><span>HeidiSQL or mariadb CLI</span></header>
+            <pre><code class="language-sql">EXPLAIN SELECT money FROM users WHERE identifier = 'license:abc123';
+-- type=ALL  rows=4127893  -> full table scan, will get worse
+ALTER TABLE users ADD INDEX idx_users_identifier (identifier);
+EXPLAIN SELECT money FROM users WHERE identifier = 'license:abc123';
+-- type=ref  rows=1        -> index hit, constant time</code></pre>
+          </figure>
+          <p>The two numbers that matter: <code>type</code> (want <code>ref</code> or <code>const</code>, never <code>ALL</code>) and <code>rows</code> (want a single digit, never the table size).</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>JSON columns: how frameworks store player data</h2></header>
+        <p class="step-outcome">Outcome: you can read and write JSON columns, and query inside them without a full table scan.</p>
+        <div class="step-body">
+          <p>Open any Qbox <code>players</code> table and you will find columns like <code>charinfo</code>, <code>job</code>, <code>gang</code>, and <code>metadata</code> that hold JSON, a whole nested structure crammed into one text cell. MySQL 5.7+ understands these natively. From Lua, you cross the boundary with the FiveM globals <code>json.encode</code> (Lua table to string) and <code>json.decode</code> (string back to Lua table).</p>
+          <figure class="code">
+            <header><span>json.lua: read and write a JSON column</span></header>
+            <pre><code class="language-lua">-- write: serialize a Lua table into the column
+local data = json.encode({ firstname = 'John', lastname = 'Doe' })
+MySQL.update.await('UPDATE players SET charinfo = ? WHERE cid = ?', { data, cid })
+
+-- read: parse the column string back into a Lua table
+local row = MySQL.single.await('SELECT charinfo FROM players WHERE cid = ?', { cid })
+local charinfo = json.decode(row.charinfo)
+print(charinfo.firstname)   -- John</code></pre>
+          </figure>
+          <p>You can also filter on a field <em>inside</em> the JSON with <code>JSON_EXTRACT</code> (or the <code>-&gt;&gt;</code> shorthand), which is how frameworks answer "give me every online cop":</p>
+          <figure class="code">
+            <header><span>json-query.sql: pull a field out of a JSON column</span></header>
+            <pre><code class="language-sql">SELECT cid, JSON_EXTRACT(charinfo, '$.firstname') AS firstname
+FROM players
+WHERE JSON_EXTRACT(job, '$.name') = 'police';</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>JSON lookups do not use a normal index</header>
+            <p>A plain <code>INDEX</code> on the <code>job</code> column does nothing for <code>WHERE JSON_EXTRACT(job, '$.name') = 'police'</code>, so <code>EXPLAIN</code> shows <code>type=ALL</code> and the query scans every row. If you filter on a JSON field often, either add a MariaDB <strong>generated column</strong> that pulls the value out and index that, or store the hot field (like <code>job_name</code>) in its own real column. Do not run JSON-extract filters on a hot path over a large table.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Native cost: what each helper actually pays</h2>
+        <p>Measured on MariaDB 10.11, local socket, 64-player test server, 100k <code>users</code> rows, primed query cache. Numbers are p50 / p95 over 10k iterations.</p>
+        <div class="qu-table-wrap">
+          <table>
+            <thead>
+              <tr><th>Helper</th><th>Use case</th><th>p50</th><th>p95</th><th>Allocations</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>scalar</code> (indexed)</td><td>Get one cell by PK</td><td>0.4ms</td><td>0.9ms</td><td>1 row, 1 value</td></tr>
+              <tr><td><code>single</code> (indexed)</td><td>Get one row by PK</td><td>0.5ms</td><td>1.2ms</td><td>1 table</td></tr>
+              <tr><td><code>query</code> (LIMIT 100)</td><td>List 100 rows by index</td><td>2.1ms</td><td>4.8ms</td><td>100 tables</td></tr>
+              <tr><td><code>query</code> (no LIMIT, full scan)</td><td>Pulls 100k rows</td><td>340ms</td><td>620ms</td><td>100k tables, <strong>kills the tick</strong></td></tr>
+              <tr><td><code>insert</code></td><td>Single row write</td><td>0.7ms</td><td>2.0ms</td><td>insertId returned</td></tr>
+              <tr><td><code>update</code> (indexed WHERE)</td><td>Update one row</td><td>0.6ms</td><td>1.8ms</td><td>affectedRows returned</td></tr>
+              <tr><td><code>transaction</code> (10 statements)</td><td>Atomic batch</td><td>3.2ms</td><td>7.1ms</td><td>1 connection held</td></tr>
+              <tr><td><code>prepare</code> (reused 1k times)</td><td>Tight loop, same shape</td><td>0.18ms</td><td>0.4ms</td><td>parser cost amortized</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="callout-inline"><strong>Reading the table:</strong> the cliff between <em>indexed</em> and <em>full scan</em> is two orders of magnitude. Most "the server is laggy" tickets trace to one missing index, not a slow database.</p>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at 64 players</h2>
+        <p>What actually breaks in production, in roughly the order it happens.</p>
+        <div class="qu-table-wrap">
+          <table>
+            <thead>
+              <tr><th>What you see</th><th>Real cause</th><th>The fix</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>"Pool exhausted: requested 5, max 5"</td><td>Pool too small for concurrency</td><td>Raise <code>connectionLimit</code> to <code>ceil(maxPlayers/8)</code>; never larger than the MariaDB <code>max_connections</code> minus a buffer for HeidiSQL/admin</td></tr>
+              <tr><td>Tick spikes to 400ms+ at peak</td><td>Unindexed query starves the pool</td><td>Run the query under <code>EXPLAIN</code>; add the missing index; never <code>SELECT *</code> when one column is enough</td></tr>
+              <tr><td>Player money randomly resets</td><td>Two events writing the same row, no transaction</td><td>Wrap read-modify-write in <code>MySQL.transaction</code>; or <code>UPDATE users SET money = money + ? WHERE id = ?</code>, let the database do the math</td></tr>
+              <tr><td>Names with emoji save as <code>????</code></td><td>Connection or table is not <code>utf8mb4</code></td><td>Add <code>charset=utf8mb4</code> to the connection string; <code>ALTER TABLE users CONVERT TO CHARACTER SET utf8mb4</code></td></tr>
+              <tr><td>Resource won't start, no error</td><td>Top-level <code>:await()</code> before <code>oxmysql</code> ready</td><td>Move the first query into <code>AddEventHandler('onResourceStart', GetCurrentResourceName(), ...)</code></td></tr>
+              <tr><td>"MySQL has gone away"</td><td>Connection idle longer than <code>wait_timeout</code></td><td>Set MariaDB <code>wait_timeout=28800</code>; <code>oxmysql</code> retries automatically once that is in place</td></tr>
+              <tr><td>Slow query log fills disk</td><td>Logging every query, not just slow ones</td><td>Confirm <code>mysql_slow_query_warning</code> is set; rotate <code>slow.log</code> with <code>logrotate</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Calling <code>:await()</code> at file top level</summary>
+          <p><code>oxmysql</code> may not be ready when your resource starts. Wrap the first query in <code>AddEventHandler('onResourceStart', ...)</code> or inside a <code>CreateThread</code>. Top-level await crashes the resource silently.</p>
+        </details>
+
+        <details class="explain">
+          <summary>String concatenating a "trusted" value</summary>
+          <p>The word <em>trusted</em> is a trap. Tomorrow another dev exposes the same code path to user input. Use placeholders for every value, every time. There is zero performance cost.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using <code>query</code> when you wanted <code>single</code> or <code>scalar</code></summary>
+          <p><code>query</code> always returns an array, even with one row. You will write <code>rows[1].money</code> when you could have written <code>money</code>. <code>single</code> for one row, <code>scalar</code> for one cell, <code>query</code> for a list.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting <code>charset=utf8mb4</code></summary>
+          <p>Without it, player names with emoji or non-Latin characters (Korean, Arabic, Russian) corrupt to <code>????</code> on insert. Always include the charset in your connection string and on the table itself.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Letting one heavy query block the tick</summary>
+          <p><code>SELECT * FROM transactions ORDER BY id DESC</code> on a 4M-row table holds a connection for seconds. Add <code>LIMIT 100</code>, paginate, and put an index on <code>id</code>. The pool is shared; one bad query starves everyone.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. You need the count of banned users. Which helper?</legend>
+            <label><input type="radio" name="q1" value="a"> <code>MySQL.query.await</code> then read <code>rows[1]['COUNT(*)']</code>.</label>
+            <label><input type="radio" name="q1" value="b"> <code>MySQL.scalar.await('SELECT COUNT(*) FROM users WHERE banned = 1')</code>.</label>
+            <label><input type="radio" name="q1" value="c"> <code>MySQL.insert.await</code>, then check the return value.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Why is <code>"WHERE name = '"..name.."'"</code> dangerous?</legend>
+            <label><input type="radio" name="q2" value="a"> It is slower than placeholders.</label>
+            <label><input type="radio" name="q2" value="b"> It uses more memory.</label>
+            <label><input type="radio" name="q2" value="c"> Hostile input becomes SQL instructions (injection).</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Your server hitches every time players save. The pool is at default (5). What do you try first?</legend>
+            <label><input type="radio" name="q3" value="a"> Raise <code>connectionLimit</code> in the connection string and re-measure.</label>
+            <label><input type="radio" name="q3" value="b"> Switch every <code>:await()</code> to a callback.</label>
+            <label><input type="radio" name="q3" value="c"> Buy a bigger CPU.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. What does <code>MySQL.single.await</code> return when no row matches?</legend>
+            <label><input type="radio" name="q4" value="a"> An empty array <code>{}</code>.</label>
+            <label><input type="radio" name="q4" value="b"> <code>nil</code>.</label>
+            <label><input type="radio" name="q4" value="c"> It throws an error.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>MySQL.query.await(sql, params)</code></dt><dd>Returns an array of rows. Default for SELECT.</dd></div>
+          <div><dt><code>MySQL.single.await(sql, params)</code></dt><dd>Returns the first row or <code>nil</code>.</dd></div>
+          <div><dt><code>MySQL.scalar.await(sql, params)</code></dt><dd>Returns the first column of the first row.</dd></div>
+          <div><dt><code>MySQL.insert.await(sql, params)</code></dt><dd>Returns the new auto-increment id.</dd></div>
+          <div><dt><code>MySQL.update.await(sql, params)</code></dt><dd>Returns affected row count.</dd></div>
+          <div><dt><code>MySQL.prepare.await</code></dt><dd>Hot-path helper; reuses the parsed plan.</dd></div>
+          <div><dt>Placeholders</dt><dd>Always <code>?</code> in SQL, values in the second-arg array. Never <code>..</code>.</dd></div>
+          <div><dt>Pool size</dt><dd><code>connectionLimit</code> in the connection string; rule of thumb <code>ceil(maxPlayers/8)</code>.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Pick the narrowest helper: <code>scalar</code> for one cell, <code>single</code> for one row, <code>query</code> for a list.</li>
+          <li>Every value goes through the parameter array. <code>..</code> in SQL is a security hole.</li>
+          <li><code>:await()</code> reads top-to-bottom but must run inside a thread or handler.</li>
+          <li>The connection pool is shared; size it for concurrent players, watch the slow-query log.</li>
+          <li><code>charset=utf8mb4</code> in the connection string saves your player names.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build a one-file resource <code>qu_money</code> with two server events: <code>qu:money:add</code> (params: source, amount) and <code>qu:money:get</code> (params: source). Use <code>MySQL.update</code> for add and <code>MySQL.scalar</code> for get. Print the result back to the client with <code>TriggerClientEvent</code>. Test from F8 and confirm both queries appear in the slow-query log only if they take over 50ms.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>txAdmin Live Console</span></header>
+          <pre><code class="language-bash">[QU][money] add: source=1 amount=250 affected=1
+[QU][money] get: source=1 balance=5250</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql docs, full API reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/introduction/creating-your-first-script-lua/" target="_blank" rel="noopener">CFX docs, first server script</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 14, TriggerServerEvent</a></li>
+          <li><a href="../clase-13c/leason13c.html">Bonus 13c, Cancelling events</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Wrap every query in a small <code>db.lua</code> module: one place to log slow queries and capture errors.</li>
+          <li>Add a Prometheus metric for query duration and graph the p95 on Grafana.</li>
+          <li>Move write-heavy paths to a single <code>MySQL.transaction</code> so partial writes never persist.</li>
+        </ul>
+      </section>

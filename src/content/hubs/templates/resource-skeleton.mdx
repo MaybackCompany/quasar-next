@@ -1,0 +1,88 @@
+<LessonHero
+  crumbs="Resource skeleton"
+  title="Resource skeleton"
+  meta={[
+    { label: "Purpose", value: "Boot a new resource with the right files in the right places." },
+    { label: "Dependencies", value: "ox_lib (optional). FiveM server cerulean or newer." },
+    { label: "Files", value: "2 starters: fxmanifest.lua, logger.lua." },
+    { label: "First log", value: "[QUIET][<resource>:boot][ok] resource started" },
+    { label: "Lesson", value: "Lesson 7: a real resource" },
+  ]}
+>
+  The minimum FiveM resource: a manifest, a shared logger, and the client / server split. Start every new resource from this shape.
+</LessonHero>
+
+<Callout variant="warn" title="Wall rule">
+  Server-only files (SQL, money, job changes) must never appear in `client_scripts`. The wall is the one rule that protects everything else.
+</Callout>
+
+## Files
+
+- **fxmanifest.lua**, declares fx_version, game, scripts. Lives in the resource root.
+- **logger.lua**, shared structured logger. Loads on both sides via `shared_scripts`.
+
+## fxmanifest.lua
+
+```
+-- PURPOSE: Production-ready resource skeleton.
+-- DEPENDENCIES: ox_lib optional.
+-- WARNING: Keep server-only files out of client_scripts.
+-- Expand this: add config.lua, logger.lua, client.lua, and server.lua.
+
+fx_version 'cerulean'
+game 'gta5'
+
+shared_scripts {
+    '@ox_lib/init.lua',
+    'config.lua',
+    'logger.lua'
+}
+
+client_script 'client.lua'
+server_script 'server.lua'
+```
+
+[View raw fxmanifest.lua](/templates/resource-skeleton/fxmanifest.lua)
+
+## logger.lua
+
+```
+-- PURPOSE: Shared structured logger.
+-- DEPENDENCIES: none.
+-- WARNING: Do not log secrets or tokens.
+-- Expand this: add JSON encode when you need machine-readable logs.
+
+local RESOURCE = GetCurrentResourceName()
+
+Logger = {}
+
+function Logger.info(moduleName, action, message)
+    print(('[QUIET][%s:%s][%s] %s'):format(RESOURCE, moduleName, action, message))
+end
+
+function Logger.capture(moduleName, action, fn)
+    local ok, result = pcall(fn)
+    if not ok then
+        Logger.info(moduleName, action, result)
+        Logger.info(moduleName, 'trace', debug.traceback(result))
+        return false, result
+    end
+    return true, result
+end
+```
+
+[View raw logger.lua](/templates/resource-skeleton/logger.lua)
+
+## Install
+
+1. Create `resources/[local]/qu_starter/`.
+2. Copy `fxmanifest.lua` and `logger.lua` into it.
+3. Add empty `config.lua`, `client.lua`, `server.lua` beside them.
+4. Add `ensure qu_starter` to `server.cfg` after `ensure ox_lib`.
+5. Restart the server and watch for the resource start line.
+
+## Next steps
+
+- Read [Lesson 8](/lessons/client-server-shared) for the client / server / shared wall.
+- Add [the event gateway](/templates/event-gateway) next so the client can ask the server safely.
+- Replace `config.lua` with real values only when a feature needs them.

@@ -1,0 +1,561 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> > <span>Module 08 · Lesson 25</span></div>
+        <h1>Cleanup discipline</h1>
+        <p class="lede">Spawning is easy. Cleaning up is the part that separates scripts that work from scripts that destroy servers. If you spawn entities and never delete them, the world fills up with ghost objects, entity counts climb, and eventually the server lags or crashes. This lesson teaches you when, where, and how to clean up.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>Cleanup handlers for resource stop, player drop, and timed auto-delete.</dd></div>
+          <div><dt>Time</dt><dd>~25 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>Signs of entity leaks, cleanup on resource stop, cleanup on player drop, timeout auto-delete, and the interaction-then-cleanup pattern.</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 24 (spawning entities, the registry pattern).</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="24">
+        <h2>Before you start</h2>
+        <p>Quick check. Cleanup only makes sense if you have something to clean up, make sure the spawn side is solid first.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have completed <a href="../clase-23/leason23.html">Lesson 23</a>, I can spawn an object or ped and store its handle in a table</label></li>
+          <li><label><input type="checkbox"> I know what the <code>onResourceStop</code> event is, FiveM fires it when a resource is stopped or restarted, and it is your last chance to clean up</label></li>
+          <li><label><input type="checkbox"> I understand the difference between an entity that belongs to <em>one player</em> and an entity that lives <em>server-wide</em>, the cleanup rules are different</label></li>
+          <li><label><input type="checkbox"> I can read the F8 console and the server console to spot warnings about entity counts</label></li>
+        </ul>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 25: Cleanup discipline</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Cleanup deletes things your resource created.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find cleanup in onResourceStop handlers.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Track handles, then delete them on stop.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Restart and prove no prop remains.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small cleanup example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Cleanup</dt><dd>Deleting what your script created.<br><span>Example: delete props on resource stop.</span></dd></div>
+            <div><dt tabindex="0">Resource stop</dt><dd>When a resource is stopped or restarted.<br><span>Example: onResourceStop fires then.</span></dd></div>
+            <div><dt tabindex="0">Timeout</dt><dd>A fallback delete after time passes.<br><span>Example: remove a prop after 10 minutes.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_cleanup</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_cleanup/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_cleanup</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][cleanup]">
+            <header><span class="file">qu_cleanup/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'cleanup'
+
+RegisterCommand('quiet_24', function()
+    print(('[QUIET][%s][command] client ran'):format(MODULE))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][cleanup]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_cleanup</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>cleanup_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][cleanup_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_cleanup' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section id="why-cleanup">
+        <h2>Why cleanup matters</h2>
+        <p>Every entity in the world costs memory and network bandwidth. FiveM servers have a hard limit on how many entities can exist at once. When you hit that limit, new entities silently fail to spawn, or the server starts dropping frames.</p>
+        <p>Entity leaks are invisible at first. Your script works perfectly with one player testing for five minutes. But on a live server with 60 players running for hours, those orphaned barrels and ghost NPCs add up fast.</p>
+        <div class="callout callout--danger">
+          <header>Entity leaks = slow death</header>
+          <p>Lag that gets worse over time is the classic symptom. If your server runs great after a restart but gets sluggish after a few hours, someone's script is leaking entities.</p>
+        </div>
+      </section>
+
+      <section id="signs-of-leak">
+        <h2>Signs you are leaking</h2>
+        <ul>
+          <li><strong>Rising entity count.</strong> Check with a tool or native -- the number keeps going up over time without coming back down.</li>
+          <li><strong>Objects from last session.</strong> You restart a resource and the barrels you spawned earlier are still there. That means the old resource instance did not clean them up.</li>
+          <li><strong>FPS drops over time.</strong> The server ran fine an hour ago. Now everyone is lagging. Classic leak behavior.</li>
+          <li><strong>Spawn functions return 0.</strong> The entity limit is hit. New spawns silently fail because the world is full of orphaned entities.</li>
+        </ul>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Cleanup on resource stop</h2></header>
+        <p class="step-outcome">Outcome: when your resource restarts or stops, every entity it created gets deleted automatically.</p>
+        <div class="step-body">
+          <p>FiveM fires the <code>onResourceStop</code> event whenever a resource is stopped or restarted. This is your first line of defense.</p>
+          <figure class="code">
+            <header><span>client.lua -- cleanup on stop</span></header>
+            <pre><code class="language-lua">local spawnedEntities = {}
+
+local function registerEntity(handle)
+    spawnedEntities[#spawnedEntities + 1] = handle
+end
+
+local function cleanupAll()
+    for i = 1, #spawnedEntities do
+        local ent = spawnedEntities[i]
+
+        if DoesEntityExist(ent) then
+            DeleteEntity(ent)
+        end
+    end
+
+    spawnedEntities = {}
+end
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then
+        return  -- not our resource, ignore
+    end
+
+    cleanupAll()
+    print('[qu_props] Cleaned up all entities on resource stop')
+end)</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Why check the resource name?</summary>
+            <ul>
+              <li><code>onResourceStop</code> fires for <em>every</em> resource that stops, not just yours. The <code>resourceName</code> parameter tells you which one is stopping.</li>
+              <li>We compare it to <code>GetCurrentResourceName()</code> -- if they don't match, we bail. You only clean up your own entities.</li>
+              <li>Without this check, stopping <em>any</em> resource would wipe <em>your</em> entities too.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Cleanup on player drop (server side)</h2></header>
+        <p class="step-outcome">Outcome: when a player disconnects, any entities tied to that player are cleaned up.</p>
+        <div class="step-body">
+          <p>If your server-side script tracks entities per player (for example, a personal vehicle), you need to clean up when the player leaves.</p>
+          <figure class="code">
+            <header><span>server.lua -- cleanup on player drop</span></header>
+            <pre><code class="language-lua">local playerEntities = {}  -- { [playerId] = { handle1, handle2, ... } }
+
+local function registerPlayerEntity(playerId, handle)
+    if not playerEntities[playerId] then
+        playerEntities[playerId] = {}
+    end
+
+    local list = playerEntities[playerId]
+    list[#list + 1] = handle
+end
+
+AddEventHandler('playerDropped', function(reason)
+    local src = source
+    local list = playerEntities[src]
+
+    if not list then
+        return
+    end
+
+    for i = 1, #list do
+        local ent = list[i]
+
+        if DoesEntityExist(ent) then
+            DeleteEntity(ent)
+        end
+    end
+
+    playerEntities[src] = nil
+    print(('[qu_props] Cleaned up entities for dropped player %d'):format(src))
+end)</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>When does playerDropped fire?</summary>
+            <ul>
+              <li>When a player disconnects, crashes, times out, or gets kicked.</li>
+              <li><code>source</code> inside this handler is the player ID of whoever just left.</li>
+              <li>We look up their entities in the registry, delete them, then wipe their entry.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-server-stop">
+        <header><span class="step-num">Step 2b</span><h2>Server-side onResourceStop for server-spawned entities</h2></header>
+        <p class="step-outcome">Outcome: entities you created with <code>CreateVehicleServerSetter</code>, <code>CreatePedServerSetter</code>, or <code>CreateObjectServerSetter</code> get deleted when your resource stops.</p>
+        <div class="step-body">
+          <p>Step 1 cleans up <em>client</em>-spawned entities. If your resource also spawns from the server (Lesson 24's server-authoritative pattern), you need the same hook on the server.</p>
+          <figure class="code">
+            <header><span>server.lua -- cleanup server-spawned entities on resource stop</span></header>
+            <pre><code class="language-lua">local serverEntities = {}
+
+local function registerServerEntity(handle)
+    serverEntities[#serverEntities + 1] = handle
+end
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+
+    for i = 1, #serverEntities do
+        local ent = serverEntities[i]
+        if DoesEntityExist(ent) then
+            DeleteEntity(ent)
+        end
+    end
+    serverEntities = {}
+    print('[qu_props] Server-side entities cleaned')
+end)</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Why two registries?</summary>
+            <ul>
+              <li>Server and client run on different machines. The server has its own handle table for entities it created with <code>*ServerSetter</code> natives; the client has its own for things spawned with <code>CreateObject</code>/<code>CreateVehicle</code>/<code>CreatePed</code>.</li>
+              <li>Each side cleans its own. The <code>onResourceStop</code> event fires on both sides when the resource stops -- you just need a handler on each.</li>
+              <li>For entities the server spawned, calling <code>DeleteEntity</code> from the server is the authoritative path. Clients see the entity disappear automatically.</li>
+            </ul>
+          </details>
+
+          <div class="callout callout--warn">
+            <header>Network ownership and DeleteEntity</header>
+            <p>If a client currently has network ownership of an entity (vehicles often migrate to the nearest player), <code>DeleteEntity</code> from the server still works because the server is the network authority for entities it spawned with <code>*ServerSetter</code>. For entities the client created locally, the server cannot delete them -- the client must.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Resource stop cleanup works</h3></header>
+        <p>Test it:</p>
+        <ol>
+          <li>Spawn a few props with the command from Lesson 24.</li>
+          <li>In the server console, type <code>restart qu_props</code> (or whatever your resource is called).</li>
+          <li>Look at the F8 console. You should see "Cleaned up all entities on resource stop."</li>
+          <li>The props are gone from the world.</li>
+        </ol>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Cleanup on timeout: auto-delete after N seconds</h2></header>
+        <p class="step-outcome">Outcome: entities you spawn can automatically delete themselves after a set time.</p>
+        <div class="step-body">
+          <p>Sometimes you want a temporary entity -- a prop that appears for an interaction and disappears after 30 seconds. Use a simple timer pattern:</p>
+          <figure class="code">
+            <header><span>client.lua -- timed cleanup</span></header>
+            <pre><code class="language-lua">local function spawnWithTimeout(model, coords, timeoutMs)
+    local hash = loadModel(model)
+    local obj = CreateObject(hash, coords.x, coords.y, coords.z, true, true, false)
+
+    SetModelAsNoLongerNeeded(hash)
+    registerEntity(obj)
+
+    -- Schedule auto-delete
+    SetTimeout(timeoutMs, function()
+        if DoesEntityExist(obj) then
+            DeleteEntity(obj)
+            print(('[qu_props] Auto-deleted entity %d after %d ms'):format(obj, timeoutMs))
+        end
+    end)
+
+    return obj
+end
+
+-- Example: spawn a barrel that vanishes after 30 seconds
+RegisterCommand('tempbarrel', function()
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    spawnWithTimeout('prop_barrel_02a', coords, 30000)
+end, false)</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>How SetTimeout works</summary>
+            <ul>
+              <li><code>SetTimeout(ms, fn)</code>: runs the function once after <code>ms</code> milliseconds. It is a FiveM built-in, not a Lua standard.</li>
+              <li>We still check <code>DoesEntityExist</code> inside the callback -- the entity might have been deleted already (by <code>/clearprops</code> or a resource restart).</li>
+              <li>The entity is also in the registry, so <code>cleanupAll</code> still catches it if the timeout hasn't fired yet.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>The interaction-then-cleanup pattern</h2></header>
+        <p class="step-outcome">Outcome: you understand the spawn, interact, cleanup flow used by systems like ox_target.</p>
+        <div class="step-body">
+          <p>In real scripts, you often spawn a prop so the player can interact with it (press E, use ox_target, etc.), and then delete it after the interaction is done. The flow looks like this:</p>
+          <ol>
+            <li><strong>Spawn</strong> the prop (load model, create, register).</li>
+            <li><strong>Add an interaction point</strong> (ox_target, a prompt, or a keybind check).</li>
+            <li><strong>Player interacts</strong> -- whatever happens (animation, menu, event).</li>
+            <li><strong>Cleanup</strong> -- delete the prop, remove the interaction point.</li>
+          </ol>
+          <figure class="code">
+            <header><span>Simplified interaction flow</span></header>
+            <pre><code class="language-lua">-- 1. Spawn the prop
+local hash = loadModel('prop_toolchest_05')
+local toolbox = CreateObject(hash, 100.0, 200.0, 30.0, true, true, false)
+SetModelAsNoLongerNeeded(hash)
+registerEntity(toolbox)
+
+-- 2. Add ox_target on it (simplified)
+exports.ox_target:addLocalEntity(toolbox, {
+    {
+        name = 'use_toolbox',
+        label = 'Search toolbox',
+        onSelect = function()
+            -- 3. Player interacts
+            print('Player searched the toolbox!')
+
+            -- 4. Cleanup after interaction
+            if DoesEntityExist(toolbox) then
+                DeleteEntity(toolbox)
+            end
+        end,
+    },
+})</code></pre>
+          </figure>
+          <p>This pattern keeps the world clean: objects only exist while they are useful.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Timeout auto-delete works</h3></header>
+        <p>Test the timeout pattern:</p>
+        <ol>
+          <li>Type <code>/tempbarrel</code>. A barrel appears at your feet.</li>
+          <li>Wait 30 seconds. The barrel vanishes on its own.</li>
+          <li>Check F8 console for the auto-delete message.</li>
+        </ol>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Only cleaning up on resource stop, but not on player drop</summary>
+          <p>If a player disconnects, their personal entities (like a spawned vehicle) stay in the world. The resource is still running, so <code>onResourceStop</code> never fires. You need <em>both</em> handlers: one for the resource lifecycle, one for the player lifecycle.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Deleting entities that don't exist anymore</summary>
+          <p>If you call <code>DeleteEntity</code> on a handle that's already been deleted, you get undefined behavior or errors. Always check <code>DoesEntityExist(handle)</code> first. One line of defense saves you from mysterious bugs.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Cleaning up another resource's entities</summary>
+          <p>Your cleanup should only delete entities <em>you</em> spawned. That's what the registry is for. Never loop over all entities in the world and delete them -- you will nuke other scripts' props, vehicles, and NPCs.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Not checking resource name in onResourceStop</summary>
+          <p>If you skip the <code>if GetCurrentResourceName() ~= resourceName then return end</code> guard, your cleanup runs when <em>any</em> resource stops. Some poor NPC from another script vanishes because your handler was too eager.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Stale handles in the registry</summary>
+          <p>Another script (or a manual <code>/clearprops</code>) deletes an entity you spawned. Your registry still holds the handle as a number. <code>DoesEntityExist</code> returns false so <code>DeleteEntity</code> is skipped, but the registry entry is never cleared and the table grows forever. Fix: when cleanup walks the registry, set <code>spawnedEntities[id] = nil</code> regardless of whether the entity existed.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Spawning before registering</summary>
+          <p>If your code is <code>local obj = CreateObject(...)</code> followed by other work and only later <code>registerEntity(obj)</code>, a resource stop in that gap leaks the entity. Always register on the line right after the spawn, before any yield or callback.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Cleaning client-spawned entities from the server</summary>
+          <p>Server-side <code>DeleteEntity</code> only works for entities the server itself created (typically via <code>*ServerSetter</code> natives). For entities a client spawned with <code>CreateObject</code>/<code>CreateVehicle</code>/<code>CreatePed</code>, the server cannot delete them -- the client that spawned them must run its own <code>onResourceStop</code> cleanup.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="c">
+            <legend>1. When should you clean up entities?</legend>
+            <label><input type="radio" name="q1" value="a"> Only when the server restarts.</label>
+            <label><input type="radio" name="q1" value="b"> Only when you manually type a delete command.</label>
+            <label><input type="radio" name="q1" value="c"> On resource stop, on player drop, on timeout, and after interactions -- every exit path.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. What event fires when a resource is stopped or restarted?</legend>
+            <label><input type="radio" name="q2" value="a"> <code>onResourceStop</code></label>
+            <label><input type="radio" name="q2" value="b"> <code>onServerShutdown</code></label>
+            <label><input type="radio" name="q2" value="c"> <code>playerDropped</code></label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>3. What is the purpose of the entity registry table?</legend>
+            <label><input type="radio" name="q3" value="a"> It sends entity data to the server for storage.</label>
+            <label><input type="radio" name="q3" value="b"> It tracks every handle your script created so you can find and delete them all during cleanup.</label>
+            <label><input type="radio" name="q3" value="c"> It prevents other scripts from spawning the same model.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>4. Your resource spawns vehicles with <code>CreateVehicleServerSetter</code> and props with client-side <code>CreateObject</code>. How many <code>onResourceStop</code> handlers do you need?</legend>
+            <label><input type="radio" name="q4" value="a"> One on the client -- the server entities are tracked automatically.</label>
+            <label><input type="radio" name="q4" value="b"> One on the server -- the client entities are deleted when the player leaves.</label>
+            <label><input type="radio" name="q4" value="c"> Two: one on the client for the props, one on the server for the vehicles.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>5. The server tries to <code>DeleteEntity</code> on a vehicle a client spawned locally with <code>CreateVehicle</code>. What happens?</legend>
+            <label><input type="radio" name="q5" value="a"> It deletes -- the server is always authoritative.</label>
+            <label><input type="radio" name="q5" value="b"> It does nothing useful -- the server has no authority over client-locally-created entities; the client must delete it.</label>
+            <label><input type="radio" name="q5" value="c"> It crashes the server.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet" id="lifecycle">
+        <h2>Cleanup lifecycle: three triggers</h2>
+        <figure class="code"><header><span>lifecycle</span></header><pre><code>spawn  -&gt;  register handle  -&gt;  use
+                                  |
+                                  +--&gt;  timeout fires        -&gt;  DeleteEntity
+                                  +--&gt;  player drops          -&gt;  DeleteEntity
+                                  +--&gt;  resource stops        -&gt;  DeleteEntity (onResourceStop)</code></pre></figure>
+        <dl>
+          <div><dt>Register</dt><dd>Store every handle in a table the moment you create it. You cannot clean up what you did not track.</dd></div>
+          <div><dt>Timeout</dt><dd>Test props and short-lived spawns auto-delete after N seconds with <code>SetTimeout</code>.</dd></div>
+          <div><dt>Player drop</dt><dd>Server-side: on <code>playerDropped</code>, delete entities owned by or tied to that player.</dd></div>
+          <div><dt>Resource stop</dt><dd><code>onResourceStop</code> with a name guard deletes everything still registered. The catch-all that prevents leaks on restart.</dd></div>
+        </dl>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>AddEventHandler('onResourceStop', fn)</code></dt><dd>Fires when any resource stops. Check <code>resourceName</code> to filter for yours.</dd></div>
+          <div><dt><code>AddEventHandler('playerDropped', fn)</code></dt><dd>Server-side. Fires when a player disconnects. <code>source</code> = the player who left.</dd></div>
+          <div><dt><code>GetCurrentResourceName()</code></dt><dd>Returns the name of the resource this script belongs to.</dd></div>
+          <div><dt><code>SetTimeout(ms, fn)</code></dt><dd>Run a function once after <code>ms</code> milliseconds.</dd></div>
+          <div><dt><code>DoesEntityExist(handle)</code></dt><dd>Always check before deleting. Returns false if already gone.</dd></div>
+          <div><dt>Entity registry</dt><dd>A table of handles. Every spawn adds to it. Every cleanup reads from it.</dd></div>
+          <div><dt>Interaction flow</dt><dd>Spawn, add target/interaction, player acts, cleanup. Objects only exist while useful.</dd></div>
+          <div><dt>Two registries</dt><dd>Client spawns go in a client-side table; server <code>*ServerSetter</code> spawns go in a server-side table. Each side cleans its own.</dd></div>
+          <div><dt>Server-side cleanup scope</dt><dd><code>DeleteEntity</code> from the server is authoritative for entities the server itself spawned via <code>CreateVehicleServerSetter</code> / <code>CreatePedServerSetter</code> / <code>CreateObjectServerSetter</code>, regardless of which client owns the entity now.</dd></div>
+          <div><dt><code>NetworkRequestControlOfEntity(ent)</code></dt><dd>Client-side. Asks the network owner for control before mutating or deleting an entity that another client currently owns.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Entity leaks cause lag that gets worse over time -- the classic "server was fine after restart" symptom</li>
+          <li>How to clean up on resource stop using <code>onResourceStop</code> and the resource name guard</li>
+          <li>How to clean up per-player entities on disconnect using <code>playerDropped</code></li>
+          <li>How to auto-delete temporary entities with <code>SetTimeout</code></li>
+          <li>The spawn, interact, cleanup flow used in real production scripts</li>
+          <li>Why server-spawned entities (<code>*ServerSetter</code>) need a separate server-side <code>onResourceStop</code> handler -- two registries, one per side</li>
+          <li>Network ownership and which side actually has authority to delete a given entity</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Spawn 3 barrels using <code>/spawnbarrel</code>. Then restart your resource from the server console. Check the F8 console to confirm all three were cleaned up. Then spawn 3 more barrels using <code>/tempbarrel</code> with a 10-second timeout and verify they auto-delete.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console</span></header>
+          <pre><code>-- /spawnbarrel x3
+-- restart qu_props in server console
+-- "[qu_props] Cleaned up all entities on resource stop"
+-- All 3 barrels gone
+
+-- /tempbarrel x3
+-- Wait 10 seconds
+-- "[qu_props] Auto-deleted entity 12550 after 10000 ms" (x3)
+-- All 3 barrels gone</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Make sure your <code>onResourceStop</code> handler is in place from Step 1. For the timeout test, change the timeout to 10000ms (10 seconds) so you don't have to wait long. Both cleanup paths should print a message so you know they fired.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/events/list/onResourceStop/" target="_blank" rel="noopener">onResourceStop event reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/events/list/playerDropped/" target="_blank" rel="noopener">playerDropped event reference</a></li>
+          <li><a href="https://overextended.dev/ox_target" target="_blank" rel="noopener">ox_target documentation</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Add a <code>/entitycount</code> command that prints the current number of tracked entities in your registry. Use this to verify your cleanup handlers are working.</li>
+          <li>Write a "stress test" command that spawns 50 props at once, then check the entity count before and after cleanup.</li>
+          <li>Try combining both cleanup triggers: spawn entities, then disconnect from the server (not restart the resource). Verify the server-side <code>playerDropped</code> handler catches them.</li>
+        </ul>
+      </section>
+
+      <section class="deep-dive-section" aria-labelledby="deep-dive-heading">
+        <h2 id="deep-dive-heading">Go deeper (production expansion)</h2>
+        <p>Cleanup gets stricter when you track ownership. The expansion lesson shows the production pattern.</p>
+        <a class="deep-dive-card" href="../expansion/entity-ownership-cleanup.html">
+          <div>
+            <span class="deep-dive-card__kicker">Expansion · Module 08A</span>
+            <h3 class="deep-dive-card__title">Entity ownership and cleanup</h3>
+            <p class="deep-dive-card__lede">Track every spawned entity and remove it on resource stop, player drop, or timeout.</p>
+          </div>
+          <span class="deep-dive-card__arrow" aria-hidden="true">›</span>
+        </a>
+      </section>

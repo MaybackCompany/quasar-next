@@ -1,0 +1,117 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>SQL save and load</span>
+        </div>
+        <h1>SQL save and load</h1>
+        <p class="lede">One save, one load. Always with <code>?</code> placeholders and a params array. Citizenid as the key. The shape every persistence query reuses.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Parameterized save and load against MariaDB / MySQL.</dd></div>
+          <div><dt>Dependencies</dt><dd>oxmysql.</dd></div>
+          <div><dt>Files</dt><dd>1 server-side script.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][sql_save][save] citizenid=&hellip;</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/sql-from-zero">Lesson 22: parameterized SQL</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>SQL injection</header>
+        <p>Never join player input into the query string. Always pass values through the params array. <code>'WHERE citizenid = ?'</code> with <code>{ citizenid }</code>, never <code>'WHERE citizenid = ' .. citizenid</code>.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>server.lua</strong>, <code>saveNote</code> with <code>MySQL.insert</code>, <code>loadNotes</code> with <code>MySQL.query</code>.</li>
+        </ul>
+      </section>
+
+      <section id="schema">
+        <h2>Schema</h2>
+        <figure class="code">
+          <header><span class="lang">sql</span><span class="file">schema.sql</span></header>
+<pre><code>CREATE TABLE IF NOT EXISTS qu_notes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    citizenid VARCHAR(64) NOT NULL,
+    note TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_citizenid (citizenid)
+);</code></pre>
+        </figure>
+      </section>
+
+      <section id="server-lua">
+        <h2>server.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">server.lua</span></header>
+<pre><code>-- PURPOSE: Parameterized SQL save and load.
+-- DEPENDENCIES: oxmysql.
+-- WARNING: Never join player input into SQL strings.
+-- Expand this: add audit rows and transactions.
+-- SECURITY:
+--   - Always use ? placeholders, never concatenate input into SQL.
+--   - Use citizenid or license identifier as the primary key, not display name.
+--   - Wrap multi-row writes in MySQL.transaction.await for atomicity.
+
+local MODULE = 'sql_save'
+
+local function saveNote(citizenid, note)
+    if type(citizenid) ~= 'string' or type(note) ~= 'string' then
+        print(('[QUIET][%s][reject] invalid note payload'):format(MODULE))
+        return
+    end
+
+    MySQL.insert('INSERT INTO qu_notes (citizenid, note) VALUES (?, ?)', { citizenid, note })
+    print(('[QUIET][%s][save] citizenid=%s'):format(MODULE, citizenid))
+end
+
+local function loadNotes(citizenid, cb)
+    MySQL.query('SELECT note FROM qu_notes WHERE citizenid = ?', { citizenid }, function(rows)
+        print(('[QUIET][%s][load] rows=%s'):format(MODULE, rows and #rows or 0))
+        cb(rows or {})
+    end)
+end</code></pre>
+        </figure>
+        <p><a href="/templates/sql-save-load/server.lua">View raw server.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Run the schema in your database client.</li>
+          <li>Create <code>resources/[local]/qu_notes/</code>.</li>
+          <li>Copy <code>server.lua</code> and add a manifest with <code>server_script 'server.lua'</code> and <code>dependency 'oxmysql'</code>.</li>
+          <li>Add <code>ensure qu_notes</code> after <code>ensure oxmysql</code> in <code>server.cfg</code>.</li>
+          <li>Wire the gateway from <a href="/templates/event-gateway">event gateway</a> so the client can request <code>saveNote</code> safely.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/sql-from-zero">Lesson 22</a> for the five queries: insert, update, select one, select many, delete.</li>
+          <li>Wrap <code>saveNote</code> + <code>loadNotes</code> in <code>MySQL.transaction.await</code> when you write multiple rows.</li>
+          <li>Index any column you filter by. <code>citizenid</code> is already indexed in the schema above.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/vehicle-spawn">&larr; Vehicle spawn</a>
+        <a class="next" href="/templates/ox-target">Next: ox_target &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#schema">Schema</a>
+        <a href="#server-lua">server.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

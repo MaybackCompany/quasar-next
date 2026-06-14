@@ -1,0 +1,209 @@
+<LessonHero
+  crumbs="ox_lib UI"
+  title="ox_lib UI: notify, dialog, context, input, progress"
+  meta={[
+    { label: "One dependency", value: "Add 'ox_lib' to your fxmanifest dependencies. Done." },
+    { label: "Client-side only", value: "All five run on the client. Server triggers them via events." },
+    { label: "Async dialogs", value: "Input and alert dialogs return a value. Use local result = lib.x()." },
+    { label: "Cancel returns nil", value: "If the player closes the dialog, it returns nil. Always handle that branch." },
+  ]}
+>
+  The five UI primitives every modern FiveM script reaches for. All client-side, all from `ox_lib`. Copy-safe shapes you can drop into any resource.
+</LessonHero>
+
+<Callout variant="tip" title="Setup once">
+  Add `'@ox_lib/init.lua'` to your `shared_scripts`. Then `lib.x` is available on both sides.
+</Callout>
+
+## Notifications
+
+Toast-style notifications. Best for short feedback. Non-blocking.
+
+```
+lib.notify({
+  title = 'Purchase complete',
+  description = 'You bought 1x bread for $5',
+  type = 'success',                                -- success, error, warning, info
+  position = 'top-right',                          -- top, top-right, bottom, etc.
+  duration = 5000,                                 -- ms, default 4000
+  icon = 'shopping-cart',                          -- font awesome name
+})
+```
+
+<Callout variant="tip" title="From the server">
+  Server triggers a client event with the payload, the client calls `lib.notify`. Never embed UI in server logic directly.
+</Callout>
+
+```
+-- server
+TriggerClientEvent('ox_lib:notify', source, {
+  title = 'Saved',
+  type = 'success',
+})
+```
+
+## Alert dialog (yes / no)
+
+Blocking confirmation dialog. Returns `'confirm'`, `'cancel'`, or `nil`.
+
+```
+local choice = lib.alertDialog({
+  header = 'Sell vehicle?',
+  content = 'You will receive **$5,000**. This cannot be undone.',
+  centered = true,
+  cancel = true,
+  labels = { confirm = 'Sell it', cancel = 'Keep it' },
+})
+
+if choice == 'confirm' then
+  TriggerServerEvent('garage:sellVehicle', plate)
+end
+```
+
+## Input dialog
+
+Multi-field form. Returns a list of values in declaration order, or `nil` if cancelled.
+
+```
+local input = lib.inputDialog('Apply for a license', {
+  { type = 'input',  label = 'Full name', required = true, min = 2, max = 40 },
+  { type = 'number', label = 'Age',       required = true, min = 18, max = 99 },
+  { type = 'select', label = 'Type',      options = {
+      { label = 'Driver',  value = 'driver' },
+      { label = 'Weapon',  value = 'weapon' },
+  }},
+  { type = 'checkbox', label = 'I accept the terms' },
+  { type = 'date',     label = 'Issue date' },
+})
+
+if not input then return end                       -- player cancelled
+local name, age, kind, accepted, date = input[1], input[2], input[3], input[4], input[5]
+```
+
+<Callout variant="warn" title="Validate again on the server">
+  The dialog enforces `min`, `max`, and `required` on the client. The client can lie. Re-validate on the server before saving.
+</Callout>
+
+## Context menu
+
+Stacked menu with sub-menus. Use for shop categories, vehicle options, job actions.
+
+```
+lib.registerContext({
+  id = 'shop_root',
+  title = 'General store',
+  options = {
+    { title = 'Bread',  description = '$5',  icon = 'bread-slice',
+      event = 'shop:buy', args = { item = 'bread' } },
+    { title = 'Water',  description = '$3',  icon = 'bottle-water',
+      event = 'shop:buy', args = { item = 'water' } },
+    { title = 'More',   icon = 'arrow-right',
+      menu = 'shop_drinks' },
+  }
+})
+
+lib.registerContext({
+  id = 'shop_drinks',
+  title = 'Drinks',
+  menu = 'shop_root',                              -- back button target
+  options = {
+    { title = 'Cola', description = '$4', event = 'shop:buy',
+      args = { item = 'cola' } },
+  }
+})
+
+lib.showContext('shop_root')
+```
+
+## Progress bar
+
+Blocking progress with optional cancel. Returns `true` if completed, `false` if cancelled.
+
+```
+local done = lib.progressBar({
+  duration = 5000,
+  label = 'Picking lock...',
+  useWhileDead = false,
+  canCancel = true,
+  disable = { car = true, move = true, combat = true },
+  anim = { dict = 'mini@repair', clip = 'fixing_a_ped' },
+})
+
+if done then
+  TriggerServerEvent('lock:picked', doorId)
+else
+  lib.notify({ description = 'You cancelled', type = 'warning' })
+end
+```
+
+<Callout variant="tip" title="Server validates the time">
+  The client can edit the duration. The server should record the start time and reject any action that resolves faster than the minimum.
+</Callout>
+
+## When to use which
+
+Need
+
+Primitive
+
+Blocking
+
+Returns
+
+Quick feedback
+
+notify
+
+No
+
+Nothing
+
+Yes/no decision
+
+alertDialog
+
+Yes
+
+'confirm' / 'cancel' / nil
+
+Form input
+
+inputDialog
+
+Yes
+
+List of values or nil
+
+Pick from a list
+
+registerContext
+
+No
+
+Fires event with args
+
+Time-based action
+
+progressBar
+
+Yes
+
+true / false
+
+## Common mistakes
+
+<Callout variant="warn" title="Forgetting the cancel branch">
+  Every dialog can return `nil` if the player closes it. Without an early return, the rest of your code crashes on a missing field.
+</Callout>
+
+<Callout variant="warn" title="Calling lib.notify on the server">
+  The server has no UI. Trigger a client event and notify on the client.
+</Callout>
+
+<Callout variant="warn" title="Trusting input values">
+  Min, max, required are client-side hints only. The server must validate every field before saving.
+</Callout>
+
+<Callout variant="warn" title="Stacking dialogs">
+  Do not call `lib.alertDialog` from inside a `lib.progressBar` callback. Wait for the bar to resolve, then open the dialog.
+</Callout>

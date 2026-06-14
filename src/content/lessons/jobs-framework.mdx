@@ -1,0 +1,140 @@
+<LessonHero
+  crumbs="/"
+  title="Jobs framework: clock-in, grades, paychecks"
+  meta={[
+    { label: "You will learn", value: "Job table, duty toggle, grade gating, payroll loop, audit log." },
+    { label: "Time", value: "~35 min" },
+    { label: "Project", value: "qu_jobs" },
+  ]}
+>
+  A job is a tiny state machine: *off-duty*, *on-duty*, optional grade, optional shift timer. Permissions unlock actions; payouts hit the bank on a clock. We build the spine without depending on a specific framework.
+</LessonHero>
+
+<YouTube id="OZCpgsSWQe4" title="FiveM job center script from zero" caption="Cruze: building a job center script from zero." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds Qbox or QBCore clock-in and job read as a working FiveM resource named `qu_jobs_framework`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_jobs_framework
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_jobs_framework/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local duty = {}
+
+RegisterCommand('clockin', function(src)
+    local job = 'unknown'
+    if GetResourceState('qbx_core') == 'started' then
+        local player = exports.qbx_core:GetPlayer(src)
+        job = player and player.PlayerData.job.name or 'unknown'
+    elseif GetResourceState('qb-core') == 'started' then
+        local QBCore = exports['qb-core']:GetCoreObject()
+        local player = QBCore.Functions.GetPlayer(src)
+        job = player and player.PlayerData.job.name or 'unknown'
+    end
+    duty[src] = not duty[src]
+    print(('[qu_jobs_framework] %s job %s duty %s'):format(GetPlayerName(src), job, tostring(duty[src])))
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_jobs_framework
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_jobs_framework
+    ```
+
+    Run this test:
+
+    ```text
+    /clockin
+    ```
+
+    <ExpectedOutput>
+      [qu_jobs_framework] yourName job police duty true
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_jobs_framework does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_jobs_framework", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_jobs_framework, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_jobs_framework folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for Qbox or QBCore clock-in and job read.",
+    "Add ensure qu_jobs_framework to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_jobs_framework`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

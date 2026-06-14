@@ -1,0 +1,147 @@
+<LessonHero
+  crumbs="Module 04 · Bonus"
+  title="CreateThread, Wait, and the tick budget"
+  meta={[
+    { label: "You'll learn", value: "What CreateThread actually creates, why Wait is mandatory inside loops, and how to pick the right wait time per use case" },
+    { label: "Time", value: "~15 minutes" },
+    { label: "Prereqs", value: "Lesson 04 (loops), Lesson 11 (natives), Lesson 15 (callbacks)" },
+    { label: "Outcome", value: "You can split work across draw threads, state threads, and polling threads: and you stop your resource from eating the server frame" },
+  ]}
+>
+  Every FiveM script runs inside one Lua VM per resource. The VM has a strict per-tick budget. `CreateThread` spawns a coroutine; `Wait(ms)` yields it back to the engine. Forget the Wait and you freeze the game. Use the wrong Wait value and your script either hogs the frame or feels laggy. This bonus is the deep dive that turns "I copied the boilerplate" into "I know exactly why it's there."
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds two CreateThread loops with safe Wait values as a working FiveM resource named `qu_createthread_and_wait`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_createthread_and_wait
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_createthread_and_wait/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local enabled = false
+
+RegisterCommand('threadtoggle', function()
+    enabled = not enabled
+    print('[qu_createthread_and_wait] enabled ' .. tostring(enabled))
+end, false)
+
+CreateThread(function()
+    while true do
+        Wait(5000)
+        if enabled then print('[qu_createthread_and_wait] slow tick') end
+    end
+end)
+
+CreateThread(function()
+    while true do
+        Wait(0)
+        if enabled and IsControlJustPressed(0, 38) then
+            print('[qu_createthread_and_wait] E pressed')
+        end
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_createthread_and_wait
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_createthread_and_wait
+    ```
+
+    Run this test:
+
+    ```text
+    /threadtoggle then press E
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_createthread_and_wait] enabled true
+F8: [qu_createthread_and_wait] E pressed
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_createthread_and_wait does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_createthread_and_wait", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_createthread_and_wait, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_createthread_and_wait folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for two CreateThread loops with safe Wait values.",
+    "Add ensure qu_createthread_and_wait to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_createthread_and_wait`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

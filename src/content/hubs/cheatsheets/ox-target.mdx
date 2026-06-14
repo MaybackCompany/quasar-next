@@ -1,0 +1,210 @@
+<LessonHero
+  crumbs="ox_target"
+  title="ox_target: zones, entities, models, bones"
+  meta={[
+    { label: "Zone for static spots", value: "A box at fixed coords. Not tied to any entity." },
+    { label: "Entity for one object", value: "Attach to a specific spawned ped, vehicle, or prop." },
+    { label: "Model for a spawn type", value: "Every world prop with that model gets the option." },
+    { label: "Bone for a vehicle part", value: "The trunk, the hood, a door: bone-targeted on the vehicle." },
+  ]}
+>
+  Four ways to attach an interaction in FiveM. Pick by what you are targeting. Always remove what you add when the resource stops.
+</LessonHero>
+
+<Callout variant="tip" title="One option, four shapes">
+  The `options` array is identical across all four. Memorise it once and the only thing that changes is how you target.
+</Callout>
+
+## The options shape
+
+```
+local options = {
+  {
+    name        = 'shop_buy_bread',                  -- unique id, used to remove
+    label       = 'Buy bread',
+    icon        = 'fa-solid fa-bread-slice',         -- font awesome
+    distance    = 2.0,                                -- focus distance in metres
+    canInteract = function(entity, distance, coords, name, bone)
+      return PlayerJob and PlayerJob.name ~= 'baker'
+    end,
+    onSelect    = function(data)
+      TriggerServerEvent('shop:buy', { item = 'bread' })
+    end,
+    -- or: event = 'shop:buy', args = { item = 'bread' }
+    -- or: serverEvent = 'shop:buyServer', args = { item = 'bread' }
+  },
+}
+```
+
+<Callout variant="tip" title="onSelect vs event vs serverEvent">
+  `onSelect` runs a function locally. `event` triggers a client event. `serverEvent` fires straight to the server with the args. Pick the smallest one that fits.
+</Callout>
+
+## Box zone (static spot)
+
+```
+local zoneId = exports.ox_target:addBoxZone({
+  coords  = vec3(-704.96, -914.31, 19.21),
+  size    = vec3(2.0, 2.0, 2.0),
+  rotation = 0,
+  debug   = false,                                    -- true to draw the box while developing
+  options = options,
+})
+
+-- remove later
+exports.ox_target:removeZone(zoneId)
+```
+
+## Entity (one specific object)
+
+```
+local pedId = SpawnPed(...)                          -- your spawn fn
+exports.ox_target:addLocalEntity(pedId, options)
+
+-- remove for one entity
+exports.ox_target:removeLocalEntity(pedId, { 'shop_buy_bread' })
+
+-- network entity (visible to all clients)
+exports.ox_target:addEntity(NetworkGetNetworkIdFromEntity(entity), options)
+exports.ox_target:removeEntity(NetworkGetNetworkIdFromEntity(entity), { 'shop_buy_bread' })
+```
+
+<Callout variant="warn" title="Local vs network">
+  Use `addLocalEntity` when the entity exists only on this client. Use `addEntity` when the entity is networked and other clients should see the option too.
+</Callout>
+
+## Model (every prop with this hash)
+
+```
+exports.ox_target:addModel({
+  `prop_atm_01`,                                      -- backtick converts to hash
+  `prop_atm_02`,
+  `prop_atm_03`,
+  `prop_fleeca_atm`,
+}, {
+  {
+    name = 'use_atm',
+    label = 'Use ATM',
+    icon = 'fa-solid fa-money-bill',
+    distance = 1.5,
+    onSelect = function() TriggerEvent('atm:open') end,
+  },
+})
+
+-- remove
+exports.ox_target:removeModel({ `prop_atm_01`, `prop_atm_02` }, { 'use_atm' })
+```
+
+## Bone (vehicle part)
+
+```
+exports.ox_target:addGlobalVehicle({
+  {
+    name      = 'open_trunk',
+    label     = 'Open trunk',
+    bones     = { 'boot' },
+    distance  = 2.0,
+    onSelect  = function(data)
+      local v = data.entity
+      SetVehicleDoorOpen(v, 5, false, false)
+    end,
+  },
+})
+
+-- remove the option from every vehicle
+exports.ox_target:removeGlobalVehicle({ 'open_trunk' })
+```
+
+Common bones: `boot`, `bonnet`, `door_dside_f`, `door_pside_f`, `door_dside_r`, `door_pside_r`, `windscreen`.
+
+## When to use which
+
+Need
+
+Use
+
+Network
+
+Cleanup with
+
+Static shop counter
+
+addBoxZone
+
+Local
+
+removeZone
+
+One ped you spawned
+
+addLocalEntity
+
+Local
+
+removeLocalEntity
+
+Networked job NPC
+
+addEntity
+
+All clients
+
+removeEntity
+
+Every ATM in the map
+
+addModel
+
+Local
+
+removeModel
+
+Trunk on every car
+
+addGlobalVehicle
+
+Local
+
+removeGlobalVehicle
+
+## Cleanup on resource stop
+
+Every `add*` call must have a matching `remove*` in `onResourceStop`. Otherwise the option stays after a restart and stacks on every reload.
+
+```
+local zoneIds = {}
+
+local function addShop(coords)
+  local id = exports.ox_target:addBoxZone({
+    coords = coords, size = vec3(2,2,2), options = options,
+  })
+  zoneIds[#zoneIds + 1] = id
+end
+
+AddEventHandler('onResourceStop', function(name)
+  if name ~= GetCurrentResourceName() then return end
+  for _, id in ipairs(zoneIds) do
+    exports.ox_target:removeZone(id)
+  end
+  exports.ox_target:removeModel({ `prop_atm_01` }, { 'use_atm' })
+  exports.ox_target:removeGlobalVehicle({ 'open_trunk' })
+end)
+```
+
+## Common mistakes
+
+<Callout variant="warn" title="Same name across resources">
+  The `name` field is the unique key. If two resources both use `'open_trunk'`, the second add silently overwrites the first.
+</Callout>
+
+<Callout variant="warn" title="No cleanup on stop">
+  Without `onResourceStop` handlers, every `refresh` stacks another copy of the option. After a few reloads, the menu shows duplicates.
+</Callout>
+
+<Callout variant="warn" title="Forgetting backticks for models">
+  The model hash needs `` `prop_name` `` (backticks) or `GetHashKey('prop_name')`. Plain strings do not match.
+</Callout>
+
+<Callout variant="warn" title="Trusting onSelect">
+  The client decides when `onSelect` fires. Anything that costs money or grants an item must be validated again on the server.
+</Callout>

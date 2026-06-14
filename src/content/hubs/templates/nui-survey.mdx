@@ -1,0 +1,126 @@
+<LessonHero
+  crumbs="NUI survey"
+  title="NUI survey with ox_lib input dialog"
+  meta={[
+    { label: "Purpose", value: "Collect player feedback through an in-game form and log the answers." },
+    { label: "Dependencies", value: "ox_lib." },
+    { label: "Files", value: "1 command using lib.inputDialog." },
+    { label: "First log", value: "Favorite Activity: ... in the console after submit." },
+    { label: "Lesson", value: "Lesson 15: ox_lib surveys" },
+  ]}
+>
+  A command opens a styled in-game form, the player fills it in, and you read the answers back as a simple table. No custom HTML or CSS. The `ox_lib` input dialog gives you the whole NUI layer for free.
+</LessonHero>
+
+<Callout variant="fivem" title="What this template builds">
+  `ox_lib` ships a ready-made input dialog: a clean NUI panel with labeled fields, validation, and a submit and cancel flow. This template registers a `/startsurvey` command that opens that dialog with three questions, then reads the returned answers as an ordered table. You write zero HTML, JS, or CSS for the interface. Drop it in, ensure `ox_lib` first, and the form works.
+</Callout>
+
+<Callout variant="tip" title="Read the field types from the docs">
+  The input dialog supports more than text. You get number fields with min and max, checkboxes, selects, sliders, color pickers, and more. The full list lives in the ox_lib documentation. This template uses input, number, and checkbox to keep the example clear.
+</Callout>
+
+## Introduction
+
+`ox_lib` is a versatile library for FiveM that provides reusable modules and UI elements, streamlining the development of custom server features. One handy use is building dynamic in-game surveys to gather player feedback or preferences in real time, without writing your own NUI from scratch.
+
+## Setup
+
+Make sure `ox_lib` is installed and configured in your server. Follow the official documentation for installation, then ensure it before any resource that calls it.
+
+## Registering the survey command
+
+Start with the command that opens the survey. Everything else hangs off this.
+
+```
+-- Register a command to initiate the survey
+RegisterCommand('startsurvey', function()
+    -- Survey questions will be defined here
+end)
+```
+
+## Defining the survey questions
+
+Inside the command, call `lib.inputDialog` with a title and a list of fields. Each field is a table that sets its type, label, and rules. The dialog returns an ordered table of answers, or `nil` if the player cancels, so check for that before you read any answer.
+
+```
+-- Inside the 'startsurvey' command
+local survey = lib.inputDialog('Player Feedback Survey', {
+    {type = 'input', label = 'What is your favorite in-game activity?', required = true},
+    {type = 'number', label = 'Rate the server performance (1-10)', min = 1, max = 10, required = true},
+    {type = 'checkbox', label = 'Would you recommend this server to others?'}
+})
+
+-- Check if the player canceled the survey
+if not survey then return end
+
+-- Process the survey responses
+print('Favorite Activity:', survey[1])
+print('Performance Rating:', survey[2])
+print('Would Recommend:', survey[3])
+```
+
+<Callout variant="warn" title="Always check for cancel first">
+  When the player closes the dialog without submitting, `lib.inputDialog` returns `nil`. Read an index off a `nil` value and the script errors. The `if not survey then return end` line is not optional. Keep it before you touch any answer.
+</Callout>
+
+## Full example
+
+Here is the complete command with the cancel check, named locals for each answer, and a clear log of every response. The checkbox value comes back as a boolean, so it is converted to a readable Yes or No before printing.
+
+```
+-- Register the 'startsurvey' command
+RegisterCommand('startsurvey', function()
+    -- Display the survey dialog
+    local survey = lib.inputDialog('Player Feedback Survey', {
+        {type = 'input', label = 'What is your favorite in-game activity?', required = true},
+        {type = 'number', label = 'Rate the server performance (1-10)', min = 1, max = 10, required = true},
+        {type = 'checkbox', label = 'Would you recommend this server to others?'}
+    })
+
+    -- Check if the player canceled the survey
+    if not survey then
+        print('Survey was canceled.')
+        return
+    end
+
+    -- Process and store the survey responses
+    local favoriteActivity = survey[1]
+    local performanceRating = survey[2]
+    local wouldRecommend = survey[3] and 'Yes' or 'No'
+
+    -- Output the responses to the server console
+    print('Favorite Activity:', favoriteActivity)
+    print('Performance Rating:', performanceRating)
+    print('Would Recommend:', wouldRecommend)
+
+    -- Optionally, save the responses to a database or file for further analysis
+    -- Code to save responses goes here
+end)
+```
+
+<Callout variant="danger" title="This dialog runs on the client">
+  The answers come from the player's machine, so treat them as untrusted. If you forward survey results to the server to save them, validate types and ranges there before you write anything to the database. Never trust the client number field to stay inside `min` and `max`: re-check on the server.
+</Callout>
+
+## Install
+
+1. Create `resources/[local]/qu_survey/`.
+2. Copy the command into a `client.lua` and add a manifest with `client_script 'client.lua'` and `shared_script '@ox_lib/init.lua'`.
+3. Add `ensure ox_lib` before `ensure qu_survey` in `server.cfg`.
+4. Restart the server and run `/startsurvey` in game.
+5. Fill in the form, submit, and watch the answers print in the server console.
+
+## Conclusion
+
+By leaning on `ox_lib`, you get a dynamic, interactive in-game survey with no custom NUI to maintain. It is a fast way to collect player feedback and gives server admins real signal to improve the experience. Once the answers land, the natural next step is to send them to the server and store them.
+
+## Next steps
+
+- Read [Lesson 15](/lessons/ox-lib-notifications-ui) for the full walkthrough behind this command.
+- Forward the answers to the server and save them with the [SQL save and load template](/templates/sql-save-load).
+- Add more field types: a select for fixed choices, a slider for ratings, a date picker for events.
+
+<Callout variant="tip" title="Make it yours">
+  Change the dialog title and the questions to match what you actually want to learn from players. Swap the `print` lines for a server event that saves the answers, and add an ACE permission check if the survey should be staff-triggered. Keep the cancel check, and re-validate every value on the server before you store it.
+</Callout>

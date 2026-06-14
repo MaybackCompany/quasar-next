@@ -1,0 +1,72 @@
+<LessonHero
+  crumbs="Debug capture"
+  title="Debug capture"
+  meta={[
+    { label: "Purpose", value: "Structured logs and bounded error capture." },
+    { label: "Dependencies", value: "none." },
+    { label: "Files", value: "1 server-side script." },
+    { label: "First log", value: "[QUIET][debug_capture][command] forced error…" },
+    { label: "Lesson", value: "Lesson 20: debugging and error capture" },
+  ]}
+>
+  One `log` helper, one `capture` wrapper around `pcall`. Errors print with traceback. The shape every safe handler reuses.
+</LessonHero>
+
+<Callout variant="warn" title="Capture, then stop">
+  After a captured error, return early. Do not continue the path that failed. A swallowed error that keeps running is worse than a crash, it corrupts state silently.
+</Callout>
+
+## Files
+
+- **server.lua**, `log`, `capture`, `quiet_capture` command for a forced traceback.
+
+## server.lua
+
+```
+-- PURPOSE: Structured logs and error capture.
+-- DEPENDENCIES: none.
+-- WARNING: Capture errors, then stop unsafe work.
+-- Expand this: add Discord-free screenshot-friendly fields.
+-- SECURITY:
+--   - Never log raw player input as a log key, sanitize first.
+--   - Bound payload sizes before printing to avoid log floods.
+--   - Forward to a server-only audit channel, never echo to clients.
+
+local MODULE = 'debug_capture'
+
+local function log(action, message)
+    print(('[QUIET][%s][%s] %s'):format(MODULE, action, message))
+end
+
+local function capture(action, fn)
+    local ok, result = pcall(fn)
+    if not ok then
+        log(action, result)
+        log('trace', debug.traceback(result))
+        return nil
+    end
+    return result
+end
+
+RegisterCommand('quiet_capture', function(source)
+    capture('command', function()
+        error(('forced error source=%s'):format(source))
+    end)
+end, false)
+```
+
+[View raw server.lua](/templates/debug-capture/server.lua)
+
+## Install
+
+1. Create `resources/[local]/qu_debug/`.
+2. Copy `server.lua` and add a manifest with `server_script 'server.lua'`.
+3. Add `ensure qu_debug` in `server.cfg`.
+4. From the server console run `quiet_capture`.
+5. Match `[QUIET][debug_capture][command]` followed by `[trace]` with the stack.
+
+## Next steps
+
+- Read [Lesson 20](/lessons/teleport-menu) for the full debugging flow.
+- Wrap every net event handler body in `capture('handler', function() … end)`.
+- Forward errors to a private audit channel, never echo back to the client.

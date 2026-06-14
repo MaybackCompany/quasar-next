@@ -1,0 +1,410 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 07 &middot; Bonus</span></div>
+        <h1>Convars: <code>server.cfg</code> config you can read from Lua</h1>
+        <p class="lede">A <strong>convar</strong> (configuration variable) is a server-side key/value pair you set in <code>server.cfg</code> or at runtime, then read from any resource. Convars are how you externalize things that <em>change per server</em>, debug flags, database name, max stack size, Discord invite, owner ID, without editing Lua and without rebuilding the resource. Three flavors decide who sees them, the API is four functions, and you already use them every time you write <code>sv_hostname</code>.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>The three convar types (<code>set</code>, <code>setr</code>, <code>sets</code>), how each replicates, and which API to call from server vs client.</dd></div>
+          <div><dt>You'll ship</dt><dd>A debug toggle and a configurable starting balance for the banking script: both flippable from <code>server.cfg</code> with no code redeploy.</dd></div>
+          <div><dt>Time</dt><dd>~15 minutes</dd></div>
+          <div><dt>Why now</dt><dd>You finished the banking lesson with a hard-coded starting balance. Convars let you tune that per server.</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="22b">
+        <h2>Before you start</h2>
+        <p>Quick check. If any of these are shaky, pop back for two minutes, convars are simple, but only if the basics underneath are in place.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I can open <code>server.cfg</code>, add a line, save it, and restart the server</label></li>
+          <li><label><input type="checkbox"> I have at least one running resource I can read a value into (banking from <a href="../clase-22/leason22.html">Lesson 22</a> is perfect)</label></li>
+          <li><label><input type="checkbox"> I know that FiveM exposes <code>GetConvar</code>, <code>GetConvarInt</code>, and friends, or I am happy to learn them in this lesson</label></li>
+          <li><label><input type="checkbox"> I am willing to learn the <code>set</code> / <code>setr</code> / <code>sets</code> distinction (server-only / replicated / server-info), this lesson is mostly about that one rule</label></li>
+          <li><label><input type="checkbox"> I will put DB connection strings and webhook URLs here before copying any SQL or HTTP lesson code.</label></li>
+        </ul>
+      </section>
+
+      <section class="why-section" id="why">
+        <h2>Why convars at all</h2>
+        <p>You already know two ways to configure a resource: a <code>config.lua</code> table the script reads at start, and a SQL settings row. Both work. Both have a cost.</p>
+        <ul>
+          <li><strong>config.lua</strong> requires a code edit + resource restart. Anyone with shell access can change it, but server owners have to know which file to open.</li>
+          <li><strong>SQL settings</strong> need a query, a cache, an admin command to update, and a resource that handles all of it.</li>
+          <li><strong>Convars</strong> are built into the runtime. You write one line in <code>server.cfg</code>, you read it from Lua. No table, no migration, no cache. The server owner just edits the line everyone already knows about.</li>
+        </ul>
+        <p>The trade-off: convars hold strings (or integers parsed from strings). They are not for arrays, nested tables, or anything that wants structure. For complex config you still want <code>config.lua</code>. For one-line toggles and per-server tuning, convars are the right tool.</p>
+        <div class="callout callout--danger">
+          <header>This lesson comes before SQL and webhooks</header>
+          <p>Any lesson that shows <code>mysql_connection_string</code>, API keys, Discord webhooks, or panel tokens depends on this one. Put secrets in a server-only config file first, then continue to <a href="../clase-21/leason21.html">SQL from zero</a>, <a href="../clase-22/leason22.html">banking with audit logs</a>, or <a href="../clase-p2/leasonp2.html">HTTP webhooks</a>.</p>
+        </div>
+        <figure class="code">
+          <header><span>oxmysql failure this prevents</span></header>
+          <pre><code class="language-bash">[script:oxmysql] Error: Access denied for user 'fivem'@'localhost' (using password: YES)</code></pre>
+        </figure>
+        <p>Fix: keep the real password in <code>server-secrets.cfg</code>, load it with <code>exec server-secrets.cfg</code>, grant the user to the correct database, and restart until the console prints <code>[script:oxmysql] Database server connection established!</code>.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>The three flavors: <code>set</code>, <code>setr</code>, <code>sets</code></h2></header>
+        <p class="step-outcome">Outcome: you can pick the right flavor in two seconds based on who needs to read the value.</p>
+
+        <details class="explain" open>
+          <summary>The decision tree</summary>
+          <p>Ask one question: <em>does the client need to read this value?</em></p>
+          <ul>
+            <li><strong>No, server-only.</strong> Use <code>set</code>. Standard convar. Visible on server, invisible on client.</li>
+            <li><strong>Yes, client reads it too.</strong> Use <code>setr</code>. Server replicates the value to every client; clients can read but not write.</li>
+            <li><strong>Yes, and outsiders should see it on the server browser / info.json.</strong> Use <code>sets</code>. Server-information convar, public, indexed by the master server list.</li>
+          </ul>
+          <pre><code class="language-yaml"># server.cfg
+
+# server-only: scripts on this server read it, clients never see it
+set qu_debug 1
+set qu_starting_balance 5000
+set qu_db_name "qu_bank"
+
+# replicated: clients can call GetConvar('qu_max_stack', '20') and get '64'
+setr qu_max_stack 64
+
+# server info: shows up in the server browser and at /info.json
+sets Discord "https://discord.gg/quasaracademy"
+sets sv_projectName "QU Roleplay"
+</code></pre>
+          <div class="callout callout--warn">
+            <header>Never put secrets in <code>sets</code></header>
+            <p><code>sets</code> values are <strong>public</strong>. They appear at <code>http://&lt;server_ip&gt;:&lt;port&gt;/info.json</code> and on the master server list. Use <code>set</code> (server-only) for tokens, API keys, and webhooks.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>The 5-second cheat: server.cfg keywords</summary>
+          <div class="cheat-table">
+            <div class="cheat-row cheat-head">
+              <div>Keyword</div><div>Visible to</div><div>Use for</div>
+            </div>
+            <div class="cheat-row">
+              <div><code>set</code></div><div>Server scripts only</div><div>Secrets, debug flags, server-side tuning</div>
+            </div>
+            <div class="cheat-row">
+              <div><code>setr</code></div><div>Server &amp; clients (read-only on client)</div><div>Per-server limits the UI needs to know (max stack, render distance)</div>
+            </div>
+            <div class="cheat-row">
+              <div><code>sets</code></div><div>Public, master server list, /info.json</div><div>Discord link, project name, server tags, non-secret</div>
+            </div>
+          </div>
+        </details>
+
+        <div class="checkpoint">
+          <h3>Recap 1</h3>
+          <p>Open your <code>server.cfg</code>. Find one hard-coded value in your existing resources that should be tunable per server (max inventory weight, debug flag, daily reset hour, Discord invite). Decide whether it should be <code>set</code>, <code>setr</code>, or <code>sets</code>. Write the line.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Reading convars: <code>GetConvar</code> and <code>GetConvarInt</code></h2></header>
+        <p class="step-outcome">Outcome: you read a string convar with a default, and an integer convar with a default, on whichever side is allowed.</p>
+
+        <details class="explain" open>
+          <summary>The two read functions</summary>
+          <p>FiveM gives you exactly two reads:</p>
+          <ul>
+            <li><code>GetConvar(name, default)</code>, returns a string. <strong>Always pass a default.</strong> If the convar is not set, you get the default back instead of <code>nil</code>.</li>
+            <li><code>GetConvarInt(name, default)</code>, same, but parsed as an integer. Use this for numeric flags. The default must be a number.</li>
+          </ul>
+          <pre><code class="language-lua">-- server/main.lua
+local DEBUG = GetConvarInt('qu_debug', 0) == 1
+local STARTING_BALANCE = GetConvarInt('qu_starting_balance', 1000)
+local DB_NAME = GetConvar('qu_db_name', 'qu_bank')
+
+if DEBUG then
+    print(('[qu_bank] starting_balance=%d  db=%s'):format(STARTING_BALANCE, DB_NAME))
+end</code></pre>
+          <div class="callout callout--tip">
+            <header>Read once at start, not on every event</header>
+            <p>Convars rarely change at runtime. Read them into local variables when the resource starts (or when an event handler is registered) and reuse the locals. Calling <code>GetConvar</code> hundreds of times per minute is wasted work.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Reading a replicated convar from the client</summary>
+          <p>Clients can only read convars that were set with <code>setr</code>. The same <code>GetConvar</code> function works on both sides, the API is identical, the difference is only which convars are visible.</p>
+          <pre><code class="language-lua">-- client/main.lua
+local MAX_STACK = GetConvarInt('qu_max_stack', 20)
+
+RegisterNUICallback('uiReady', function(_, cb)
+    cb({ maxStack = MAX_STACK })   -- UI needs to know the per-server cap
+end)</code></pre>
+          <div class="callout callout--warn">
+            <header>Standard <code>set</code> convars are invisible to the client</header>
+            <p>If you write <code>set qu_max_stack 64</code> in server.cfg and call <code>GetConvar('qu_max_stack', '20')</code> on the client, you get <code>'20'</code>, the default. The client cannot see standard convars. Use <code>setr</code> when the client needs the value.</p>
+          </div>
+        </details>
+
+        <div class="checkpoint">
+          <h3>Recap 2</h3>
+          <p>Open the banking script you built in Lesson 23. Find the line where the starting balance is hard-coded. Replace it with <code>GetConvarInt('qu_starting_balance', 1000)</code>. Add <code>set qu_starting_balance 5000</code> to <code>server.cfg</code>. Restart the resource and confirm new accounts open at 5000.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Setting convars from a script</h2></header>
+        <p class="step-outcome">Outcome: you know when (and when not) to write a convar from Lua, and you know which API to call.</p>
+
+        <details class="explain" open>
+          <summary>The three write functions</summary>
+          <pre><code class="language-lua">-- server-only
+SetConvar('qu_debug', '1')
+
+-- replicated to clients
+SetConvarReplicated('qu_max_stack', '64')
+
+-- server info, public
+SetConvarServerInfo('Discord', 'https://discord.gg/quasaracademy')</code></pre>
+          <p>Note that values are always passed as <strong>strings</strong>. Even if you write <code>SetConvar('qu_debug', '1')</code>, you read it back with <code>GetConvarInt</code> if you want a number.</p>
+        </details>
+
+        <details class="explain">
+          <summary>When to set a convar from script (rarely)</summary>
+          <p>Most of the time, server.cfg is the right place. Setting from a script makes sense for:</p>
+          <ul>
+            <li><strong>Computed defaults at boot.</strong> Resource A reads its own version and exposes it via <code>SetConvarServerInfo('qu_bank_version', '2.4.1')</code> so the server browser shows it.</li>
+            <li><strong>Cross-resource handshake.</strong> A framework resource sets <code>setr qu_framework qbox</code> at start so other resources can detect it.</li>
+            <li><strong>One-shot migration.</strong> An admin command toggles a debug flag without editing server.cfg.</li>
+          </ul>
+          <div class="callout callout--warn">
+            <header>Script-set convars do not survive a restart</header>
+            <p><code>SetConvar</code> writes the in-memory value. It does <strong>not</strong> edit <code>server.cfg</code>. If you want the change to persist across restarts, the value belongs in <code>server.cfg</code> in the first place.</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Patterns that pay off</h2></header>
+        <p class="step-outcome">Outcome: you have three reusable convar patterns you can drop into any resource.</p>
+
+        <details class="explain" open>
+          <summary>Pattern 1: debug toggle</summary>
+          <p>Replace every <code>print('[qu_bank] ...')</code> with a guarded helper. Server admins flip the flag without editing your code.</p>
+          <pre><code class="language-lua">-- server/main.lua
+local DEBUG = GetConvarInt('qu_debug', 0) == 1
+
+local function log(fmt, ...)
+    if not DEBUG then return end
+    print(('[qu_bank] '):format() .. fmt:format(...))
+end
+
+log('starting up, balance=%d', GetConvarInt('qu_starting_balance', 1000))</code></pre>
+          <pre><code class="language-yaml"># server.cfg
+set qu_debug 1   # flip to 0 in production</code></pre>
+        </details>
+
+        <details class="explain">
+          <summary>Pattern 2: feature flag for risky rollouts</summary>
+          <p>Ship a new code path behind a flag. Default off. Flip on per server.</p>
+          <pre><code class="language-lua">-- server/main.lua
+local USE_NEW_AUDIT_FLOW = GetConvarInt('qu_audit_v2', 0) == 1
+
+RegisterNetEvent('qu_bank:withdraw', function(amount)
+    if USE_NEW_AUDIT_FLOW then
+        return withdrawV2(source, amount)
+    end
+    return withdrawV1(source, amount)
+end)</code></pre>
+          <p>If <code>v2</code> breaks, the admin sets <code>qu_audit_v2 0</code> and restarts the resource. No code revert.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Pattern 3: <code>setr</code> for the UI</summary>
+          <p>The client UI needs to know per-server caps. Don't trigger an event, just publish a replicated convar.</p>
+          <pre><code class="language-yaml"># server.cfg
+setr qu_max_stack 64
+setr qu_robbery_cooldown 600
+</code></pre>
+          <pre><code class="language-lua">-- client/main.lua
+local CFG = {
+    maxStack       = GetConvarInt('qu_max_stack', 20),
+    robberyCool    = GetConvarInt('qu_robbery_cooldown', 300),
+}
+
+SendNUIMessage({ type = 'config', payload = CFG })</code></pre>
+        </details>
+
+        <div class="checkpoint">
+          <h3>Recap 3</h3>
+          <p>Pick one resource you wrote in this course. Add a single <code>set qu_&lt;resource&gt;_debug</code> convar and replace its <code>print</code> calls with a guarded <code>log</code> helper. Confirm: with the convar at <code>1</code>, you see logs; at <code>0</code>, the console is silent.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Where convars come from</h2></header>
+        <p class="step-outcome">Outcome: you know the load order and the four ways a convar can get its value.</p>
+
+        <details class="explain" open>
+          <summary>Sources, in order</summary>
+          <ol>
+            <li><code>server.cfg</code>, loaded once at server boot. Any <code>set</code>/<code>setr</code>/<code>sets</code> line lands here.</li>
+            <li><code>exec other.cfg</code>, nested config files. Use this to split secrets into <code>secrets.cfg</code> (gitignored) and keep <code>server.cfg</code> in version control.</li>
+            <li><strong>Server console</strong>, type <code>set qu_debug 1</code> at the live console. Takes effect immediately for new reads. Lost on restart unless persisted in cfg.</li>
+            <li><strong><code>SetConvar*</code> from a resource</strong>, same lifetime as the console form, lost on restart.</li>
+          </ol>
+          <p>Read precedence is "last write wins". A console <code>set</code> overrides what was in <code>server.cfg</code> for the rest of the session.</p>
+        </details>
+
+        <details class="explain">
+          <summary>How to inspect a convar at runtime</summary>
+          <p>Type the convar name into the live server console:</p>
+          <pre><code>cfx&gt; qu_starting_balance
+ "qu_starting_balance" is "5000"
+ default: ""
+ type: string</code></pre>
+          <p>If the convar is unset, the console returns <code>No such command qu_starting_balance.</code>, that means your <code>GetConvarInt</code> call is falling back to the default, which is fine if intentional.</p>
+        </details>
+
+        <div class="callout callout--tip">
+          <header>Splitting secrets out of <code>server.cfg</code></header>
+          <p>Add <code>exec secrets.cfg</code> to <code>server.cfg</code>, put your <code>set steam_webApiKey ...</code> and <code>set rcon_password ...</code> in <code>secrets.cfg</code>, and add <code>secrets.cfg</code> to <code>.gitignore</code>. Now you can commit your config without leaking keys.</p>
+        </div>
+      </section>
+
+      <section class="mistakes">
+        <h2>Mistakes &amp; gotchas</h2>
+        <details>
+          <summary>1. <code>GetConvar</code> with no default returns the empty string, not <code>nil</code></summary>
+          <p>Code like <code>if GetConvar('qu_debug') then ...</code> is always true, the empty string <code>""</code> is truthy in Lua. Always pass a default and compare to it explicitly: <code>GetConvar('qu_debug', '0') == '1'</code> or <code>GetConvarInt('qu_debug', 0) == 1</code>.</p>
+        </details>
+        <details>
+          <summary>2. Reading a server-only convar from the client</summary>
+          <p>Standard <code>set</code> convars are invisible to clients. The client gets the default. If both sides need to read the same value, the server must <code>setr</code> it (replicated), or you trigger an event with the value at client connect.</p>
+        </details>
+        <details>
+          <summary>3. Putting secrets in <code>sets</code></summary>
+          <p><code>sets</code> values are public, they show up at <code>http://&lt;server_ip&gt;:&lt;port&gt;/info.json</code> and on the master server list. <code>sets</code> is for <em>Discord</em>, <em>tags</em>, <em>project name</em>. Never for tokens, webhooks, or API keys.</p>
+        </details>
+        <details>
+          <summary>4. Editing <code>server.cfg</code> and expecting a hot reload</summary>
+          <p><code>server.cfg</code> is parsed once at boot. Edits take effect on next restart. To change a value live, type the <code>set</code> command into the live console, then mirror it in <code>server.cfg</code> so it persists.</p>
+        </details>
+        <details>
+          <summary>5. Using <code>GetConvarInt</code> on a non-numeric value</summary>
+          <p><code>GetConvarInt('qu_db_name', 0)</code> on a value of <code>"qu_bank"</code> returns <code>0</code>, the default. There is no error, just silent fallback. Use <code>GetConvar</code> for strings and <code>GetConvarInt</code> for numbers, never mix them.</p>
+        </details>
+        <details>
+          <summary>6. Forgetting that script-set convars do not persist</summary>
+          <p><code>SetConvar('qu_debug', '1')</code> is in-memory only. If you actually want the change to survive a restart, write it to <code>server.cfg</code>. The script API is for runtime overrides and computed-at-boot values, not durable config.</p>
+        </details>
+      </section>
+
+      <section class="quiz">
+        <h2>Quiz</h2>
+        <fieldset>
+          <legend>1. Your client UI needs to know the per-server max inventory stack. Which keyword in <code>server.cfg</code>?</legend>
+          <label><input type="radio" name="q1" value="a"> <code>set qu_max_stack 64</code></label>
+          <label><input type="radio" name="q1" value="b" data-answer="true"> <code>setr qu_max_stack 64</code></label>
+          <label><input type="radio" name="q1" value="c"> <code>sets qu_max_stack 64</code></label>
+        </fieldset>
+        <fieldset>
+          <legend>2. <code>GetConvar('qu_debug')</code> is called with no default. The convar is unset. What is returned?</legend>
+          <label><input type="radio" name="q2" value="a"> <code>nil</code></label>
+          <label><input type="radio" name="q2" value="b" data-answer="true"> <code>""</code> (empty string, which is truthy in Lua)</label>
+          <label><input type="radio" name="q2" value="c"> The function errors</label>
+        </fieldset>
+        <fieldset>
+          <legend>3. Where do <code>sets</code> values appear?</legend>
+          <label><input type="radio" name="q3" value="a" data-answer="true"> Public, in <code>/info.json</code> and on the master server list</label>
+          <label><input type="radio" name="q3" value="b"> Server-only, like <code>set</code></label>
+          <label><input type="radio" name="q3" value="c"> Replicated to clients but not public</label>
+        </fieldset>
+        <fieldset>
+          <legend>4. You call <code>SetConvar('qu_debug', '1')</code> in a server script. The server restarts. What is the value?</legend>
+          <label><input type="radio" name="q4" value="a"> <code>'1'</code>, convars persist</label>
+          <label><input type="radio" name="q4" value="b" data-answer="true"> Whatever <code>server.cfg</code> says, or the default if unset, <code>SetConvar</code> writes only in memory</label>
+          <label><input type="radio" name="q4" value="c"> <code>nil</code></label>
+        </fieldset>
+        <fieldset>
+          <legend>5. The starting balance for accounts is hard-coded as <code>1000</code> in your script. You want server owners to tune it without editing Lua. The simplest fix?</legend>
+          <label><input type="radio" name="q5" value="a"> Add a row to a <code>settings</code> SQL table and read it on every event</label>
+          <label><input type="radio" name="q5" value="b" data-answer="true"> Replace it with <code>GetConvarInt('qu_starting_balance', 1000)</code> and document the convar</label>
+          <label><input type="radio" name="q5" value="c"> Trigger a client event from each player to ask their preferred balance</label>
+        </fieldset>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheatsheet</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Goal</div><div>Code</div>
+          </div>
+          <div class="cheat-row">
+            <div>Read string with default</div><div><code>local s = GetConvar('qu_db_name', 'qu_bank')</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Read int with default</div><div><code>local n = GetConvarInt('qu_starting_balance', 1000)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Boolean toggle</div><div><code>local debug = GetConvarInt('qu_debug', 0) == 1</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>server.cfg, server-only</div><div><code>set qu_debug 1</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>server.cfg, replicated to client</div><div><code>setr qu_max_stack 64</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>server.cfg, public info</div><div><code>sets Discord "https://discord.gg/quasaracademy"</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Set from server script</div><div><code>SetConvar('qu_debug', '1')</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Set replicated from server</div><div><code>SetConvarReplicated('qu_max_stack', '64')</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Set public from server</div><div><code>SetConvarServerInfo('qu_version', '2.4.1')</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Inspect at console</div><div><code>cfx&gt; qu_debug</code></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="recap">
+        <h2>Recap</h2>
+        <ul>
+          <li>Convars are FiveM's built-in config, one keyword in <code>server.cfg</code>, one function call in Lua.</li>
+          <li>Three flavors. <code>set</code> = server-only. <code>setr</code> = replicated to clients (read-only on the client). <code>sets</code> = public, indexed by the server browser.</li>
+          <li>Read with <code>GetConvar(name, default)</code> or <code>GetConvarInt(name, default)</code>. Always pass a default.</li>
+          <li>Write from script with <code>SetConvar</code>, <code>SetConvarReplicated</code>, <code>SetConvarServerInfo</code>, but the values are in-memory and lost on restart.</li>
+          <li>Use convars for one-line toggles, debug flags, and per-server tuning. Use <code>config.lua</code> for structured config and tables.</li>
+          <li>Never put secrets in <code>sets</code>. Split secrets into <code>secrets.cfg</code> via <code>exec</code> and gitignore that file.</li>
+        </ul>
+      </section>
+
+      <section class="exercise">
+        <h2>Exercise: convar-driven banking</h2>
+        <p>Open the banking resource from Lesson 23. Make the following four values configurable via convars, then test by editing only <code>server.cfg</code> and restarting the resource.</p>
+        <ol>
+          <li><strong><code>qu_bank_starting_balance</code></strong>, default <code>1000</code>. New accounts open at this amount.</li>
+          <li><strong><code>qu_bank_db_name</code></strong>, default <code>"qu_bank"</code>. The SQL table prefix.</li>
+          <li><strong><code>qu_bank_debug</code></strong>, default <code>0</code>. Guards every <code>print</code> in the resource.</li>
+          <li><strong><code>qu_bank_max_withdraw</code></strong>, default <code>10000</code>. Per-transaction cap. Replicated (<code>setr</code>) so the client UI can disable the input above this amount.</li>
+        </ol>
+        <p>Stretch goal: add an admin command <code>/qubankdebug &lt;0|1&gt;</code> that calls <code>SetConvar('qu_bank_debug', tostring(arg))</code> at runtime, and confirm the toggle takes effect without a restart.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code">
+          <header><span>txAdmin Live Console</span></header>
+          <pre><code class="language-bash">[qu_bank] starting_balance=5000 db=qu_bank
+[qu_bank] debug=1 max_withdraw=10000
+[script:oxmysql] Database server connection established!</code></pre>
+        </figure>
+      </section>
+
+      <section class="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/convars/" target="_blank" rel="noopener">FiveM docs &middot; Convars</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x6B0DE371" target="_blank" rel="noopener">Native &middot; GetConvar</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x935C0AB1" target="_blank" rel="noopener">Native &middot; GetConvarInt</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x341B16D2" target="_blank" rel="noopener">Native &middot; SetConvar</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xBA653737" target="_blank" rel="noopener">Native &middot; SetConvarReplicated</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">Server commands reference (set / setr / sets / exec)</a></li>
+        </ul>
+      </section>

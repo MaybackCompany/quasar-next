@@ -1,0 +1,232 @@
+<LessonHero
+  crumbs="Lesson 7"
+  title="QA and launch"
+  meta={[
+    { label: "Outcome", value: "A pass/fail launch sheet, backup restore proof, rollback proof, and escalation path." },
+    { label: "Owner role", value: "Approves scope, watches player path, confirms staff and support readiness." },
+    { label: "Developer role", value: "Runs technical checks, fixes errors, owns rollback commands, and signs off console health." },
+    { label: "Duration", value: "60-90 minutes." },
+    { label: "Prerequisites", value: "Staging server, backup access, staff matrix, and rollback target." },
+    { label: "Pass condition", value: "launch-report.md shows backup restore, rollback, permissions, and console health all passing." },
+  ]}
+>
+  Public launch is a gate, not a guess. This rehearsal proves backups, saves, staff permissions, rollback, and support paths before real players depend on the server.
+</LessonHero>
+
+Stop rule
+
+Do not launch with broken saves, unknown red console errors, missing backups, staff permission leaks, exposed secrets, or no rollback path.
+
+## Launch rehearsal roles
+
+| Person | Owns | Must not skip |
+| --- | --- | --- |
+| Owner | Launch decision, community messaging, support escalation, budget risk | First-hour loop and refund/incident rules |
+| Developer | Server health, resource order, database backup, rollback commands | Console errors, SQL import state, artifact version |
+| Moderator | Reports, whitelist if used, player behavior, staff test account | Permission boundary tests |
+| Tester | Normal player flow with no admin tools | Saving money, inventory, vehicles, and reconnect state |
+
+<StepGroup>
+  <Step num={1} title="Create a launch rehearsal folder" outcome="every proof file lands in one place.">
+      1. Create `Documents\FiveM\Launch-Rehearsal\`.
+      2. Inside it create `launch-report.md`, `backup-proof.md`, `rollback-proof.md`, and `support-escalation.md`.
+      3. Open the folder in VS Code.
+
+      VS Code shows the four launch-rehearsal files in the folder.
+  </Step>
+
+  <Step num={2} title="Prove database backup and restore" outcome="the team knows a backup can actually restore, not just exist.">
+      1. Open HeidiSQL.
+      2. Right-click the production or staging database, for example `fivem`.
+      3. Click **Export database as SQL**.
+      4. Choose **Structure and data**.
+      5. Save to `Launch-Rehearsal\backup-before-launch.sql`.
+      6. Create a new test database named `restore_test`.
+      7. Import the SQL into `restore_test`.
+      8. Open several important tables, such as players, owned vehicles, inventory, and jobs.
+
+      `restore_test` contains the same key tables and recent test rows. To confirm, HeidiSQL shows the `restore_test` database with its tables visible.
+
+      <Callout variant="danger" title="If restore fails">
+        Stop the launch. Fix the export settings, missing permissions, or broken SQL file first. A backup that cannot restore is not a launch backup.
+      </Callout>
+  </Step>
+
+  <Step num={3} title="Run the first-hour player test" outcome="a normal player can finish the core loop without staff teleporting them.">
+      1. Ask a tester to join with a normal account.
+      2. Do not give them admin, noclip, money, or item grants.
+      3. Watch them create a character, spawn, get ID, start legal work, earn money, buy or rent a vehicle, and reconnect.
+      4. After reconnect, verify money, inventory, job state, and vehicle state saved.
+      5. Write pass/fail beside every step.
+
+      ```
+      # First-hour test
+      Character creation: pass / fail
+      Spawn location: pass / fail
+      ID received: pass / fail
+      Starter job starts: pass / fail
+      First payment received: pass / fail
+      Inventory saved after reconnect: pass / fail
+      Money saved after reconnect: pass / fail
+      Vehicle state saved: pass / fail
+      No admin help used: pass / fail
+      ```
+  </Step>
+
+  <Step num={4} title="Check txAdmin, F8, and performance" outcome="launch health is measured, not guessed.">
+      1. Open txAdmin → **Live Console**.
+      2. Scroll from server start to current time. Copy the first red error into the report, or write `none`.
+      3. Ask each tester to press F8 and screenshot any repeating error.
+      4. In-game, type `resmon 1` in F8.
+      5. Visit spawn, first job, police station, hospital, vehicle rental, and one map interior.
+      6. Write the worst constantly-running resource cost you see.
+
+      No unknown red server errors, no constant F8 spam, no broken spawn route, and no script constantly spiking during idle testing.
+  </Step>
+
+  <Step num={5} title="Prove rollback commands" outcome="the developer can undo the last risky change under pressure.">
+      Rollback crosses three different consoles. Run the steps in order and never paste a command into the wrong one. Replace `<backup-date>` with the folder name of the backup you are restoring.
+
+      ### Resource rollback: restore one bad resource
+
+      1. In the
+
+        txAdmin Live Console
+
+        , stop the resource:
+
+        ```
+        stop qs-smartphone-pro
+        ```
+      2. In
+
+        PowerShell
+
+        , with the working directory set to your
+
+        server-data
+
+        folder, move the broken copy aside and restore the backup:
+
+        ```
+        Rename-Item resources/[quasar]/qs-smartphone-pro qs-smartphone-pro_bad_<backup-date>
+        Copy-Item -Recurse backups/<backup-date>/qs-smartphone-pro resources/[quasar]/qs-smartphone-pro
+        ```
+      3. Back in the
+
+        txAdmin Live Console
+
+        , reload the resource list and start it:
+
+        ```
+        refresh
+        ensure qs-smartphone-pro
+        ```
+
+      ### Config rollback: restore server.cfg
+
+      1. In
+
+        PowerShell
+
+        , working directory
+
+        server-data
+
+        :
+
+        ```
+        Copy-Item backups/<backup-date>/server.cfg server.cfg
+        ```
+      2. In the
+
+        txAdmin Live Console
+
+        , restart the affected resource:
+
+        ```
+        restart qs-smartphone-pro
+        ```
+
+      ### Git rollback: only if server-data is a private git repo
+
+      Run these in a **Git terminal** opened inside the tracked `server-data` folder. Inspect first, then revert the bad commit:
+
+      ```
+      git status
+      git log --oneline -5
+      git revert <commit_sha>
+      ```
+
+      After the resource rollback, the txAdmin console prints `Started resource qs-smartphone-pro` and the original error is gone.
+  </Step>
+</StepGroup>
+
+## Support escalation path
+
+Write this before launch so staff do not improvise during an incident.
+
+```
+# Support escalation
+Player issue:
+1. Moderator collects player name, identifier, clip, time, and symptom.
+2. Admin checks txAdmin logs and staff logs.
+3. Developer checks server console, F8 screenshot, resource docs, and recent change notes.
+4. Owner approves refunds, database edits, payment disputes, and public announcements.
+
+Vendor issue:
+1. Reproduce on staging.
+2. Collect artifact version, framework, script version, config diff, console error, and screenshots.
+3. Open seller ticket with proof.
+4. Roll back production if players are affected.
+```
+
+## Launch pass/fail criteria
+
+| Gate | Pass | Fail means |
+| --- | --- | --- |
+| Backup restore | SQL imports into `restore_test` and key tables open | No public launch |
+| First-hour loop | Tester finishes without admin help | Fix onboarding before launch |
+| Saves | Money, inventory, vehicle, and job survive reconnect | Fix DB/framework before launch |
+| Permissions | Normal account cannot use staff tools | Fix staff matrix before launch |
+| Rollback | Developer can restore one changed resource | Write and test rollback first |
+| Support | Staff know who handles tickets, refunds, bugs, and vendor escalation | Delay launch or narrow launch group |
+
+## Failure recovery
+
+<Callout variant="info" title="A save test fails">
+  <Callout variant="danger">
+    Stop public launch. Check `mysql_connection_string`, `oxmysql` ensure order, SQL import status, and framework console errors. Re-test only after a clean restart.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="The launch breaks after several new resources">
+  <Callout variant="danger">
+    Use binary search: comment out half of the new `ensure` lines, restart, and see if the error disappears. Repeat until one resource remains, then roll that one back.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="Players report a paid script bug">
+  <Callout variant="danger">
+    Move the report into the vendor path. Collect script version, framework, artifact version, console line, F8 screenshot, reproduction steps, and whether rollback fixed it.
+  </Callout>
+</Callout>
+
+## Final launch decision
+
+```
+# Launch report
+Date:
+Owner:
+Developer:
+Backup restore proof: pass / fail
+First-hour loop: pass / fail
+Saves: pass / fail
+Permissions: pass / fail
+Rollback proof: pass / fail
+Support escalation: pass / fail
+Top txAdmin error: none / describe
+Top F8 error: none / describe
+Decision: launch / delay
+If delayed, next fix:
+```

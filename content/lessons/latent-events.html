@@ -1,0 +1,223 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Module 04 &middot; Bonus</span></div>
+        <h1>Latent events: <code>TriggerLatentServerEvent</code> &amp; <code>TriggerLatentClientEvent</code></h1>
+        <p class="lede">A regular <code>TriggerServerEvent</code> blocks the network channel until the whole payload arrives. For small messages that is fine. For big tables, image buffers, or character export blobs, blocking the channel can time the player out. Latent events stream the payload at a controlled rate so the channel stays open.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>When to swap <code>TriggerServerEvent</code> for <code>TriggerLatentServerEvent</code>, the <code>bps</code> parameter, and the gotchas with broadcasting to all players</dd></div>
+          <div><dt>Time</dt><dd>~12 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 14 (TriggerServerEvent / TriggerClientEvent)</dd></div>
+          <div><dt>Outcome</dt><dd>You know the rule of thumb (small = regular, big = latent) and you can size <code>bps</code> for your payload</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="13b">
+        <h2>Before you start</h2>
+        <p>Quick check. If any of these are shaky, pop back to the linked lesson for two minutes, the rest of this lesson sits on top of them.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I am comfortable firing <code>TriggerServerEvent</code> and <code>TriggerClientEvent</code> across the wall (<a href="../clase-13/leason13.html">Lesson 13</a>)</label></li>
+          <li><label><input type="checkbox"> I understand that the network channel is a single shared pipe and that a giant payload can block it</label></li>
+          <li><label><input type="checkbox"> I can eyeball the size of a Lua table or JSON payload (rows, fields, rough byte count)</label></li>
+          <li><label><input type="checkbox"> I know how to read errors and warnings in the F8 console and the server console</label></li>
+        </ul>
+      </section>
+
+      <section id="why">
+        <h2>Why latent events exist</h2>
+        <p>FiveM's reliable event channel is a single ordered stream per direction. <code>TriggerServerEvent</code> writes its entire payload into that stream and the receiver does not advance until every byte arrives. If your payload is 800 KB and the player is on a slow link, every other event behind it stalls. The client may even time out.</p>
+        <p>Latent events bypass that by chunking the payload at a configurable byte rate. Other events keep flowing. The receiver assembles the chunks and fires the handler once, exactly like a normal event, when the last chunk lands.</p>
+
+        <div class="callout callout--tip">
+          <header>Rule of thumb</header>
+          <p>Under ~1 KB? <code>TriggerServerEvent</code>. Above a few KB, anything that contains tables of tables, NUI image buffers, large player exports, character snapshots, world saves? <code>TriggerLatentServerEvent</code>.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Client to server: TriggerLatentServerEvent</h2></header>
+        <p class="step-outcome">Outcome: a 50 KB payload reaches the server without blocking other events.</p>
+        <div class="step-body">
+          <p>Signature: <code>TriggerLatentServerEvent(eventName, bps, ...)</code>. The <code>bps</code> argument is bytes per second. Pass <code>-1</code> or <code>0</code> for the default (25,000 bytes/sec).</p>
+          <figure class="code">
+            <header><span>client.lua: latent send</span></header>
+            <pre><code class="language-lua">RegisterCommand('exportworld', function()
+    local bigPayload = {}
+    for i = 1, 5000 do
+        bigPayload[i] = {
+            id = i,
+            name = ('object_%d'):format(i),
+            coords = vector3(math.random(-3000, 3000), math.random(-3000, 3000), 30.0),
+        }
+    end
+
+    -- 25 KB/s default rate
+    TriggerLatentServerEvent('qu:world:import', 25000, bigPayload)
+    print('[QUIET][latent] sent ' .. #bigPayload .. ' rows')
+end, false)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>server.lua: receiver is identical</span></header>
+            <pre><code class="language-lua">RegisterNetEvent('qu:world:import', function(payload)
+    local src = source
+    print(('[QUIET][latent][recv] src=%d rows=%d'):format(src, #payload))
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>The receiver does not change</summary>
+            <ul>
+              <li><code>RegisterNetEvent</code> handles latent and non-latent events the same way. The handler fires once, when the full payload has arrived.</li>
+              <li>You do not see chunks. The transport is invisible to your code.</li>
+              <li><code>source</code> still resolves to the sending player ID inside the handler.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Server to client: TriggerLatentClientEvent</h2></header>
+        <p class="step-outcome">Outcome: a server-side payload streams to one client without timing them out.</p>
+        <div class="step-body">
+          <p>Signature: <code>TriggerLatentClientEvent(eventName, targetPlayer, bps, ...)</code>. Use <code>-1</code> for <code>targetPlayer</code> to broadcast to everyone (read the warning below before you do).</p>
+          <figure class="code">
+            <header><span>server.lua: latent push to one player</span></header>
+            <pre><code class="language-lua">RegisterCommand('pushcatalog', function(source)
+    local catalog = {}
+    for i = 1, 8000 do
+        catalog[i] = { id = i, label = ('item_%d'):format(i), price = i * 10 }
+    end
+
+    TriggerLatentClientEvent('qu:catalog:push', source, 50000, catalog) -- 50 KB/s
+    print(('[QUIET][latent][server] pushed catalog rows=%d to src=%d'):format(#catalog, source))
+end, true)</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Latent send round-trips</h3></header>
+        <p>Run <code>/exportworld</code>. The server logs <code>[QUIET][latent][recv] src=N rows=5000</code>. Other events you trigger meanwhile should still respond quickly.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Sizing bps and the broadcast trap</h2></header>
+        <p class="step-outcome">Outcome: you can pick a sane <code>bps</code> for your payload and you understand why <code>-1</code> as <code>targetPlayer</code> is dangerous.</p>
+        <div class="step-body">
+          <p>Pick <code>bps</code> as <em>per-target</em> bandwidth. The official guidance:</p>
+          <ul>
+            <li><code>bps = 25000</code> (default) is fine for most payloads under 200 KB.</li>
+            <li><code>bps = 50000-100000</code> for bigger payloads where you want the transfer to finish in seconds.</li>
+            <li>Above <code>~10000000</code> the system tries to flush almost everything at once and you lose the latency benefit. Stay well below that.</li>
+          </ul>
+          <div class="callout callout--warn">
+            <header>Broadcast multiplies the bill</header>
+            <p>If you call <code>TriggerLatentClientEvent('big:event', -1, 100000, payload)</code> on a 60-player server, the server is sending <code>100000 * 60 = 6 MB/s</code>. That can saturate the host uplink and throttle every player at once. Either lower <code>bps</code> for broadcasts, or loop the player list and stagger sends.</p>
+          </div>
+          <div class="callout callout--tip">
+            <header>Use a checksum or version field</header>
+            <p>For catalogs and config blobs that rarely change, send a small <code>version</code> first via <code>TriggerClientEvent</code>. Only call the latent push when the client says its cached version is stale. You will avoid most of the bandwidth.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Forgetting the bps parameter</summary>
+          <p><code>TriggerLatentServerEvent('qu:world:import', payload)</code> looks correct, but it sends <code>payload</code> as the <code>bps</code> and ignores any further arguments. Always pass the rate explicitly.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using latent events for tiny payloads</summary>
+          <p>Latent events have per-chunk bookkeeping overhead. For payloads under a kilobyte, <code>TriggerServerEvent</code> is faster and cheaper. Save latent for the big stuff.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Treating latent events as a stream</summary>
+          <p>You cannot read partial data on the receiver. The handler runs once, when the full payload is reassembled. If you need real streaming, use HTTP requests or a chunked event protocol you build yourself.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Skipping validation because the payload is "internal"</summary>
+          <p>Latent events still cross the trust boundary. A modded client can fire <code>qu:world:import</code> with whatever it wants. Validate the structure on the server exactly as you would for a regular net event.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Broadcasting at high bps</summary>
+          <p><code>TriggerLatentClientEvent('event', -1, 250000, payload)</code> with 50 players online tries to send 12.5 MB/s out of the server. Either lower bps for broadcasts, or send to one player at a time with a delay.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. When should you prefer <code>TriggerLatentServerEvent</code> over <code>TriggerServerEvent</code>?</legend>
+            <label><input type="radio" name="q1" value="a"> Always, latent events are faster.</label>
+            <label><input type="radio" name="q1" value="b"> When the payload is large enough that a regular event would block the channel and risk a timeout.</label>
+            <label><input type="radio" name="q1" value="c"> Only when the player is on a fast connection.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What does the <code>bps</code> parameter control?</legend>
+            <label><input type="radio" name="q2" value="a"> The number of bytes per request.</label>
+            <label><input type="radio" name="q2" value="b"> The total payload size in bytes.</label>
+            <label><input type="radio" name="q2" value="c"> The byte-per-second rate the engine streams the payload at, per target.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. The receiver registers a latent event handler with...</legend>
+            <label><input type="radio" name="q3" value="a"> <code>RegisterNetEvent</code>, latent transport is invisible to the handler.</label>
+            <label><input type="radio" name="q3" value="b"> <code>RegisterLatentEvent</code>.</label>
+            <label><input type="radio" name="q3" value="c"> <code>AddEventHandler</code> with a <code>latent = true</code> option.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. Why is <code>TriggerLatentClientEvent('event', -1, 100000, payload)</code> risky on a busy server?</legend>
+            <label><input type="radio" name="q4" value="a"> The <code>-1</code> target is invalid for latent events.</label>
+            <label><input type="radio" name="q4" value="b"> <code>bps</code> is per-target, so the server tries to send <code>100000 * playerCount</code> bytes per second, enough to saturate the uplink.</label>
+            <label><input type="radio" name="q4" value="c"> Latent events cannot be broadcast.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>TriggerLatentServerEvent(name, bps, ...)</code></dt><dd>Client to server. Streams a big payload at <code>bps</code> bytes/sec.</dd></div>
+          <div><dt><code>TriggerLatentClientEvent(name, target, bps, ...)</code></dt><dd>Server to client. Pass <code>-1</code> for all players, but watch the multiplier.</dd></div>
+          <div><dt>Default <code>bps</code></dt><dd>Pass <code>0</code> or <code>-1</code> to use the engine default of 25,000 bytes/sec.</dd></div>
+          <div><dt>Receiver native</dt><dd>Same as a regular event: <code>RegisterNetEvent</code>. The handler fires once, when the payload is fully reassembled.</dd></div>
+          <div><dt>Per-target rate</dt><dd><code>bps</code> applies to one recipient. Broadcasting to <code>N</code> players multiplies the server uplink load by <code>N</code>.</dd></div>
+          <div><dt>Validation rule</dt><dd>Latent events cross the trust boundary like any other net event. Validate every field server-side.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Why a regular <code>TriggerServerEvent</code> can stall the channel for big payloads</li>
+          <li>How <code>TriggerLatentServerEvent</code> and <code>TriggerLatentClientEvent</code> stream the payload at a controlled rate</li>
+          <li>How to size <code>bps</code> for the payload, defaults, sane ranges, and the upper limit</li>
+          <li>Why broadcasting (<code>-1</code> target) at high <code>bps</code> can flatten your server's uplink</li>
+          <li>That latent events still cross the trust boundary, validate on the server</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build a <code>/dumpinventory</code> command that simulates exporting a player's inventory: generate a table with 2,000 entries (id, name, weight, metadata) and send it to the server with <code>TriggerLatentServerEvent</code> at <code>bps = 30000</code>. The server prints the row count on receipt. Then try the same payload with regular <code>TriggerServerEvent</code> and notice the brief stall on a throttled connection.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 + server console</span></header>
+          <pre><code>-- Client: [QUIET][latent] sent 2000 rows
+-- Server: [QUIET][latent][recv] src=N rows=2000</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" target="_blank" rel="noopener">FiveM docs, triggering events (includes latent variants)</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 14, TriggerServerEvent &amp; TriggerClientEvent</a></li>
+          <li><a href="../clase-11/leason11.html">Lesson 12, Trust &amp; authority</a></li>
+        </ul>
+      </section>

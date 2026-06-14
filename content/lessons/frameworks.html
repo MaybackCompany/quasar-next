@@ -1,0 +1,1207 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 05 · Lesson 17</span></div>
+        <h1>Frameworks: ESX, QBCore, Qbox <span class="arrow">+</span> ox_lib</h1>
+        <p class="lede">Real FiveM servers usually run a <em>framework</em>. A framework answers the same boring questions for every script: who is this player, how much money do they have, what job are they on, what inventory do they carry. This lesson reads like a translation guide. Learn the idea once, then see how ESX, QBCore, and Qbox spell it.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd>What a framework is -> how the player object looks in each one -> money and job basics -> load events -> the ox_lib tools you will use most days</dd></div>
+          <div><dt>Time</dt><dd>~45 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>Module 04 complete. A test server with any of ESX / QBCore / Qbox installed. ox_lib resource running.</dd></div>
+          <div><dt>Outcome</dt><dd>You can read and compare scripts written for ESX, QBCore, and Qbox, and you can understand where ox_lib fits in.</dd></div>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 17: Frameworks: QBCore first, ESX alongside</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Frameworks manage players, jobs, and money.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find QBCore or ESX exports in server files.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Read player data server-side before changing it.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Get one player object and print an id.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small framework example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Export</dt><dd>A function exposed by another resource.<br><span>Example: exports[&quot;qb-core&quot;]:GetCoreObject().</span></dd></div>
+            <div><dt tabindex="0">Framework</dt><dd>Shared server code for players and jobs.<br><span>Example: QBCore stores player data.</span></dd></div>
+            <div><dt tabindex="0">Dependency</dt><dd>A resource required before yours starts.<br><span>Example: ensure qb-core before qu_qb_intro.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_framework</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_framework/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_framework</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][framework]">
+            <header><span class="file">qu_framework/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'framework'
+
+RegisterCommand('quiet_16', function(source)
+    print(('[QUIET][%s][command] source=%s api=exports'):format(MODULE, source))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][framework]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>server.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_framework</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>framework_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][framework_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_framework' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="prereq" data-lesson="16">
+        <h2>Before you start</h2>
+        <ul>
+          <li><label><input type="checkbox" data-id="framework"> I have one of ESX / QBCore / Qbox installed on my test server</label></li>
+          <li><label><input type="checkbox" data-id="oxlib"> <code>ox_lib</code> is started in <code>server.cfg</code> (<code>ensure ox_lib</code>)</label></li>
+          <li><label><input type="checkbox" data-id="db"> A MySQL/MariaDB database is connected and <code>oxmysql</code> is running</label></li>
+          <li><label><input type="checkbox" data-id="char"> I can spawn a character in game (create one if the framework asks)</label></li>
+        </ul>
+      </section>
+
+      <section class="reading-panel">
+        <h3>How to read this lesson without getting lost</h3>
+        <p>Read it in this order. First learn the shared idea: player object, money, and job. Then use the side-by-side sections to compare spelling. Only open the deeper client-event snippets when you really need them in a real script.</p>
+        <ul>
+          <li>Start with the mental model.</li>
+          <li>Make one first read of a player object.</li>
+          <li>Read ESX, QBCore, and Qbox as translations of the same idea.</li>
+          <li>Use ox_lib as the shared UI layer on top.</li>
+          <li>Treat export-heavy details as optional depth until you need them.</li>
+        </ul>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: why every framework exists</h2>
+        <p>Forget the branding for a second. A framework exists so every script on your server answers the same three questions in the same way:</p>
+        <ul>
+          <li><strong>Who is this player?</strong> A unique identifier (license, Steam hex) plus a character id.</li>
+          <li><strong>What's their state?</strong> Money, job, gang, permissions, inventory.</li>
+          <li><strong>How do I read or change it?</strong> A standard set of functions every resource agrees on.</li>
+        </ul>
+        <p>Without a framework, every script would invent its own player, money, and job system. Then nothing would match. A framework fixes that. It gives you one shared player shape, one shared money shape, and one shared way to read and change them.</p>
+
+        <div class="callout callout--fivem">
+          <header>The three frameworks, one sentence each</header>
+          <p><strong>ESX</strong> -> older, still common. <strong>QBCore</strong> -> the default shape many public scripts target. <strong>Qbox</strong> -> very close to QBCore, but cleaner and more <code>ox_*</code>-focused. Same big idea, different spelling.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="first-player-object-read">
+        <header><span class="chip">First read</span><h3>What a player object gives you</h3></header>
+        <p>A framework player object is not magic. It is the server's structured record for one connected character. Your first goal is only to read three fields safely:</p>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Question</div><div>Typical field</div>
+          </div>
+          <div class="cheat-row">
+            <div>Who is this character?</div><div><code>identifier</code> or <code>citizenid</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>How much money do they have?</div><div><code>money</code>, <code>cash</code>, or <code>bank</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>What job are they on?</div><div><code>job.name</code> and <code>job.grade</code></div>
+          </div>
+        </div>
+        <p>If you can read those three without changing anything, you are ready for the ESX, QBCore, and Qbox translations below.</p>
+      </section>
+
+      <section id="exports" class="callout callout--pro">
+        <header>Optional advanced: exports</header>
+        <h2>Exports: the one FiveM concept all three assume</h2>
+        <p>Before the framework-specific details, you need one FiveM idea: <em>exports</em>. A resource can expose a function with <code>exports('name', fn)</code>. Another resource can call it with <code>exports.resourceName:name(args)</code>. It is a direct function call on the same side, server to server or client to client. Every framework uses exports heavily, so once you understand this pattern, the docs get much easier to read.</p>
+
+        <figure class="code">
+          <header><span>resourceA/server/main.lua, declare</span></header>
+          <pre><code class="language-lua">local function getVersion() return '1.0.0' end
+exports('getVersion', getVersion)</code></pre>
+        </figure>
+
+        <figure class="code">
+          <header><span>resourceB/server/main.lua, call</span></header>
+          <pre><code class="language-lua">local v = exports.resourceA:getVersion()
+print(v) -- '1.0.0'</code></pre>
+        </figure>
+        <p>If this section slows you down, skip to the first player-object example for your framework. You can use a framework before you fully understand every export pattern.</p>
+      </section>
+
+      <section id="esx">
+        <header class="section-banner">
+          <span class="chip chip--esx">Framework 1</span>
+          <h2>ESX <span class="faint">(es_extended)</span></h2>
+        </header>
+
+        <p>ESX is one of the oldest big FiveM roleplay frameworks. It uses a slightly older style, and it thinks about money as <em>accounts</em>. Cash is one thing. Bank is another account. Black money can be another account too. The maintained version people usually mean today is <strong>ESX Legacy</strong>.</p>
+
+        <h3>Get the core object</h3>
+        <figure class="code">
+          <header><span>server/main.lua</span></header>
+          <pre><code class="language-lua">local ESX = exports['es_extended']:getSharedObject()
+
+RegisterCommand('whoami', function(source)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then return end
+
+    print(('[esx] id=%s name=%s cash=%d bank=%d job=%s grade=%d')
+        :format(
+            xPlayer.identifier,
+            xPlayer.getName(),
+            xPlayer.getMoney(),
+            xPlayer.getAccount('bank').money,
+            xPlayer.job.name,
+            xPlayer.job.grade
+        ))
+end, false)</code></pre>
+        </figure>
+
+        <p>The ESX player object is called <code>xPlayer</code>. Key fields and methods:</p>
+        <ul>
+          <li><code>xPlayer.identifier</code>: the <code>license:xxxx</code> string, stable per Rockstar account.</li>
+          <li><code>xPlayer.getMoney()</code>: cash on hand. <code>xPlayer.addMoney(n)</code> / <code>removeMoney(n)</code>.</li>
+          <li><code>xPlayer.getAccount('bank').money</code>: bank balance. <code>addAccountMoney('bank', n)</code> / <code>removeAccountMoney('bank', n)</code>.</li>
+          <li><code>xPlayer.job.name</code> / <code>.grade</code> / <code>.grade_label</code>. Change with <code>xPlayer.setJob('police', 1)</code>.</li>
+          <li><code>xPlayer.getInventoryItem('bread')</code>: returns <code>{ name, count, label, weight }</code>. <em>(Legacy ESX inventory; modern installs usually swap to ox_inventory, see below.)</em></li>
+        </ul>
+
+        <details class="explain">
+          <summary>Open the ESX client-event reference</summary>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">local ESX = exports['es_extended']:getSharedObject()
+local PlayerData
+
+AddEventHandler('esx:playerLoaded', function(xPlayer, isNew, skin)
+    PlayerData = xPlayer
+    print('[esx] loaded as ' .. xPlayer.job.name .. ' (new=' .. tostring(isNew) .. ')')
+end)
+
+RegisterNetEvent('esx:setJob', function(job)
+    if PlayerData then PlayerData.job = job end
+end)
+
+RegisterNetEvent('esx:setAccountMoney', function(account)
+    if PlayerData then
+        -- account = { name = 'bank', money = 1234, label = 'Bank' }
+    end
+end)</code></pre>
+          </figure>
+        </details>
+
+        <details class="explain">
+          <summary>ESX's oldest trap: <code>getSharedObject</code> timing</summary>
+          <p>Old tutorials often show a long polling loop to get ESX. That was common years ago. Modern ESX Legacy supports the direct export shown above. So if you see the old loop in a snippet, think "old style" -> not "impossible to use."</p>
+        </details>
+      </section>
+
+      <section id="qbcore">
+        <header class="section-banner">
+          <span class="chip chip--qbcore">Framework 2</span>
+          <h2>QBCore <span class="faint">(qb-core)</span></h2>
+        </header>
+
+        <p>QBCore became popular as a cleaner alternative to ESX. Instead of an account-style money system, it stores money directly on the player object. Jobs also include an <em>on-duty</em> flag. If you ever open a resource called <code>qb-something</code>, it is almost always written for QBCore.</p>
+
+        <h3>Get the core object</h3>
+        <figure class="code">
+          <header><span>server/main.lua</span></header>
+          <pre><code class="language-lua">local QBCore = exports['qb-core']:GetCoreObject()
+
+RegisterCommand('whoami', function(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    print(('[qb] cid=%s name=%s %s cash=%d bank=%d job=%s onduty=%s')
+        :format(
+            Player.PlayerData.citizenid,
+            Player.PlayerData.charinfo.firstname,
+            Player.PlayerData.charinfo.lastname,
+            Player.PlayerData.money.cash,
+            Player.PlayerData.money.bank,
+            Player.PlayerData.job.name,
+            tostring(Player.PlayerData.job.onduty)
+        ))
+end, false)</code></pre>
+        </figure>
+
+        <p>QBCore's player object has <code>PlayerData</code> (the data) and <code>Functions</code> (the setters). Key paths:</p>
+        <ul>
+          <li><code>Player.PlayerData.citizenid</code>: stable per character.</li>
+          <li><code>Player.PlayerData.charinfo.firstname</code> / <code>.lastname</code> / <code>.phone</code> / <code>.birthdate</code>.</li>
+          <li><code>Player.PlayerData.money.cash</code> / <code>.bank</code> / <code>.crypto</code>.</li>
+          <li><code>Player.PlayerData.job.name</code> / <code>.label</code> / <code>.grade.level</code> / <code>.grade.name</code> / <code>.onduty</code>.</li>
+          <li><code>Player.PlayerData.metadata</code>: hunger, thirst, stress, whatever you add.</li>
+        </ul>
+
+        <h3>Change state: go through <code>Functions</code></h3>
+        <figure class="code">
+          <header><span>server/main.lua</span></header>
+          <pre><code class="language-lua">-- Money: always through functions, never direct assignment
+Player.Functions.AddMoney('cash', 500, 'bonus-payout')
+Player.Functions.RemoveMoney('bank', 50, 'atm-fee')
+
+-- Job
+Player.Functions.SetJob('police', 2)       -- name, grade
+Player.Functions.SetJobDuty(true)          -- toggle on/off duty
+
+-- Metadata
+Player.Functions.SetMetaData('stress', 25)
+
+-- Save manually if you bypass the above (you shouldn't)
+Player.Functions.Save()</code></pre>
+        </figure>
+
+        <details class="explain">
+          <summary>Open the QBCore client-event reference</summary>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">local QBCore = exports['qb-core']:GetCoreObject()
+local PlayerData
+
+AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
+    PlayerData = QBCore.Functions.GetPlayerData()
+    print('[qb] loaded as ' .. PlayerData.charinfo.firstname)
+end)
+
+RegisterNetEvent('QBCore:Client:OnJobUpdate', function(JobInfo)
+    if PlayerData then PlayerData.job = JobInfo end
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    PlayerData = nil
+end)</code></pre>
+          </figure>
+        </details>
+
+        <div class="callout callout--tip">
+          <header>Always null-check the player</header>
+          <p>If a player is still joining, <code>GetPlayer</code> can return <code>nil</code>. So always write <code>if not Player then return end</code>. The same habit applies to ESX and Qbox too.</p>
+        </div>
+
+        <div class="callout callout--gotcha">
+          <header><code>RemoveMoney</code> hands you back a yes-or-no, so read it</header>
+          <p>On QBCore and Qbox, <code>RemoveMoney</code> returns a boolean: <code>true</code> if the player had enough and the money came out, <code>false</code> if they were short and nothing happened. If you ignore that return value, you can hand someone an item even when they could not actually pay for it. That is one of the most common ways shops leak money.</p>
+          <figure class="code">
+            <header><span class="file">server/main.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- BAD: assumes the charge worked, gives the item no matter what
+Player.Functions.RemoveMoney('cash', 80, 'buy_gun')
+exports.ox_inventory:AddItem(src, 'weapon_pistol', 1)   -- free gun if they were broke
+
+-- GOOD: only continue if the charge actually succeeded
+local paid = Player.Functions.RemoveMoney('cash', 80, 'buy_gun')
+if not paid then
+    return lib.notify(src, { type = 'error', description = 'Not enough cash.' })
+end
+exports.ox_inventory:AddItem(src, 'weapon_pistol', 1)</code></pre>
+          </figure>
+          <p>ESX does not return a reliable boolean here, so on ESX you check the balance first with <code>xPlayer.getMoney()</code> before calling <code>removeMoney</code>. Either way the rule is the same: confirm the money left the account before you give anything in return.</p>
+        </div>
+      </section>
+
+      <section id="qbox">
+        <header class="section-banner">
+          <span class="chip chip--qbox">Framework 3</span>
+          <h2>Qbox <span class="faint">(qbx_core)</span></h2>
+        </header>
+
+        <p>Qbox is a community-maintained fork of QBCore. The important beginner takeaway is simple: it keeps a very similar player shape, but it swaps much of the older <code>qb-*</code> stack for the newer <code>ox_*</code> stack like <code>ox_lib</code>, <code>ox_inventory</code>, and <code>ox_target</code>. If you are starting fresh, many developers now prefer Qbox for that reason.</p>
+
+        <h3>No <code>GetCoreObject</code>: direct exports</h3>
+        <figure class="code">
+          <header><span>server/main.lua</span></header>
+          <pre><code class="language-lua">RegisterCommand('whoami', function(source)
+    local Player = exports.qbx_core:GetPlayer(source)
+    if not Player then return end
+
+    print(('[qbx] cid=%s cash=%d job=%s')
+        :format(
+            Player.PlayerData.citizenid,
+            Player.PlayerData.money.cash,
+            Player.PlayerData.job.name
+        ))
+end, false)</code></pre>
+        </figure>
+
+        <p>Player object has the same shape as QBCore: <code>Player.PlayerData.*</code> and <code>Player.Functions.AddMoney / RemoveMoney / SetJob / SetJobDuty</code> all exist and behave identically. What changes:</p>
+        <ul>
+          <li>Core object access is <em>direct</em>: <code>exports.qbx_core:GetPlayer(src)</code>, no <code>GetCoreObject()</code> round-trip.</li>
+          <li>Client-side too: <code>local PlayerData = exports.qbx_core:GetPlayerData()</code> (after the load event).</li>
+          <li>Jobs and gangs are typed configs in <code>qbx_core/shared/jobs.lua</code>, cleaner than QBCore's.</li>
+          <li>Inventory is always <code>ox_inventory</code> (not <code>qb-inventory</code>).</li>
+          <li>Callbacks, menus, and notifications are always <code>ox_lib</code> (not <code>qb-menu</code> / <code>qb-input</code>).</li>
+        </ul>
+
+        <details class="explain">
+          <summary>Open the Qbox client-event reference</summary>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">local PlayerData
+
+AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
+    PlayerData = exports.qbx_core:GetPlayerData()
+    print('[qbx] loaded as ' .. PlayerData.charinfo.firstname)
+end)
+
+RegisterNetEvent('QBCore:Client:OnJobUpdate', function(JobInfo)
+    if PlayerData then PlayerData.job = JobInfo end
+    lib.notify({ type = 'inform', description = 'Job: ' .. JobInfo.label })
+end)</code></pre>
+          </figure>
+        </details>
+
+        <div class="callout callout--fivem">
+          <header>Qbox keeps QBCore's events on purpose</header>
+          <p>Qbox keeps the familiar QBCore client events on purpose, so many QBCore-style scripts still feel familiar. The main thing you usually change is how you get the player or player data -> use <code>exports.qbx_core:GetPlayer</code> or <code>GetPlayerData</code> instead of <code>exports['qb-core']:GetCoreObject()</code>.</p>
+        </div>
+      </section>
+
+      <section id="oxlib">
+        <header class="section-banner">
+          <span class="chip chip--ox">Utility library</span>
+          <h2>ox_lib <span class="faint">(Overextended)</span></h2>
+        </header>
+
+        <p>ox_lib is not a framework. It's a utility library that sits <em>on top</em> of whichever framework you chose, giving you one consistent API for notifications, menus, callbacks, input dialogs, progress bars, and cached values. Qbox requires it. QBCore servers usually add it. ESX servers increasingly do too. Learning ox_lib once saves you from learning <code>qb-menu</code>, <code>esx_menu_default</code>, and <code>mythic_notify</code> separately.</p>
+
+        <h3>Opting in, one line</h3>
+        <figure class="code">
+          <header><span>fxmanifest.lua, in any resource that uses lib.*</span></header>
+          <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@ox_lib/init.lua'   -- makes `lib` global in every script of this resource
+
+client_script 'client/main.lua'
+server_script 'server/main.lua'</code></pre>
+        </figure>
+
+        <h3>The five APIs you'll use daily</h3>
+
+        <h4>1. Notifications (client <em>and</em> server)</h4>
+        <figure class="code">
+          <header><span>anywhere</span></header>
+          <pre><code class="language-lua">-- Client
+lib.notify({
+    title = 'Heads up',
+    description = 'You picked up bread.',
+    type = 'success',        -- 'info' | 'success' | 'warning' | 'error'
+    duration = 3000,
+    position = 'top-right',
+    icon = 'cookie-bite',
+})
+
+-- Server, to a specific player
+lib.notify(src, { type = 'error', description = 'No cash.' })</code></pre>
+        </figure>
+
+        <details class="explain">
+          <summary>Open the deeper ox_lib reference examples</summary>
+          <h4>2. Callbacks (type-safe, awaitable)</h4>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">lib.callback.register('qu:getCarInFront', function()
+    local ped = cache.ped
+    local vehicle = lib.getClosestVehicle(GetEntityCoords(ped), 3.0, false)
+    return vehicle and GetVehicleNumberPlateText(vehicle) or nil
+end)</code></pre>
+          </figure>
+
+          <figure class="code">
+            <header><span>server/main.lua</span></header>
+            <pre><code class="language-lua">RegisterCommand('plate', function(source)
+    -- Synchronous style, thanks to ox_lib coroutines
+    local plate = lib.callback.await('qu:getCarInFront', source)
+    lib.notify(source, { description = plate and ('Plate: ' .. plate) or 'No car.' })
+end, false)</code></pre>
+          </figure>
+
+          <h4>3. Context menus (replaces qb-menu / nh-context / mythic_menu)</h4>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">lib.registerContext({
+    id = 'qu_vendor',
+    title = 'Street Vendor',
+    options = {
+        { title = 'Buy bread · $5', icon = 'bread-slice', onSelect = function() TriggerServerEvent('qu:server:buyBread') end },
+        { title = 'Buy water · $2', icon = 'bottle-water', onSelect = function() TriggerServerEvent('qu:server:buyWater') end },
+        { title = 'Cancel', icon = 'xmark' },
+    },
+})
+
+lib.showContext('qu_vendor')</code></pre>
+          </figure>
+
+          <h4>4. Input dialog (replaces qb-input / esx_menu_dialog)</h4>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">local input = lib.inputDialog('Fine a player', {
+    { type = 'number', label = 'Server ID', required = true, min = 1 },
+    { type = 'number', label = 'Amount',    required = true, min = 1, max = 10000 },
+    { type = 'input',  label = 'Reason',    required = true, max = 60 },
+})
+
+if not input then return end  -- player cancelled
+TriggerServerEvent('qu:server:fine', input[1], input[2], input[3])</code></pre>
+          </figure>
+
+          <h4>5. Progress bar (no more <code>Wait(5000)</code> with no feedback)</h4>
+          <figure class="code">
+            <header><span>client/main.lua</span></header>
+            <pre><code class="language-lua">local ok = lib.progressBar({
+    duration = 5000,
+    label = 'Picking the lock...',
+    canCancel = true,
+    disable = { car = true, combat = true, move = true },
+    anim = { dict = 'missheistdockssetup1clipboard@base', clip = 'base' },
+})
+
+if ok then
+    TriggerServerEvent('qu:server:lockpickDone')
+else
+    lib.notify({ type = 'warning', description = 'Cancelled.' })
+end</code></pre>
+          </figure>
+        </details>
+
+        <div class="callout callout--tip">
+          <header>Bonus: <code>cache.*</code></header>
+          <p>ox_lib caches the common values you always reach for, <code>cache.ped</code>, <code>cache.playerId</code>, <code>cache.serverId</code>, <code>cache.vehicle</code>, <code>cache.seat</code>, <code>cache.weapon</code>. Auto-updated as they change. Replaces the <code>PlayerPedId()</code> / <code>GetPlayerServerId(PlayerId())</code> calls you'd otherwise scatter everywhere.</p>
+        </div>
+      </section>
+
+      <section class="step" id="side-by-side">
+        <header><span class="step-num">Side by side</span><h2>The same /whoami in all three frameworks</h2></header>
+        <p class="step-outcome">Outcome: you can read any of the three framework APIs at a glance and spot the translation.</p>
+        <div class="step-body">
+
+          <div class="framework-grid">
+
+            <div class="fw-col">
+              <div class="fw-head"><span class="chip chip--esx">ESX</span></div>
+              <figure class="code">
+                <pre><code class="language-lua">local ESX = exports['es_extended']:getSharedObject()
+
+RegisterCommand('whoami', function(source)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then return end
+
+    print(xPlayer.identifier,
+          xPlayer.getName(),
+          xPlayer.getMoney(),
+          xPlayer.job.name)
+end, false)</code></pre>
+              </figure>
+            </div>
+
+            <div class="fw-col">
+              <div class="fw-head"><span class="chip chip--qbcore">QBCore</span></div>
+              <figure class="code">
+                <pre><code class="language-lua">local QBCore = exports['qb-core']:GetCoreObject()
+
+RegisterCommand('whoami', function(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    print(Player.PlayerData.citizenid,
+          Player.PlayerData.charinfo.firstname,
+          Player.PlayerData.money.cash,
+          Player.PlayerData.job.name)
+end, false)</code></pre>
+              </figure>
+            </div>
+
+            <div class="fw-col">
+              <div class="fw-head"><span class="chip chip--qbox">Qbox</span></div>
+              <figure class="code">
+                <pre><code class="language-lua">RegisterCommand('whoami', function(source)
+    local Player = exports.qbx_core:GetPlayer(source)
+    if not Player then return end
+
+    print(Player.PlayerData.citizenid,
+          Player.PlayerData.charinfo.firstname,
+          Player.PlayerData.money.cash,
+          Player.PlayerData.job.name)
+end, false)</code></pre>
+              </figure>
+            </div>
+
+          </div>
+
+          <p>Three dialects, one shape. Note the pattern: ESX uses <code>xPlayer</code> + method syntax (<code>.getMoney()</code>). QBCore/Qbox use <code>Player.PlayerData</code> + dotted paths. Qbox drops the <code>GetCoreObject</code> step and goes straight to an export.</p>
+          <div class="reading-panel">
+            <h3>The one beginner takeaway</h3>
+            <p>If you can find the player object, you can usually find the money, the job, and the inventory. The main challenge is not logic. It is spelling.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-money">
+        <header><span class="step-num">Step</span><h2>Deposit &amp; withdraw, the same three ways</h2></header>
+        <p class="step-outcome">Outcome: a working bank command you can run on any of the three frameworks.</p>
+        <div class="step-body">
+          <p>This is the shape you'll write over and over: read two balances, check bounds, move money with an audit reason, notify. Compare the single-source logic across frameworks.</p>
+
+          <div class="framework-grid">
+
+            <div class="fw-col">
+              <div class="fw-head"><span class="chip chip--esx">ESX</span></div>
+              <figure class="code">
+                <pre><code class="language-lua">RegisterCommand('deposit', function(source, args)
+    local amount = tonumber(args[1] or 0)
+    if amount &lt;= 0 then return end
+
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then return end
+
+    if xPlayer.getMoney() &lt; amount then
+        return lib.notify(source, {
+            type='error', description='Not enough cash.'
+        })
+    end
+
+    xPlayer.removeMoney(amount)
+    xPlayer.addAccountMoney('bank', amount)
+    lib.notify(source, {
+        type='success',
+        description='Deposited $' .. amount
+    })
+end, false)</code></pre>
+              </figure>
+            </div>
+
+            <div class="fw-col">
+              <div class="fw-head"><span class="chip chip--qbcore">QBCore</span></div>
+              <figure class="code">
+                <pre><code class="language-lua">RegisterCommand('deposit', function(source, args)
+    local amount = tonumber(args[1] or 0)
+    if amount &lt;= 0 then return end
+
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    if Player.PlayerData.money.cash &lt; amount then
+        return lib.notify(source, {
+            type='error', description='Not enough cash.'
+        })
+    end
+
+    Player.Functions.RemoveMoney('cash', amount, 'bank-deposit')
+    Player.Functions.AddMoney('bank', amount, 'bank-deposit')
+    lib.notify(source, {
+        type='success',
+        description='Deposited $' .. amount
+    })
+end, false)</code></pre>
+              </figure>
+            </div>
+
+            <div class="fw-col">
+              <div class="fw-head"><span class="chip chip--qbox">Qbox</span></div>
+              <figure class="code">
+                <pre><code class="language-lua">RegisterCommand('deposit', function(source, args)
+    local amount = tonumber(args[1] or 0)
+    if amount &lt;= 0 then return end
+
+    local Player = exports.qbx_core:GetPlayer(source)
+    if not Player then return end
+
+    if Player.PlayerData.money.cash &lt; amount then
+        return lib.notify(source, {
+            type='error', description='Not enough cash.'
+        })
+    end
+
+    Player.Functions.RemoveMoney('cash', amount, 'bank-deposit')
+    Player.Functions.AddMoney('bank', amount, 'bank-deposit')
+    lib.notify(source, {
+        type='success',
+        description='Deposited $' .. amount
+    })
+end, false)</code></pre>
+              </figure>
+            </div>
+
+          </div>
+
+          <p>QBCore and Qbox are byte-identical below the core-object line. ESX is the odd one out, method syntax on <code>xPlayer</code> plus the <code>accounts</code> model (cash is not an account, bank is). The notify call is identical on all three because ox_lib is framework-agnostic.</p>
+
+          <details class="explain">
+            <summary>Trust rules still apply</summary>
+            <p>The framework handles persistence, the HUD, and the audit trail. It does <em>not</em> handle trust. <code>args[1]</code> came from the client. Validate type, range, positivity. A negative amount with <code>removeMoney</code> is just <code>addMoney</code> in disguise.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="inventory">
+        <h2>ox_inventory: the shared inventory layer</h2>
+        <p>All three frameworks used to ship their own inventory. Today, all three can (and usually do) run <strong>ox_inventory</strong> instead. Qbox requires it. QBCore servers install it by choice. ESX has first-class ox_inventory integration via the framework's config. One inventory API, regardless of who's underneath.</p>
+
+        <figure class="code">
+          <header><span>server/main.lua, same calls on any framework</span></header>
+          <pre><code class="language-lua">-- give 3 bread
+exports.ox_inventory:AddItem(src, 'bread', 3)
+
+-- take 1 lockpick (returns false if they didn't have it)
+local ok = exports.ox_inventory:RemoveItem(src, 'lockpick', 1)
+if not ok then return lib.notify(src, { type='error', description='No lockpick.' }) end
+
+-- count
+local n = exports.ox_inventory:GetItemCount(src, 'phone')
+
+-- pre-check weight/slots before adding
+if not exports.ox_inventory:CanCarryItem(src, 'water', 10) then
+    return lib.notify(src, { type='error', description='No room.' })
+end</code></pre>
+        </figure>
+
+        <div class="callout callout--fivem">
+          <header>Items live in a config, not in your code</header>
+          <p>Items are declared in <code>ox_inventory/data/items.lua</code> with label, weight, stack size, and optional metadata rules. Adding an item name that isn't declared will log a warning and silently fail. When <code>AddItem</code> mysteriously doesn't work, check the item list first.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Translate between frameworks</h3></header>
+        <p>Given this QBCore snippet, write the ESX equivalent. (Hint: swap the core-object access, <code>money.cash</code>, and the <code>Player.Functions</code> calls.)</p>
+        <figure class="code">
+          <pre><code class="language-lua">RegisterCommand('bonus', function(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+    Player.Functions.AddMoney('cash', 100, 'daily-bonus')
+end, false)</code></pre>
+        </figure>
+
+        <div class="self-check">
+          <details>
+            <summary>The ESX version</summary>
+            <figure class="code">
+              <pre><code class="language-lua">RegisterCommand('bonus', function(source)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then return end
+    xPlayer.addMoney(100)   -- or xPlayer.addAccountMoney('money', 100) on some legacy forks
+end, false)</code></pre>
+            </figure>
+            <p>Three lines change: the object name, the lookup export, and the money-add method. The intent, the trust boundary, and the null-check are framework-agnostic.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="choosing">
+        <h2>Choosing a framework in 2026</h2>
+        <p>Honest decision tree for a brand-new server, no existing installation to respect:</p>
+
+        <dl class="decision-tree">
+          <div>
+            <dt>Most scripts you want are labelled "QBCore"</dt>
+            <dd><strong>Install Qbox.</strong> 90%+ of QBCore scripts run unchanged because Qbox keeps the QBCore event names and player-object shape. You get a modern codebase plus the huge ecosystem.</dd>
+          </div>
+          <div>
+            <dt>Most scripts you want are labelled "ESX"</dt>
+            <dd><strong>Install ESX Legacy.</strong> Don't install "ESX 1.2" or any pre-Legacy version, those are abandoned. Legacy is the only maintained line.</dd>
+          </div>
+          <div>
+            <dt>You want maximum performance and modern Lua patterns</dt>
+            <dd><strong>Qbox.</strong> Statebag-driven state, strict typing, best-in-class internals. Short-term cost: smaller script library than QBCore, but growing fast.</dd>
+          </div>
+          <div>
+            <dt>You're hiring developers who learned on YouTube in 2021–2023</dt>
+            <dd><strong>QBCore.</strong> The dominant tutorial target. Developers land running. Swap to Qbox later if performance demands it, most scripts port in an afternoon.</dd>
+          </div>
+          <div>
+            <dt>You're joining an existing server</dt>
+            <dd>Whatever that server runs. Don't migrate someone else's framework without a very good reason, the migration cost is always higher than you think.</dd>
+          </div>
+        </dl>
+
+        <div class="callout callout--tip">
+          <header>Install ox_lib on every single one</header>
+          <p>Whichever framework you pick, install ox_lib. It's the one library where the right answer is "yes, add it" regardless of context. Every serious script either uses it or has a flag to use it.</p>
+        </div>
+      </section>
+
+      <section id="detect">
+        <h2>Detecting the framework at runtime</h2>
+        <p>So far every snippet has hardcoded one framework. That's fine for your own server. But the moment you write a script that someone else might run, ESX or QBCore or Qbox, hardcoding becomes a maintenance trap. The fix is one native: <code>GetResourceState(name)</code>. It returns a string telling you whether a resource exists and where it is in the lifecycle.</p>
+
+        <figure class="code">
+          <header><span>any side</span></header>
+          <pre><code class="language-lua">-- Returns one of: 'missing', 'started', 'starting', 'stopping', 'stopped', 'uninitialized'
+print(GetResourceState('qb-core'))
+print(GetResourceState('es_extended'))
+print(GetResourceState('qbx_core'))</code></pre>
+        </figure>
+
+        <p>The state you care about almost always is <code>'started'</code>. <code>'missing'</code> means the resource isn't installed at all. <code>'starting'</code> means it's loading but not ready, you'd hit nil exports if you called it now. So the safe check is one line:</p>
+
+        <figure class="code">
+          <header><span>shared/framework_detect.lua</span></header>
+          <pre><code class="language-lua">local function isStarted(name)
+    return GetResourceState(name) == 'started'
+end
+
+local Framework
+if isStarted('qbx_core') then
+    Framework = 'qbox'
+elseif isStarted('qb-core') then
+    Framework = 'qbcore'
+elseif isStarted('es_extended') then
+    Framework = 'esx'
+else
+    Framework = nil   -- standalone, or framework not yet started
+end
+
+print('[qu] detected framework: ' .. (Framework or 'standalone'))</code></pre>
+        </figure>
+
+        <div class="callout callout--tip">
+          <header>Order matters: check Qbox before QBCore</header>
+          <p>A Qbox server may also have <code>qb-core</code> installed as a stub for compatibility. Always check the more specific one first (Qbox), then fall back. Otherwise Qbox servers get detected as QBCore and your shim calls the wrong export.</p>
+        </div>
+
+        <h3>When to detect: not at script load</h3>
+        <p>Resources start in dependency order, but your script's top-level code runs the moment the file is parsed. If you call <code>GetResourceState</code> at the top of <code>server.lua</code>, the framework may still be <code>'starting'</code>. Two solid patterns:</p>
+
+        <figure class="code">
+          <header><span>server/main.lua, pattern A: detect on first use, cache</span></header>
+          <pre><code class="language-lua">local Framework
+local function getFramework()
+    if Framework then return Framework end
+    if GetResourceState('qbx_core') == 'started' then Framework = 'qbox'
+    elseif GetResourceState('qb-core') == 'started' then Framework = 'qbcore'
+    elseif GetResourceState('es_extended') == 'started' then Framework = 'esx'
+    else Framework = 'standalone' end
+    return Framework
+end</code></pre>
+        </figure>
+
+        <figure class="code">
+          <header><span>server/main.lua, pattern B: wait for own resource start</span></header>
+          <pre><code class="language-lua">AddEventHandler('onResourceStart', function(name)
+    if name ~= GetCurrentResourceName() then return end
+    -- by now, every resource listed in `dependencies` is started
+    print('[qu] framework: ' .. (GetResourceState('qbx_core') == 'started' and 'qbox'
+                              or GetResourceState('qb-core') == 'started' and 'qbcore'
+                              or GetResourceState('es_extended') == 'started' and 'esx'
+                              or 'standalone'))
+end)</code></pre>
+        </figure>
+
+        <p>Pattern A is best for scripts where the framework is optional. Pattern B is best when you list the framework in <code>dependencies {}</code>, FiveM guarantees it's started before yours.</p>
+
+        <div class="callout callout--fivem">
+          <header>Why this matters in practice</header>
+          <p>Every script that supports both QBCore and Qbox out of the box doubles its reach. Every public release on GitHub gets twice the install rate. Hardcoding one framework is a self-imposed limit, not a technical one.</p>
+        </div>
+      </section>
+
+      <section id="shim">
+        <h2>The compatibility shim</h2>
+        <p>Detection is half the answer. The other half is hiding the framework behind one uniform API so the rest of your code never has to <code>if Framework == 'esx' then ...</code>. The pattern is a single shim file that exposes <code>Framework.GetPlayer</code>, <code>Framework.AddMoney</code>, <code>Framework.GetJob</code>, and dispatches internally.</p>
+
+        <figure class="code">
+          <header><span>server/framework.lua</span></header>
+          <pre><code class="language-lua">-- One module, three backends. Require this everywhere instead of touching ESX/QBCore/Qbox directly.
+local Framework = {}
+local kind
+
+local function detect()
+    if GetResourceState('qbx_core') == 'started' then return 'qbox' end
+    if GetResourceState('qb-core') == 'started' then return 'qbcore' end
+    if GetResourceState('es_extended') == 'started' then return 'esx' end
+    return 'standalone'
+end
+
+local function ensure()
+    if not kind then kind = detect() end
+    return kind
+end
+
+-- ---------- Player ----------
+function Framework.GetPlayer(src)
+    local k = ensure()
+    if k == 'qbox' then
+        return exports.qbx_core:GetPlayer(src)
+    elseif k == 'qbcore' then
+        return exports['qb-core']:GetCoreObject().Functions.GetPlayer(src)
+    elseif k == 'esx' then
+        return exports['es_extended']:getSharedObject().GetPlayerFromId(src)
+    end
+end
+
+-- ---------- Money ----------
+-- account is 'cash' or 'bank'. amount is positive (use RemoveMoney for negative).
+function Framework.AddMoney(src, account, amount, reason)
+    local p = Framework.GetPlayer(src); if not p then return false end
+    local k = ensure()
+    if k == 'qbox' or k == 'qbcore' then
+        return p.Functions.AddMoney(account, amount, reason)
+    elseif k == 'esx' then
+        if account == 'cash' then p.addMoney(amount)
+        else p.addAccountMoney(account, amount) end
+        return true
+    end
+end
+
+function Framework.RemoveMoney(src, account, amount, reason)
+    local p = Framework.GetPlayer(src); if not p then return false end
+    local k = ensure()
+    if k == 'qbox' or k == 'qbcore' then
+        return p.Functions.RemoveMoney(account, amount, reason)
+    elseif k == 'esx' then
+        if account == 'cash' then
+            if p.getMoney() &lt; amount then return false end
+            p.removeMoney(amount)
+        else
+            if p.getAccount(account).money &lt; amount then return false end
+            p.removeAccountMoney(account, amount)
+        end
+        return true
+    end
+end
+
+-- ---------- Job ----------
+-- Returns: { name, grade, onduty } regardless of framework.
+function Framework.GetJob(src)
+    local p = Framework.GetPlayer(src); if not p then return end
+    local k = ensure()
+    if k == 'qbox' or k == 'qbcore' then
+        return {
+            name   = p.PlayerData.job.name,
+            grade  = p.PlayerData.job.grade.level,
+            onduty = p.PlayerData.job.onduty,
+        }
+    elseif k == 'esx' then
+        return {
+            name   = p.job.name,
+            grade  = p.job.grade,
+            onduty = true,   -- ESX has no built-in duty toggle
+        }
+    end
+end
+
+return Framework</code></pre>
+        </figure>
+
+        <p>Now the rest of your code never branches on framework name:</p>
+
+        <figure class="code">
+          <header><span>server/main.lua, the shim in use</span></header>
+          <pre><code class="language-lua">local Framework = require 'server.framework'   -- or include via shared_script
+
+RegisterCommand('bonus', function(source)
+    local src = source                             -- cache before any await
+    if not Framework.AddMoney(src, 'cash', 100, 'daily-bonus') then return end
+    lib.notify(src, { type = 'success', description = 'Bonus paid.' })
+end, false)</code></pre>
+        </figure>
+
+        <div class="callout callout--tip">
+          <header>The shim ends at semantic differences</header>
+          <p>A shim works because all three frameworks model the same idea (player, money, job). It breaks the moment you reach into framework-specific data: ESX accounts beyond cash/bank, QBCore metadata flags, Qbox's typed job configs. For those, expose them as separate optional methods (<code>Framework.GetMetadata</code>) and document which framework supports each.</p>
+        </div>
+
+        <details class="explain">
+          <summary>What about ox_lib's existing shim?</summary>
+          <p>If you're already on ox_lib, check <code>lib.framework</code> in newer versions, it covers a subset of this for you. But hand-rolling your own is cheap and gives you exact control over the API surface. Most public scripts ship their own.</p>
+        </details>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes across all three</h2>
+
+        <details class="explain">
+          <summary>Writing directly to money fields</summary>
+          <p><code>Player.PlayerData.money.cash = 1000</code> doesn't persist, doesn't update the HUD, doesn't notify other resources. Always <code>AddMoney</code> / <code>RemoveMoney</code> (QBCore / Qbox) or <code>addMoney</code> / <code>addAccountMoney</code> (ESX).</p>
+        </details>
+
+        <details class="explain">
+          <summary>Using the player object before the load event</summary>
+          <p>Client-side, <code>GetPlayerData()</code> returns empty until the framework fires <code>esx:playerLoaded</code> / <code>QBCore:Client:OnPlayerLoaded</code>. Wire your init to that event, not to <code>onResourceStart</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Client-side permission checks</summary>
+          <p><code>if PlayerData.job.name == 'police' then doAdminStuff() end</code> on the client. A cheater overwrites that table in seconds. Permission checks always server-side, always against the framework's authoritative copy.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Confusing QBCore's and Qbox's exports</summary>
+          <p>Snippets that start with <code>QBCore = exports['qb-core']:GetCoreObject()</code> target QBCore. On Qbox, that export doesn't exist, replace with <code>exports.qbx_core:GetPlayer / GetPlayerData</code>. Everything downstream usually works unchanged.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Mixing legacy ESX with modern accessors</summary>
+          <p>Old ESX tutorials use <code>ESX = nil; TriggerEvent('esx:getSharedObject', ...)</code>. Modern ESX Legacy supports <code>exports['es_extended']:getSharedObject()</code> synchronously. Either works, don't mix both.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Hardcoding one framework in a public script</summary>
+          <p>Shipping a script that calls <code>exports['qb-core']:GetCoreObject()</code> at the top of <code>server.lua</code> locks every install to QBCore. The same script with <code>GetResourceState</code> detection plus a 60-line shim runs on QBCore and Qbox unchanged, and adds ESX with one extra branch. Detection beats branching at install time, install instructions get shorter, support tickets drop, and the script doesn't bit-rot when the user migrates frameworks.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Calling <code>GetResourceState</code> at the top of the file</summary>
+          <p>Top-level code runs the moment the file parses, before <code>onResourceStart</code>. The framework may still be <code>'starting'</code>, not <code>'started'</code>. Either detect lazily (on first use) or detect inside <code>onResourceStart</code> for your own resource, with the framework listed in <code>dependencies {}</code>.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 6 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="c">
+            <legend>1. Server-side on QBCore, how do you fetch the player for a given source?</legend>
+            <label><input type="radio" name="q1" value="a"><code>QBCore.Players[src]</code></label>
+            <label><input type="radio" name="q1" value="b"><code>exports.qbx_core:GetPlayer(src)</code></label>
+            <label><input type="radio" name="q1" value="c"><code>QBCore.Functions.GetPlayer(src)</code></label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>2. On ESX, which call moves $500 from cash to the player's bank account?</legend>
+            <label><input type="radio" name="q2" value="a"><code>xPlayer.addMoney(500)</code></label>
+            <label><input type="radio" name="q2" value="b"><code>xPlayer.removeMoney(500); xPlayer.addAccountMoney('bank', 500)</code></label>
+            <label><input type="radio" name="q2" value="c"><code>Player.Functions.AddMoney('bank', 500, 'deposit')</code></label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Qbox is best described as…</legend>
+            <label><input type="radio" name="q3" value="a"> A community-maintained fork of QBCore that uses the ox_* stack by default.</label>
+            <label><input type="radio" name="q3" value="b"> A completely new framework with its own data model.</label>
+            <label><input type="radio" name="q3" value="c"> A rebranded ESX.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>4. Which ox_lib API gives you <em>awaitable</em> server↔client calls with return values?</legend>
+            <label><input type="radio" name="q4" value="a"><code>lib.notify</code></label>
+            <label><input type="radio" name="q4" value="b"><code>TriggerServerEvent</code></label>
+            <label><input type="radio" name="q4" value="c"><code>lib.callback / lib.callback.await</code></label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>5. You see <code>Player.PlayerData.job.onduty</code> in a client script. Can you trust it for a permission check?</legend>
+            <label><input type="radio" name="q5" value="a"> Yes, the framework protects it.</label>
+            <label><input type="radio" name="q5" value="b"> No, read it on the server from the authoritative player object.</label>
+            <label><input type="radio" name="q5" value="c"> Yes, if the player also has a role set.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>6. You want one script to run on both QBCore and Qbox. Which value of <code>GetResourceState('qbx_core')</code> means "Qbox is installed and ready"?</legend>
+            <label><input type="radio" name="q6" value="a"><code>'missing'</code></label>
+            <label><input type="radio" name="q6" value="b"><code>'starting'</code></label>
+            <label><input type="radio" name="q6" value="c"><code>'started'</code></label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: the same task, three frameworks</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Task</div>
+            <div>ESX</div>
+            <div>QBCore</div>
+            <div>Qbox</div>
+          </div>
+          <div class="cheat-row">
+            <div>Core object (server)</div>
+            <div><code>ESX = exports['es_extended']:getSharedObject()</code></div>
+            <div><code>QBCore = exports['qb-core']:GetCoreObject()</code></div>
+            <div><em>(none, use direct exports)</em></div>
+          </div>
+          <div class="cheat-row">
+            <div>Get player (server)</div>
+            <div><code>ESX.GetPlayerFromId(src)</code></div>
+            <div><code>QBCore.Functions.GetPlayer(src)</code></div>
+            <div><code>exports.qbx_core:GetPlayer(src)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Get player data (client)</div>
+            <div><code>ESX.GetPlayerData()</code></div>
+            <div><code>QBCore.Functions.GetPlayerData()</code></div>
+            <div><code>exports.qbx_core:GetPlayerData()</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Stable id</div>
+            <div><code>xPlayer.identifier</code></div>
+            <div><code>Player.PlayerData.citizenid</code></div>
+            <div><code>Player.PlayerData.citizenid</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Read cash</div>
+            <div><code>xPlayer.getMoney()</code></div>
+            <div><code>Player.PlayerData.money.cash</code></div>
+            <div><code>Player.PlayerData.money.cash</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Read bank</div>
+            <div><code>xPlayer.getAccount('bank').money</code></div>
+            <div><code>Player.PlayerData.money.bank</code></div>
+            <div><code>Player.PlayerData.money.bank</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Add cash</div>
+            <div><code>xPlayer.addMoney(n)</code></div>
+            <div><code>Player.Functions.AddMoney('cash', n, reason)</code></div>
+            <div><code>Player.Functions.AddMoney('cash', n, reason)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Read job name</div>
+            <div><code>xPlayer.job.name</code></div>
+            <div><code>Player.PlayerData.job.name</code></div>
+            <div><code>Player.PlayerData.job.name</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Read job grade</div>
+            <div><code>xPlayer.job.grade</code> <span class="faint">(a number)</span></div>
+            <div><code>Player.PlayerData.job.grade.level</code></div>
+            <div><code>Player.PlayerData.job.grade.level</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Set job</div>
+            <div><code>xPlayer.setJob('police', 1)</code></div>
+            <div><code>Player.Functions.SetJob('police', 1)</code></div>
+            <div><code>Player.Functions.SetJob('police', 1)</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Load event (client)</div>
+            <div><code>esx:playerLoaded</code></div>
+            <div><code>QBCore:Client:OnPlayerLoaded</code></div>
+            <div><code>QBCore:Client:OnPlayerLoaded</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Job update event (client)</div>
+            <div><code>esx:setJob</code></div>
+            <div><code>QBCore:Client:OnJobUpdate</code></div>
+            <div><code>QBCore:Client:OnJobUpdate</code></div>
+          </div>
+          <div class="cheat-row">
+            <div>Notify (client or server)</div>
+            <div colspan="3"><code>lib.notify({ type, description })</code> &nbsp;<span class="faint">(ox_lib, same everywhere)</span></div>
+            <div></div>
+            <div></div>
+          </div>
+          <div class="cheat-row">
+            <div>Inventory add</div>
+            <div colspan="3"><code>exports.ox_inventory:AddItem(src, name, count)</code> &nbsp;<span class="faint">(ox_inventory, same everywhere)</span></div>
+            <div></div>
+            <div></div>
+          </div>
+          <div class="cheat-row">
+            <div>Detect resource</div>
+            <div colspan="3"><code>GetResourceState('qbx_core' / 'qb-core' / 'es_extended') == 'started'</code></div>
+            <div></div>
+            <div></div>
+          </div>
+          <div class="cheat-row">
+            <div>Detection order</div>
+            <div colspan="3">Check <strong>Qbox first</strong>, then QBCore, then ESX. Qbox servers may also stub <code>qb-core</code>.</div>
+            <div></div>
+            <div></div>
+          </div>
+          <div class="cheat-row">
+            <div>Shim entry points</div>
+            <div colspan="3"><code>Framework.GetPlayer(src)</code> · <code>Framework.AddMoney(src, account, n, reason)</code> · <code>Framework.GetJob(src)</code></div>
+            <div></div>
+            <div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>What a framework does: gives every script a shared player object, money system, and job system</li>
+          <li>How to get the player object on ESX (<code>xPlayer</code>), QBCore (<code>QBCore.Functions.GetPlayer</code>), and Qbox (<code>exports.qbx_core:GetPlayer</code>)</li>
+          <li>How to read and change money on all three frameworks</li>
+          <li>That ox_lib works the same on every framework and should always be installed</li>
+          <li>How to pick a framework for a new server in 2026</li>
+          <li>How to detect which framework is running with <code>GetResourceState('qbx_core' / 'qb-core' / 'es_extended')</code>, checking Qbox first</li>
+          <li>How to write a compatibility shim so the rest of your code never branches on framework name</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a server-side <code>/balance</code> command that prints the player's cash and bank balance to the server console. Use whichever framework you have installed. The command should get the player object, read cash and bank, and print both values with the player's server id.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console</span></header>
+          <pre><code>[qu_balance] Player 1: cash=$500, bank=$4500</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>On Qbox: <code>local Player = exports.qbx_core:GetPlayer(source)</code>, then read <code>Player.PlayerData.money.cash</code> and <code>Player.PlayerData.money.bank</code>. On ESX: <code>xPlayer.getMoney()</code> and <code>xPlayer.getAccount('bank').money</code>. Use <code>print</code> to show the values in the server console.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://overextended.dev/ox_lib" target="_blank" rel="noopener">ox_lib documentation</a></li>
+          <li><a href="https://docs.esx-framework.org/" target="_blank" rel="noopener">ESX Legacy documentation</a></li>
+          <li><a href="https://docs.qbox.re/" target="_blank" rel="noopener">Qbox documentation</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Level up: what's next</h2>
+        <p>You can now read and write player state on any of the three major frameworks, and you know which utility library belongs on every server regardless. One lesson left in Module 05: ox_target, the interaction layer that turns "press E when you look at something" from a 200-line chore into a 10-line config. After that, the build projects, where Modules 01–05 stop being separate topics and become a single skill.</p>
+      </section>

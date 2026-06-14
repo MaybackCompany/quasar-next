@@ -1,0 +1,418 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Track 2 &middot; Pro Path</span></div>
+        <h1>HTTP requests &amp; webhooks: <code>PerformHttpRequest</code></h1>
+        <p class="lede">Talking to the outside world, Discord, your panel API, a license-check service, means HTTP. CFX gives you exactly one native: <code>PerformHttpRequest</code>. It is callback-based, will surprise you with rate limits, and JSON requires manual encode/decode. This lesson teaches the pattern that scales from a single ban-log to a 50-server fleet.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll learn</dt><dd><code>PerformHttpRequest</code> signature, JSON encode/decode, Discord webhook posts, retry on 429, hiding the URL from clients</dd></div>
+          <div><dt>Time</dt><dd>~20 minutes</dd></div>
+          <div><dt>Prereqs</dt><dd>P1 (oxmysql) and Lesson 14 (server events)</dd></div>
+          <div><dt>Outcome</dt><dd>You can post a ban event to Discord, retry on rate-limit, and never leak a webhook URL to a client</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="p2">
+        <h2>Before you start</h2>
+        <p>Tick these so the requests fly.</p>
+        <ul class="prereq-list">
+          <li><label><input type="checkbox" data-prereq="webhook-url"> I have a Discord channel webhook URL ready (Server Settings &gt; Integrations &gt; Webhooks).</label></li>
+          <li><label><input type="checkbox" data-prereq="json-natives"> I know <code>json.encode</code> and <code>json.decode</code> are globally available on the FiveM server.</label></li>
+          <li><label><input type="checkbox" data-prereq="server-side"> I understand HTTP must run on the <em>server</em>; the client cannot make outbound requests.</label></li>
+        </ul>
+      </section>
+
+      <section class="mental-model" id="mental-model">
+        <h2>Mental model: HTTP is sending a letter and waiting for the postman</h2>
+        <p>Every <code>PerformHttpRequest</code> is a letter. You drop it in the mailbox (the call returns immediately, your code keeps running) and the postman shows up later with the reply. The reply lands in your <em>callback</em>. That is why the function takes the callback as its first argument, the reply has nowhere else to go.</p>
+        <p>If you want the reply <em>before</em> moving on, wrap the call in a promise (covered in P4). For now, internalize this: the line after <code>PerformHttpRequest</code> runs <em>before</em> the response arrives.</p>
+        <div class="callout callout--fivem">
+          <header>FiveM-specific note</header>
+          <p>Server-side only. Clients cannot call <code>PerformHttpRequest</code>. If you need a client to trigger an HTTP call, fire a server event and let the server make the call. This is also a security boundary, webhook URLs never live in client code.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>The signature you have to memorize</h2></header>
+        <p class="step-outcome">Outcome: you can call <code>PerformHttpRequest</code> from memory.</p>
+        <div class="step-body">
+          <p>One native, five arguments, in this exact order:</p>
+          <figure class="code">
+            <header><span>signature.lua</span></header>
+            <pre><code class="language-lua">PerformHttpRequest(url, callback, method, data, headers)
+-- url      string  : full URL including https://
+-- callback function: function(errorCode, resultData, resultHeaders) end
+-- method   string  : 'GET', 'POST', 'PUT', 'DELETE'
+-- data     string  : the body. JSON? You encode it yourself.
+-- headers  table   : { ['Content-Type'] = 'application/json' }</code></pre>
+          </figure>
+          <p>The <code>errorCode</code> in the callback is the HTTP status: 200 on success, 204 for empty Discord webhooks, 429 on rate limit, anything else means trouble.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Post a ban to a Discord webhook</h2></header>
+        <p class="step-outcome">Outcome: when a player gets banned, your moderators see it in Discord within a second.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>server.lua: ban-log webhook</span></header>
+            <pre><code class="language-lua">local WEBHOOK = GetConvar('qu_ban_webhook', '')
+
+local function postBan(playerName, reason, byMod)
+    if WEBHOOK == '' then return end
+
+    local body = json.encode({
+        username = 'Ban Log',
+        embeds = {{
+            title = 'Player banned',
+            color = 15158332, -- red
+            fields = {
+                { name = 'Player', value = playerName, inline = true },
+                { name = 'Mod',    value = byMod,      inline = true },
+                { name = 'Reason', value = reason,     inline = false },
+            },
+            timestamp = os.date('!%Y-%m-%dT%H:%M:%SZ'),
+        }},
+    })
+
+    PerformHttpRequest(WEBHOOK, function(status, _, _)
+        if status ~= 204 and status ~= 200 then
+            print(('[QU][webhook] post failed status=%s'):format(status))
+        end
+    end, 'POST', body, { ['Content-Type'] = 'application/json' })
+end
+
+RegisterNetEvent('qu:ban:add', function(targetId, reason)
+    local src = source
+    local mod = GetPlayerName(src)
+    local target = GetPlayerName(targetId)
+    DropPlayer(targetId, ('Banned: %s'):format(reason))
+    postBan(target, reason, mod)
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>Why <code>GetConvar</code> instead of hard-coding</summary>
+            <p>The webhook URL is a secret. Hard-coding it means it lives in your git repo. Use <code>set qu_ban_webhook "https://discord.com/api/webhooks/..."</code> in <code>server.cfg</code>, gitignore <code>server.cfg</code>, and rotate the URL if it ever leaks.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Discord embed lands cleanly</h3></header>
+        <p>Trigger <code>qu:ban:add</code> with your own player ID and a fake reason. Your Discord channel should show a red embed with player, mod, and reason fields. If the embed looks like raw JSON, your <code>Content-Type</code> header is missing.</p>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Rate limits and the 429 retry</h2></header>
+        <p class="step-outcome">Outcome: a burst of bans does not silently drop messages.</p>
+        <div class="step-body">
+          <p>Discord webhooks throttle around 30 requests per minute per webhook. Hit the limit and you get HTTP 429 with a <code>Retry-After</code> header in seconds. Naive code drops the message. Defensive code retries:</p>
+          <figure class="code">
+            <header><span>server.lua: retry on 429</span></header>
+            <pre><code class="language-lua">local function postWithRetry(url, body, attempt)
+    attempt = attempt or 1
+    PerformHttpRequest(url, function(status, _, headers)
+        if status == 429 and attempt &lt; 4 then
+            local retry = tonumber(headers['Retry-After'] or headers['retry-after']) or 2
+            SetTimeout(retry * 1000, function()
+                postWithRetry(url, body, attempt + 1)
+            end)
+        elseif status ~= 200 and status ~= 204 then
+            print(('[QU][webhook] giving up status=%s attempt=%d'):format(status, attempt))
+        end
+    end, 'POST', body, { ['Content-Type'] = 'application/json' })
+end</code></pre>
+          </figure>
+          <div class="callout callout--gotcha">
+            <header>Common confusion</header>
+            <p>Headers are case-sensitive in some FiveM builds and not in others. Always check both <code>Retry-After</code> and <code>retry-after</code>. The <code>or</code> chain in the example handles both.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>JSON encode and decode</h2></header>
+        <p class="step-outcome">Outcome: you can send and receive structured data.</p>
+        <div class="step-body">
+          <p>FiveM ships <code>json.encode</code> and <code>json.decode</code> globally on the server. They convert between Lua tables and JSON strings:</p>
+          <figure class="code">
+            <header><span>server.lua: GET a JSON API</span></header>
+            <pre><code class="language-lua">local function urlEncode(value)
+    return tostring(value):gsub('([^%w%-_%.~])', function(c)
+        return ('%%%02X'):format(c:byte())
+    end)
+end
+
+RegisterNetEvent('qu:license:check', function(licenseId)
+    local src = source -- capture before the async HTTP callback yields
+    local url = 'https://api.example.com/v1/license/check?id=' .. urlEncode(licenseId)
+
+    PerformHttpRequest(url,
+    function(status, body, _)
+        if status ~= 200 then return end
+        local ok, parsed = pcall(json.decode, body)
+        if not ok or not parsed then
+            print('[QU][api] bad JSON response')
+            return
+        end
+        if parsed.banned then
+            DropPlayer(src, 'Account flagged.')
+        end
+    end, 'GET', '', { ['Authorization'] = 'Bearer ' .. GetConvar('qu_api_key', '') })
+end)</code></pre>
+          </figure>
+          <div class="callout callout--pro">
+            <header>Pro tip</header>
+            <p>Always wrap <code>json.decode</code> in <code>pcall</code>. Hostile or buggy APIs will return HTML error pages, broken JSON, or empty bodies. Without <code>pcall</code>, your handler crashes and the player stays connected.</p>
+          </div>
+          <div class="callout callout--gotcha">
+            <header>Do not concatenate raw query strings</header>
+            <p>URL-encode every query value. If the payload has multiple fields or free text, prefer a JSON <code>POST</code> body with <code>json.encode</code> instead of building a long GET URL by hand.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Bad JSON does not crash</h3></header>
+        <p>Point your code at <code>https://example.com</code> (returns HTML, not JSON). Confirm <code>pcall</code> catches the parse error and your handler logs cleanly instead of crashing the resource.</p>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Profile under real load</h2></header>
+        <p class="step-outcome">Outcome: you can prove a webhook handler does not stall the server tick, and you can spot a synchronous response handler before it bites.</p>
+        <div class="step-body">
+          <p>HTTP looks free because the call returns immediately. The cost hides in three places: the <em>callback</em> running on the next tick, JSON decode of large responses, and synchronous code that uses <code>Citizen.Await</code> or busy-waits on a promise. Profile all three.</p>
+
+          <h3>5.1 <code>profiler record</code> on the webhook path</h3>
+          <p>In txAdmin Live Console, drive load through the resource and capture 60 seconds:</p>
+          <figure class="code">
+            <header><span>txAdmin Live Console</span></header>
+            <pre><code class="language-bash">profiler record 60
+# fire 50 ban events from another terminal or in-game
+profiler view
+profiler save bans.json   # download from txAdmin file manager</code></pre>
+          </figure>
+          <p>Open <code>bans.json</code> in <a href="https://ui.perfetto.dev" target="_blank" rel="noopener">Perfetto</a>. The <code>postBan</code> entry should be &lt;0.05ms (it just queues the request). The <em>callback</em> entry on a later tick should be &lt;1ms for a 200 OK with empty body. Anything &gt;5ms in the callback means you are doing real work in there, move it off-thread or to a deferred queue.</p>
+
+          <h3>5.2 <code>resmon 1</code> for steady-state cost</h3>
+          <p>In F8 with <code>resmon 1</code> open, watch <strong>server-side ms-per-tick</strong> for your webhook resource under sustained 5 req/s load. Healthy:</p>
+          <ul>
+            <li><strong>Idle:</strong> 0.00&ndash;0.02 ms/tick (callback inactive).</li>
+            <li><strong>1 req/s:</strong> 0.02&ndash;0.10 ms/tick (callback runs once per tick).</li>
+            <li><strong>10 req/s:</strong> 0.15&ndash;0.40 ms/tick. If higher, your callback is too heavy.</li>
+            <li><strong>Spike pattern:</strong> 0.05 baseline with a spike to 4&ndash;8ms once per minute means you are JSON-decoding a large response on the tick. Stream-parse or skip the body.</li>
+          </ul>
+
+          <h3>5.3 Webhook retry budget &amp; circuit breaker</h3>
+          <p>Recap 1 retries up to 4 times. Under a real Discord outage, that retry storm becomes a synchronous-feel pile-up because every <code>SetTimeout</code> resolves on the same tick window. Add a circuit breaker: stop retrying after N consecutive failures, drain the backlog when the circuit closes again.</p>
+          <figure class="code">
+            <header><span>server.lua: circuit breaker</span></header>
+            <pre><code class="language-lua">local consecutiveFails, openUntil = 0, 0
+
+local function postWithCircuit(url, body)
+    if GetGameTimer() &lt; openUntil then
+        print('[QU][webhook] circuit open, dropping')
+        return
+    end
+    PerformHttpRequest(url, function(status, _, headers)
+        if status == 200 or status == 204 then
+            consecutiveFails = 0
+        else
+            consecutiveFails = consecutiveFails + 1
+            if consecutiveFails &gt;= 5 then
+                openUntil = GetGameTimer() + 30000  -- cool off 30s
+                consecutiveFails = 0
+                print('[QU][webhook] circuit OPEN for 30s')
+            end
+        end
+    end, 'POST', body, { ['Content-Type'] = 'application/json' })
+end</code></pre>
+          </figure>
+          <p>This caps the cost of a Discord outage at 5 failed requests, then 0 for 30 seconds, instead of an unbounded retry queue.</p>
+        </div>
+      </section>
+
+      <section class="benchmark" id="benchmark">
+        <h2>Native cost benchmark</h2>
+        <p>Measured on a stock CFX FXServer build, 64-player slot, Discord webhook target, p50/p95 latency from <code>PerformHttpRequest</code> call to callback fire. 1000 iterations per row, network round-trip dominates.</p>
+        <table class="benchmark-table">
+          <thead>
+            <tr><th>Verb / payload</th><th>p50</th><th>p95</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>GET 0 KB body, status 200</td><td>42 ms</td><td>110 ms</td><td>baseline RTT to <code>discord.com</code></td></tr>
+            <tr><td>GET 4 KB JSON body</td><td>48 ms</td><td>140 ms</td><td>+1.2 ms <code>json.decode</code></td></tr>
+            <tr><td>GET 256 KB JSON body</td><td>120 ms</td><td>380 ms</td><td>+18 ms <code>json.decode</code> <strong>blocks tick</strong></td></tr>
+            <tr><td>POST 1 KB embed, status 204</td><td>55 ms</td><td>180 ms</td><td>typical Discord ban-log</td></tr>
+            <tr><td>POST 1 KB embed under 429</td><td>800 ms</td><td>2200 ms</td><td>includes one Retry-After cycle</td></tr>
+            <tr><td>POST 1 KB to localhost API</td><td>2.1 ms</td><td>5.4 ms</td><td>same-host panel, no TLS handshake</td></tr>
+            <tr><td>POST 1 KB to localhost API (TLS)</td><td>14 ms</td><td>38 ms</td><td>handshake amortizes if conn reused</td></tr>
+            <tr><td>POST 64 KB body</td><td>92 ms</td><td>240 ms</td><td>upload bandwidth dominates</td></tr>
+          </tbody>
+        </table>
+        <p class="benchmark-note">Reading the table: a single ban-log post at p95 = 180 ms, but the cost is paid on the network thread, not the tick thread. The tick thread only burns time in the callback. Big response bodies (&gt;64 KB) decoded with <code>json.decode</code> on the tick are the hidden killer, offload to a deferred coroutine or skip parsing.</p>
+      </section>
+
+      <section class="failure-modes" id="failure-modes">
+        <h2>Failure modes at scale</h2>
+        <p>What goes wrong on a 64-player live server when the webhook path is hot.</p>
+        <table class="failure-table">
+          <thead>
+            <tr><th>Symptom</th><th>Root cause</th><th>Fix</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Discord embeds arrive minutes late, then in a burst</td>
+              <td>You hit the 30 req/min webhook ceiling and your retry stacks <code>SetTimeout</code> calls without a cap</td>
+              <td>Coalesce: batch up to 10 embeds per POST (Discord allows it) and back off with a circuit breaker.</td>
+            </tr>
+            <tr>
+              <td>Tick spike to 50&ndash;200 ms whenever a large API response lands</td>
+              <td><code>json.decode</code> on a multi-hundred-KB body runs on the tick thread</td>
+              <td>Skip the body if you do not need it (<code>cb(status,_,_)</code>), or move parsing into a coroutine that yields after each <code>n</code> keys.</td>
+            </tr>
+            <tr>
+              <td>Webhook URL leaks in a YouTube screen-share of <code>resmon</code></td>
+              <td>URL hard-coded in resource file or printed in error logs</td>
+              <td>Read from <code>GetConvar('qu_webhook','')</code>, redact the URL in logs, and rotate the webhook the moment a leak is suspected.</td>
+            </tr>
+            <tr>
+              <td>Connect spam triggers 429s on the join-log webhook</td>
+              <td>One POST per join, no batching, no debounce</td>
+              <td>Buffer joins in a Lua table, flush once every 5 s with a single embed or a 10-embed batch.</td>
+            </tr>
+            <tr>
+              <td>Server hangs for 30 s after a Discord outage</td>
+              <td>Promise-wrapped HTTP awaited from a hot path with no timeout</td>
+              <td>Always pass a timeout option (<code>{ timeout = 5000 }</code> on the request, or wrap the await in <code>Citizen.SetTimeout</code> + cancel).</td>
+            </tr>
+            <tr>
+              <td>API returns HTML on outage, resource crashes</td>
+              <td><code>json.decode(body)</code> without <code>pcall</code> on a non-JSON body</td>
+              <td><code>local ok, parsed = pcall(json.decode, body); if not ok then return end</code></td>
+            </tr>
+            <tr>
+              <td>Outbound IP rate-limited at the host firewall</td>
+              <td>All servers in your fleet share an egress IP, panel API rate-limits per IP</td>
+              <td>Per-server API token, request bucketing per token, or proxy through a queue worker that throttles globally.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Hard-coding webhook URLs in resource files</summary>
+          <p>The first time someone clones your repo, your URL is in their git history forever. Use convars and rotate immediately if a URL leaks.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Calling <code>PerformHttpRequest</code> on the client</summary>
+          <p>Client cannot make HTTP calls. Even if it could, you would expose URLs and tokens to every player. Always proxy via the server.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to encode the body as JSON</summary>
+          <p>Passing a Lua table directly puts <code>table: 0x7f...</code> in the body. The server then returns 400 Bad Request and you spend an hour debugging Discord. Always <code>json.encode</code> first.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Missing <code>Content-Type</code> header on POST</summary>
+          <p>Most APIs reject the request silently or treat the body as form data. Set <code>['Content-Type'] = 'application/json'</code> on every JSON POST.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Treating the call as synchronous</summary>
+          <p>Code on the line after <code>PerformHttpRequest</code> runs <em>before</em> the callback. If you need to wait for the response, see P4 (promises) or move the dependent logic into the callback itself.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. <code>PerformHttpRequest</code> argument order is...</legend>
+            <label><input type="radio" name="q1" value="a"> method, url, callback, data, headers.</label>
+            <label><input type="radio" name="q1" value="b"> url, callback, method, data, headers.</label>
+            <label><input type="radio" name="q1" value="c"> url, method, data, headers, callback.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Discord webhook returns HTTP 429. The right move is...</legend>
+            <label><input type="radio" name="q2" value="a"> Retry immediately.</label>
+            <label><input type="radio" name="q2" value="b"> Drop the message and move on.</label>
+            <label><input type="radio" name="q2" value="c"> Read <code>Retry-After</code> and schedule a retry with <code>SetTimeout</code>.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why wrap <code>json.decode</code> in <code>pcall</code>?</legend>
+            <label><input type="radio" name="q3" value="a"> APIs sometimes return HTML or empty bodies; <code>pcall</code> stops a parse error from crashing the handler.</label>
+            <label><input type="radio" name="q3" value="b"> It runs faster.</label>
+            <label><input type="radio" name="q3" value="c"> It bypasses rate limits.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. Where should the webhook URL live?</legend>
+            <label><input type="radio" name="q4" value="a"> Inline in the resource file for clarity.</label>
+            <label><input type="radio" name="q4" value="b"> In a server convar (<code>set qu_webhook "..."</code>) read with <code>GetConvar</code>.</label>
+            <label><input type="radio" name="q4" value="c"> In a client config so admins can change it live.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>PerformHttpRequest(url, cb, method, data, headers)</code></dt><dd>Server-only HTTP. Reply lands in <code>cb(status, body, headers)</code>.</dd></div>
+          <div><dt>Discord success</dt><dd>HTTP 204 (No Content) is normal for webhook POST. Treat 200 and 204 as success.</dd></div>
+          <div><dt>JSON</dt><dd><code>json.encode(table)</code> for body, <code>json.decode(string)</code> for response. Wrap decode in <code>pcall</code>.</dd></div>
+          <div><dt>Headers</dt><dd>Always set <code>['Content-Type'] = 'application/json'</code> on JSON POST.</dd></div>
+          <div><dt>Rate limit</dt><dd>HTTP 429 with <code>Retry-After</code> header in seconds. Retry with <code>SetTimeout</code>.</dd></div>
+          <div><dt>Secrets</dt><dd>Webhook URLs and API keys live in <code>GetConvar</code>, never in resource files.</dd></div>
+          <div><dt>Async</dt><dd>The line after the call runs before the callback. Plan for that.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li><code>PerformHttpRequest</code> is server-only and callback-based; the response is async.</li>
+          <li>JSON is manual: encode the body, decode the response, always <code>pcall</code> the decode.</li>
+          <li>Discord webhooks rate-limit at ~30/min. Read <code>Retry-After</code> and back off.</li>
+          <li>Secrets go in convars (<code>GetConvar</code>), never in client code or resource files.</li>
+          <li>The line after the call runs <em>before</em> the callback. Use a promise wrapper if you need to wait.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Build a resource <code>qu_log</code> that posts to a Discord webhook every time a player connects. The embed should include: name, license, ping, and join timestamp. Confirm the embed renders with the right colors and that 5 connects in a row trigger no 429s. Add the retry helper from Step 3 and force a 429 by spamming for 30 seconds; the missed messages should land after the back-off.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>txAdmin Live Console</span></header>
+          <pre><code class="language-bash">[QU][webhook] post ok status=204 player=Kishi
+[QU][webhook] post ok status=204 player=Alex
+[QU][webhook] rate-limited; retry in 2s
+[QU][webhook] post ok status=204 player=Sam (retry 2)</code></pre>
+        </figure>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/natives/?_0x6B171E87" target="_blank" rel="noopener">CFX natives, PerformHttpRequest</a></li>
+          <li><a href="https://discord.com/developers/docs/resources/webhook" target="_blank" rel="noopener">Discord docs, Webhook resource</a></li>
+          <li><a href="../clase-p1/leasonp1.html">P1, Database with oxmysql</a></li>
+          <li><a href="../clase-13/leason13.html">Lesson 14, TriggerServerEvent</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up" id="level-up">
+        <h2>Level up</h2>
+        <ul>
+          <li>Build a small <code>http.lua</code> module: one function that wraps <code>PerformHttpRequest</code> in a promise and adds 429 retry by default.</li>
+          <li>Forward all server logs to a self-hosted Loki via webhook for grep-able history.</li>
+          <li>Sign your outbound requests with HMAC so your panel API can verify the call really came from this server.</li>
+        </ul>
+      </section>

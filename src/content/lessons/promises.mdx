@@ -1,0 +1,135 @@
+<LessonHero
+  crumbs="Track 2 · Pro Path"
+  title="Promises &amp; async: turning callbacks into linear code"
+  meta={[
+    { label: "You'll learn", value: "promise.new(), :resolve(), :reject(), Citizen.Await, the callback-to-promise wrapping pattern" },
+    { label: "Time", value: "~22 minutes" },
+    { label: "Prereqs", value: "P1 (oxmysql), P2 (HTTP)" },
+    { label: "Outcome", value: "You can wrap any callback API as a promise and chain three async calls without nesting" },
+  ]}
+>
+  FiveM is full of callback APIs: `PerformHttpRequest`, the older `MySQL-Async`, NUI callbacks. Three of them in a row and your code looks like a pyramid. Promises flatten the pyramid. Combined with `Citizen.Await`, you get top-to-bottom code that *feels* synchronous while staying non-blocking.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds promise.new, resolve, and Citizen.Await as a working FiveM resource named `qu_promises`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_promises
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_promises/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local function afterOneSecond(label)
+    local p = promise.new()
+    SetTimeout(1000, function() p:resolve(label .. ' done') end)
+    return Citizen.Await(p)
+end
+
+RegisterCommand('promisetest', function()
+    print('[qu_promises] start')
+    print('[qu_promises] ' .. afterOneSecond('job'))
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_promises
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_promises
+    ```
+
+    Run this test:
+
+    ```text
+    promisetest
+    ```
+
+    <ExpectedOutput>
+      [qu_promises] start
+[qu_promises] job done
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_promises does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_promises", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_promises, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_promises folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for promise.new, resolve, and Citizen.Await.",
+    "Add ensure qu_promises to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_promises`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

@@ -1,0 +1,195 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/server">Server Owner Path</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span> <span>Lesson 6</span></div>
+        <h1>Staff and permissions</h1>
+        <p class="lede">Separate roleplay trust from admin power. Staff can be trusted socially and still not need database, file, or full txAdmin access.</p>
+        <div class="hero-outcome">
+          <div><dt>Outcome</dt><dd>A tested staff matrix, ACE permissions, txAdmin role mapping, and two test accounts.</dd></div>
+          <div><dt>Why</dt><dd>Unclear staff power creates abuse risk, drama, and production damage faster than most script bugs.</dd></div>
+          <div><dt>Artifact</dt><dd>Permission table, <code>add_ace</code>/<code>add_principal</code> examples, test evidence, and revoke steps.</dd></div>
+          <div><dt>Duration</dt><dd>40-60 minutes.</dd></div>
+          <div><dt>Prerequisites</dt><dd>txAdmin access, Discord identifiers, and two test accounts.</dd></div>
+          <div><dt>Pass condition</dt><dd>Admin and helper test accounts can do only the actions listed in the staff matrix.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card">
+        <span class="tldr-card__chip">Least privilege</span>
+        <div class="tldr-card__body">
+          <p>Give every person the smallest access that lets them do their job today. Add more only after a clear need and a test.</p>
+        </div>
+      </section>
+
+      <section id="models">
+        <h2>Permission models</h2>
+        <dl class="vocab-list">
+          <div><dt>txAdmin role</dt><dd>Controls dashboard access: live console, players, resources, settings, bans, and admin manager.</dd></div>
+          <div><dt>ACE permission</dt><dd>FiveM's server permission system. It grants or denies named powers such as <code>command.restart</code>.</dd></div>
+          <div><dt>Principal</dt><dd>An identity or group. Example: <code>identifier.fivem:1234567</code> or <code>group.admin</code>.</dd></div>
+          <div><dt>Framework permission</dt><dd>QBCore, ESX, or admin-menu permissions inside gameplay scripts. These are separate from txAdmin.</dd></div>
+        </dl>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Create two test accounts</h2></header>
+        <p class="step-outcome">Outcome: you can prove normal players cannot use staff tools.</p>
+        <div class="step-body">
+          <ol>
+            <li>Ask one trusted friend to join as a normal player. Name the record <code>test-normal</code>.</li>
+            <li>Ask one staff candidate to join. Name the record <code>test-moderator</code>.</li>
+            <li>Open txAdmin &rarr; <strong>Players</strong> &rarr; click each player &rarr; <strong>Info</strong>.</li>
+            <li>Copy each <code>fivem:</code> identifier into <code>staff-matrix.md</code>.</li>
+          </ol>
+          <p class="expected">Expected proof</p>
+          <p>The file contains two different identifiers. To confirm, the txAdmin player-info tab shows the <code>fivem:</code> identifier.</p>
+        </div>
+      </section>
+
+      <section id="matrix">
+        <h2>Least-privilege staff matrix</h2>
+        <table>
+          <thead><tr><th>Role</th><th>Allowed</th><th>Not allowed by default</th><th>Evidence required</th></tr></thead>
+          <tbody>
+            <tr><td>Helper</td><td>Answer tickets, guide players, report bugs</td><td>Kick, ban, spawn items, restart resources</td><td>Ticket link or staff note</td></tr>
+            <tr><td>Moderator</td><td>Warn, short kick, spectate if your admin menu supports it</td><td>Permanent ban, refund, database edits, file access</td><td>Clip, screenshot, or logs</td></tr>
+            <tr><td>Admin</td><td>Bans, staff logs, controlled refunds through owner process</td><td>Payment tools, license keys, production deploys</td><td>Case note and second review for serious actions</td></tr>
+            <tr><td>Developer</td><td>Staging files, resource updates, config changes</td><td>Owner payment tools, unapproved production deploys</td><td>Change note and rollback plan</td></tr>
+            <tr><td>Owner</td><td>Payments, database, production approval, secrets</td><td>None, but actions must be logged</td><td>Launch report or incident note</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Add ACE groups in <code>server.cfg</code></h2></header>
+        <p class="step-outcome">Outcome: groups exist before people are added to them.</p>
+        <div class="step-body">
+          <p>Open <code>server-data/server.cfg</code> in VS Code. Add this near the staff permissions section, not inside a random resource config.</p>
+          <figure class="code">
+            <header><span class="file">server.cfg</span><span class="lang">CFG</span></header>
+            <pre><code># Staff groups
+add_ace group.helper command allow
+add_ace group.helper command.help allow
+
+add_ace group.moderator command.kick allow
+add_ace group.moderator command.warn allow
+
+add_ace group.admin command.kick allow
+add_ace group.admin command.ban allow
+add_ace group.admin command.refresh allow
+
+# Keep dangerous commands owner-only
+add_ace group.owner command.restart allow
+add_ace group.owner command.stop allow
+add_ace group.owner command.start allow</code></pre>
+          </figure>
+          <div class="callout callout--warn">
+            <header>Do not grant command allow to everyone</header>
+            <p><code>add_ace group.admin command allow</code> is broad. Use it only when you understand every command that becomes available. Beginner default is explicit commands only.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Map people to groups with <code>add_principal</code></h2></header>
+        <p class="step-outcome">Outcome: one test moderator has limited power and one normal player has none.</p>
+        <div class="step-body">
+          <p>Replace the sample identifiers with the exact values copied from txAdmin.</p>
+          <figure class="code">
+            <header><span class="file">server.cfg</span><span class="lang">CFG</span></header>
+            <pre><code># People
+add_principal identifier.fivem:111111 group.owner
+add_principal identifier.fivem:222222 group.moderator
+
+# Example Discord mapping if your permission system supports it
+# add_principal identifier.discord:333333333333333333 group.helper</code></pre>
+          </figure>
+          <p class="expected">Expected output after restart</p>
+          <p>The server starts without <code>invalid principal</code> or typo errors. The moderator can use only the commands you granted.</p>
+        </div>
+      </section>
+
+      <section id="txadmin">
+        <h2>txAdmin role mapping</h2>
+        <ol>
+          <li>Open txAdmin.</li>
+          <li>Click <strong>Settings</strong> &rarr; <strong>Admin Manager</strong>.</li>
+          <li>Create or edit the staff user.</li>
+          <li>Use <strong>Master Admin</strong> only for owners.</li>
+          <li>For moderators, grant player moderation actions, not settings, resources, or console unless they need it.</li>
+          <li>For developers, prefer staging dashboard access. Production resources access needs owner approval.</li>
+        </ol>
+        <p class="expected">Expected screenshot</p>
+        <p>To confirm, the txAdmin Admin Manager lists the owner, admin, and moderator roles named clearly.</p>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Test permission boundaries</h2></header>
+        <p class="step-outcome">Outcome: you have proof that normal players are blocked.</p>
+        <div class="step-body">
+          <ol>
+            <li>Restart the server from txAdmin.</li>
+            <li>Ask <code>test-normal</code> to open F8 and try a staff command, such as <code>kick 1 test</code>.</li>
+            <li>Ask <code>test-moderator</code> to run an allowed moderator command.</li>
+            <li>Ask <code>test-moderator</code> to run a blocked owner command, such as <code>restart qb-core</code>.</li>
+            <li>Copy the console result into <code>staff-permission-test.md</code>.</li>
+          </ol>
+          <figure class="code">
+            <header><span class="file">staff-permission-test.md</span><span class="lang">Markdown</span></header>
+            <pre><code>Normal player:
+- kick command blocked: pass
+- admin menu absent: pass
+
+Moderator:
+- warn command works: pass
+- restart resource blocked: pass
+
+Owner:
+- restart resource works: pass
+
+Decision: pass / blocked</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section id="revoke">
+        <h2>Revoke access when staff leave</h2>
+        <ol>
+          <li>Remove their <code>add_principal</code> line from <code>server.cfg</code>.</li>
+          <li>Remove or downgrade them in txAdmin &rarr; <strong>Settings</strong> &rarr; <strong>Admin Manager</strong>.</li>
+          <li>Rotate shared passwords they knew.</li>
+          <li>Revoke SFTP, database, Discord bot, and payment access if they had any.</li>
+          <li>Restart and confirm their old account cannot open staff tools.</li>
+        </ol>
+      </section>
+
+      <section id="recovery">
+        <h2>Failure recovery</h2>
+        <details class="explain">
+          <summary>Staff powers do not work after editing server.cfg</summary>
+          <div class="callout callout--danger">
+            <p>Check the identifier prefix. <code>identifier.fivem:123</code>, <code>identifier.discord:123</code>, and <code>license:123</code> are different. Copy from txAdmin instead of typing from memory.</p>
+          </div>
+        </details>
+        <details class="explain">
+          <summary>A moderator can restart resources</summary>
+          <div class="callout callout--danger">
+            <p>Search <code>server.cfg</code> for broad rules like <code>command allow</code>. Remove broad grants, restart, and retest with the moderator account.</p>
+          </div>
+        </details>
+        <details class="explain">
+          <summary>A former staff member still has power</summary>
+          <div class="callout callout--danger">
+            <p>Check all three layers: <code>server.cfg</code> principals, txAdmin Admin Manager, and framework/admin-menu config. Revoke in every layer, then restart.</p>
+          </div>
+        </details>
+      </section>
+
+      <section id="pass">
+        <h2>Pass condition</h2>
+        <p>You are done when the normal test account is blocked, the moderator test account has limited powers only, the owner account has full approved powers, txAdmin roles match the matrix, and revoke steps are written.</p>
+      </section>
+
+      <nav class="lesson-nav"><a class="prev" href="/server/resources-assets">&larr; Assets</a><a class="next" href="/server/qa-launch">Next: QA and launch &rarr;</a></nav>
+    </main>
+  </div>

@@ -1,0 +1,513 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> > <span>Module 08 · Lesson 26</span></div>
+        <h1>Vehicles: spawn, modify, clean up</h1>
+        <p class="lede">Vehicles are the most common entity you will work with in FiveM. Garage scripts, dealerships, police cruisers, test commands -- they all start with spawning a car and putting the player in it. This lesson covers the full cycle: spawn, customize, put the player inside, and clean up when done.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A <code>/testvehicle</code> command that spawns a car, sets a custom plate, warps the player in, and auto-deletes after 60 seconds.</dd></div>
+          <div><dt>Time</dt><dd>~30 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>CreateVehicle, TaskWarpPedIntoVehicle, vehicle customization natives, network ownership basics, and timeout cleanup.</dd></div>
+          <div><dt>Prereqs</dt><dd>Lesson 24 (spawning entities) and Lesson 25 (cleanup discipline).</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="25">
+        <h2>Before you start</h2>
+        <p>Quick check. Vehicles are entities with extra rules, the spawn and cleanup foundations have to be solid first.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have completed <a href="../clase-23/leason23.html">Lesson 23 (spawn)</a>, I can load a model and create an entity</label></li>
+          <li><label><input type="checkbox"> I have completed <a href="../clase-24/leason24.html">Lesson 24 (cleanup)</a>, I delete on resource stop, player drop, and timeout</label></li>
+          <li><label><input type="checkbox"> I know how to look up a vehicle model hash (e.g. <code>GetHashKey('adder')</code> or the joaat of the model name)</label></li>
+          <li><label><input type="checkbox"> I have heard of <code>TaskWarpPedIntoVehicle</code>, the native that puts a ped (the player) into a vehicle seat. We will use it in the build.</label></li>
+        </ul>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 26: Vehicles: spawn, modify, clean up</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Vehicle scripts manage vehicle entities.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find vehicle natives in client docs and storage server-side.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Spawn, modify, store, then clean up.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Spawn one vehicle and print its plate.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small vehicles example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Ped</dt><dd>The player character entity.<br><span>Example: PlayerPedId() returns the ped.</span></dd></div>
+            <div><dt tabindex="0">Vehicle</dt><dd>The entity a player can drive.<br><span>Example: GetVehiclePedIsIn returns it.</span></dd></div>
+            <div><dt tabindex="0">Handling</dt><dd>Vehicle physics settings.<br><span>Example: fInitialDriveForce changes acceleration.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_vehicle</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_vehicle/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_vehicle</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][vehicles]">
+            <header><span class="file">qu_vehicle/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'vehicles'
+
+RegisterCommand('quiet_25', function()
+    print(('[QUIET][%s][command] client ran'):format(MODULE))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][vehicles]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_vehicle</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>vehicles_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][vehicles_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_vehicle' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="callout callout--danger">
+        <header>Local test only</header>
+        <p>The spawn, store, and cleanup code in this lesson is client-side practice code. Use it to learn handles, vehicle natives, and cleanup. Do not treat it as a real garage or ownership system.</p>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>Real use needs server approval</header>
+        <p>For a production garage, the client should ask the server to spawn or store. The server validates ownership, plate, model, distance to the garage, and whether the entity still exists before it accepts anything. The client may provide visible interaction; the server owns the decision.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Spawn a vehicle</h2></header>
+        <p class="step-outcome">Outcome: a car appears in the world at the player's location.</p>
+        <div class="step-body">
+          <p>Spawning a vehicle follows the same pattern as any entity: load the model, then call the spawn function. The key difference is the <strong>heading</strong> parameter -- it controls which direction the car faces.</p>
+          <figure class="code">
+            <header><span>client.lua -- spawn a vehicle</span></header>
+            <pre><code class="language-lua">local spawnedEntities = {}
+
+local function loadModel(model)
+    local hash = type(model) == 'number' and model or joaat(model)
+
+    RequestModel(hash)
+
+    while not HasModelLoaded(hash) do
+        Wait(50)
+    end
+
+    return hash
+end
+
+local function registerEntity(handle)
+    spawnedEntities[#spawnedEntities + 1] = handle
+end
+
+local function spawnVehicle(modelName)
+    local hash = loadModel(modelName)
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    local heading = GetEntityHeading(ped)
+
+    local vehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, true)
+
+    SetModelAsNoLongerNeeded(hash)
+    registerEntity(vehicle)
+
+    return vehicle
+end</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>What's new here</summary>
+            <ul>
+              <li><code>GetEntityHeading(ped)</code>: returns the direction the player is facing in degrees (0-360). We use this so the car spawns pointing the same way the player is looking.</li>
+              <li><code>CreateVehicle(hash, x, y, z, heading, isNetwork, netMissionEntity)</code>: spawns a vehicle. Returns a handle just like <code>CreateObject</code>.</li>
+              <li>The model name is a string like <code>"adder"</code> or <code>"sultan"</code>. You can find vehicle names on the FiveM docs or the GTA wiki.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Warp the player into the vehicle</h2></header>
+        <p class="step-outcome">Outcome: the player is instantly placed in the driver's seat.</p>
+        <div class="step-body">
+          <p>Spawning a car is only half the job. Without putting the player in it, they are just standing next to a parked car. Use <code>TaskWarpPedIntoVehicle</code> to teleport the player's ped into a seat.</p>
+          <figure class="code">
+            <header><span>client.lua -- warp into vehicle</span></header>
+            <pre><code class="language-lua">local function spawnAndEnterVehicle(modelName)
+    local vehicle = spawnVehicle(modelName)
+    local ped = PlayerPedId()
+
+    -- Seat index: -1 = driver, 0 = front passenger, 1 = rear left, 2 = rear right
+    TaskWarpPedIntoVehicle(ped, vehicle, -1)
+
+    return vehicle
+end</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Seat indices</summary>
+            <ul>
+              <li><code>-1</code>: driver seat. This is the one you almost always want.</li>
+              <li><code>0</code>: front passenger.</li>
+              <li><code>1</code>: rear left.</li>
+              <li><code>2</code>: rear right.</li>
+              <li>These numbers are the same for every vehicle. A motorcycle only uses <code>-1</code> (driver) and <code>0</code> (passenger).</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Customize: colors, plates, mod kit</h2></header>
+        <p class="step-outcome">Outcome: you can change a vehicle's color, number plate, and enable the mod kit for further customization.</p>
+        <div class="step-body">
+          <p>Once you have a vehicle handle, you can customize it with natives. Here are the most common ones:</p>
+          <figure class="code">
+            <header><span>client.lua -- vehicle customization</span></header>
+            <pre><code class="language-lua">local function customizeVehicle(vehicle)
+    -- Set primary (first) and secondary (second) colors
+    -- Color IDs: 0 = black, 1 = graphite, 12 = red, 64 = blue, 111 = matte black
+    SetVehicleColours(vehicle, 12, 12)  -- red primary, red secondary
+
+    -- Set the number plate text (max 8 characters)
+    SetVehicleNumberPlateText(vehicle, 'QU TEST')
+
+    -- Enable the mod kit (required before applying visual mods)
+    SetVehicleModKit(vehicle, 0)
+end</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Why SetVehicleModKit?</summary>
+            <ul>
+              <li><code>SetVehicleModKit(vehicle, 0)</code>: activates the default modification kit. You must call this before using any <code>SetVehicleMod</code> calls (spoilers, bumpers, exhausts, etc.).</li>
+              <li>Without it, <code>SetVehicleMod</code> silently does nothing. This catches many beginners off guard.</li>
+              <li><code>SetVehicleColours</code> does not need the mod kit -- it works on any vehicle immediately.</li>
+            </ul>
+          </details>
+
+          <div class="callout callout--tip">
+            <header>Finding color IDs</header>
+            <p>GTA V has over 150 vehicle color IDs. You can find a full list on the FiveM documentation or spawn a car and cycle through IDs with a loop. For testing, 0 (black), 12 (red), 64 (blue), and 111 (matte black) are easy to recognize.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Spawn, enter, customize</h3></header>
+        <p>Put it together. You should be able to spawn a red car with a custom plate, sitting in the driver's seat.</p>
+        <figure class="code">
+          <header><span>Test command</span></header>
+          <pre><code class="language-lua">RegisterCommand('testcar', function()
+    local vehicle = spawnAndEnterVehicle('adder')
+    customizeVehicle(vehicle)
+    print(('Spawned test vehicle, handle: %d'):format(vehicle))
+end, false)</code></pre>
+        </figure>
+        <div class="self-check">
+          <details>
+            <summary>It worked if...</summary>
+            <p>You type <code>/testcar</code>, a red Adder appears, you are in the driver's seat, and the plate reads "QU TEST". Check the F8 console for the handle number.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Network ownership basics</h2></header>
+        <p class="step-outcome">Outcome: you understand who "owns" an entity and why it matters for vehicles.</p>
+        <div class="step-body">
+          <p>In FiveM's multiplayer world, every entity has an <strong>owner</strong> -- the player whose machine is responsible for simulating that entity's physics. When you spawn a vehicle on your client, you own it. But ownership can transfer.</p>
+          <ul>
+            <li>If you get out of a car and walk away, another nearby player might become the owner.</li>
+            <li>The owner's machine decides the car's position, speed, and collisions. Everyone else just receives updates.</li>
+            <li>If the owner disconnects, the entity might get cleaned up or transferred to someone else.</li>
+          </ul>
+          <div class="callout callout--fivem">
+            <header>Why vehicles sometimes disappear</header>
+            <p>If you spawn a vehicle with <code>netMissionEntity = false</code>, the game's streaming system can delete it when no player is nearby. Always use <code>true</code> for vehicles you want to persist. For extra safety, call <code>SetEntityAsMissionEntity(vehicle, true, true)</code> after spawning.</p>
+          </div>
+          <p>For now, just know that ownership exists. When you get to more advanced scripts (garage systems, shared vehicles), you will need to manage it actively. For test commands, the default behavior is fine.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Cleanup: delete on resource stop + timeout</h2></header>
+        <p class="step-outcome">Outcome: test vehicles clean up automatically, both on resource stop and after a timer.</p>
+        <div class="step-body">
+          <p>Combine everything from Lesson 25 with your vehicle spawner. Cleanup on resource stop is the same as before. For test vehicles, add a 60-second auto-delete timer so the world doesn't fill up with abandoned Adders.</p>
+          <figure class="code">
+            <header><span>client.lua -- full cleanup</span></header>
+            <pre><code class="language-lua">local function cleanupAll()
+    for i = 1, #spawnedEntities do
+        local ent = spawnedEntities[i]
+
+        if DoesEntityExist(ent) then
+            DeleteEntity(ent)
+        end
+    end
+
+    spawnedEntities = {}
+end
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then
+        return
+    end
+
+    cleanupAll()
+end)
+
+local function spawnTestVehicle(modelName, timeoutSeconds)
+    local vehicle = spawnAndEnterVehicle(modelName)
+    customizeVehicle(vehicle)
+
+    -- Auto-delete after timeoutSeconds
+    SetTimeout(timeoutSeconds * 1000, function()
+        if DoesEntityExist(vehicle) then
+            -- Kick the player out first if they are still in it
+            local ped = PlayerPedId()
+
+            if GetVehiclePedIsIn(ped, false) == vehicle then
+                TaskLeaveVehicle(ped, vehicle, 0)
+                Wait(1000)
+            end
+
+            DeleteEntity(vehicle)
+            print(('[qu_vehicles] Auto-deleted test vehicle after %d seconds'):format(timeoutSeconds))
+        end
+    end)
+
+    return vehicle
+end</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Why kick the player out first?</summary>
+            <ul>
+              <li>If you delete a vehicle while the player is sitting in it, weird things happen -- the ped can fall through the ground or get stuck in a sitting animation.</li>
+              <li><code>GetVehiclePedIsIn(ped, false)</code>: returns the vehicle the player is currently in. The <code>false</code> means "the vehicle I am in right now" (not the last vehicle).</li>
+              <li><code>TaskLeaveVehicle</code>: makes the ped get out. We wait a second for the exit animation, then delete.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>The /testvehicle command</h2></header>
+        <p class="step-outcome">Outcome: one command that does everything -- spawn, customize, enter, and schedule cleanup.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>client.lua -- final command</span></header>
+            <pre><code class="language-lua">RegisterCommand('testvehicle', function()
+    local vehicle = spawnTestVehicle('adder', 60)
+    print(('[qu_vehicles] Test vehicle spawned (handle: %d), auto-deletes in 60s'):format(vehicle))
+end, false)</code></pre>
+          </figure>
+          <p>Type <code>/testvehicle</code>. A red Adder with plate "QU TEST" appears, you're in the driver's seat, and it vanishes after 60 seconds. Clean, professional, no leaks.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Full cycle test</h3></header>
+        <p>Run the complete test:</p>
+        <ol>
+          <li>Type <code>/testvehicle</code>. Red Adder, "QU TEST" plate, you're driving.</li>
+          <li>Wait 60 seconds (or change the timeout to 15 for faster testing). The car gets deleted. If you're in it, you get kicked out first.</li>
+          <li>Spawn another one, then restart the resource. It should be cleaned up by <code>onResourceStop</code>.</li>
+        </ol>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Vehicle spawns underground (wrong Z coordinate)</summary>
+          <p>If you use the player's coordinates directly, the Z (height) is usually correct. But if you hardcode coordinates, the Z might be below the ground. Use <code>GetGroundZFor_3dCoord</code> to find the correct ground level, or use the player's Z and add a small offset like <code>+ 1.0</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Vehicle disappears immediately after spawn</summary>
+          <p>Two common causes: (1) <code>netMissionEntity</code> was set to <code>false</code>, so the game's streaming system deleted it. Use <code>true</code>. (2) Another script on the server is auto-deleting spawned vehicles. Check your other resources.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting to set as mission entity</summary>
+          <p>For vehicles that need to persist (garage spawns, mission vehicles), call <code>SetEntityAsMissionEntity(vehicle, true, true)</code> right after spawning. This tells the game "do not auto-clean this, I will handle it." Without it, the game might despawn your vehicle when the player walks away.</p>
+        </details>
+
+        <details class="explain">
+          <summary>SetVehicleMod does nothing</summary>
+          <p>You forgot to call <code>SetVehicleModKit(vehicle, 0)</code> first. The mod kit must be activated before any visual modifications work. Colors and plates do not need it, but spoilers, bumpers, and other mods do.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is network ownership of a vehicle?</legend>
+            <label><input type="radio" name="q1" value="a"> The server always owns every vehicle.</label>
+            <label><input type="radio" name="q1" value="b"> The player whose machine simulates the vehicle's physics. Ownership can transfer between players.</label>
+            <label><input type="radio" name="q1" value="c"> Whoever spawned the vehicle owns it forever until it is deleted.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. Why should you call SetModelAsNoLongerNeeded after spawning?</legend>
+            <label><input type="radio" name="q2" value="a"> To free the raw model data from memory. The spawned entity stays, but the loading data is released.</label>
+            <label><input type="radio" name="q2" value="b"> To make the vehicle visible to other players.</label>
+            <label><input type="radio" name="q2" value="c"> To prevent other scripts from using the same model.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. What is heading?</legend>
+            <label><input type="radio" name="q3" value="a"> The speed of the vehicle when it spawns.</label>
+            <label><input type="radio" name="q3" value="b"> The height above ground where the vehicle appears.</label>
+            <label><input type="radio" name="q3" value="c"> The compass direction (0-360 degrees) the vehicle faces when it spawns.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet" id="lifecycle">
+        <h2>Vehicle lifecycle &amp; ownership</h2>
+        <figure class="code"><header><span>lifecycle</span></header><pre><code>load model  -&gt;  CreateVehicle  -&gt;  register  -&gt;  warp player in / modify  -&gt;  DeleteEntity
+                                  (track it)                                (timeout / drop / stop)</code></pre></figure>
+        <dl>
+          <div><dt>Handle</dt><dd>Local id from <code>CreateVehicle</code>. Use it for plate, colour, and mods while it exists.</dd></div>
+          <div><dt>NetId</dt><dd><code>NetworkGetNetworkIdFromEntity(veh)</code>: pass this (never the raw handle) when the server or other clients must reference the car.</dd></div>
+          <div><dt>Owner</dt><dd>Whoever spawned it owns simulation. For real garages, the <strong>server</strong> approves spawn/store and validates ownership, distance, and plate: never trust the client.</dd></div>
+          <div><dt>Cleanup</dt><dd>Test cars: auto-delete on timeout. Always also delete on player drop and <code>onResourceStop</code> so the world does not fill with abandoned vehicles.</dd></div>
+        </dl>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>CreateVehicle(hash, x, y, z, heading, net, mission)</code></dt><dd>Spawn a vehicle. Returns a handle.</dd></div>
+          <div><dt><code>TaskWarpPedIntoVehicle(ped, vehicle, seat)</code></dt><dd>Teleport a ped into a seat. <code>-1</code> = driver.</dd></div>
+          <div><dt><code>SetVehicleColours(veh, primary, secondary)</code></dt><dd>Set the two body colors by ID.</dd></div>
+          <div><dt><code>SetVehicleNumberPlateText(veh, text)</code></dt><dd>Set the plate. Max 8 characters.</dd></div>
+          <div><dt><code>SetVehicleModKit(veh, 0)</code></dt><dd>Enable the mod kit. Required before <code>SetVehicleMod</code>.</dd></div>
+          <div><dt><code>GetEntityHeading(entity)</code></dt><dd>Returns the direction an entity faces (0-360 degrees).</dd></div>
+          <div><dt><code>SetEntityAsMissionEntity(ent, true, true)</code></dt><dd>Prevent the game from auto-deleting this entity.</dd></div>
+          <div><dt><code>GetVehiclePedIsIn(ped, false)</code></dt><dd>Returns the vehicle handle the ped is currently sitting in.</dd></div>
+          <div><dt><code>TaskLeaveVehicle(ped, veh, flags)</code></dt><dd>Make the ped exit the vehicle. <code>0</code> = normal exit.</dd></div>
+          <div><dt>Network ownership</dt><dd>The player whose machine simulates this entity's physics. Can transfer.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to spawn a vehicle with <code>CreateVehicle</code> using model hash, coordinates, and heading</li>
+          <li>How to put the player in the driver's seat with <code>TaskWarpPedIntoVehicle</code></li>
+          <li>How to customize vehicles: colors, plates, and enabling the mod kit</li>
+          <li>What network ownership means and why vehicles can behave differently in multiplayer</li>
+          <li>The timeout pattern for auto-deleting test vehicles, including kicking the player out first</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Create a <code>/testvehicle</code> command that spawns an Adder, sets the plate to "QU TEST", warps the player into the driver's seat, and auto-deletes after 60 seconds. If the player is still in the vehicle when the timer fires, kick them out first.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console + in-game</span></header>
+          <pre><code>-- /testvehicle: red Adder appears, plate says "QU TEST", you're driving
+-- F8: "[qu_vehicles] Test vehicle spawned (handle: 13200), auto-deletes in 60s"
+-- 60 seconds later: player exits, car vanishes
+-- F8: "[qu_vehicles] Auto-deleted test vehicle after 60 seconds"</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Combine <code>spawnVehicle</code> from Step 1, <code>TaskWarpPedIntoVehicle</code> from Step 2, <code>customizeVehicle</code> from Step 3, and the timeout pattern from Step 5. Everything is in this lesson -- you just wire it together.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xAF35D0D2583051B0" target="_blank" rel="noopener">CreateVehicle native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x9A7D091411C5F684" target="_blank" rel="noopener">TaskWarpPedIntoVehicle native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x4F1D4BE3A7F24601" target="_blank" rel="noopener">SetVehicleColours native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x95A88F0B409CDA47" target="_blank" rel="noopener">SetVehicleNumberPlateText native reference</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Accept the vehicle model as a parameter: <code>/testvehicle sultan</code>. Use the first argument from <code>args</code> or default to <code>"adder"</code>.</li>
+          <li>Add a second command <code>/delvehicle</code> that deletes the vehicle you are currently sitting in (use <code>GetVehiclePedIsIn</code>).</li>
+          <li>Try spawning a boat (<code>"dinghy"</code>) at a marina. Notice how heading matters -- a boat facing inland is useless.</li>
+        </ul>
+      </section>
+
+      <section class="deep-dive-section" aria-labelledby="deep-dive-heading">
+        <h2 id="deep-dive-heading">Go deeper (production expansion)</h2>
+        <p>Spawning works, but real servers persist vehicles. The expansion lesson saves a plate with validated server data.</p>
+        <a class="deep-dive-card" href="../expansion/vehicle-persistence.html">
+          <div>
+            <span class="deep-dive-card__kicker">Expansion · Module 09A</span>
+            <h3 class="deep-dive-card__title">Vehicle persistence base</h3>
+            <p class="deep-dive-card__lede">Save a vehicle plate on the server, validate every payload, and reload state on respawn.</p>
+          </div>
+          <span class="deep-dive-card__arrow" aria-hidden="true">›</span>
+        </a>
+      </section>

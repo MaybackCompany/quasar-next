@@ -1,0 +1,237 @@
+<LessonHero
+  crumbs="Script planning"
+  title="Plan a FiveM script before you write any code"
+  meta={[
+    { label: "Use this when", value: "You want to build a new feature, command, or system in your FiveM server." },
+    { label: "Time", value: "Read once in 12 minutes. Plan a real script in 20 minutes." },
+    { label: "Skill level", value: "Total beginner is fine. You only need to know what a Lua file is." },
+    { label: "Goal", value: "Cut planning from \"vibes\" to a five-line spec, a folder layout, and a clear order to write code in." },
+  ]}
+>
+  You have an idea for a script and you do not know where to start. This page is the cheatsheet. Read it once, pin the checklist at the end, and follow the same path every time you build something new. Plain English, no jargon, no shortcuts.
+</LessonHero>
+
+TL;DR
+
+Plan once on paper. Write the smallest server-only version. Add the client. Test after every restart. Pin the checklist at the bottom of this page.
+
+- **Spec first.** Five questions. No code yet.
+- **Draw the architecture.** Who triggers, who decides, who shows feedback.
+- **Server first, client second.** Decisions live on the server.
+- **One folder, four files.** Manifest, server, client, config.
+- **Restart and watch the console** after every change.
+
+## 1. Stop. Write the spec first.
+
+Most beginner scripts fail because the author started typing before they could explain the feature in one sentence. The fix is boring: write a five-line spec in a text file before you open VS Code. If you cannot write the spec, you do not yet know what you are building, and code will not save you.
+
+Open a new file called `SPEC.txt` next to your resource folder. Answer these five questions in plain English:
+
+```
+1. Player does     : What does the player type, click, or trigger?
+2. Trigger         : What event fires? Where? (client or server)
+3. Decision        : Who validates the action? (always the server)
+4. Feedback        : What does the player see when it works or fails?
+5. Out of scope    : What is explicitly NOT in v1?
+```
+
+Use that exact template. The fifth line is the most valuable. Beginners scope-creep into "and admins can also..." within a day. Write what you will *not* build, and protect the small version.
+
+Think of it like a recipe card
+
+A spec is the recipe card on your fridge. You glance at it before each step so the cake does not turn into a casserole halfway through. Anyone in your kitchen, including future you at midnight, can read it and finish the dish.
+
+<Callout variant="tip" title="Real example: a simple /heal command">
+  **Player does:** Types `/heal`. **Trigger:** Client command, fires server event `qu:server:heal`. **Decision:** Server checks the caller is on duty as EMS. **Feedback:** ox_lib notify on success or denial. **Out of scope (v1):** Healing other players, cooldowns, animations.
+</Callout>
+
+## 2. Draw the architecture
+
+Your spec answers *what*. The architecture answers *where the work runs*. FiveM has a hard wall between client and server. You cross it with events, and every crossing is a place a cheater can lie. Drawing the flow first is how you stop trusting the client by accident.
+
+For a beginner script, an ASCII diagram in your `SPEC.txt` is enough. Here is the flow for the `/heal` example:
+
+```
+[Player types /heal]
+        |
+        v
+[CLIENT: client.lua]
+   RegisterCommand('heal')
+        |
+        |  TriggerServerEvent('qu:server:heal')
+        v
+[SERVER: server.lua]    <-- trust anchor
+   1. Get player from `source`
+   2. Check job == 'ambulance' AND onduty
+   3. If valid: TriggerClientEvent('qu:client:doHeal', source)
+        |
+        v
+[CLIENT: client.lua]
+   RegisterNetEvent('qu:client:doHeal')
+   SetEntityHealth(PlayerPedId(), 200)
+   lib.notify({ title='Healed', type='success' })
+```
+
+Three boxes. Two arrows that cross the wall. The server box is your trust anchor: every decision the player must not be allowed to fake lives there. The client only asks and displays. If you cannot draw your idea this way, the design is not ready yet.
+
+<Callout variant="pro" title="Want a real diagram tool?">
+  Use [Miro](https://miro.com/app/dashboard/) or [Excalidraw](https://excalidraw.com/) for bigger features. Both are free for one board. ASCII in `SPEC.txt` is fine for anything under 200 lines of code.
+</Callout>
+
+## 3. Folder and file setup
+
+Every Quasar Academy resource follows the same shape. Four files, predictable names, no surprises. Use the same shape for every script you build for the first three months. Familiarity is faster than cleverness.
+
+```
+qu_yourthing/
+├── fxmanifest.lua    -- declares files, version, dependencies
+├── config.lua        -- shared settings: labels, jobs, locations
+├── server.lua        -- decisions, validation, database
+└── client.lua        -- input, UI, ped/vehicle work
+```
+
+Note the prefix: `qu_`. Pick a prefix for your own server (your initials work) and use it for every resource you author. It keeps your code grouped in `txAdmin`, `server.cfg`, and the console output. A consistent prefix is a free debugging tool.
+
+Inside `fxmanifest.lua` the order matters. Shared scripts load before client and server. Get this wrong and your config will be undefined when the server tries to read it.
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'Quasar Academy build'
+version '0.1.0'
+
+shared_script '@ox_lib/init.lua'
+shared_script 'config.lua'
+
+server_script 'server.lua'
+client_script 'client.lua'
+```
+
+Add this resource to your `server.cfg` with `ensure qu_yourthing` below the frameworks and helpers it depends on. If your resource needs `qb-core` or `ox_lib`, those must be ensured first.
+
+## 4. Code order: server first, client second
+
+Beginners type their command in `client.lua` first, get a working notification, and ship. Then they discover their script trusts the player completely. Avoid the trap by writing the server logic first, even when no UI exists yet.
+
+The order is always:
+
+1. **Define the event names** in your spec. Use a prefix like `qu:server:heal`.
+2. **Write `server.lua`** with the validation rules. Test it with `print()` calls.
+3. **Write `client.lua`** last. It only triggers events and shows feedback.
+
+Don't do this
+
+All work on the client. Player keeps full control of the heal.
+
+```lua
+RegisterCommand('heal', function()
+    SetEntityHealth(PlayerPedId(), 200)
+    lib.notify({ title = 'Healed' })
+end, false)
+```
+
+Anyone with a Lua executor heals themselves at any time. Job checks done on the client are decoration. The client is the player.
+
+Do this
+
+Server decides. Client requests and reacts.
+
+```lua
+local QBCore = exports['qb-core']:GetCoreObject()
+
+RegisterNetEvent('qu:server:heal', function()
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    if Player.PlayerData.job.name ~= 'ambulance' then return end
+    if not Player.PlayerData.job.onduty then return end
+    TriggerClientEvent('qu:client:doHeal', src)
+end)
+```
+
+The cheater can fire the event, and nothing happens. The check lives where the player cannot reach.
+
+<Callout variant="fivem" title="server.lua (ESX)Lua">
+  ESX equivalent
+
+  (click to expand)
+
+  ```lua
+  local ESX = exports['es_extended']:getSharedObject()
+
+  RegisterNetEvent('qu:server:heal', function()
+      local src = source
+      local xPlayer = ESX.GetPlayerFromId(src)
+      if not xPlayer then return end
+      if xPlayer.job.name ~= 'ambulance' then return end
+      TriggerClientEvent('qu:client:doHeal', src)
+  end)
+  ```
+
+  The shape is identical. Only the framework call changes. This is why the spec is framework-agnostic and the architecture diagram does not care about ESX vs QBCore.
+</Callout>
+
+<Callout variant="gotcha" title="The one rule that catches every beginner">
+  If a player would gain something from lying, the check belongs on the server. Money, items, health, location, job, vehicle ownership, all server. The client only ever *shows* the result.
+</Callout>
+
+## 5. The daily restart loop
+
+FiveM does not auto-reload. Every time you change a Lua file, you must restart the resource for the change to take effect. The fastest beginners build a habit out of this loop and never break it.
+
+1. Save your file in VS Code.
+2. Tab into the FiveM console (or txAdmin live console).
+3. Type `restart qu_yourthing` and press Enter.
+4. Read the next 10 lines of console output. Look for red text.
+5. Test the feature in-game.
+6. If broken: read the error before changing any code.
+
+Step 6 is the one that separates fast learners from stuck ones. The console error usually tells you the file, the line, and the symbol. Read it. Search the exact text. Then fix the smallest possible thing and restart again.
+
+<Callout variant="tip" title="Reading errors is a skill, not a chore">
+  `attempt to call a nil value` means the function does not exist on this side, or the name is misspelled. `attempt to index a nil value` means a player or table did not load yet. `No such export` means a dependency is missing or ensured after your script.
+</Callout>
+
+Pin this
+
+## 7-step checklist for every new script
+
+Print this. Tape it next to your monitor. Run through every step every time before you commit code.
+
+1. **Write `SPEC.txt`** with the five questions answered. No code until this is done.
+2. **Define out of scope** in the spec. Protect v1 from feature creep.
+3. **Draw the architecture** as a flow: client → server → client. Mark the trust anchor.
+4. **Create the folder** with four files: `fxmanifest.lua`, `config.lua`, `server.lua`, `client.lua`.
+5. **Write `server.lua` first**. Validate with `print()`. Test it before any client code exists.
+6. **Write `client.lua` last**. It triggers events and shows feedback. No decisions live here.
+7. **Restart, watch the console, fix the smallest thing**. Repeat until the spec passes.
+
+## Deep dives
+
+When you are ready to go past the cheatsheet, these expansions cover the production patterns the spec hints at.
+
+Expansion · Module 03B
+
+### Spec, logging, and rollback patterns
+
+How the spec evolves into a production-grade resource with quiet logging and a rollback plan.
+
+›
+
+Templates
+
+### Resource skeleton template
+
+A copy-safe four-file resource layout that matches this cheatsheet exactly.
+
+›
+
+Starter kit
+
+### What do I build first?
+
+A four-step ladder of beginner scripts that teach the patterns above without melting your server.
+
+›

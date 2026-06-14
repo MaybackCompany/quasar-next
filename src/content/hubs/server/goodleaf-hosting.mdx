@@ -1,0 +1,170 @@
+<LessonHero
+  crumbs="Video lab"
+  title="Goodleaf Hosting full setup"
+  meta={[
+    { label: "Outcome", value: "A running hosted FiveM server with database proof, direct connect proof, and one resource install note." },
+    { label: "Best time", value: "Use after Lesson 1 if you chose hosted instead of local." },
+    { label: "Owner rule", value: "Panel access first, database proof second, server files third, one script at a time." },
+    { label: "Duration", value: "45-75 minutes." },
+    { label: "Prerequisites", value: "Hosting login, Cfx.re account, database credentials, and SFTP access if provided." },
+    { label: "Pass condition", value: "Panel, database, txAdmin, direct connect, and one script proof are captured." },
+  ]}
+>
+  Use this hosted path when you want a server online for staff and testers without running FXServer on your own PC. The goal is a hosted FiveM server with MariaDB, txAdmin proof, file paths, and one verified script.
+</LessonHero>
+
+Video source
+
+This lab pairs the hosted-panel checklist with the Goodleaf walkthrough. Hosting panels can change, so use the stable labels and proof steps below even if button placement moves.
+
+- **Watch:** [Creating a FiveM Server with Goodleaf Hosting](https://www.loom.com/share/81886632cbdd481e8f29e48ab88e167f)
+- **Manual:** [Discord written reference](https://ptb.discord.com/channels/1314332305233281165/1451803770391363704)
+- **Support:** [Quasar Academy Discord](https://discord.gg/quasaracademy)
+
+## Choose hosted or local
+
+| Choose | Use when | First proof |
+| --- | --- | --- |
+| Goodleaf hosted | You want a panel, remote server, and staff testing soon. | Panel shows the server service online and txAdmin opens. |
+| Other hosted panel | Your provider has a FiveM game panel, file manager, database page, and startup settings. | Same proof steps, but labels may differ. |
+| Local PC | You are learning alone or testing scripts before hosting. | `connect 127.0.0.1:30120` works from FiveM. |
+
+<StepGroup>
+  <Step num={1} title="Confirm hosting access and write down panel facts" outcome="you know where the server is managed before uploading files.">
+      1. Confirm the current Goodleaf benefit, package, and onboarding instructions in Discord.
+      2. Open the Goodleaf panel link you were given.
+      3. Find the service name, server IP, SFTP host, SFTP username, and game port.
+      4. Save them in `hosting-notes.md`. Do not paste passwords into Discord or public docs.
+
+      ```
+      # Hosting notes
+      Provider: Goodleaf
+      Panel URL:
+      Server name:
+      Server IP:
+      Game port: 30120
+      txAdmin port:
+      SFTP host:
+      SFTP user:
+      Root path:
+      Database host:
+      Database name:
+      Rollback folder:
+      ```
+
+      To confirm, the hosted panel's service overview shows your server name and a running status.
+  </Step>
+
+  <Step num={2} title="Open the file manager or SFTP path" outcome="you can see where server.cfg and resources/ live.">
+      1. In the panel, open **Files** or **File Manager**.
+      2. If the panel provides SFTP, open WinSCP.
+      3. Use the SFTP host, username, and password or key from the panel.
+      4. Navigate to the server root. Common paths are `/home/container/`, `/server-data/`, or a provider-specific game folder.
+      5. Find or create these locations: `server.cfg`, `resources/`, and `backups/`.
+
+      The file tree shows `server.cfg` and `resources/`. To confirm, the panel file manager (or WinSCP) lists both `server.cfg` and the `resources` folder.
+
+      <Callout variant="gotcha" title="If your host uses a different path">
+        Do not guess. Search the panel docs for "FiveM server.cfg path" or ask support: "Where is the active server.cfg that FXServer reads on boot?"
+      </Callout>
+  </Step>
+
+  <Step num={3} title="Create the hosted database and prove it connects" outcome="MariaDB exists and accepts a real login before txAdmin or scripts depend on it.">
+      1. In the hosting panel, open **Databases** or **MySQL**.
+      2. Create a database named something clear, such as `fivem` or the provider's assigned name.
+      3. Copy host, port, database name, username, and password into your private password manager.
+      4. Open HeidiSQL on your PC.
+      5. Create a session named `Hosted FiveM`.
+      6. Use the panel database host, user, password, port, and database name.
+      7. Click **Open**.
+
+      HeidiSQL connects and the left tree shows the hosted database.
+
+      ```
+      set mysql_connection_string "mysql://DB_USER:DB_PASSWORD@DB_HOST:3306/DB_NAME?charset=utf8mb4"
+      ```
+
+      <Callout variant="warn" title="Secret handling">
+        The database password belongs in private notes and `server.cfg` only. Blur it in screenshots. Rotate it if posted publicly.
+      </Callout>
+  </Step>
+
+  <Step num={4} title="Set startup, artifact, and txAdmin proof" outcome="the hosted service starts and txAdmin opens.">
+      1. Open the panel's **Startup** or **Settings** page.
+      2. Confirm the FiveM artifact or build setting. Use a pinned known-good build when the panel allows it.
+      3. Confirm the license key variable or `sv_licenseKey` line is set.
+      4. Start or restart the service.
+      5. Open txAdmin from the panel button or the txAdmin URL/port provided by the host.
+      6. Run `status` in txAdmin Live Console.
+
+      txAdmin shows the server online. Live Console prints a `status` response with players, uptime, and endpoint information.
+  </Step>
+
+  <Step num={5} title="Install one first resource only" outcome="one script proves the full hosted workflow before you install a pack.">
+      1. Make a backup folder: `backups/before-first-resource/`.
+      2. Copy `server.cfg` and the resource's config into that backup folder.
+      3. Upload the resource folder to `resources/[quasar]/RESOURCE_NAME/` or the category folder your docs require.
+      4. Import SQL through HeidiSQL if the resource includes it.
+      5. Add dependencies above the resource in `server.cfg`.
+      6. Run `refresh`, then `ensure RESOURCE_NAME` in txAdmin.
+      7. Join with FiveM direct connect: `connect SERVER_IP:30120`.
+      8. Check txAdmin console and F8.
+
+      txAdmin prints `Started resource RESOURCE_NAME`, F8 has no repeating error, and the script's first visible feature works in-game.
+  </Step>
+</StepGroup>
+
+## Fallback for non-Goodleaf hosting
+
+If your provider is not Goodleaf, keep the same proof sequence and translate labels:
+
+| Goodleaf-style label | Other providers may call it | Proof you need |
+| --- | --- | --- |
+| Files | File Manager, SFTP, Server Files | You can see active `server.cfg` and `resources/`. |
+| Databases | MySQL, MariaDB, DB Manager | HeidiSQL connects from your PC or panel console. |
+| Startup | Variables, Startup Command, Build, Artifact | Artifact/build, license key, and ports are visible. |
+| Console | Live Console, Logs, Terminal | `status` returns server information. |
+| Backup | Snapshots, Backups, Archives | You can restore `server.cfg` and database dump. |
+
+## Failure recovery
+
+<Callout variant="info" title="HeidiSQL cannot connect to the hosted database">
+  <Callout variant="danger">
+    Check whether the host blocks remote database access. Some panels require using the panel import tool instead of HeidiSQL from your PC. Ask support for the allowed host, port, and remote access rule.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="txAdmin opens but the server will not start">
+  <Callout variant="danger">
+    Read the first red console line. Common causes are missing license key, wrong database connection string, bad artifact setting, or `server.cfg` path mismatch.
+  </Callout>
+</Callout>
+
+<Callout variant="info" title="The first resource fails">
+  <Callout variant="danger">
+    Stop the resource, restore the backup copy of its config, check dependencies, verify SQL import, and ask the seller with console proof. Do not install a second resource while the first one is broken.
+  </Callout>
+</Callout>
+
+## Copyable setup checklist
+
+```
+# Hosted owner setup
+[ ] Hosting access confirmed
+[ ] Panel URL saved privately
+[ ] Server IP and port saved
+[ ] File path found
+[ ] server.cfg found
+[ ] resources folder found
+[ ] Database created
+[ ] HeidiSQL or panel DB proof complete
+[ ] mysql_connection_string set
+[ ] Artifact/build pinned or recorded
+[ ] txAdmin opens
+[ ] status command works
+[ ] Direct connect works
+[ ] One first resource installed
+[ ] Console and F8 checked
+[ ] Backup and rollback note created
+Decision: pass / blocked
+```

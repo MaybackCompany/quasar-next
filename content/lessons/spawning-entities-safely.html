@@ -1,0 +1,595 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> > <span>Module 08 · Lesson 24</span></div>
+        <h1>Spawning entities safely</h1>
+        <p class="lede">Everything you see in the game world -- every car, every pedestrian, every traffic cone -- is an <strong>entity</strong>. In this lesson you learn how to create them from code, track them in a table, and delete them when you are done. This is the foundation for props, NPCs, and vehicle spawners.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A script that loads a model, spawns a prop, registers it in a table, and deletes it cleanly on command.</dd></div>
+          <div><dt>Time</dt><dd>~25 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>What entities are, how model loading works, spawn functions for objects/peds/vehicles, and the entity registry pattern.</dd></div>
+          <div><dt>Prereqs</dt><dd>Comfortable with tables, client/server split, and registering commands.</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="23">
+        <h2>Before you start</h2>
+        <p>Quick check. If any of these are shaky, pop back for two minutes before spawning anything, orphan entities are a pain to clean up later.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have built and run a small client-side resource (<a href="../clase-1/leason1.html">Lessons 1&ndash;6</a>)</label></li>
+          <li><label><input type="checkbox"> I know what a <strong>hash key</strong> is, the number FiveM uses to identify a model, returned by <code>GetHashKey</code> or <code>joaat</code></label></li>
+          <li><label><input type="checkbox"> I am comfortable with <code>Wait(ms)</code> inside a <code>CreateThread</code>, loading a model is asynchronous</label></li>
+          <li><label><input type="checkbox"> I can register a chat command with <code>RegisterCommand</code> and trigger it with <code>/name</code> in F8</label></li>
+        </ul>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 24: Spawning entities safely</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Entities are world things with handles.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find entity natives in the official native reference.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Create, store the handle, then validate it exists.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Spawn one object and track it.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small entities example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Entity</dt><dd>A thing with a handle in the world.<br><span>Example: peds, vehicles, and props.</span></dd></div>
+            <div><dt tabindex="0">Handle</dt><dd>The number used to control an entity.<br><span>Example: object is a handle after creation.</span></dd></div>
+            <div><dt tabindex="0">Registry</dt><dd>A table tracking created entities.<br><span>Example: spawnedObjects[id] = object.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_entities</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_entities/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_entities</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][entities]">
+            <header><span class="file">qu_entities/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'entities'
+
+RegisterCommand('quiet_23', function()
+    print(('[QUIET][%s][command] client ran'):format(MODULE))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][entities]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_entities</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>entities_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][entities_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_entities' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section id="what-is-entity">
+        <h2>What is an entity?</h2>
+        <p>An entity is anything that exists in the 3D world: a car, a person, a barrel, a helicopter. When the game creates one, it hands you back a <strong>handle</strong> -- just a number, like <code>12547</code>. You use that handle every time you want to talk to that thing: move it, delete it, check if it still exists.</p>
+        <p>Think of it like a ticket number at a deli counter. The ticket is not the sandwich. But you need the ticket to pick up your sandwich.</p>
+        <div class="callout callout--tip">
+          <header>Handle = a number</header>
+          <p>Every native that works with entities (<code>DeleteEntity</code>, <code>SetEntityCoords</code>, <code>FreezeEntityPosition</code>) takes a handle as its first argument. Lose the handle, lose control of the entity.</p>
+        </div>
+      </section>
+
+      <section id="entity-types">
+        <h2>Entity types</h2>
+        <p>FiveM has three main categories of entities:</p>
+        <ul>
+          <li><strong>Peds</strong> -- pedestrians. NPCs, shopkeepers, quest givers, enemies. Created with <code>CreatePed</code>.</li>
+          <li><strong>Vehicles</strong> -- cars, bikes, boats, helicopters. Created with <code>CreateVehicle</code>.</li>
+          <li><strong>Objects (props)</strong> -- everything else. Barrels, cones, barriers, furniture. Created with <code>CreateObject</code>.</li>
+        </ul>
+        <p>They all follow the same lifecycle: load the model, spawn the entity, use the handle, clean up when done.</p>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Model loading: the rule you must never skip</h2></header>
+        <p class="step-outcome">Outcome: you understand why you must load a model before spawning, and you can write the loading loop.</p>
+        <div class="step-body">
+          <p>Before you can spawn anything, the game needs to load the 3D model into memory. Think of it like downloading a file before you can open it. The pattern is always the same:</p>
+          <ol>
+            <li>Ask for the model with <code>RequestModel(hash)</code>.</li>
+            <li>Wait until the game says it is ready: loop on <code>HasModelLoaded(hash)</code>.</li>
+            <li>Spawn the entity.</li>
+            <li>Tell the game you no longer need the raw model data: <code>SetModelAsNoLongerNeeded(hash)</code>.</li>
+          </ol>
+          <figure class="code">
+            <header><span>Model loading pattern</span></header>
+            <pre><code class="language-lua">local function loadModel(model)
+    local hash = type(model) == 'number' and model or joaat(model)
+
+    RequestModel(hash)
+
+    while not HasModelLoaded(hash) do
+        Wait(50)  -- check every 50ms, don't freeze the game
+    end
+
+    return hash
+end</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Line by line</summary>
+            <ul>
+              <li><code>joaat(model)</code>: converts a string name like <code>"prop_barrel_02a"</code> into a hash number. The game uses hashes internally, not strings.</li>
+              <li><code>RequestModel(hash)</code>: tells the game "start loading this model." It does not wait. It just starts the download.</li>
+              <li><code>while not HasModelLoaded(hash) do Wait(50) end</code>: this is a polling loop. Every 50 milliseconds, it checks "loaded yet?" The <code>Wait(50)</code> is critical -- without it, this loop would freeze your entire game.</li>
+              <li><code>return hash</code>: we return the hash so the caller can use it for spawn and cleanup.</li>
+            </ul>
+          </details>
+
+          <div class="callout callout--danger">
+            <header>Never skip the wait loop</header>
+            <p>If you call <code>CreateObject</code> before the model is loaded, you get handle <code>0</code> -- meaning the spawn failed. This is the number one beginner mistake with entities.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Spawn functions: CreateObject, CreatePed, CreateVehicle</h2></header>
+        <p class="step-outcome">Outcome: you know the three main spawn functions and what arguments they take.</p>
+        <div class="step-body">
+          <p>Each entity type has its own spawn function. They all return a handle (a number).</p>
+          <figure class="code">
+            <header><span>Spawn an object (prop)</span></header>
+            <pre><code class="language-lua">-- CreateObject(modelHash, x, y, z, isNetwork, netMissionEntity, doorFlag)
+local barrel = CreateObject(hash, coords.x, coords.y, coords.z, true, true, false)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>Spawn a ped</span></header>
+            <pre><code class="language-lua">-- CreatePed(pedType, modelHash, x, y, z, heading, isNetwork, bScriptHostPed)
+local npc = CreatePed(4, hash, coords.x, coords.y, coords.z, 0.0, true, true)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span>Spawn a vehicle</span></header>
+            <pre><code class="language-lua">-- CreateVehicle(modelHash, x, y, z, heading, isNetwork, netMissionEntity)
+local car = CreateVehicle(hash, coords.x, coords.y, coords.z, 90.0, true, true)</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>What the boolean flags mean</summary>
+            <ul>
+              <li><code>isNetwork</code>: if <code>true</code>, other players can see this entity. Almost always <code>true</code>.</li>
+              <li><code>netMissionEntity</code>: if <code>true</code>, the entity won't be automatically cleaned up by the game's streaming system. Set to <code>true</code> for things you want to control yourself.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>The entity registry pattern</h2></header>
+        <p class="step-outcome">Outcome: you store every spawned entity in a table so you can clean them all up later.</p>
+        <div class="step-body">
+          <p>Every entity you spawn should go into a table. This table is your registry -- your single source of truth for "what did my script create?" Without it, you lose track of handles, and lost handles mean entity leaks.</p>
+          <figure class="code">
+            <header><span>client.lua -- entity registry</span></header>
+            <pre><code class="language-lua">local spawnedEntities = {}
+
+local function registerEntity(handle)
+    spawnedEntities[#spawnedEntities + 1] = handle
+end
+
+local function cleanupAll()
+    for i = 1, #spawnedEntities do
+        local ent = spawnedEntities[i]
+
+        if DoesEntityExist(ent) then
+            DeleteEntity(ent)
+        end
+    end
+
+    spawnedEntities = {}
+end</code></pre>
+          </figure>
+
+          <details class="explain" open>
+            <summary>Why this matters</summary>
+            <ul>
+              <li><code>spawnedEntities</code>: a simple list (table) of handles. Every time you spawn something, you add it here.</li>
+              <li><code>registerEntity</code>: a tiny helper that appends a handle to the list.</li>
+              <li><code>cleanupAll</code>: loops through every handle, checks if the entity still exists (<code>DoesEntityExist</code>), and deletes it. Then wipes the table.</li>
+              <li>The <code>DoesEntityExist</code> check prevents errors -- an entity might have been deleted by the game already.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+
+      <section id="handle-vs-netid">
+        <h2>Handle vs NetID -- the part nobody explains</h2>
+        <p>So far every handle you saw is a <strong>local number</strong>. The barrel handle <code>12547</code> on your machine is <code>89221</code> on your friend's machine and <code>4017</code> on the server. Same entity, three different handles. That is by design: each runtime keeps its own list of "things I currently know about."</p>
+        <p>To talk about the same entity across machines you need a number both sides agree on. That is the <strong>NetID</strong> -- the network id. It is stable across the server and every client that has the entity streamed in.</p>
+        <div class="callout callout--tip">
+          <header>One sentence</header>
+          <p><strong>Handle</strong> = local pointer (different per machine). <strong>NetID</strong> = network id (same on every machine that sees the entity).</p>
+        </div>
+        <figure class="code">
+          <header><span>Convert handle to netId, and back</span></header>
+          <pre><code class="language-lua">-- Server or client: handle (local) -> netId (shared)
+local netId = NetworkGetNetworkIdFromEntity(entity)
+
+-- Client: netId (shared) -> handle (local)
+local entity = NetworkGetEntityFromNetworkId(netId)
+
+-- Client typed shortcuts (clearer + auto-cast)
+local veh = NetToVeh(netId)
+local ped = NetToPed(netId)
+local obj = NetToObj(netId)</code></pre>
+        </figure>
+
+        <details class="explain" open>
+          <summary>When do you actually need this?</summary>
+          <ul>
+            <li><strong>Sending entity references over net events.</strong> Never send a handle. Send a netId. The handle on the receiving side is meaningless.</li>
+            <li><strong>Storing references in SQL.</strong> netId is the safe column.</li>
+            <li><strong>Server tells the client about a vehicle it just spawned.</strong> Server has handle X, client needs handle Y -- they bridge with the netId.</li>
+          </ul>
+        </details>
+
+        <div class="callout callout--danger">
+          <header>Sending a handle over a net event is a silent bug</header>
+          <p>The number arrives, the receiver calls <code>DoesEntityExist(handle)</code> on it, and may even get a true result -- because that number happens to be a valid handle for a <em>different</em> entity on that machine. You then move/delete the wrong thing. Always convert to netId before sending.</p>
+        </div>
+      </section>
+
+      <section id="server-spawn">
+        <h2>Server-authoritative spawn</h2>
+        <p>Up to now everything spawned on the client. That is fine for cosmetic props the player drops in front of themselves. It is the <strong>wrong</strong> answer for vehicles, NPCs, and anything that other players must see, share, or trust.</p>
+
+        <div class="callout callout--warn">
+          <header>Why client-only spawn breaks at scale</header>
+          <ul>
+            <li>Other players only see the entity if they are streamed in at spawn time.</li>
+            <li>If the spawning client disconnects, the entity may despawn or become orphaned.</li>
+            <li>Anyone can call the same client native and spawn whatever they want -- the server has no record of who created it.</li>
+          </ul>
+        </div>
+
+        <p>The server-authoritative pattern flips the order: <strong>client asks, server checks, server spawns, client takes ownership.</strong></p>
+
+        <figure class="code">
+          <header><span>server.lua -- spawn from the server, no model load needed</span></header>
+          <pre><code class="language-lua">RegisterNetEvent('qu:vehicle:request', function(modelName)
+    local src = source                       -- cache before any yield
+    local model = joaat(modelName)
+
+    -- TODO: validate job, money, cooldown here
+    local ped = GetPlayerPed(src)
+    local coords = GetEntityCoords(ped)
+
+    local veh = CreateVehicleServerSetter(model, 'automobile',
+        coords.x, coords.y, coords.z, 90.0)
+
+    if not veh or veh == 0 then return end
+
+    local netId = NetworkGetNetworkIdFromEntity(veh)
+    TriggerClientEvent('qu:vehicle:spawnResult', src, netId)
+end)</code></pre>
+        </figure>
+
+        <details class="explain" open>
+          <summary>What changed compared to client spawn</summary>
+          <ul>
+            <li><code>CreateVehicleServerSetter</code> is server-side. <code>CreatePedServerSetter</code> and <code>CreateObjectServerSetter</code> are the two siblings.</li>
+            <li><strong>No model loading.</strong> The server does not own a renderer, so <code>RequestModel</code>/<code>HasModelLoaded</code> are not needed (and would fail). Each client that streams the entity in loads the model on demand.</li>
+            <li><code>local src = source</code> is required. <code>source</code> is volatile -- it is reset by the next <code>Wait</code>, callback, or yield.</li>
+            <li>The server returns the <code>netId</code> via a targeted client event. The client never sends or receives a raw handle.</li>
+          </ul>
+        </details>
+
+        <figure class="code">
+          <header><span>client.lua -- receive netId, take ownership, register</span></header>
+          <pre><code class="language-lua">RegisterNetEvent('qu:vehicle:spawnResult', function(netId)
+    local veh = NetToVeh(netId)
+
+    if veh == 0 or not DoesEntityExist(veh) then
+        print(('[QUIET][spawn][missing] netId=%s'):format(netId))
+        return
+    end
+
+    SetEntityAsMissionEntity(veh, true, true)  -- protect from streaming cleanup
+    registerEntity(veh)
+    print(('[QUIET][spawn][owned] handle=%s netId=%s'):format(veh, netId))
+end)
+
+-- Trigger the server side once, e.g. from a UI button or a command:
+RegisterCommand('myveh', function()
+    TriggerServerEvent('qu:vehicle:request', 'sultan')
+end, false)</code></pre>
+        </figure>
+
+        <div class="callout callout--tip">
+          <header>The trust rule restated</header>
+          <p>If money, jobs, cooldowns, or fairness are involved, the server owns the spawn. Client requests are <strong>inputs</strong>, not commands. The server is the only place that decides yes or no.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Model loading + spawn + register</h3></header>
+        <p>Put the pieces together. Write a command that loads a barrel model, spawns it in front of the player, and registers the handle.</p>
+        <figure class="code">
+          <header><span>Full spawn example</span></header>
+          <pre><code class="language-lua">RegisterCommand('spawnbarrel', function()
+    local hash = loadModel('prop_barrel_02a')
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    local forward = GetEntityForwardVector(ped)
+
+    -- Spawn 2 meters in front of the player
+    local barrel = CreateObject(hash, coords.x + forward.x * 2.0, coords.y + forward.y * 2.0, coords.z, true, true, false)
+
+    SetModelAsNoLongerNeeded(hash)
+    registerEntity(barrel)
+
+    print(('Spawned barrel, handle: %d'):format(barrel))
+end, false)</code></pre>
+        </figure>
+        <div class="self-check">
+          <details>
+            <summary>Why do we call SetModelAsNoLongerNeeded?</summary>
+            <p>It tells the game "I'm done loading this model, you can free the raw data from memory." The entity itself stays. Think of it like unpacking a box: you keep the item but throw away the packaging. If you skip this, the model data stays in memory forever, which adds up.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Basic cleanup: DeleteEntity</h2></header>
+        <p class="step-outcome">Outcome: you can delete a single entity or all registered entities on demand.</p>
+        <div class="step-body">
+          <p>Deleting an entity is one line: <code>DeleteEntity(handle)</code>. But you need the handle. That is why the registry exists.</p>
+          <figure class="code">
+            <header><span>Delete command</span></header>
+            <pre><code class="language-lua">RegisterCommand('clearprops', function()
+    local count = #spawnedEntities
+    cleanupAll()
+    print(('Cleaned up %d entities'):format(count))
+end, false)</code></pre>
+          </figure>
+          <p>Type <code>/spawnbarrel</code> a few times, then <code>/clearprops</code>. Every barrel disappears. The table is empty. No leaks.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Spawn and delete cycle</h3></header>
+        <p>Test the full cycle in-game:</p>
+        <ol>
+          <li>Type <code>/spawnbarrel</code> three times. Three barrels appear in front of you.</li>
+          <li>Type <code>/clearprops</code>. All three barrels vanish.</li>
+          <li>Check the F8 console for the print messages confirming handles and cleanup count.</li>
+        </ol>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Entity handle is 0 after spawn</summary>
+          <p>This means the model was not loaded yet when you called the spawn function. You either skipped <code>RequestModel</code>, or you did not wait for <code>HasModelLoaded</code> to return true. Always use the loading loop from Step 1.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Model not loaded before spawn</summary>
+          <p>Same root cause as above. The most common version: you called <code>RequestModel</code> but forgot the <code>while not HasModelLoaded</code> loop. <code>RequestModel</code> only <em>starts</em> the load -- it does not wait for it to finish.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting SetModelAsNoLongerNeeded</summary>
+          <p>Your entity still works fine, but the raw model data stays in memory. Do this once or twice and you won't notice. Do it a hundred times in a busy server and you start eating RAM. Always call it right after spawning.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Entities pile up because you never delete them</summary>
+          <p>Every entity you spawn stays in the world until something deletes it. If your script spawns things but never calls <code>DeleteEntity</code>, the server fills up with ghost objects. The registry pattern from Step 3 is how you prevent this.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Sending a handle through a net event</summary>
+          <p>Handles are local numbers. <code>TriggerServerEvent('foo', myEntityHandle)</code> sends a number that means nothing on the server. Always convert with <code>NetworkGetNetworkIdFromEntity</code> first, send the netId, and let the receiver convert back with <code>NetToVeh</code>/<code>NetToPed</code>/<code>NetToObj</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Calling RequestModel on the server</summary>
+          <p>The server has no renderer. <code>RequestModel</code>/<code>HasModelLoaded</code> are client-only. If you spawn server-side, use <code>CreateVehicleServerSetter</code>/<code>CreatePedServerSetter</code>/<code>CreateObjectServerSetter</code> -- no model load needed.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Spawning vehicles from the client without server validation</summary>
+          <p>Anyone can call client natives. If your shop, job, or garage script spawns a car directly on the client, every player can hand themselves a free vehicle by editing one line of Lua. Spawn from the server, return the netId, and let the client take ownership.</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 5 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is an entity handle?</legend>
+            <label><input type="radio" name="q1" value="a"> The name of the 3D model file on disk.</label>
+            <label><input type="radio" name="q1" value="b"> A number the game gives you to refer to a spawned thing in the world.</label>
+            <label><input type="radio" name="q1" value="c"> A string like "prop_barrel_02a" that identifies the object type.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. Why do you need to load a model before spawning?</legend>
+            <label><input type="radio" name="q2" value="a"> The game needs the 3D data in memory before it can place the entity in the world.</label>
+            <label><input type="radio" name="q2" value="b"> It is a FiveM bug that will be fixed in a future update.</label>
+            <label><input type="radio" name="q2" value="c"> Loading is optional but makes the spawn faster.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. What happens if you never clean up spawned entities?</legend>
+            <label><input type="radio" name="q3" value="a"> The game automatically deletes them after 5 minutes.</label>
+            <label><input type="radio" name="q3" value="b"> Nothing bad, the server handles it.</label>
+            <label><input type="radio" name="q3" value="c"> They pile up in the world causing lag, high entity counts, and possible crashes.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. You spawn a barrel and want the server to know which entity it is. What do you send?</legend>
+            <label><input type="radio" name="q4" value="a"> The handle returned by <code>CreateObject</code>.</label>
+            <label><input type="radio" name="q4" value="b"> <code>NetworkGetNetworkIdFromEntity(handle)</code> -- the netId.</label>
+            <label><input type="radio" name="q4" value="c"> The model name as a string.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>5. Why spawn vehicles with <code>CreateVehicleServerSetter</code> on the server instead of <code>CreateVehicle</code> on the client?</legend>
+            <label><input type="radio" name="q5" value="a"> It is faster on the client.</label>
+            <label><input type="radio" name="q5" value="b"> Server-side spawn does not need network sync.</label>
+            <label><input type="radio" name="q5" value="c"> The server validates the request and owns the spawn -- the client cannot spawn whatever it wants.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet" id="lifecycle">
+        <h2>Entity lifecycle at a glance</h2>
+        <figure class="code"><header><span>lifecycle</span></header><pre><code>load model  -&gt;  CreateObject  -&gt;  register handle  -&gt;  use  -&gt;  DeleteEntity
+                                  (track it)            (timeout / player drop / resource stop)</code></pre></figure>
+        <dl>
+          <div><dt>Handle</dt><dd>Local id from <code>CreateObject</code>. Valid only while the entity exists on this client.</dd></div>
+          <div><dt>NetId</dt><dd><code>NetworkGetNetworkIdFromEntity(handle)</code>: the stable id the server and other clients use for the same entity.</dd></div>
+          <div><dt>Owner</dt><dd>The client simulating the entity. Can transfer. Server-spawned entities should stay server-owned.</dd></div>
+          <div><dt>Cleanup</dt><dd>Every spawn needs a delete path. No registry = leaked props. Delete on timeout, player drop, and <code>onResourceStop</code>.</dd></div>
+        </dl>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet</h2>
+        <dl>
+          <div><dt><code>RequestModel(hash)</code></dt><dd>Start loading a model into memory. Does not wait.</dd></div>
+          <div><dt><code>HasModelLoaded(hash)</code></dt><dd>Returns true when the model is ready to use.</dd></div>
+          <div><dt><code>SetModelAsNoLongerNeeded(hash)</code></dt><dd>Free the raw model data. The spawned entity stays.</dd></div>
+          <div><dt><code>CreateObject(hash, x, y, z, net, mission, door)</code></dt><dd>Spawn a prop. Returns a handle.</dd></div>
+          <div><dt><code>CreatePed(type, hash, x, y, z, heading, net, script)</code></dt><dd>Spawn a pedestrian. Returns a handle.</dd></div>
+          <div><dt><code>CreateVehicle(hash, x, y, z, heading, net, mission)</code></dt><dd>Spawn a vehicle. Returns a handle.</dd></div>
+          <div><dt><code>DeleteEntity(handle)</code></dt><dd>Remove an entity from the world.</dd></div>
+          <div><dt><code>DoesEntityExist(handle)</code></dt><dd>Check if an entity is still alive before acting on it.</dd></div>
+          <div><dt><code>joaat(string)</code></dt><dd>Convert a model name string to its hash number.</dd></div>
+          <div><dt>Entity registry</dt><dd>A table that stores every handle you spawn. Your cleanup safety net.</dd></div>
+          <div><dt><code>NetworkGetNetworkIdFromEntity(handle)</code></dt><dd>Convert a local handle into a netId you can safely send over events.</dd></div>
+          <div><dt><code>NetworkGetEntityFromNetworkId(netId)</code></dt><dd>Convert a netId back into the local handle on the receiving machine.</dd></div>
+          <div><dt><code>NetToVeh / NetToPed / NetToObj</code></dt><dd>Typed shortcuts for the conversion above. Client-side.</dd></div>
+          <div><dt><code>CreateVehicleServerSetter</code></dt><dd>Server-side vehicle spawn. No model loading. Returns a server handle.</dd></div>
+          <div><dt><code>CreatePedServerSetter</code></dt><dd>Server-side ped spawn. Same pattern as the vehicle setter.</dd></div>
+          <div><dt><code>CreateObjectServerSetter</code></dt><dd>Server-side prop spawn. Same pattern.</dd></div>
+          <div><dt><code>SetEntityAsMissionEntity(ent, true, true)</code></dt><dd>Tell the streaming system "this entity is mine, don't auto-clean it."</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>An entity is anything in the 3D world, and a handle is the number you use to control it</li>
+          <li>Three entity types: peds, vehicles, objects (props)</li>
+          <li>The model loading cycle: RequestModel, wait for HasModelLoaded, spawn, SetModelAsNoLongerNeeded</li>
+          <li>How to spawn props with CreateObject and register handles in a table</li>
+          <li>How to clean up with DeleteEntity and why the registry pattern prevents leaks</li>
+          <li>The difference between a local handle and a netId, and which one is safe to send across machines</li>
+          <li>Server-authoritative spawn with <code>CreateVehicleServerSetter</code> / <code>CreatePedServerSetter</code> / <code>CreateObjectServerSetter</code> -- the only correct pattern for shared, validated entities</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Create a <code>/spawnbarrel</code> command that spawns a <code>prop_barrel_02a</code> two meters in front of you. Store the handle in your registry. Then create a <code>/clearprops</code> command that deletes everything in the registry. Spawn 5 barrels, then clear them all with one command.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console</span></header>
+          <pre><code>-- /spawnbarrel: "Spawned barrel, handle: 12547"
+-- /spawnbarrel: "Spawned barrel, handle: 12548"
+-- (repeat 3 more times)
+-- /clearprops: "Cleaned up 5 entities"
+-- All barrels vanish from the world</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Combine the <code>loadModel</code> function from Step 1, the registry from Step 3, and the spawn code from Recap 1. The <code>/clearprops</code> command just calls <code>cleanupAll()</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x509D5878EB39E842" target="_blank" rel="noopener">CreateObject native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xD49F9B0955C367DE" target="_blank" rel="noopener">CreatePed native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xAF35D0D2583051B0" target="_blank" rel="noopener">CreateVehicle native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xAE3CBE5BF394C9C9" target="_blank" rel="noopener">DeleteEntity native reference</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Spawn a ped using <code>CreatePed</code> and make it play an animation with <code>TaskPlayAnim</code>. Same loading pattern, different spawn function.</li>
+          <li>Add a <code>/countprops</code> command that prints how many entities are in your registry without deleting them.</li>
+          <li>Try spawning with <code>isNetwork = false</code> and see if other players can see the object. Spoiler: they can't.</li>
+        </ul>
+      </section>
+
+      <section class="deep-dive-section" aria-labelledby="deep-dive-heading">
+        <h2 id="deep-dive-heading">Go deeper (production expansion)</h2>
+        <p>Once spawning feels safe, the expansion track shows server-authoritative storage for placed entities.</p>
+        <a class="deep-dive-card" href="../expansion/prop-ped-systems.html">
+          <div>
+            <span class="deep-dive-card__kicker">Expansion · Module 08B</span>
+            <h3 class="deep-dive-card__title">Prop and ped systems</h3>
+            <p class="deep-dive-card__lede">Store placed object state on the server. Client labels stop being a source of truth.</p>
+          </div>
+          <span class="deep-dive-card__arrow" aria-hidden="true">›</span>
+        </a>
+      </section>

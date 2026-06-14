@@ -1,0 +1,342 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <a href="../index.html#server-development">Track 0</a> › <span>Step 05</span></div>
+        <h1>The txAdmin tour</h1>
+        <p class="lede">txAdmin is the cockpit for your server. Six panels do 95% of the work: Live Console, Players, Resources, Recipes, Settings, and the in-game F1 menu. We'll click through them all so nothing feels mysterious.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll do</dt><dd>Open every txAdmin panel, identify what each one is for, and use the Live Console to send a real command.</dd></div>
+          <div><dt>Time</dt><dd>~15 minutes</dd></div>
+          <div><dt>You need</dt><dd>Step 04 done. txAdmin running on <code>http://localhost:40120</code> with a green badge.</dd></div>
+          <div><dt>You'll learn</dt><dd>Live Console &rarr; Players panel &rarr; Resources tab &rarr; Recipes &rarr; Settings (CFG Editor, Game Mode, Privacy) &rarr; in-game F1 menu</dd></div>
+        </div>
+      </section>
+
+      
+
+      <section class="prereq" data-lesson="00e">
+        <h2>Before you start</h2>
+        <p>Each box below is a thing the next steps assume. Don't skip.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="txadmin-open"> txAdmin is open in my browser at <code>http://localhost:40120</code></label></li>
+          <li><label><input type="checkbox" data-id="server-green"> Top-left badge is green ("Server Online")</label></li>
+          <li><label><input type="checkbox" data-id="logged-in"> I'm logged in with the admin password I set in Step 03</label></li>
+        </ul>
+      </section>
+
+      <section id="mental-model">
+        <h2>What txAdmin actually is, in one minute</h2>
+        <p>txAdmin is a <strong>web app</strong> that wraps your FXServer process. The server runs as a child of txAdmin. txAdmin watches it, restarts it on crash, exposes a dashboard so you don't have to SSH into a console window.</p>
+
+        <p>Think of it as the <strong>nurse station outside the kitchen</strong>. The kitchen (FXServer) does the cooking. txAdmin tells you who's at the table, what's burning, when to send out plates, and lets you yell orders without walking in.</p>
+
+        <div class="callout callout--fivem">
+          <header>FiveM note: the panels you'll actually use</header>
+          <p>txAdmin has more than ten side-bar panels. <strong>Six</strong> matter day-to-day: <em>Live Console</em>, <em>Players</em>, <em>Resources</em>, <em>Recipes</em>, <em>Settings</em>, and the <em>in-game menu</em> (F1). Ignore the rest until you need them.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Live Console: the heartbeat</h2></header>
+        <p class="step-outcome">Outcome: you can send a command to your running server and see its output.</p>
+        <div class="step-body">
+          <ol>
+            <li>Left sidebar &rarr; <strong>Live Console</strong>.</li>
+            <li>You'll see a black terminal with scrolling text. Every line FXServer prints, you read here.</li>
+            <li>At the bottom there's an input box. Type <code>status</code> and hit <kbd>Enter</kbd>.</li>
+            <li>The console prints connected players, slot count, uptime. That's your server replying live.</li>
+          </ol>
+
+          <div class="callout callout--tip">
+            <header>Color codes in the console</header>
+            <p>White = info. Yellow = warning. Red = error. If you see red, copy the line, search the CFX forum or Discord. 90% of red lines are typos in <code>server.cfg</code> or a bad <code>fxmanifest.lua</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Players panel: who's online</h2></header>
+        <p class="step-outcome">Outcome: you can find any connected player, see their identifiers, and kick or ban them in two clicks.</p>
+        <div class="step-body">
+          <ol>
+            <li>Left sidebar &rarr; <strong>Players</strong>.</li>
+            <li>Top tab: <strong>Online</strong>. Lists everyone connected right now (including you, after Step 06).</li>
+            <li>Click any name &rarr; opens the <strong>Player Modal</strong>.</li>
+          </ol>
+
+          <p>The Player Modal is where the day-to-day moderation happens:</p>
+          <table>
+            <thead><tr><th>Tab</th><th>Use it for</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Info</strong></td><td>Their identifiers (<code>fivem:</code>, <code>steam:</code>, <code>discord:</code>, <code>license:</code>). Copy these into <code>add_principal</code> when promoting to admin.</td></tr>
+              <tr><td><strong>History</strong></td><td>Past warnings, kicks, bans. Useful before a moderation decision.</td></tr>
+              <tr><td><strong>IDs</strong></td><td>Hardware IDs. For ban evasion checks.</td></tr>
+              <tr><td><strong>Actions</strong></td><td>Warn / Kick / Ban / DM, with a reason field. The reason is shown to the player.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout--gotcha">
+            <header>Where to find your own identifier</header>
+            <p>Connect to your own server (Step 06 covers this). Then in the Players panel, click your own name. The <strong>Info</strong> tab shows <code>fivem:1234567</code>. That's the value you paste into <code>add_principal identifier.fivem:1234567 group.admin</code> in <code>server.cfg</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Resources tab: start, stop, restart</h2></header>
+        <p class="step-outcome">Outcome: you can flip individual resources without restarting the whole server.</p>
+        <div class="step-body">
+          <ol>
+            <li>Left sidebar &rarr; <strong>Resources</strong>.</li>
+            <li>Each row = one resource folder. Green dot = running. Grey = stopped. Red = crashed.</li>
+            <li>Hover a row. You get four buttons:</li>
+          </ol>
+
+          <table>
+            <thead><tr><th>Button</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Start</strong></td><td>Boot a stopped resource.</td></tr>
+              <tr><td><strong>Stop</strong></td><td>Shut it down. Players keep playing; just this resource goes quiet.</td></tr>
+              <tr><td><strong>Restart</strong></td><td>Stop + start. Use after you edit a Lua file.</td></tr>
+              <tr><td><strong>Refresh List</strong></td><td>Top of the page. Re-scans <code>resources/</code> for new folders. Run after you drop a new resource in.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout--tip">
+            <header>The dev loop</header>
+            <p>Edit a script &rarr; save &rarr; in txAdmin click <strong>Restart</strong> on that one resource &rarr; alt-tab back to FiveM. No server restart. Your changes are live in 1 second.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Recipes: the prefab catalog</h2></header>
+        <p class="step-outcome">Outcome: you understand what a recipe is and when to use one (almost never, after Step 03).</p>
+        <div class="step-body">
+          <p>A <strong>recipe</strong> is a YAML file that tells txAdmin: "here is a list of resources to download from GitHub, drop in <code>resources/</code>, and ensure in <code>server.cfg</code>". One click = a working server preset.</p>
+
+          <ol>
+            <li>Left sidebar &rarr; <strong>Recipes</strong>.</li>
+            <li>You'll see prefabs: CFX Default FiveM, ESX/QBCore RP starters, drift servers, etc.</li>
+            <li>Each one runs the same flow you saw in Step 03: download &rarr; extract &rarr; configure &rarr; <code>ensure</code>.</li>
+          </ol>
+
+          <div class="callout callout--warn">
+            <header>Recipes are one-time scaffolds</header>
+            <p>Use a recipe to <strong>create a new server</strong>, not to update an existing one. Running a second recipe on a working server overwrites your <code>server.cfg</code>. You will lose customizations.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>You can drive the dashboard</h3></header>
+        <p>From the Live Console, run <code>status</code>. From the Resources tab, restart any single resource (e.g. <code>chat</code>). From the Players panel, click your server's "system" entry to see what an empty player list looks like. If all three worked, you're driving txAdmin.</p>
+        <div class="self-check">
+          <details>
+            <summary>The Live Console input is greyed out</summary>
+            <p>Your txAdmin user account doesn't have permission to send commands. Settings &rarr; Admin Manager &rarr; promote your account to <code>Master Admin</code>. Or log in as the master admin you created in Step 03.</p>
+          </details>
+          <details>
+            <summary>Players panel shows nobody, but I'm in the server</summary>
+            <p>Refresh the page. Players panel updates on a 5-second poll; sometimes the first load misses your join. If still empty, the in-game F8 console will show whether you actually joined.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Settings &rarr; CFG Editor</h2></header>
+        <p class="step-outcome">Outcome: you can edit <code>server.cfg</code> from the browser, with syntax highlighting and a save button.</p>
+        <div class="step-body">
+          <ol>
+            <li>Left sidebar &rarr; <strong>Settings</strong> &rarr; tab <strong>CFG Editor</strong>.</li>
+            <li>The full <code>server.cfg</code> opens in a Monaco editor (the same engine VS Code uses). Edit, then click <strong>Save</strong>.</li>
+            <li>txAdmin warns you if you changed something that requires a full <strong>Server Restart</strong> (top-right button). For most edits, click it.</li>
+          </ol>
+
+          <div class="callout callout--tip">
+            <header>Use this when you can't reach the file system</header>
+            <p>If your server runs on a remote VPS or a friend's machine, the CFG Editor is the cleanest way to edit. No SSH, no FileZilla. Just a password-protected web tab.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Settings &rarr; Game Mode &amp; Privacy</h2></header>
+        <p class="step-outcome">Outcome: you understand the difference between a public, private, and "hidden from list" server.</p>
+        <div class="step-body">
+          <p>Two settings to know:</p>
+
+          <table>
+            <thead><tr><th>Setting</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Server Privacy</strong> &rarr; Public</td><td>Listed in the FiveM in-game server browser. Anyone can find and join.</td></tr>
+              <tr><td><strong>Server Privacy</strong> &rarr; Hidden</td><td>Not listed in the browser. Players join via <strong>Direct Connect</strong> only. Use during dev.</td></tr>
+              <tr><td><strong>Game Mode</strong></td><td>A short label (<code>Roleplay</code>, <code>Drift</code>, <code>Sandbox</code>) shown next to your server in the browser. Helps the right players find you.</td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout--gotcha">
+            <header>Don't list a dev server</header>
+            <p>While you're learning, set Privacy = <strong>Hidden</strong>. Once you start advertising in your community, flip to <strong>Public</strong>. Otherwise random players join, get a buggy alpha experience, and never come back.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-7">
+        <header><span class="step-num">Step 7</span><h2>The in-game menu (F1) &amp; Live Editor</h2></header>
+        <p class="step-outcome">Outcome: you can teleport, spawn vehicles, and change the weather without leaving the game.</p>
+        <div class="step-body">
+          <ol>
+            <li>Connect to your own server (we'll do this in Step 06). For now: imagine you've joined.</li>
+            <li>In-game, press <kbd>F1</kbd>. The <strong>txAdmin Menu</strong> opens.</li>
+            <li>Tools available:</li>
+          </ol>
+
+          <ul>
+            <li><strong>Teleport</strong>, click any waypoint or coords. Instant.</li>
+            <li><strong>Vehicle spawner</strong>, type model name, hit enter, drive away.</li>
+            <li><strong>Weather / Time</strong>, force "thunder", "clear", noon, midnight.</li>
+            <li><strong>Player actions</strong>, spectate, summon, heal, freeze (admin only).</li>
+            <li><strong>Live Editor</strong>, place objects, save the layout to a Lua file. The fastest way to build a static map.</li>
+          </ul>
+
+          <div class="callout callout--tip">
+            <header>Why this exists</header>
+            <p>The F1 menu is for <strong>development</strong>, not players. It's locked to admins by default (<code>group.admin</code> ACE). Players never see it. Use it to test scripts: spawn a car, trigger an event, watch the chat for output.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>You toured the cockpit</h3></header>
+        <p>You opened Live Console, Players, Resources, Recipes, Settings (CFG Editor, Privacy), and you know what F1 will do once you're connected. Without looking back at this page, can you say (in your head): "where do I go to <em>kick a player / restart one resource / hide my server from the list / edit server.cfg from the browser</em>"? If yes, you passed.</p>
+        <div class="self-check">
+          <details>
+            <summary>I clicked F1 and nothing happened</summary>
+            <p>Two reasons: (1) you're not in the server yet, (2) you don't have <code>group.admin</code> rights. Check the <code>add_principal</code> line in <code>server.cfg</code> matches the identifier the Players panel shows for you.</p>
+          </details>
+          <details>
+            <summary>txAdmin is unreachable / browser shows "connection refused"</summary>
+            <p>The FXServer process crashed or the txAdmin port (default 40120) is firewalled. Check the OS console window where you launched FXServer.exe; if it's gone, double-click <code>FXServer.exe</code> again. If the port is busy, change <code>tx.adminPort</code> in <code>server-data/.txAdmin/profiles/default/config.json</code>.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes &amp; what they look like</h2>
+
+        <details class="explain">
+          <summary>I edited a Lua file but my changes don't show in-game</summary>
+          <div class="callout callout--danger">
+            <p>You forgot to <strong>Restart</strong> the resource in the Resources tab (or use <code>restart my-resource</code> in the Live Console). FXServer caches the last loaded version. No restart = no reload.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>F1 menu doesn't open in-game</summary>
+          <div class="callout callout--danger">
+            <p>You don't have admin rights yet. Run Step 04 again: <code>add_ace group.admin command allow</code> + <code>add_principal identifier.fivem:YOUR-ID group.admin</code>. Restart the server. Re-join.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>txAdmin keeps logging me out</summary>
+          <div class="callout callout--danger">
+            <p>Your session expires after 24h by default. Settings &rarr; <strong>Account</strong> &rarr; bump the session length. Don't share your password, create a second admin account for friends instead.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Recipes panel won't run, errors out mid-deploy</summary>
+          <div class="callout callout--danger">
+            <p>Almost always a network issue: GitHub rate-limited you, or the recipe references a repo that moved. Re-run after a few minutes. If it persists, switch to manual install (download the resource zip yourself, drop into <code>resources/</code>, add an <code>ensure</code> line).</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 4 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Which panel do you use to see live server logs and send commands?</legend>
+            <label><input type="radio" name="q1" value="a"> Players</label>
+            <label><input type="radio" name="q1" value="b"> Live Console</label>
+            <label><input type="radio" name="q1" value="c"> Recipes</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Where do you find a player's <code>fivem:</code> identifier to grant them admin?</legend>
+            <label><input type="radio" name="q2" value="a"> Settings &rarr; Admin Manager</label>
+            <label><input type="radio" name="q2" value="b"> Recipes</label>
+            <label><input type="radio" name="q2" value="c"> Players panel &rarr; click their name &rarr; <strong>Info</strong> tab</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. After editing a Lua file, what's the fastest way to apply changes?</legend>
+            <label><input type="radio" name="q3" value="a"> Resources tab &rarr; <strong>Restart</strong> on that resource only</label>
+            <label><input type="radio" name="q3" value="b"> Restart the entire server</label>
+            <label><input type="radio" name="q3" value="c"> Re-run the recipe</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>4. You're developing alone and don't want random players to find your server. Which Privacy?</legend>
+            <label><input type="radio" name="q4" value="a"> Public</label>
+            <label><input type="radio" name="q4" value="b"> Hidden</label>
+            <label><input type="radio" name="q4" value="c"> Private (no such option)</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: panel reference</h2>
+        <dl>
+          <div><dt>Live Console</dt><dd>Live server output + command input. Type <code>status</code>, <code>refresh</code>, <code>restart X</code>.</dd></div>
+          <div><dt>Players</dt><dd>Online list, click a name for identifiers + Warn/Kick/Ban actions.</dd></div>
+          <div><dt>Resources</dt><dd>Per-resource Start / Stop / Restart. Use <strong>Refresh List</strong> after dropping new folders.</dd></div>
+          <div><dt>Recipes</dt><dd>One-shot prefab installer. Don't run twice on the same server.</dd></div>
+          <div><dt>Settings &rarr; CFG Editor</dt><dd>Edit <code>server.cfg</code> in-browser, with syntax highlighting.</dd></div>
+          <div><dt>Settings &rarr; Game Mode</dt><dd>Label shown in server browser (<code>Roleplay</code>, <code>Drift</code>, etc.).</dd></div>
+          <div><dt>Settings &rarr; Privacy</dt><dd>Public = listed. Hidden = direct-connect only. Set Hidden during dev.</dd></div>
+          <div><dt>In-game F1</dt><dd>Teleport, spawn vehicles, weather/time, Live Editor. Admin-only.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>txAdmin is a web wrapper around FXServer at <code>http://localhost:40120</code></li>
+          <li>Six panels do the work: Live Console, Players, Resources, Recipes, Settings, F1 in-game</li>
+          <li>Use the Live Console to send commands; <code>status</code> is your "is it alive" check</li>
+          <li>The Players panel exposes identifiers you copy into <code>add_principal</code></li>
+          <li>Restart a single resource from the Resources tab, no full server restart needed</li>
+          <li>Set Privacy = <strong>Hidden</strong> while you're learning; flip to Public when you're ready</li>
+          <li>The in-game F1 menu is a developer tool, not a player feature</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Without joining the game yet, do this in txAdmin:</p>
+        <ol>
+          <li>Open the Live Console. Type <code>status</code> &rarr; <kbd>Enter</kbd>. Read the output.</li>
+          <li>Open the Resources tab. Click <strong>Restart</strong> on <code>chat</code>. Watch the Live Console echo the restart.</li>
+          <li>Open Settings &rarr; <strong>Privacy</strong>. Set it to <strong>Hidden</strong>. Save.</li>
+        </ol>
+        <p class="expected">Expected outcome</p>
+        <p>Live Console shows <code>status</code> reply with player count + uptime. Console also shows <code>Started resource chat</code> after the Restart. Privacy panel saves with a green toast.</p>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" target="_blank" rel="noopener">CFX docs · Setting up a server using txAdmin</a></li>
+          <li><a href="https://github.com/tabarra/txAdmin" target="_blank" rel="noopener">txAdmin · GitHub repo (changelog &amp; new features)</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>In Settings &rarr; <strong>Admin Manager</strong>, create a second admin account for a friend. Test that they can kick but you can still revoke their rights from yours.</li>
+          <li>Open the Live Console. Run <code>refresh</code>, then <code>start scoreboard</code>. Watch what each line prints. You're now using the same commands you put in <code>server.cfg</code>, but live.</li>
+          <li>In Settings &rarr; <strong>Discord Integration</strong>, paste a webhook URL. Restarts and admin actions will post to your Discord channel automatically.</li>
+        </ul>
+      </section>

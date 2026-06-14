@@ -1,0 +1,110 @@
+<LessonHero
+  crumbs="Module 03A"
+  title="Natives reading checklist"
+  meta={[
+    { label: "Module", value: "Module 03A" },
+    { label: "Time", value: "~25 min" },
+    { label: "Side", value: "client" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will read native docs without guessing the side, handle, or expected return.
+</LessonHero>
+
+## Outcome
+
+You will read native docs without guessing the side, handle, or expected return.
+
+<Callout variant="tip" title="Why it matters">
+  Wrong-side native calls waste time. Bad handle checks create silent failures.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Native | A FiveM or GTA function. Example: DoesEntityExist(entity) checks a handle. |
+| Handle | A number that points at an entity. Example: vehicle is a handle. |
+| Ownership | Who can safely control a networked entity. Example: server logic must not assume ownership. |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_native_check" },
+    { cmd: "Side", desc: "client" },
+    { cmd: "File path", desc: "resources/qu_native_check/client.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_native_check" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'natives'
+
+RegisterCommand('quiet_native_check', function()
+    local ped = PlayerPedId()
+    local vehicle = GetVehiclePedIsIn(ped, false)
+
+    if vehicle == 0 or not DoesEntityExist(vehicle) then
+        print(('[QUIET][%s][missing] no vehicle'):format(MODULE))
+        return
+    end
+
+    print(('[QUIET][%s][ok] vehicle=%s'):format(MODULE, vehicle))
+end, false)
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][natives][ok] appears when you sit in a vehicle.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Run it outside a vehicle.
+- Run it inside a vehicle.
+- Change the native and read its return type first.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_native_check' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_native_check' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

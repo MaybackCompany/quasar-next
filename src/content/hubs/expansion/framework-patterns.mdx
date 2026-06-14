@@ -1,0 +1,111 @@
+<LessonHero
+  crumbs="Module 05A"
+  title="QBCore and ESX practical patterns"
+  meta={[
+    { label: "Module", value: "Module 05A" },
+    { label: "Time", value: "~35 min" },
+    { label: "Side", value: "server" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will read player data on the server and avoid client authority.
+</LessonHero>
+
+## Outcome
+
+You will read player data on the server and avoid client authority.
+
+<Callout variant="tip" title="Why it matters">
+  Money and jobs must be trusted server data. Client values are only requests.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Player object | Framework data plus helper functions. Example: Player.PlayerData.job.name. |
+| Server write | A change made by the server after validation. Example: AddMoney runs server-side. |
+| Client request | A message asking the server to act. Example: a client asks to claim a reward. |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_framework_patterns" },
+    { cmd: "Side", desc: "server" },
+    { cmd: "File path", desc: "resources/qu_framework_patterns/server.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_framework_patterns" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'framework'
+local QBCore = exports['qb-core']:GetCoreObject()
+
+RegisterNetEvent('quasar:framework:jobCheck', function()
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then
+        print(('[QUIET][%s][missing] source=%s'):format(MODULE, src))
+        return
+    end
+
+    local job = Player.PlayerData.job.name
+    print(('[QUIET][%s][job] source=%s job=%s'):format(MODULE, src, job))
+end)
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][framework][job] prints the server-owned job name.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Read cash without changing it.
+- Add an ESX comparison note.
+- Reject the event when Player is missing.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_framework_patterns' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_framework_patterns' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

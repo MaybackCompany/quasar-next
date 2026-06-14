@@ -1,0 +1,108 @@
+<LessonHero
+  crumbs="Module 07B"
+  title="SQL failures and slow query logs"
+  meta={[
+    { label: "Module", value: "Module 07B" },
+    { label: "Time", value: "~30 min" },
+    { label: "Side", value: "server" },
+    { label: "Template link", value: "Use the starter templates" },
+  ]}
+>
+  You will catch SQL failures and log query context.
+</LessonHero>
+
+## Outcome
+
+You will catch SQL failures and log query context.
+
+<Callout variant="tip" title="Why it matters">
+  Database errors need action names. Slow queries need timing.
+</Callout>
+
+## Vocabulary
+
+| Term | Description |
+| --- | --- |
+| Connection failure | The database is unreachable. Example: oxmysql cannot connect. |
+| Transaction | A group of writes that should succeed together. Example: transfer debit and credit. |
+| Slow query | A query that takes too long. Example: SELECT took 320ms. |
+
+## Setup
+
+<Cheatsheet title="Setup"
+  rows={[
+    { cmd: "Resource", desc: "qu_sql_failures" },
+    { cmd: "Side", desc: "server" },
+    { cmd: "File path", desc: "resources/qu_sql_failures/server.lua" },
+    { cmd: "Ensure order", desc: "ensure qu_sql_failures" },
+  ]}
+/>
+
+## Minimal example
+
+```lua
+local MODULE = 'sql_failures'
+
+local started = GetGameTimer()
+MySQL.query('SELECT 1 AS ok', {}, function(result)
+    local took = GetGameTimer() - started
+    if not result then
+        print(('[QUIET][%s][error] SELECT 1 failed'):format(MODULE))
+        return
+    end
+    print(('[QUIET][%s][query] took_ms=%s'):format(MODULE, took))
+end)
+```
+
+<ExpectedOutput>
+  Expected output:
+
+  [QUIET][sql_failures][query] prints query timing.
+</ExpectedOutput>
+
+## Production checklist
+
+1. Confirm the code is on the correct side.
+2. Validate every payload before acting.
+3. Log with `[QUIET][module][action]`.
+4. Add one cleanup or rollback path.
+5. Copy the expected output into your test note.
+
+## Things to try
+
+- Log the action name.
+- Add a slow query threshold.
+- Write the exact connection error.
+
+## Common failure modes
+
+attempt to call a nil value
+
+means a native, export, or helper is unavailable on this side.
+
+No such export GetCoreObject in resource qb-core
+
+means the dependency is missing or ensured late.
+
+attempt to index a nil value
+
+means a table, player object, or entity handle is missing.
+
+SQL error: Table 'qu_sql_failures' doesn't exist
+
+means the migration did not run.
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value", fix: "a native, export, or helper is unavailable on this side." },
+    { symptom: "No such export GetCoreObject in resource qb-core", fix: "the dependency is missing or ensured late." },
+    { symptom: "attempt to index a nil value", fix: "a table, player object, or entity handle is missing." },
+    { symptom: "SQL error: Table 'qu_sql_failures' doesn't exist", fix: "the migration did not run." },
+  ]}
+/>
+
+## References
+
+- [FiveM native reference](https://docs.fivem.net/natives/)
+- [FiveM resource manifest reference](https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/)
+- [Quasar templates hub](/templates)

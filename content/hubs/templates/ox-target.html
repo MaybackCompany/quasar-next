@@ -1,0 +1,103 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>ox_target</span>
+        </div>
+        <h1>ox_target</h1>
+        <p class="lede">Add a global vehicle target on start, remove it on stop. Target selection is the prompt only. Server still validates the action.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Register and clean up an ox_target option.</dd></div>
+          <div><dt>Dependencies</dt><dd>ox_target. ox_lib optional.</dd></div>
+          <div><dt>Files</dt><dd>1 client-side script.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][ox_target][select] entity=&hellip;</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/ox-target-interactions">Lesson 18: ox_target and ox_lib</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Selection is not permission</header>
+        <p>The client can spoof a select. Always send the action through a net event and validate job, distance, and ownership on the server before doing real work.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>client.lua</strong>, <code>addGlobalVehicle</code> on boot, <code>removeGlobalVehicle</code> on stop.</li>
+        </ul>
+      </section>
+
+      <section id="client-lua">
+        <h2>client.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>-- PURPOSE: Add and remove ox_target interaction.
+-- DEPENDENCIES: ox_target, ox_lib optional.
+-- WARNING: Target selection is not permission validation.
+-- Expand this: validate the action on the server.
+-- SECURITY:
+--   - Target selection is presentation only, permission lives on the server.
+--   - Always send the action through a net event for server validation.
+--   - Remove options on resource stop to avoid stale interactions.
+
+local MODULE = 'ox_target'
+local targetName = 'quasar_demo_target'
+
+exports.ox_target:addGlobalVehicle({
+    name = targetName,
+    label = 'Check vehicle',
+    icon = 'fa-solid fa-car',
+    onSelect = function(data)
+        print(('[QUIET][%s][select] entity=%s'):format(MODULE, data.entity))
+        TriggerServerEvent('quasar:target:validate', { netId = VehToNet(data.entity) })
+    end
+})
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        exports.ox_target:removeGlobalVehicle(targetName)
+        print(('[QUIET][%s][cleanup] removed target'):format(MODULE))
+    end
+end)</code></pre>
+        </figure>
+        <p><a href="/templates/ox-target/client.lua">View raw client.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_target/</code>.</li>
+          <li>Copy <code>client.lua</code> and add a manifest with <code>client_script 'client.lua'</code> and <code>dependency 'ox_target'</code>.</li>
+          <li>Add <code>ensure qu_target</code> after <code>ensure ox_target</code> in <code>server.cfg</code>.</li>
+          <li>Aim at any vehicle in game and watch <code>[QUIET][ox_target][select]</code>.</li>
+          <li>Add a server handler on <code>quasar:target:validate</code> from <a href="/templates/event-gateway">event gateway</a>.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/ox-target-interactions">Lesson 18</a> for ox_target and ox_lib menus.</li>
+          <li>Pair with <a href="/templates/event-gateway">event gateway</a> so the select triggers a validated server action.</li>
+          <li>Swap <code>addGlobalVehicle</code> for <code>addBoxZone</code> when the target is a static spot.</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/sql-save-load">&larr; SQL save and load</a>
+        <a class="next" href="/templates/debug-capture">Next: debug capture &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#client-lua">client.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

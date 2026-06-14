@@ -1,0 +1,139 @@
+<LessonHero
+  crumbs="Module 09 · Lesson 28"
+  title="Debugging like a developer"
+  meta={[
+    { label: "You'll ship", value: "Structured logging in your scripts, a pcall wrapper for risky code, and the ability to read any FiveM error message." },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You'll learn", value: "Logging with tags, F8 vs server console, pcall for error recovery, stack traces, data-collection checklist, performance basics, and common error messages decoded." },
+    { label: "Prereqs", value: "Functions (Lesson 06), client vs server (Lesson 10)." },
+  ]}
+>
+  Something will break. That is not a maybe, it is a certainty. The difference between a beginner and a developer is not that the developer writes perfect code. The difference is that the developer knows how to *read the error*, find the line, and fix it calmly. This lesson teaches you that skill.
+</LessonHero>
+
+<LessonVideo loomId="4f755659c7c9485dbced6bfec40ffe0f" title="Understand how FiveM errors work" caption="Understand how FiveM errors actually work." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds tagged logging, pcall, and traceback output as a working FiveM resource named `qu_debugging_like_a_developer`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_debugging_like_a_developer
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_debugging_like_a_developer/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local function log(message)
+    print('[qu_debugging_like_a_developer] ' .. message)
+end
+
+local function risky()
+    error('planned failure')
+end
+
+RegisterCommand('debugfail', function()
+    local ok, result = pcall(risky)
+    log('ok=' .. tostring(ok) .. ' result=' .. tostring(result))
+    log(debug.traceback('traceback'))
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_debugging_like_a_developer
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_debugging_like_a_developer
+    ```
+
+    Run this test:
+
+    ```text
+    /debugfail
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_debugging_like_a_developer] ok=false result=
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_debugging_like_a_developer does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_debugging_like_a_developer", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_debugging_like_a_developer, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_debugging_like_a_developer folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for tagged logging, pcall, and traceback output.",
+    "Add ensure qu_debugging_like_a_developer to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_debugging_like_a_developer`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

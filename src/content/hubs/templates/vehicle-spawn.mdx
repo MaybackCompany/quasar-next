@@ -1,0 +1,98 @@
+<LessonHero
+  crumbs="Vehicle spawn"
+  title="Vehicle spawn"
+  meta={[
+    { label: "Purpose", value: "Authorized vehicle spawn with cleanup." },
+    { label: "Dependencies", value: "FiveM client runtime. Optional framework for permission checks." },
+    { label: "Files", value: "fxmanifest.lua, client.lua." },
+    { label: "First log", value: "[QUIET][vehicle_spawn][owned] vehicle=…" },
+    { label: "Lesson", value: "Lesson 26: vehicles: spawn, modify, store" },
+  ]}
+>
+  Client asks. Server checks job, money, and cooldown. Server spawns and networks the vehicle. Client takes ownership and cleans up on resource stop.
+</LessonHero>
+
+<Callout variant="warn" title="Server owns the decision">
+  Never spawn from client input. The server checks job, money, or cooldown, then sends the netId back. The client only receives the result and takes ownership.
+</Callout>
+
+## Files
+
+- **fxmanifest.lua**, client-only manifest. Add a `server_script` when you wire the gate.
+- **client.lua**, receives `spawnResult`, takes ownership, cleans up.
+
+## fxmanifest.lua
+
+```
+-- PURPOSE: Manifest for the vehicle-spawn template.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Server must validate who may request the vehicle.
+-- Expand this: add server.lua that gates spawn requests by job, money, or cooldown.
+-- SECURITY:
+--   - Never spawn from client input, the server must own the decision.
+--   - Apply a per-source cooldown server-side before granting a spawn.
+--   - Despawn owned entities on resource stop and on player disconnect.
+
+fx_version 'cerulean'
+game 'gta5'
+
+author 'Quasar Academy'
+description 'Template: vehicle spawn with ownership and cleanup'
+version '1.0.0'
+
+client_script 'client.lua'
+```
+
+[View raw fxmanifest.lua](/templates/vehicle-spawn/fxmanifest.lua)
+
+## client.lua
+
+```
+-- PURPOSE: Vehicle spawn with ownership and cleanup.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Server must validate who may request the vehicle.
+-- Expand this: save plate, mods, fuel, and damage.
+-- SECURITY:
+--   - Never spawn directly from client input, ask the server first.
+--   - Server must check job, money, or cooldown before granting a spawn.
+--   - Despawn owned entities on resource stop and on player disconnect.
+
+local MODULE = 'vehicle_spawn'
+local spawnedVehicle = nil
+
+RegisterNetEvent('quasar:vehicle:spawnResult', function(netId)
+    local vehicle = NetToVeh(netId)
+    if vehicle == 0 or not DoesEntityExist(vehicle) then
+        print(('[QUIET][%s][missing] netId=%s'):format(MODULE, netId))
+        return
+    end
+
+    spawnedVehicle = vehicle
+    SetEntityAsMissionEntity(vehicle, true, true)
+    print(('[QUIET][%s][owned] vehicle=%s'):format(MODULE, vehicle))
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+        DeleteEntity(spawnedVehicle)
+        print(('[QUIET][%s][cleanup] deleted vehicle'):format(MODULE))
+    end
+end)
+```
+
+[View raw client.lua](/templates/vehicle-spawn/client.lua)
+
+## Install
+
+1. Create `resources/[local]/qu_vehicle/`.
+2. Copy both files in.
+3. Add a `server.lua` that listens on `quasar:vehicle:request`, validates job and cooldown, then `CreateVehicleServerSetter` and `TriggerClientEvent('quasar:vehicle:spawnResult', src, NetworkGetNetworkIdFromEntity(veh))`.
+4. Add `ensure qu_vehicle` after the framework in `server.cfg`.
+5. Trigger from a client and match `[QUIET][vehicle_spawn][owned]`.
+
+## Next steps
+
+- Read [Lesson 26](/lessons/vehicles-spawn-modify-store) for the full vehicle flow.
+- Pair with [the entity registry](/templates/entity-registry), register the vehicle so cleanup is automatic.
+- Save plate, mods, fuel, and damage with [SQL save and load](/templates/sql-save-load).

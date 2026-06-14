@@ -1,0 +1,169 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>NUI survey</span>
+        </div>
+        <h1>NUI survey with ox_lib input dialog</h1>
+        <p class="lede">A command opens a styled in-game form, the player fills it in, and you read the answers back as a simple table. No custom HTML or CSS. The <code>ox_lib</code> input dialog gives you the whole NUI layer for free.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Collect player feedback through an in-game form and log the answers.</dd></div>
+          <div><dt>Dependencies</dt><dd>ox_lib.</dd></div>
+          <div><dt>Files</dt><dd>1 command using <code>lib.inputDialog</code>.</dd></div>
+          <div><dt>First log</dt><dd><code>Favorite Activity: ...</code> in the console after submit.</dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/ox-lib-notifications-ui">Lesson 15: ox_lib surveys</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--fivem">
+        <header>What this template builds</header>
+        <p><code>ox_lib</code> ships a ready-made input dialog: a clean NUI panel with labeled fields, validation, and a submit and cancel flow. This template registers a <code>/startsurvey</code> command that opens that dialog with three questions, then reads the returned answers as an ordered table. You write zero HTML, JS, or CSS for the interface. Drop it in, ensure <code>ox_lib</code> first, and the form works.</p>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Read the field types from the docs</header>
+        <p>The input dialog supports more than text. You get number fields with min and max, checkboxes, selects, sliders, color pickers, and more. The full list lives in the ox_lib documentation. This template uses input, number, and checkbox to keep the example clear.</p>
+      </section>
+
+      <section id="introduction">
+        <h2>Introduction</h2>
+        <p><code>ox_lib</code> is a versatile library for FiveM that provides reusable modules and UI elements, streamlining the development of custom server features. One handy use is building dynamic in-game surveys to gather player feedback or preferences in real time, without writing your own NUI from scratch.</p>
+      </section>
+
+      <section id="setup">
+        <h2>Setup</h2>
+        <p>Make sure <code>ox_lib</code> is installed and configured in your server. Follow the official documentation for installation, then ensure it before any resource that calls it.</p>
+      </section>
+
+      <section id="register">
+        <h2>Registering the survey command</h2>
+        <p>Start with the command that opens the survey. Everything else hangs off this.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>-- Register a command to initiate the survey
+RegisterCommand('startsurvey', function()
+    -- Survey questions will be defined here
+end)</code></pre>
+        </figure>
+      </section>
+
+      <section id="questions">
+        <h2>Defining the survey questions</h2>
+        <p>Inside the command, call <code>lib.inputDialog</code> with a title and a list of fields. Each field is a table that sets its type, label, and rules. The dialog returns an ordered table of answers, or <code>nil</code> if the player cancels, so check for that before you read any answer.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>-- Inside the 'startsurvey' command
+local survey = lib.inputDialog('Player Feedback Survey', {
+    {type = 'input', label = 'What is your favorite in-game activity?', required = true},
+    {type = 'number', label = 'Rate the server performance (1-10)', min = 1, max = 10, required = true},
+    {type = 'checkbox', label = 'Would you recommend this server to others?'}
+})
+
+-- Check if the player canceled the survey
+if not survey then return end
+
+-- Process the survey responses
+print('Favorite Activity:', survey[1])
+print('Performance Rating:', survey[2])
+print('Would Recommend:', survey[3])</code></pre>
+        </figure>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Always check for cancel first</header>
+        <p>When the player closes the dialog without submitting, <code>lib.inputDialog</code> returns <code>nil</code>. Read an index off a <code>nil</code> value and the script errors. The <code>if not survey then return end</code> line is not optional. Keep it before you touch any answer.</p>
+      </section>
+
+      <section id="example">
+        <h2>Full example</h2>
+        <p>Here is the complete command with the cancel check, named locals for each answer, and a clear log of every response. The checkbox value comes back as a boolean, so it is converted to a readable Yes or No before printing.</p>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">client.lua</span></header>
+<pre><code>-- Register the 'startsurvey' command
+RegisterCommand('startsurvey', function()
+    -- Display the survey dialog
+    local survey = lib.inputDialog('Player Feedback Survey', {
+        {type = 'input', label = 'What is your favorite in-game activity?', required = true},
+        {type = 'number', label = 'Rate the server performance (1-10)', min = 1, max = 10, required = true},
+        {type = 'checkbox', label = 'Would you recommend this server to others?'}
+    })
+
+    -- Check if the player canceled the survey
+    if not survey then
+        print('Survey was canceled.')
+        return
+    end
+
+    -- Process and store the survey responses
+    local favoriteActivity = survey[1]
+    local performanceRating = survey[2]
+    local wouldRecommend = survey[3] and 'Yes' or 'No'
+
+    -- Output the responses to the server console
+    print('Favorite Activity:', favoriteActivity)
+    print('Performance Rating:', performanceRating)
+    print('Would Recommend:', wouldRecommend)
+
+    -- Optionally, save the responses to a database or file for further analysis
+    -- Code to save responses goes here
+end)</code></pre>
+        </figure>
+      </section>
+
+      <section class="callout callout--danger">
+        <header>This dialog runs on the client</header>
+        <p>The answers come from the player's machine, so treat them as untrusted. If you forward survey results to the server to save them, validate types and ranges there before you write anything to the database. Never trust the client number field to stay inside <code>min</code> and <code>max</code>: re-check on the server.</p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_survey/</code>.</li>
+          <li>Copy the command into a <code>client.lua</code> and add a manifest with <code>client_script 'client.lua'</code> and <code>shared_script '@ox_lib/init.lua'</code>.</li>
+          <li>Add <code>ensure ox_lib</code> before <code>ensure qu_survey</code> in <code>server.cfg</code>.</li>
+          <li>Restart the server and run <code>/startsurvey</code> in game.</li>
+          <li>Fill in the form, submit, and watch the answers print in the server console.</li>
+        </ol>
+      </section>
+
+      <section id="conclusion">
+        <h2>Conclusion</h2>
+        <p>By leaning on <code>ox_lib</code>, you get a dynamic, interactive in-game survey with no custom NUI to maintain. It is a fast way to collect player feedback and gives server admins real signal to improve the experience. Once the answers land, the natural next step is to send them to the server and store them.</p>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/ox-lib-notifications-ui">Lesson 15</a> for the full walkthrough behind this command.</li>
+          <li>Forward the answers to the server and save them with the <a href="/templates/sql-save-load">SQL save and load template</a>.</li>
+          <li>Add more field types: a select for fixed choices, a slider for ratings, a date picker for events.</li>
+        </ul>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Make it yours</header>
+        <p>Change the dialog title and the questions to match what you actually want to learn from players. Swap the <code>print</code> lines for a server event that saves the answers, and add an ACE permission check if the survey should be staff-triggered. Keep the cancel check, and re-validate every value on the server before you store it.</p>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/ped-system">&larr; Ped system</a>
+        <a class="next" href="/templates">Templates hub &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#introduction">Introduction</a>
+        <a href="#setup">Setup</a>
+        <a href="#register">Register command</a>
+        <a href="#questions">Questions</a>
+        <a href="#example">Full example</a>
+        <a href="#install">Install</a>
+        <a href="#conclusion">Conclusion</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

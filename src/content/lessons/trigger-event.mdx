@@ -1,0 +1,128 @@
+<LessonHero
+  crumbs="Module 04 · Lesson 13"
+  title="TriggerEvent: how scripts talk to each other"
+  meta={[
+    { label: "You'll learn", value: "TriggerEvent -> AddEventHandler -> passing arguments -> the same-side rule for local events" },
+    { label: "Time", value: "~22 minutes" },
+    { label: "Prereqs", value: "Module 03 complete, you understand client vs server as separate processes." },
+    { label: "Outcome", value: "Two resources that hold a conversation on the same side, one firing events, the other reacting." },
+  ]}
+>
+  A real FiveM server runs lots of resources at the same time. They do not share variables directly, so they need a way to talk. That is what events are. An event is just a named message. One script fires it, another script listens for it. This lesson starts with the simplest version: same-side events using `TriggerEvent`.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds TriggerEvent and AddEventHandler on the same client side as a working FiveM resource named `qu_trigger_event`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_trigger_event
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_trigger_event/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+AddEventHandler('qu_trigger_event:shout', function(message) print('[qu_trigger_event] handler one ' .. message) end)
+AddEventHandler('qu_trigger_event:shout', function(message) print('[qu_trigger_event] handler two ' .. message) end)
+RegisterCommand('shout', function(_, args) TriggerEvent('qu_trigger_event:shout', table.concat(args, ' ')) end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_trigger_event
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_trigger_event
+    ```
+
+    Run this test:
+
+    ```text
+    /shout hello
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_trigger_event] handler one hello
+F8: [qu_trigger_event] handler two hello
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_trigger_event does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_trigger_event", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_trigger_event, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_trigger_event folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for TriggerEvent and AddEventHandler on the same client side.",
+    "Add ensure qu_trigger_event to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_trigger_event`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

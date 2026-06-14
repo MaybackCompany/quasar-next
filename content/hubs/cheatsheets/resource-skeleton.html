@@ -1,0 +1,184 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/">Quasar Academy</a> › <a href="/cheatsheets">Cheatsheets</a> › <span>Resource skeleton</span></div>
+        <h1>Resource skeleton: fxmanifest, client, server</h1>
+        <p class="lede">The smallest FiveM resource that runs. Five fields in <code>fxmanifest.lua</code>, three script folders, and one rule about which side gets which file.</p>
+
+        <div class="hero-outcome">
+          <div><dt>fx_version cerulean</dt><dd>Latest stable manifest version. Use it on every new resource.</dd></div>
+          <div><dt>game gta5</dt><dd>Required field. FiveM refuses to start without it.</dd></div>
+          <div><dt>Server is the truth</dt><dd>Money, inventory, jobs, and SQL run on the server. Never the client.</dd></div>
+          <div><dt>Shared is read-only</dt><dd>Config that both sides need. Never put logic that mutates state in shared.</dd></div>
+        </div>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>Pin this card</header>
+        <p>Open the resource skeleton next to your editor every time you start a new script. Five minutes saved per resource adds up.</p>
+      </section>
+
+      <section id="layout">
+        <h2>Folder layout</h2>
+        <pre><code>my_resource/
+├── fxmanifest.lua
+├── config.lua              -- shared config, read by both sides
+├── client/
+│   └── main.lua            -- client logic, UI, ped, vehicle, draw
+├── server/
+│   └── main.lua            -- truth: money, inventory, SQL, validation
+├── shared/
+│   └── locales.lua         -- read-only data for both sides
+└── html/                   -- optional NUI assets
+    ├── index.html
+    ├── style.css
+    └── app.js</code></pre>
+      </section>
+
+      <section id="fxmanifest">
+        <h2>fxmanifest.lua minimum</h2>
+        <pre><code>fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'Short description of what this resource does'
+version '1.0.0'
+
+shared_scripts {
+  'config.lua',
+  'shared/*.lua',
+}
+
+client_scripts {
+  'client/*.lua',
+}
+
+server_scripts {
+  '@oxmysql/lib/MySQL.lua',     -- if you use the database
+  'server/*.lua',
+}
+
+ui_page 'html/index.html'
+
+files {
+  'html/index.html',
+  'html/style.css',
+  'html/app.js',
+}
+
+dependencies {
+  'ox_lib',
+  'oxmysql',
+}</code></pre>
+      </section>
+
+      <section id="three-sides">
+        <h2>The three sides</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Side</div><div>Runs where</div><div>Use for</div><div>Never put here</div>
+          </div>
+          <div class="cheat-row">
+            <div>shared_scripts</div><div>Both client and server</div><div>Config tables, locale strings, math helpers</div><div>SQL, secrets, money mutation</div>
+          </div>
+          <div class="cheat-row">
+            <div>client_scripts</div><div>Player machine</div><div>UI, NUI, draw, ped, vehicle, target zones</div><div>Money, inventory, SQL, validation</div>
+          </div>
+          <div class="cheat-row">
+            <div>server_scripts</div><div>Server host</div><div>SQL, money, inventory, validation, callbacks</div><div>Draw, ped, vehicle spawn loops</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="trust">
+        <h2>The trust rule</h2>
+        <div class="callout callout--warn">
+          <header>Never trust the client</header>
+          <p>The client can edit any local file and lie about anything. Money, inventory, jobs, item give, vehicle spawn, all of it must be validated on the server, even if the client UI says otherwise.</p>
+        </div>
+        <pre><code>-- WRONG: client decides money
+RegisterNetEvent('shop:buy', function(item, price)
+  exports['ox_inventory']:AddItem(source, item, 1)   -- client said price, no check
+end)
+
+-- RIGHT: server decides
+RegisterNetEvent('shop:buy', function(itemId)
+  local source = source
+  local item = Config.Items[itemId]                  -- server-side config
+  if not item then return end
+  if not removeMoney(source, item.price) then return end
+  exports['ox_inventory']:AddItem(source, item.name, 1)
+end)</code></pre>
+      </section>
+
+      <section id="dependencies">
+        <h2>Dependencies</h2>
+        <p>Use the <code>dependencies</code> block in fxmanifest. The server refuses to start your resource until its dependencies are running.</p>
+        <pre><code>dependencies {
+  'ox_lib',
+  'oxmysql',
+  'ox_inventory',
+}</code></pre>
+        <div class="callout callout--tip">
+          <header>One-line check</header>
+          <p>If <code>GetResourceState('ox_lib') ~= 'started'</code>, your resource is missing a dependency. Check the <code>console</code> for the exact missing name.</p>
+        </div>
+      </section>
+
+      <section id="lifecycle">
+        <h2>Resource lifecycle</h2>
+        <pre><code>AddEventHandler('onResourceStart', function(name)
+  if name ~= GetCurrentResourceName() then return end
+  -- runs once when this resource starts
+  print('my_resource started')
+end)
+
+AddEventHandler('onResourceStop', function(name)
+  if name ~= GetCurrentResourceName() then return end
+  -- cleanup: delete entities, save state, close DB connections
+end)</code></pre>
+        <div class="callout callout--warn">
+          <header>Always cleanup on stop</header>
+          <p>Spawned peds, vehicles, blips, and target zones leak across restarts if you do not delete them in <code>onResourceStop</code>. The entity cleanup cheatsheet covers this in detail.</p>
+        </div>
+      </section>
+
+      <section id="common-mistakes">
+        <h2>Common mistakes</h2>
+        <div class="callout callout--warn">
+          <header>SQL files in client_scripts</header>
+          <p>oxmysql exposes server-only functions. Loading <code>@oxmysql/lib/MySQL.lua</code> on the client throws <em>attempt to index a nil value (global &apos;MySQL&apos;)</em>.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Wrong fx_version</header>
+          <p>Old resources use <code>'adamant'</code> or <code>'bodacious'</code>. New resources should use <code>'cerulean'</code>.</p>
+        </div>
+        <div class="callout callout--tip">
+          <header><code>lua54 'yes'</code> is no longer needed</header>
+          <p>As of June 2025, Lua 5.3 was removed and every resource runs Lua 5.4. The <code>lua54 'yes'</code> manifest line is harmless but redundant, the official docs now mark it deprecated. You will still see it in older resources; do not flag it as a bug, just stop adding it to new ones.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Missing files block for NUI</header>
+          <p>If you ship HTML or images, list them in <code>files {}</code>. Otherwise the client cannot fetch them and the NUI page is blank.</p>
+        </div>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/cheatsheets/tables">← Tables cheatsheet</a>
+        <a class="next" href="/cheatsheets/events">Next: events cheatsheet →</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#layout">Folder layout</a>
+        <a href="#fxmanifest">fxmanifest.lua</a>
+        <a href="#three-sides">The three sides</a>
+        <a href="#trust">The trust rule</a>
+        <a href="#dependencies">Dependencies</a>
+        <a href="#lifecycle">Lifecycle</a>
+        <a href="#common-mistakes">Common mistakes</a>
+      </nav>
+    </aside>
+  </div>

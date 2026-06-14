@@ -1,0 +1,197 @@
+<LessonHero
+  crumbs="Lua syntax"
+  title="Lua syntax: variables, strings, operators, scope"
+  meta={[
+    { label: "Always local", value: "Declare variables with local. Globals leak across resources." },
+    { label: "Strings join with ..", value: "Concatenation is two dots, not +. Numbers auto-coerce." },
+    { label: "Not equal is ~=", value: "Lua uses ~= for inequality, not !=." },
+    { label: "Tables index from 1", value: "Lua arrays start at 1, not 0. Off-by-one bugs from JS habits." },
+  ]}
+>
+  The smallest Lua reference you need before writing FiveM scripts. Six rules that explain ninety percent of the syntax errors beginners hit.
+</LessonHero>
+
+<Callout variant="tip" title="Read once, refer back">
+  Open this card next to the editor while you write your first ten scripts. After that you will not need it.
+</Callout>
+
+## Local declarations
+
+Always prefix with `local`. A bare assignment creates a global, which leaks to every other resource on the server.
+
+```
+local name = "Maria"
+local age = 32
+local online = true
+local nothing = nil
+
+PlayerName = "leak"
+```
+
+<Callout variant="warn" title="The one-line rule">
+  If a variable is only used inside one function, it must be `local`. No exceptions.
+</Callout>
+
+## The five types you will use
+
+- **nil**, absence of a value. Default for unset variables.
+- **boolean**, `true` or `false`.
+- **number**, both integers and decimals share one type.
+- **string**, quoted with `"`, `'`, or `[[ ]]` for multi-line.
+- **table**, list, map, struct, object. One container for all of them.
+
+```
+local t = type("hello")  -- "string"
+local n = type(42)        -- "number"
+local b = type(true)      -- "boolean"
+local x = type(nil)       -- "nil"
+local m = type({})        -- "table"
+```
+
+## Strings and concatenation
+
+Lua joins strings with `..`, not `+`. Numbers coerce to strings automatically.
+
+```
+local first = "Quasar"
+local last = "University"
+local full = first .. " " .. last       -- "Quasar Academy"
+
+local count = 5
+local message = "You have " .. count .. " items"
+
+local multiline = [[
+  This string
+  spans many lines
+  with no escape needed.
+]]
+```
+
+<Callout variant="tip" title="String formatting">
+  For complex output use `string.format("Hello %s, you have %d", name, count)`. Same printf style as C.
+</Callout>
+
+## Operators
+
+Category
+
+Lua
+
+JavaScript
+
+Note
+
+Equal
+
+==
+
+===
+
+No type juggling
+
+Not equal
+
+~=
+
+!==
+
+Tilde, not bang
+
+And
+
+and
+
+&&
+
+Word, not symbol
+
+Or
+
+or
+
+||
+
+Word, not symbol
+
+Not
+
+not
+
+!
+
+Word, not symbol
+
+Concat
+
+..
+
++
+
+Two dots, not plus
+
+Length
+
+#t
+
+t.length
+
+Hash prefix on tables and strings
+
+## Truthy and falsy
+
+Only `false` and `nil` are falsy in Lua. Everything else is truthy, including `0` and the empty string.
+
+```
+if 0 then print("yes") end          -- prints "yes"
+if "" then print("yes") end         -- prints "yes"
+if false then print("no") end       -- nothing
+if nil then print("no") end         -- nothing
+```
+
+<Callout variant="warn" title="JavaScript trap">
+  If you check `if value then` expecting JavaScript falsiness for `0` or `""`, the branch will run. Always check explicitly with `== 0` or `== ""`.
+</Callout>
+
+## Scope rules
+
+A `local` lives only inside the block where it is declared. Functions, `if`, `for`, `while`, and `do ... end` all create blocks.
+
+```
+local x = 1
+
+if true then
+  local x = 2     -- different x, only inside the if
+  print(x)        -- 2
+end
+
+print(x)          -- 1
+```
+
+To share state across files in the same resource, declare at file top level (still `local`) and read across files. Globals are the wrong tool ninety-five percent of the time.
+
+## Lua vs JavaScript or Python
+
+- Arrays index from **1**, not 0. `t[1]` is the first item.
+- No `++` or `--`. Use `i = i + 1`.
+- No ternary. Use `a and b or c` for the same effect, with the gotcha that `b` must not be falsy.
+- Comments are `--` for one line and `--[[ ... ]]` for blocks.
+- One return type per function call; multiple returns are a feature, not a tuple. Use `local a, b = fn()`.
+- No classes. Use tables and metatables when you need behaviour.
+
+## Common mistakes
+
+<Callout variant="warn" title="Forgetting local">
+  The variable works, but it pollutes every other resource. Hard to debug, easy to prevent.
+</Callout>
+
+<Callout variant="warn" title="Using + on strings">
+  `"a" + "b"` throws *attempt to perform arithmetic on a string value*. Use `..` instead.
+</Callout>
+
+<Callout variant="warn" title="Using != for not equal">
+  Lua throws a syntax error. Use `~=`.
+</Callout>
+
+<Callout variant="warn" title="Indexing arrays from 0">
+  The first item is at `t[1]`. `t[0]` returns `nil` and silently breaks the loop.
+</Callout>

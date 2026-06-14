@@ -1,0 +1,175 @@
+<LessonHero
+  crumbs="Lesson 4"
+  title="txAdmin and server.cfg"
+  meta={[
+    { label: "Outcome", value: "You can find server.cfg, back it up, edit an ensure line, restart, and read proof." },
+    { label: "Analogy", value: "server.cfg is the boot checklist. ensure is the start switch for a resource folder." },
+    { label: "Test", value: "Restart one small resource from txAdmin and read the console result." },
+    { label: "Duration", value: "30-45 minutes." },
+    { label: "Prerequisites", value: "txAdmin access and a dated backup folder." },
+    { label: "Pass condition", value: "A backed-up config, one edited ensure line, and a clean restart proof are recorded." },
+  ]}
+>
+  Learn the control room and the boot checklist. The goal is simple: back up first, edit the active config file, restart safely, then prove the server came back clean.
+</LessonHero>
+
+Do this first
+
+Before editing `server.cfg`, copy it to a dated backup. Beginners should never make config changes without a return path.
+
+## Where the files usually live
+
+| Setup | Common active file path | How to confirm |
+| --- | --- | --- |
+| Local Windows Track 0 | `C:\FXServer\server-data\server.cfg` | txAdmin CFG Editor opens the same file. |
+| Hosted panel | `/home/container/server.cfg` or provider-specific root | Panel file manager marks it as the server config. |
+| VPS custom install | `/opt/fivem/server-data/server.cfg` or your chosen folder | The FXServer launch command points at that folder. |
+
+<StepGroup>
+  <Step num={1} title="Open txAdmin and find the active config" outcome="you know which server.cfg txAdmin is actually reading.">
+      1. Open txAdmin in your browser. Local default: `http://localhost:40120`.
+      2. Click **Settings**.
+      3. Open **CFG Editor** or the config editor label your txAdmin version uses.
+      4. Confirm it shows the same `server.cfg` you plan to edit in VS Code or the hosting panel.
+      5. If using a hosted panel, also open **Files** → find `server.cfg`.
+
+      To confirm, the txAdmin CFG Editor shows `server.cfg` open.
+  </Step>
+
+  <Step num={2} title="Back up before editing" outcome="you can undo a bad config change in under one minute.">
+      1. Create a backup folder named with today's date, for example `backups\2026-06-01-before-server-cfg-edit\`.
+      2. Copy `server.cfg` into that folder.
+      3. Copy any resource config you are about to change.
+      4. Write a one-line reason in `change-log.md`.
+
+      ```
+      Date: 2026-06-01
+      Change: testing ensure order for qs-smartphone-pro
+      Backup: backups/2026-06-01-before-server-cfg-edit/server.cfg
+      Expected result: phone starts after ox_lib and framework
+      Rollback: restore backed-up server.cfg and restart server
+      ```
+  </Step>
+</StepGroup>
+
+## Core commands
+
+Run these in the txAdmin Live Console. The name after the command is the resource folder name, not the full folder path.
+
+```
+status
+refresh
+ensure resource_name
+restart resource_name
+stop resource_name
+```
+
+<StepGroup>
+  <Step num={3} title="Read a resource folder name correctly" outcome="you ensure the folder name FiveM sees.">
+      If the script lives at `resources/[quasar]/qs-smartphone-pro`, the resource name is `qs-smartphone-pro`.
+
+      ```
+      resources/
+        [standalone]/
+          ox_lib/
+        [quasar]/
+          qs-smartphone-pro/
+        [jobs]/
+          qb-policejob/
+          qb-ambulancejob/
+      ```
+
+      ```
+      ensure ox_lib
+      ensure qs-smartphone-pro
+      ensure qb-policejob
+      ensure qb-ambulancejob
+      ```
+  </Step>
+
+  <Step num={4} title="Edit ensure order intentionally" outcome="dependencies start before scripts that need them.">
+      ```
+      # database first
+      ensure oxmysql
+
+      # shared library before scripts that use it
+      ensure ox_lib
+
+      # framework before framework scripts
+      ensure qb-core
+      # or: ensure es_extended
+
+      # core systems after their dependencies
+      ensure ox_inventory
+      ensure ox_target
+
+      # Quasar phone after ox_lib and framework
+      ensure qs-smartphone-pro
+
+      # gameplay and assets last
+      ensure [jobs]
+      ensure [garages]
+      ensure [maps]
+      ```
+
+      When the server restarts, console output shows `Started resource oxmysql`, then `ox_lib`, then framework, then the dependent script.
+  </Step>
+
+  <Step num={5} title="Restart and prove the server is clean" outcome="the edit survived a clean restart.">
+      1. Save `server.cfg`.
+      2. Open txAdmin → **Live Console**.
+      3. Click **Restart Server** or use your hosting panel restart button.
+      4. Wait until the server shows online.
+      5. Run `status`.
+      6. Open FiveM and direct connect.
+
+      ```
+      Started resource oxmysql
+      Started resource ox_lib
+      Started resource qb-core
+      Started resource qs-smartphone-pro
+      Server license key authentication succeeded
+      Started map resource
+      Sending heartbeat to live-internal.fivem.net
+      status
+      hostname: Your Server Name
+      players: 0/48
+      ```
+  </Step>
+</StepGroup>
+
+## Common console outputs
+
+| Console line | Meaning | Owner action |
+| --- | --- | --- |
+| `Couldn't find resource` | The folder name or path is wrong. | Check spelling, extraction depth, and run `refresh`. |
+| `No such export` | A dependency did not start first or is missing. | Move dependency above the script and restart both. |
+| `Access denied for user` | Database username/password/host is wrong. | Fix `mysql_connection_string` and test in HeidiSQL. |
+| `Unknown database` | The database name in config does not exist. | Create it or correct the database name. |
+| `Started resource X` | Resource started successfully. | Now test the feature in-game. |
+
+## Rollback if the restart fails
+
+1. Stop the server or keep it offline.
+2. Copy your backed-up `server.cfg` over the active `server.cfg`.
+3. Start the server.
+4. Run `status`.
+5. Connect once from FiveM.
+6. Write the result in `change-log.md`.
+
+```
+Rollback performed:
+Restored file:
+Server online after rollback: yes / no
+Direct connect after rollback: yes / no
+Remaining console error:
+Next action:
+```
+
+<Callout variant="tip" title="Full install guide">
+  Need the complete flow for provider docs, dependencies, folder groups, txAdmin, permissions, clothes, peds, and cars? Open [How to install a FiveM script](/resources/install-fivem-script).
+</Callout>
+
+## Pass condition
+
+You are done when you have a dated backup, an edited `server.cfg`, a clean restart proof, a `status` output, and a written rollback note.

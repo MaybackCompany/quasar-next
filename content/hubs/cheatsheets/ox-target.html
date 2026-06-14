@@ -1,0 +1,202 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs"><a href="/">Quasar Academy</a> › <a href="/cheatsheets">Cheatsheets</a> › <span>ox_target</span></div>
+        <h1>ox_target: zones, entities, models, bones</h1>
+        <p class="lede">Four ways to attach an interaction in FiveM. Pick by what you are targeting. Always remove what you add when the resource stops.</p>
+
+        <div class="hero-outcome">
+          <div><dt>Zone for static spots</dt><dd>A box at fixed coords. Not tied to any entity.</dd></div>
+          <div><dt>Entity for one object</dt><dd>Attach to a specific spawned ped, vehicle, or prop.</dd></div>
+          <div><dt>Model for a spawn type</dt><dd>Every world prop with that model gets the option.</dd></div>
+          <div><dt>Bone for a vehicle part</dt><dd>The trunk, the hood, a door: bone-targeted on the vehicle.</dd></div>
+        </div>
+      </section>
+
+      <section class="callout callout--tip">
+        <header>One option, four shapes</header>
+        <p>The <code>options</code> array is identical across all four. Memorise it once and the only thing that changes is how you target.</p>
+      </section>
+
+      <section id="options">
+        <h2>The options shape</h2>
+        <pre><code>local options = {
+  {
+    name        = 'shop_buy_bread',                  -- unique id, used to remove
+    label       = 'Buy bread',
+    icon        = 'fa-solid fa-bread-slice',         -- font awesome
+    distance    = 2.0,                                -- focus distance in metres
+    canInteract = function(entity, distance, coords, name, bone)
+      return PlayerJob and PlayerJob.name ~= 'baker'
+    end,
+    onSelect    = function(data)
+      TriggerServerEvent('shop:buy', { item = 'bread' })
+    end,
+    -- or: event = 'shop:buy', args = { item = 'bread' }
+    -- or: serverEvent = 'shop:buyServer', args = { item = 'bread' }
+  },
+}</code></pre>
+        <div class="callout callout--tip">
+          <header>onSelect vs event vs serverEvent</header>
+          <p><code>onSelect</code> runs a function locally. <code>event</code> triggers a client event. <code>serverEvent</code> fires straight to the server with the args. Pick the smallest one that fits.</p>
+        </div>
+      </section>
+
+      <section id="zone">
+        <h2>Box zone (static spot)</h2>
+        <pre><code>local zoneId = exports.ox_target:addBoxZone({
+  coords  = vec3(-704.96, -914.31, 19.21),
+  size    = vec3(2.0, 2.0, 2.0),
+  rotation = 0,
+  debug   = false,                                    -- true to draw the box while developing
+  options = options,
+})
+
+-- remove later
+exports.ox_target:removeZone(zoneId)</code></pre>
+      </section>
+
+      <section id="entity">
+        <h2>Entity (one specific object)</h2>
+        <pre><code>local pedId = SpawnPed(...)                          -- your spawn fn
+exports.ox_target:addLocalEntity(pedId, options)
+
+-- remove for one entity
+exports.ox_target:removeLocalEntity(pedId, { 'shop_buy_bread' })
+
+-- network entity (visible to all clients)
+exports.ox_target:addEntity(NetworkGetNetworkIdFromEntity(entity), options)
+exports.ox_target:removeEntity(NetworkGetNetworkIdFromEntity(entity), { 'shop_buy_bread' })</code></pre>
+        <div class="callout callout--warn">
+          <header>Local vs network</header>
+          <p>Use <code>addLocalEntity</code> when the entity exists only on this client. Use <code>addEntity</code> when the entity is networked and other clients should see the option too.</p>
+        </div>
+      </section>
+
+      <section id="model">
+        <h2>Model (every prop with this hash)</h2>
+        <pre><code>exports.ox_target:addModel({
+  `prop_atm_01`,                                      -- backtick converts to hash
+  `prop_atm_02`,
+  `prop_atm_03`,
+  `prop_fleeca_atm`,
+}, {
+  {
+    name = 'use_atm',
+    label = 'Use ATM',
+    icon = 'fa-solid fa-money-bill',
+    distance = 1.5,
+    onSelect = function() TriggerEvent('atm:open') end,
+  },
+})
+
+-- remove
+exports.ox_target:removeModel({ `prop_atm_01`, `prop_atm_02` }, { 'use_atm' })</code></pre>
+      </section>
+
+      <section id="bone">
+        <h2>Bone (vehicle part)</h2>
+        <pre><code>exports.ox_target:addGlobalVehicle({
+  {
+    name      = 'open_trunk',
+    label     = 'Open trunk',
+    bones     = { 'boot' },
+    distance  = 2.0,
+    onSelect  = function(data)
+      local v = data.entity
+      SetVehicleDoorOpen(v, 5, false, false)
+    end,
+  },
+})
+
+-- remove the option from every vehicle
+exports.ox_target:removeGlobalVehicle({ 'open_trunk' })</code></pre>
+        <p>Common bones: <code>boot</code>, <code>bonnet</code>, <code>door_dside_f</code>, <code>door_pside_f</code>, <code>door_dside_r</code>, <code>door_pside_r</code>, <code>windscreen</code>.</p>
+      </section>
+
+      <section id="when-which">
+        <h2>When to use which</h2>
+        <div class="cheat-table">
+          <div class="cheat-row cheat-head">
+            <div>Need</div><div>Use</div><div>Network</div><div>Cleanup with</div>
+          </div>
+          <div class="cheat-row">
+            <div>Static shop counter</div><div>addBoxZone</div><div>Local</div><div>removeZone</div>
+          </div>
+          <div class="cheat-row">
+            <div>One ped you spawned</div><div>addLocalEntity</div><div>Local</div><div>removeLocalEntity</div>
+          </div>
+          <div class="cheat-row">
+            <div>Networked job NPC</div><div>addEntity</div><div>All clients</div><div>removeEntity</div>
+          </div>
+          <div class="cheat-row">
+            <div>Every ATM in the map</div><div>addModel</div><div>Local</div><div>removeModel</div>
+          </div>
+          <div class="cheat-row">
+            <div>Trunk on every car</div><div>addGlobalVehicle</div><div>Local</div><div>removeGlobalVehicle</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="cleanup">
+        <h2>Cleanup on resource stop</h2>
+        <p>Every <code>add*</code> call must have a matching <code>remove*</code> in <code>onResourceStop</code>. Otherwise the option stays after a restart and stacks on every reload.</p>
+        <pre><code>local zoneIds = {}
+
+local function addShop(coords)
+  local id = exports.ox_target:addBoxZone({
+    coords = coords, size = vec3(2,2,2), options = options,
+  })
+  zoneIds[#zoneIds + 1] = id
+end
+
+AddEventHandler('onResourceStop', function(name)
+  if name ~= GetCurrentResourceName() then return end
+  for _, id in ipairs(zoneIds) do
+    exports.ox_target:removeZone(id)
+  end
+  exports.ox_target:removeModel({ `prop_atm_01` }, { 'use_atm' })
+  exports.ox_target:removeGlobalVehicle({ 'open_trunk' })
+end)</code></pre>
+      </section>
+
+      <section id="common-mistakes">
+        <h2>Common mistakes</h2>
+        <div class="callout callout--warn">
+          <header>Same name across resources</header>
+          <p>The <code>name</code> field is the unique key. If two resources both use <code>'open_trunk'</code>, the second add silently overwrites the first.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>No cleanup on stop</header>
+          <p>Without <code>onResourceStop</code> handlers, every <code>refresh</code> stacks another copy of the option. After a few reloads, the menu shows duplicates.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Forgetting backticks for models</header>
+          <p>The model hash needs <code>`prop_name`</code> (backticks) or <code>GetHashKey('prop_name')</code>. Plain strings do not match.</p>
+        </div>
+        <div class="callout callout--warn">
+          <header>Trusting onSelect</header>
+          <p>The client decides when <code>onSelect</code> fires. Anything that costs money or grants an item must be validated again on the server.</p>
+        </div>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/cheatsheets/oxmysql">← oxmysql cheatsheet</a>
+        <a class="next" href="/cheatsheets/entity-cleanup">Next: entity cleanup →</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#options">Options shape</a>
+        <a href="#zone">Box zone</a>
+        <a href="#entity">Entity</a>
+        <a href="#model">Model</a>
+        <a href="#bone">Bone</a>
+        <a href="#when-which">When to use which</a>
+        <a href="#cleanup">Cleanup</a>
+        <a href="#common-mistakes">Common mistakes</a>
+      </nav>
+    </aside>
+  </div>

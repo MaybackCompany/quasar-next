@@ -1,0 +1,166 @@
+<LessonHero
+  crumbs="Module 09 · Bonus"
+  title="NUI from scratch: ui_page, messages, callbacks"
+  meta={[
+    { label: "You'll learn", value: "The cfx-nui-<resource>/ protocol scope, the Lua ↔ JS message and callback APIs, focus capture, and how to attach Chrome devtools to a live NUI page." },
+    { label: "You'll ship", value: "A minimal NUI menu: F5 opens a Chromium overlay with one button, the button sends data back to Lua, and a Lua-triggered chat message confirms the round-trip." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "Why now", value: "You finished the vehicle handling lesson. Knowing how NUI works under the hood lets you debug any UI bug for the rest of the course." },
+  ]}
+>
+  **NUI** is FiveM's name for the in-game browser layer, a real Chromium tab the client renders on top of GTA. Every menu, hud, scoreboard, F-pause UI you have ever seen in a server is NUI. So far you have used `ox_lib` and other framework UIs that wrap NUI for you. This bonus shows the layer underneath: how to declare a page in `fxmanifest.lua`, how to push state from Lua with `SendNUIMessage`, how to receive clicks with `RegisterNUICallback`, and how to capture the cursor with `SetNuiFocus`. Once you understand these four pieces, you can read any NUI resource and build your own without a framework.
+</LessonHero>
+
+<LessonVideo loomId="ceda9248fb754825bc52c788d3b53528" title="Lockpicking skill-check NUI" caption="Build a lockpicking skill-check NUI, end to end." />
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds ui_page, files list, SendNUIMessage, and RegisterNUICallback as a working FiveM resource named `qu_nui_from_scratch`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_nui_from_scratch
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_nui_from_scratch/
+  fxmanifest.lua
+  client.lua
+  web/index.html
+  web/app.js
+  web/style.css
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+ui_page 'web/index.html'
+files {
+    'web/index.html',
+    'web/app.js',
+    'web/style.css'
+}
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('openui', function()
+    SetNuiFocus(true, true)
+    SendNUIMessage({ show = true })
+    print('[qu_nui_from_scratch] opened')
+end, false)
+
+RegisterNUICallback('close', function(_, cb)
+    SetNuiFocus(false, false)
+    print('[qu_nui_from_scratch] closed')
+    cb({ ok = true })
+end)
+    ```
+
+    Open `web/index.html` and paste this:
+
+    ```text
+<!doctype html>
+<html><body><button id="close">Close</button><script src="app.js"></script></body></html>
+    ```
+
+    Open `web/app.js` and paste this:
+
+    ```text
+document.getElementById('close').addEventListener('click', () => { fetch('https://qu_nui_from_scratch/close', { method: 'POST', body: '{}' }) })
+    ```
+
+    Open `web/style.css` and paste this:
+
+    ```text
+body { display: grid; place-items: center; min-height: 100vh; }
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_nui_from_scratch
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_nui_from_scratch
+    ```
+
+    Run this test:
+
+    ```text
+    /openui, then click Close
+    ```
+
+    <ExpectedOutput>
+      F8: [qu_nui_from_scratch] opened
+F8: [qu_nui_from_scratch] closed
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_nui_from_scratch does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_nui_from_scratch", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_nui_from_scratch, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_nui_from_scratch folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for ui_page, files list, SendNUIMessage, and RegisterNUICallback.",
+    "Add ensure qu_nui_from_scratch to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_nui_from_scratch`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

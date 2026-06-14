@@ -1,0 +1,153 @@
+<LessonHero
+  crumbs="Module 06 · Lesson 19"
+  title="/heal command, your first script"
+  meta={[
+    { label: "You'll ship", value: "A working /heal command that heals only the player who typed it, with a 60 second cooldown." },
+    { label: "Time", value: "About 25 minutes if you go slow." },
+    { label: "You'll learn", value: "How a chat command becomes code, and why the server is the one allowed to say yes." },
+    { label: "Prereqs", value: "You can start a FiveM server and edit a file. That is enough." },
+  ]}
+>
+  By the end of this lesson you will type `/heal` in chat and watch your character refill to full health, on a real server, with cheating already blocked.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then change it">
+  This lesson builds server-approved /heal command with client health native as a working FiveM resource named `qu_heal_command`. Follow the folder names, file names, code, restart command, and expected output exactly.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_heal_command
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_heal_command/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local cooldown = {}
+
+RegisterCommand('heal', function(src)
+    local now = os.time()
+    if cooldown[src] and now - cooldown[src] < 60 then
+        TriggerClientEvent('qu_heal_command:deny', src, 60 - (now - cooldown[src]))
+        return
+    end
+    cooldown[src] = now
+    TriggerClientEvent('qu_heal_command:heal', src)
+    print('[qu_heal_command] approved heal for ' .. GetPlayerName(src))
+end, false)
+    ```
+
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu_heal_command:heal', function()
+    local ped = PlayerPedId()
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+    print('[qu_heal_command] healed')
+end)
+
+RegisterNetEvent('qu_heal_command:deny', function(seconds)
+    print('[qu_heal_command] wait ' .. seconds .. ' seconds')
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_heal_command
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_heal_command
+    ```
+
+    Run this test:
+
+    ```text
+    /heal
+    ```
+
+    <ExpectedOutput>
+      Server: [qu_heal_command] approved heal for yourName
+F8: [qu_heal_command] healed
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource qu_heal_command does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Could not load resource qu_heal_command", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
+    { symptom: "The command does not print", fix: "Run restart qu_heal_command, then run the test command in the console named in the step." },
+    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Make the qu_heal_command folder and every file by hand.",
+    "Use fxmanifest.lua to load the exact files for server-approved /heal command with client health native.",
+    "Add ensure qu_heal_command to server.cfg and restart only that resource.",
+    "Read the expected console output before changing the code."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed value, restart `qu_heal_command`, rerun the test, and confirm the output changed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

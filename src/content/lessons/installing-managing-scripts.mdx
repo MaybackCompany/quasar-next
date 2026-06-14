@@ -1,0 +1,154 @@
+<LessonHero
+  crumbs="Step 07 · Server setup"
+  title="Installing and managing scripts"
+  meta={[
+    { label: "You'll do", value: "Install a downloaded or purchased script onto your running server, organize your resources, load it in the right order, and test it without a full restart." },
+    { label: "Time", value: "~20 minutes." },
+    { label: "You need", value: "A running server with txAdmin (Steps 01-06), and one script to install (a free resource or a Quasar Store script)." },
+    { label: "You'll learn", value: "Drop a resource in -> install dependencies first -> ensure in order -> refresh and test -> fix the four things that always go wrong" },
+  ]}
+>
+  Most server owners spend more time installing other people's scripts than writing their own. The mechanics are simple: a script is a folder, you drop it in `resources`, you `ensure` it in `server.cfg`, you restart. The trouble is always the same handful of things: a wrong folder name, a missing dependency, or the wrong load order. This lesson makes installing boring and repeatable.
+</LessonHero>
+
+<Prereq
+  items={[
+    "My server runs and I can open txAdmin Live Console.",
+    "I can edit server.cfg and restart resources.",
+    "I have a script to install that contains an fxmanifest.lua.",
+    "I have my framework and oxmysql/ox_lib already running (Track B Frameworks, or the recipe from Step 03)."
+  ]}
+/>
+
+<Callout variant="fivem" title="The whole install in one line">
+  A script is a folder. Put the folder in `resources`, add `ensure folder-name` to `server.cfg`, restart. Ninety percent of "it doesn't work" is one of four things: wrong folder name, a missing dependency, the wrong load order, or an escrowed asset whose key is not linked to your server.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Unzip and check the folder" outcome="You have a clean resource folder that contains an fxmanifest.lua.">
+    Unzip the download. Open the folder and confirm it contains an **`fxmanifest.lua`** (older scripts use `__resource.lua`). That file is what makes it a resource.
+
+    Rename the folder to something clean with no spaces, no version numbers, and no `-main` suffix from a GitHub zip. `qs-vehiclekeys-main` becomes `qs-vehiclekeys`. The folder name is the resource name you will `ensure`.
+
+    ```text
+    server-data/resources/qs-vehiclekeys/
+      fxmanifest.lua
+      ...
+    ```
+  </Step>
+
+  <Step num={2} title="Install dependencies first" outcome="Everything the script needs is already running before it loads.">
+    Open the script's README or `fxmanifest.lua` and read its **dependencies**. Most modern scripts need `oxmysql`, `ox_lib`, and a framework. Those must be installed and started **before** the script, or it errors on boot.
+
+    <TechLinks ids={["oxmysql", "ox_lib", "esx", "qbox"]} />
+  </Step>
+
+  <Step num={3} title="Drop it into resources" outcome="The resource sits where the server can find it.">
+    Move the folder into your server's `resources` directory. On a VPS, upload it with WinSCP or your panel's file manager.
+
+    ```text
+    server-data/resources/qs-vehiclekeys
+    ```
+
+    <TechLink id="winscp" />
+  </Step>
+
+  <Step num={4} title="Ensure it in the right order" outcome="server.cfg starts dependencies, then the framework, then the script.">
+    Load order is top to bottom. Dependencies and the framework come first, your script after. Add to `server.cfg`:
+
+    ```text
+    ensure oxmysql
+    ensure ox_lib
+    ensure es_extended      # or your framework
+    ensure qs-vehiclekeys
+    ```
+
+    If the script needs a database table, import its `.sql` file into your database (HeidiSQL) before starting it.
+  </Step>
+
+  <Step num={5} title="Refresh, start, and read the console" outcome="The resource starts with no red errors and you see the started line.">
+    You do not need a full restart to add one resource. In the txAdmin Live Console:
+
+    ```text
+    refresh
+    ensure qs-vehiclekeys
+    ```
+
+    `refresh` re-scans the resources folder so the server sees the new one; `ensure` starts it. Read the console.
+
+    <ExpectedOutput>
+      Started resource qs-vehiclekeys
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Organize with categories
+
+Once you run more than a handful of scripts, group them with bracketed category folders so you can load a whole group at once:
+
+```text
+resources/
+  [framework]
+  [jobs]
+  [vehicles]
+  [custom]
+```
+
+Then one line loads everything inside a category:
+
+```text
+ensure [vehicles]
+```
+
+The brackets are a FiveM convention: a folder named `[something]` is a category, and `ensure [something]` starts every resource inside it. Keep categories ordered after their dependencies in `server.cfg`.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Resource not found / could not find resource", fix: "The folder name and the ensure line do not match. Check spelling and remove any -main or version suffix from the folder name." },
+    { symptom: "attempt to index a nil value, or a missing export/event", fix: "A dependency is missing or loads too late. Install and ensure oxmysql, ox_lib, and the framework BEFORE this script in server.cfg." },
+    { symptom: "Server crash or console warning on start", fix: "A syntax error in a file you edited (often the config): check commas, quotes, and parentheses. Revert your edit and re-apply it carefully." },
+    { symptom: "Escrow / license key error on a paid script", fix: "Escrowed assets must be tied to your server's Cfx.re key. Link the purchase to this server's key in your account, then restart." },
+    { symptom: "Two scripts fight or one stops working", fix: "A conflict: two resources doing the same job (two inventories, two target systems). Run one, not both." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Unzip a script, confirm it has an fxmanifest.lua, and give the folder a clean name.",
+    "Read a script's dependencies and install them first.",
+    "Ensure dependencies, framework, then the script in that order in server.cfg.",
+    "Use refresh then ensure to add a resource without a full restart.",
+    "Group resources with bracketed [category] folders and fix the four common install failures."
+  ]}
+/>
+
+<Cheatsheet
+  title="Install cheat sheet"
+  rows={[
+    { cmd: "refresh", desc: "Re-scan the resources folder so the server sees newly added resources." },
+    { cmd: "ensure scriptname", desc: "Start (or restart) a single resource." },
+    { cmd: "ensure [category]", desc: "Start every resource inside a bracketed category folder." },
+    { cmd: "server.cfg", desc: "Where ensure lines live; load order is top to bottom." },
+    { cmd: "fxmanifest.lua", desc: "Marks a folder as a resource and lists its dependencies." },
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Install one free resource end to end: unzip it, clean the folder name, install its dependencies, add the `ensure` lines in order, import any `.sql`, then `refresh` and `ensure` it. Confirm the started line in the console and that the feature works in game. If it errors, use the failure table above to name which of the four problems you hit.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Manually adding resources", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "Cfx.re docs · server.cfg and ensure", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" }
+  ]}
+/>

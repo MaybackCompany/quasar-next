@@ -1,0 +1,156 @@
+<LessonHero
+  crumbs="Module 02 · Workflow"
+  title="From localhost to VPS with Git"
+  meta={[
+    { label: "You'll build", value: "A safe deploy loop: develop on your PC, commit with GitHub Desktop, push to a private repo, then pull onto your VPS and restart, with no secrets ever leaving your machine." },
+    { label: "Time", value: "~30 minutes." },
+    { label: "You need", value: "GitHub Desktop set up (the version-control lesson), a GitHub account, and a VPS you can reach over SSH." },
+    { label: "You'll learn", value: "A private repo -> .gitignore for secrets -> clone on the VPS -> the edit/commit/push/pull/restart loop -> roll back a bad deploy" },
+  ]}
+>
+  Editing files straight on a live server is how beginners take their server down at 2am with no way back. The professional loop is different: you code on your PC, you commit when it works, you push, and the VPS pulls a known-good version. Git is the time machine that lets you roll back the moment a deploy breaks. This lesson wires that loop end to end for one resource.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can commit and push with GitHub Desktop (the version-control lesson).",
+    "I have a VPS and can open an SSH session or its web console.",
+    "My resource runs locally and I can restart it in txAdmin."
+  ]}
+/>
+
+<Callout variant="danger" title="Secrets never go in Git">
+  Your license key, database password, and any Discord webhook are secrets. If you commit one, treat it as leaked the instant it reaches GitHub, even a private repo. You will use a `.gitignore` and server convars so secrets stay on each machine and never enter the repo. There is a recovery step at the bottom if you slip.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Add a .gitignore before the first commit" outcome="Secret files are invisible to Git from the start.">
+    Open your resource folder in VS Code and create a file named `.gitignore` at its root. List anything that holds a secret or is machine-specific:
+
+    ```text
+# secrets and machine-specific files, never committed
+*.env
+.env
+license-key.txt
+db-creds.txt
+config.secret.lua
+node_modules/
+    ```
+
+    Keep real config out of code: read secrets at runtime with `GetConvar` from your `server.cfg`, which lives on the server and is not in the repo. The convars lesson covers this pattern.
+
+    <ExpectedOutput>
+      In GitHub Desktop, the Changes list does NOT show license-key.txt, .env, or db-creds.txt.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Publish a PRIVATE repository" outcome="Your code is on GitHub, private, with the secret files excluded.">
+    In GitHub Desktop, commit your work, then choose **Publish repository**. Crucial: untick **Keep this code private** only if you truly want the world to read it. For a server, leave it **private**.
+
+    <TechLinks ids={["github-desktop", "github"]} />
+
+    <ExpectedOutput>
+      The repo appears on github.com with a "Private" badge, and no secret files are listed in it.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Install Git on the VPS and clone into resources" outcome="A first copy of the resource exists on the VPS, pulled from GitHub.">
+    Open an SSH session to your VPS. Install Git if it is missing (`sudo apt update && sudo apt install -y git` on Ubuntu/Debian). Then clone your repo into the server's resources folder. Because the repo is private, use an access token or an SSH deploy key when GitHub asks to authenticate, not your account password.
+
+    <TechLink id="git" />
+
+    ```bash
+cd /home/fivem/server-data/resources
+git clone https://github.com/your-username/your-resource.git qu_deploy_demo
+    ```
+
+    Then `ensure qu_deploy_demo` in `server.cfg` and restart the server once so it loads.
+
+    <ExpectedOutput>
+      Cloning into 'qu_deploy_demo'...
+      remote: Enumerating objects ... done.
+      Resolving deltas: 100% ... done.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Run the update loop" outcome="A change made on your PC reaches the VPS with two commands and a restart.">
+    This is the loop you repeat forever. On your PC: make the change, test locally, then commit and push in GitHub Desktop. On the VPS: pull and restart.
+
+    On the VPS, inside the resource folder:
+
+    ```bash
+cd /home/fivem/server-data/resources/qu_deploy_demo
+git pull
+    ```
+
+    Then in the txAdmin Live Console:
+
+    ```bash
+restart qu_deploy_demo
+    ```
+
+    <ExpectedOutput>
+      Updating a1b2c3d..e4f5g6h
+      Fast-forward
+       client.lua | 2 +-
+       1 file changed, 1 insertion(+), 1 deletion(-)
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Roll back a bad deploy" outcome="You can return the VPS to the last working commit in seconds.">
+    A deploy breaks the server. Stay calm: Git remembers every version. On the VPS, see recent commits and reset to the last good one:
+
+    ```bash
+git log --oneline -n 5
+git reset --hard <good_commit_hash>
+    ```
+
+    Then `restart qu_deploy_demo`. The resource is back to that exact known-good state. This is why you push working code in small commits: every commit is a save point you can return to.
+
+    <ExpectedOutput>
+      HEAD is now at a1b2c3d your last working commit message
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "I committed license-key.txt / a password / a webhook", fix: "Treat it as leaked NOW. Revoke and regenerate the key on portal.cfx.re, change the DB password, and rotate the webhook. Then add the file to .gitignore. Deleting it in a later commit does not un-leak it." },
+    { symptom: "git: command not found on the VPS", fix: "Install Git: sudo apt install -y git (Debian/Ubuntu). Confirm with git --version." },
+    { symptom: "fatal: not a git repository", fix: "You are in the wrong folder. cd into the cloned resource folder (the one that contains a hidden .git folder) before git pull." },
+    { symptom: "Authentication failed on clone/pull", fix: "Private repos reject account passwords. Use a GitHub personal access token or an SSH deploy key for the VPS." },
+    { symptom: "git pull says 'local changes would be overwritten'", fix: "Someone edited files directly on the VPS. That breaks the loop. git reset --hard origin/main to match GitHub, then only ever edit on your PC." },
+    { symptom: "Pulled but nothing changed in game", fix: "You forgot the restart. git pull only updates files; restart qu_deploy_demo loads them." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Exclude secrets with .gitignore before the first commit, and read them at runtime with GetConvar.",
+    "Publish a private GitHub repo from GitHub Desktop.",
+    "Install Git on a VPS and clone a private repo into resources with a token or deploy key.",
+    "Run the edit/commit/push on your PC, then pull and restart on the VPS.",
+    "Roll back a broken deploy to the last good commit with git reset --hard."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Change one printed string in your resource on your PC, commit and push, then `git pull` and `restart` on the VPS. Confirm the new string appears in the server console. Then run `git log --oneline` on the VPS and find the commit you just deployed.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "GitHub Desktop", href: "https://desktop.github.com/" },
+    { label: "GitHub docs · About README and private repos", href: "https://docs.github.com/en/repositories" },
+    { label: "Git docs · git reset", href: "https://git-scm.com/docs/git-reset" },
+    { label: "Cfx.re docs · Server commands and convars", href: "https://docs.fivem.net/docs/server-manual/server-commands/" }
+  ]}
+/>

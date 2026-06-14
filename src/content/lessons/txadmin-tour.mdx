@@ -1,0 +1,157 @@
+<LessonHero
+  crumbs="Step 05"
+  title="The txAdmin tour"
+  meta={[
+    { label: "You'll do", value: "Open every txAdmin panel, identify what each one is for, and use the Live Console to send a real command." },
+    { label: "Time", value: "~15 minutes" },
+    { label: "You need", value: "Step 04 done. txAdmin running on http://localhost:40120 with a green badge." },
+    { label: "You'll learn", value: "Live Console -> Players panel -> Resources tab -> Recipes -> Settings (CFG Editor, Game Mode, Privacy) -> in-game F1 menu" },
+  ]}
+>
+  txAdmin is the cockpit for your server. It ships **bundled inside FXServer**, so there is nothing extra to install. Six panels do 95% of the work: **Live Console**, **Players**, **Resources**, **Recipes**, **Settings**, and the in-game **F1** menu. We'll click through them all so nothing feels mysterious, and you'll send a live `status` command before the end.
+</LessonHero>
+
+<Prereq
+  items={[
+    "txAdmin is open in my browser at http://localhost:40120.",
+    "The top-left badge is green (Server Online).",
+    "I'm logged in with the admin account I created in Step 03.",
+    "I have a free Cfx.re license key from portal.cfx.re in my server.cfg."
+  ]}
+/>
+
+<Callout variant="fivem" title="What txAdmin actually is, in one minute">
+  txAdmin is a web app that wraps your FXServer process. The server runs as a child of txAdmin: it watches the server, restarts it on crash, and gives you a dashboard so you never have to dig through a raw console window. Think of it as the nurse station outside the kitchen. The kitchen (FXServer) does the cooking. txAdmin tells you who is at the table, what is burning, and lets you send orders without walking in. Do one step, read the proof, then move on.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Open the dashboard and read the heartbeat" outcome="You can send a command to your running server and read its reply.">
+    Open your browser to the dashboard:
+
+    ```text
+    http://localhost:40120
+    ```
+
+    Confirm the top-left badge is green and says **Server Online**. In the left sidebar, click **Live Console**. You'll see a black terminal scrolling text: every line FXServer prints, you read here. At the bottom is an input box. Type this and press Enter:
+
+    ```bash
+    status
+    ```
+
+    The console replies with your connected player count, slot count, and uptime. That is your server answering live.
+
+    <ExpectedOutput>
+    Hostname: My FXServer
+    Server uptime: 0d 0h 4m 12s
+    Connected players: 0
+    </ExpectedOutput>
+
+    Color codes matter: white is info, yellow is a warning, red is an error. If you see red, copy the line and search it. About 90% of red lines are typos in `server.cfg` or a bad `fxmanifest.lua`.
+  </Step>
+
+  <Step num={2} title="Find a player in the Players panel" outcome="You can locate any connected player and read their identifiers.">
+    In the left sidebar, click **Players**, then the **Online** tab. It lists everyone connected right now (including you, once you join in Step 06). Click any name to open the **Player Modal**, where day-to-day moderation lives:
+
+    ```text
+    Info     -> identifiers: fivem:, steam:, discord:, license:
+    History  -> past warnings, kicks, bans
+    IDs      -> hardware IDs, for ban-evasion checks
+    Actions  -> Warn / Kick / Ban / DM, each with a reason field
+    ```
+
+    The **Info** tab is the one you'll use most. When you connect to your own server later, click your own name and copy the `fivem:` value. That is what you paste into the admin line in `server.cfg`:
+
+    ```text
+    add_principal identifier.fivem:1234567 group.admin
+    ```
+  </Step>
+
+  <Step num={3} title="Restart one resource from the Resources tab" outcome="You can flip a single resource without restarting the whole server.">
+    In the left sidebar, click **Resources**. Each row is one resource folder. A green dot means running, grey means stopped, red means crashed. Hover a row to reveal **Start**, **Stop**, and **Restart**. The button at the top of the page, **Refresh List**, re-scans the `resources/` folder for new files you dropped in.
+
+    The core developer loop is: edit a script, save, click **Restart** on that one resource, then alt-tab back into the game. No full server restart needed. You can also do it from the Live Console. Restart the built-in `chat` resource to see it:
+
+    ```bash
+    restart chat
+    ```
+
+    <ExpectedOutput>
+    Stopping resource chat
+    Started resource chat
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Understand Recipes (and when to use one)" outcome="You know what a recipe is and why you almost never run a second one.">
+    Click **Recipes** in the sidebar. A recipe is a file that tells txAdmin: download this list of resources, drop them in `resources/`, and add the matching `ensure` lines to `server.cfg`. One click builds a working server preset. You saw a recipe run in Step 03.
+
+    The prefabs you'll see today are the actively maintained ones. **ESX Legacy** and **Qbox** are the recommended starts for a new 2026 server. Qbox is the ox-native successor to QBCore and has its own one-click txAdmin recipe. QBCore still works, but its development has largely stalled, so reach for Qbox or ESX Legacy first.
+
+    Recipes are one-time scaffolds. Use one to **create a new server**, not to update an existing one. Running a second recipe on a working server overwrites your `server.cfg` and you lose your customizations.
+  </Step>
+
+  <Step num={5} title="Edit server.cfg from the browser with the CFG Editor" outcome="You can edit server.cfg in-browser, with highlighting and a save button.">
+    Click **Settings**, then the **CFG Editor** tab. Your full `server.cfg` opens in a Monaco editor, the same engine VS Code uses. Scroll to your admin line and confirm your resources are ensured:
+
+    ```text
+    ensure chat
+    ensure qu_hello
+    ```
+
+    Edit, then click **Save**. If a change needs a full restart, txAdmin tells you and you click the **Server Restart** button at the top-right. This editor is the cleanest way to edit a server that runs on a remote box: no SSH, no FileZilla, just a password-protected web tab.
+
+    <ExpectedOutput>
+    Saved server.cfg. Some changes may require a server restart.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Set Privacy to Hidden, then peek at the F1 menu" outcome="You hide your dev server from the public list and know what F1 does once you join.">
+    Still in **Settings**, open the **Game Mode & Privacy** area. While you're learning, set **Server Privacy** to **Hidden**. A hidden server is not listed in the FiveM browser, so players reach it only through **Direct Connect**. Flip to **Public** when you're ready to advertise. The **Game Mode** label (Roleplay, Drift, Sandbox) is just the tag shown next to your server in the browser. Click **Save**.
+
+    Once you connect (Step 06), press **F1** in-game to open the txAdmin Menu: teleport, vehicle spawner, weather and time, player actions, and a Live Editor for placing objects. It is a developer tool locked to `group.admin` by default, so players never see it. That is why your `add_principal` line from Step 2 matters.
+
+    <ExpectedOutput>
+    Privacy saved. Your server is now hidden from the public list.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Browser shows ERR_CONNECTION_REFUSED at localhost:40120", fix: "FXServer is not running. Re-launch it (run.bat or FXServer), watch its console for crash lines, and reload the page." },
+    { symptom: "The Live Console input box is greyed out", fix: "Your txAdmin account lacks command rights. Log in as the master admin you created in Step 03, or promote your account in Settings -> Admin Manager." },
+    { symptom: "status replies with red License key error", fix: "Add a free license key from portal.cfx.re to server.cfg as sv_licenseKey, then restart. The key is required even for a local test server." },
+    { symptom: "Players panel is empty but I'm in the server", fix: "Refresh the page. The panel polls every few seconds and the first load can miss your join." },
+    { symptom: "F1 menu does nothing in-game", fix: "You either aren't connected yet or lack admin rights. Confirm your add_principal identifier.fivem:YOUR-ID group.admin line matches the Info tab, then rejoin." }
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Open txAdmin at http://localhost:40120 and confirm the green Server Online badge.",
+    "Send live commands from the Live Console; status is your is-it-alive check.",
+    "Find any player's fivem: identifier in the Players panel and paste it into add_principal.",
+    "Restart one resource from the Resources tab instead of the whole server.",
+    "Edit server.cfg in the CFG Editor and set Privacy to Hidden while you develop."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Without joining the game, do three things in txAdmin: run `status` in the Live Console and read the reply, click **Restart** on `chat` in the Resources tab and watch the console echo it, then set **Privacy** to **Hidden** in Settings and Save. Write down the exact `status` output you saw.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "CFX docs · Setting up a server using txAdmin", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
+    { label: "CFX Portal · get your free license key", href: "https://portal.cfx.re/" },
+    { label: "txAdmin · GitHub repo and changelog", href: "https://github.com/tabarra/txAdmin" },
+    { label: "Qbox framework docs", href: "https://docs.qbox.re/" }
+  ]}
+/>

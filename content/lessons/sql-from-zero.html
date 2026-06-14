@@ -1,0 +1,615 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> > <span>Module 07 · Lesson 21</span></div>
+        <h1>SQL from zero: oxmysql</h1>
+        <p class="lede">Every script you have built so far forgets everything on restart. Cooldowns, bank balances, notes -- all gone. A database is the fix. It is a program that stores rows of data on disk and gives them back when you ask. This lesson teaches you just enough SQL to make your FiveM scripts remember things forever, using oxmysql as the bridge between Lua and the database.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A working resource that creates a table, inserts rows with safe parameterized queries, and reads them back.</dd></div>
+          <div><dt>Time</dt><dd>~35 minutes</dd></div>
+          <div><dt>You'll learn</dt><dd>What a database is -> install oxmysql -> connection string -> CREATE TABLE -> INSERT with ? placeholders -> SELECT rows</dd></div>
+          <div><dt>Prereqs</dt><dd>Modules 01-06 complete. A running FiveM server with MariaDB or MySQL installed.</dd></div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="21">
+        <h2>Before you start</h2>
+        <p>Quick check. If any of these are shaky, pop back for two minutes before plugging in a database, SQL errors are much harder to read than Lua errors.</p>
+        <ul class="prereq-checks">
+          <li><label><input type="checkbox"> I have <code>oxmysql</code> downloaded and dropped into my <code>resources/[ox]</code> folder (or wherever you keep dependencies)</label></li>
+          <li><label><input type="checkbox"> I have MySQL or MariaDB running locally (or a remote one I can reach), with a username and password I can use</label></li>
+          <li><label><input type="checkbox"> I read <a href="../clase-22b/leason22b.html">Convars &amp; server.cfg</a> so secrets are handled before I paste a database password</label></li>
+          <li><label><input type="checkbox"> I am comfortable editing <code>fxmanifest.lua</code> and adding a <code>dependency</code> line</label></li>
+          <li><label><input type="checkbox"> I know which file is server-side and which is client-side, the database is server-only, always</label></li>
+        </ul>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 21: SQL from zero: oxmysql</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>SQL stores data after restart.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find queries in server files using oxmysql.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Use placeholders, never joined strings.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Select one row before building saves.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small sql example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Database</dt><dd>A program that stores rows on disk.<br><span>Example: MariaDB keeps notes after restart.</span></dd></div>
+            <div><dt tabindex="0">Query</dt><dd>One SQL request.<br><span>Example: SELECT reads rows.</span></dd></div>
+            <div><dt tabindex="0">Placeholder</dt><dd>A safe slot for input.<br><span>Example: ? protects against injection.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_notes</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_notes/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure oxmysql</code><br><code>ensure qu_notes</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][sql]">
+            <header><span class="file">qu_notes/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'sql'
+
+MySQL.ready(function()
+    MySQL.query('SELECT 1 AS ready', {}, function(result)
+        print(('[QUIET][%s][ready] rows=%s'):format(MODULE, #result))
+    end)
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][sql]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>server.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure oxmysql</code> above <code>ensure qu_notes</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>sql_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][sql_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>No such export GetCoreObject in resource qb-core</code> means the dependency is missing or ensured late.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+            <li><code>SQL error: Table 'qu_notes' doesn't exist</code> means the migration did not run.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section id="why-database">
+        <h2>Why you need a database</h2>
+        <p>Right now, your Lua variables live in RAM. When the server restarts, RAM is wiped. Everything stored in a <code>local</code> table is gone. A database writes data to disk. Disk survives restarts, crashes, even power cuts. That is the entire point: <strong>data that outlives the process</strong>.</p>
+        <p>Think of a database as a spreadsheet that your code can talk to. Each table is a sheet. Each row is a line of data. Each column is a field. You talk to it using a language called SQL (Structured Query Language). SQL is not Lua. It is its own language, but it is simple for what we need.</p>
+        <div class="callout callout--tip">
+          <header>MariaDB vs MySQL</header>
+          <p>MariaDB is a free, open-source fork of MySQL. They speak the same language. Most FiveM servers use MariaDB. When this lesson says "MySQL", it means both. oxmysql works with either one.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Install oxmysql</h2></header>
+        <p class="step-outcome">Outcome: oxmysql is downloaded, placed in your resources, and started before your scripts.</p>
+        <div class="step-body">
+          <ol>
+            <li>Go to <a href="https://github.com/overextended/oxmysql/releases" target="_blank" rel="noopener">oxmysql releases on GitHub</a> and download the latest <code>oxmysql.zip</code>.</li>
+            <li>Unzip it. You get a folder called <code>oxmysql</code>.</li>
+            <li>Drop that folder into your server's <code>resources/</code> directory, just like any other resource.</li>
+            <li>Open <code>server.cfg</code> and add <code>ensure oxmysql</code> <strong>above</strong> all your other resources. oxmysql must start first because other resources depend on it.</li>
+          </ol>
+          <figure class="code">
+            <header><span>server.cfg (relevant lines)</span></header>
+            <pre><code class="language-bash">ensure oxmysql
+
+# your other resources below
+ensure ox_lib
+ensure qbx_core
+ensure qu_heal</code></pre>
+          </figure>
+          <div class="callout callout--fivem">
+            <header>ensure order matters</header>
+            <p>FiveM starts resources top to bottom. If <code>qu_heal</code> tries to talk to the database before <code>oxmysql</code> is running, you get a cryptic error. Put <code>ensure oxmysql</code> near the top of your <code>server.cfg</code>, before anything that uses it.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>The connection string</h2></header>
+        <p class="step-outcome">Outcome: oxmysql knows how to reach your database.</p>
+        <div class="step-body">
+          <p>oxmysql needs one line in <code>server.cfg</code> that tells it where the database lives, what username and password to use, and which database name to connect to. This is called the <strong>connection string</strong>.</p>
+          <div class="callout callout--danger">
+            <header>Secrets before connection strings</header>
+            <p>Complete <a href="../clase-22b/leason22b.html">Convars &amp; server.cfg</a> first. Use <code>exec server-secrets.cfg</code>, gitignore that file, and keep <code>mysql_connection_string</code>, webhook URLs, and API keys out of screenshots and public repos.</p>
+          </div>
+          <figure class="code">
+            <header><span>server.cfg</span></header>
+            <pre><code class="language-bash">set mysql_connection_string "mysql://fivem:yourpassword@localhost:3306/fivem"</code></pre>
+          </figure>
+          <p>Let's break that apart:</p>
+          <ul>
+            <li><code>mysql://</code> -- the protocol. Always this.</li>
+            <li><code>root</code> -- your database username. <code>root</code> is the default admin account.</li>
+            <li><code>yourpassword</code> -- the password for that user. Replace this with your actual password.</li>
+            <li><code>localhost</code> -- the database is on the same machine as the FiveM server. If it were on another machine, you would use its IP address.</li>
+            <li><code>3306</code> -- the default MySQL/MariaDB port.</li>
+            <li><code>fivem</code> -- the database name. You create this once in your database tool (HeidiSQL, phpMyAdmin, or the command line).</li>
+          </ul>
+          <div class="callout callout--danger">
+            <header>Never commit your password</header>
+            <p>If you share your server files on GitHub, the connection string contains your database password. Either use a <code>.gitignore</code> for <code>server.cfg</code> or move the password to a separate file. Leaked database credentials = someone else owns your data.</p>
+          </div>
+          <figure class="code">
+            <header><span>exact connection failure to recognize</span></header>
+            <pre><code class="language-bash">[script:oxmysql] Error: Access denied for user 'fivem'@'localhost' (using password: YES)</code></pre>
+          </figure>
+          <p>Fix it by correcting the user/password in the connection string or creating the user for the right host: <code>CREATE USER 'fivem'@'localhost' IDENTIFIED BY 'yourpassword'; GRANT ALL PRIVILEGES ON fivem.* TO 'fivem'@'localhost';</code>. Then restart and look for <code>[script:oxmysql] Database server connection established!</code>.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Your first SQL: CREATE TABLE</h2></header>
+        <p class="step-outcome">Outcome: you understand how to define a table with columns and types.</p>
+        <div class="step-body">
+          <p>A table is like a spreadsheet with named columns. Before you can store anything, you tell the database what shape the data has. Here is our first table:</p>
+          <figure class="code">
+            <header><span>SQL</span></header>
+            <pre><code class="language-sql">CREATE TABLE IF NOT EXISTS player_notes (
+    id        INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(60)  NOT NULL,
+    note      VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);</code></pre>
+          </figure>
+          <p>Line by line:</p>
+          <ul>
+            <li><code>CREATE TABLE IF NOT EXISTS player_notes</code> -- make a table called <code>player_notes</code>. The <code>IF NOT EXISTS</code> part means "skip this if the table already exists", so you can run it every time without errors.</li>
+            <li><code>id INT AUTO_INCREMENT PRIMARY KEY</code> -- a number that goes up by 1 for each new row. This gives every row a unique ID. You never set it yourself; the database picks the next number.</li>
+            <li><code>identifier VARCHAR(60) NOT NULL</code> -- a text column up to 60 characters. This will hold the player's license or citizen ID. <code>NOT NULL</code> means you cannot leave this empty.</li>
+            <li><code>note VARCHAR(255) NOT NULL</code> -- a text column up to 255 characters for the actual note text.</li>
+            <li><code>created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP</code> -- the database fills this in automatically with the current date and time when you insert a row.</li>
+          </ul>
+          <p>Now let's run this from Lua using oxmysql. In a server script:</p>
+          <figure class="code">
+            <header><span>qu_notes/server.lua</span></header>
+            <pre><code class="language-lua">MySQL.ready(function()
+    MySQL.query([[
+        CREATE TABLE IF NOT EXISTS player_notes (
+            id         INT AUTO_INCREMENT PRIMARY KEY,
+            identifier VARCHAR(60)  NOT NULL,
+            note       VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        )
+    ]])
+    print('[qu_notes] Table ready')
+end)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>What is MySQL.ready?</summary>
+            <p><code>MySQL.ready(fn)</code> waits until oxmysql has connected to the database, then runs your function. Without this wrapper, your query might fire before the connection is open and fail silently. Always wrap startup queries in <code>MySQL.ready</code>.</p>
+          </details>
+          <div class="callout callout--fivem">
+            <header>Storing a whole table in one column (JSON)</header>
+            <p>Sometimes you want to save something with lots of fields at once, like a player's first name, last name, and birthday. Instead of one column per field, frameworks like Qbox squeeze the whole thing into a single text column as <strong>JSON</strong>, a plain string that looks like <code>{"firstname":"John","lastname":"Doe"}</code>. To save a Lua table as that string, use <code>json.encode</code>. To turn the string back into a Lua table when you read it, use <code>json.decode</code>. Both are built into FiveM, no <code>require</code> needed.</p>
+            <pre><code class="language-lua">-- saving: turn a Lua table into a JSON string for the column
+local text = json.encode({ firstname = 'John', lastname = 'Doe' })
+MySQL.update.await('UPDATE players SET charinfo = ? WHERE identifier = ?', { text, identifier })
+
+-- reading: turn the column's JSON string back into a Lua table
+local row = MySQL.single.await('SELECT charinfo FROM players WHERE identifier = ?', { identifier })
+local charinfo = json.decode(row.charinfo)
+print(charinfo.firstname)   -- John</code></pre>
+            <p>You do not need this for the notes resource, but you will see <code>json.decode</code> everywhere once you open a real framework, so it helps to recognize it now.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>INSERT a row: parameterized queries</h2></header>
+        <p class="step-outcome">Outcome: you can safely insert data into a table without risking SQL injection.</p>
+        <div class="step-body">
+          <p>To add a row, you use <code>INSERT INTO</code>. But there is a right way and a <strong>dangerously wrong way</strong> to include player data in the query.</p>
+
+          <h3>The wrong way (never do this)</h3>
+          <figure class="code">
+            <header><span>DANGER: string concatenation</span></header>
+            <pre><code class="language-lua">-- NEVER DO THIS. This is a SQL injection vulnerability.
+local query = "INSERT INTO player_notes (identifier, note) VALUES ('" .. id .. "', '" .. text .. "')"
+MySQL.query(query)</code></pre>
+          </figure>
+          <p>Why is this dangerous? Imagine a player sends this as their note text:</p>
+          <figure class="code">
+            <header><span>Malicious input</span></header>
+            <pre><code class="language-sql">'); DROP TABLE player_notes; --</code></pre>
+          </figure>
+          <p>If you glue that into the query string, the database sees: insert a row, <em>then delete the entire table</em>. This attack is called <strong>SQL injection</strong>. It has destroyed real companies. The fix is simple: never glue player data into SQL strings. Instead, use <code>?</code> placeholders.</p>
+
+          <h3>The right way (always do this)</h3>
+          <figure class="code">
+            <header><span>qu_notes/server.lua</span></header>
+            <pre><code class="language-lua">local function addNote(identifier, noteText)
+    MySQL.insert('INSERT INTO player_notes (identifier, note) VALUES (?, ?)', {
+        identifier, noteText
+    })
+end</code></pre>
+          </figure>
+          <p>Each <code>?</code> is a placeholder. oxmysql fills them in using the values from the table you pass as the second argument, <em>in order</em>. The database treats those values as pure data, never as SQL commands. No matter what text the player types, it can only end up inside the <code>note</code> column. It can never become a SQL command.</p>
+
+          <div class="callout callout--danger">
+            <header>The one rule of SQL</header>
+            <p>Any time you put a variable into a SQL query, use a <code>?</code> placeholder. No exceptions. No shortcuts. If you remember one thing from this lesson, make it this.</p>
+          </div>
+
+          <p>Let's wire this to a command so we can test it:</p>
+          <figure class="code">
+            <header><span>qu_notes/server.lua</span></header>
+            <pre><code class="language-lua">RegisterCommand('addnote', function(source, args)
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    local noteText = table.concat(args, ' ')
+    if noteText == '' then
+        print('[qu_notes] No note text provided')
+        return
+    end
+
+    addNote(identifier, noteText)
+    print(('[qu_notes] Note saved for %s'):format(identifier))
+end, false)</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Write a CREATE TABLE</h3></header>
+        <p>Without looking at the code above, write a <code>CREATE TABLE</code> statement for a table called <code>warnings</code> with these columns:</p>
+        <ul>
+          <li><code>id</code> -- auto-incrementing primary key</li>
+          <li><code>identifier</code> -- the player's license, up to 60 characters, required</li>
+          <li><code>reason</code> -- the warning reason, up to 255 characters, required</li>
+          <li><code>issued_at</code> -- timestamp, auto-filled</li>
+        </ul>
+        <div class="self-check">
+          <details>
+            <summary>Check your answer</summary>
+            <figure class="code">
+              <header><span>SQL</span></header>
+              <pre><code class="language-sql">CREATE TABLE IF NOT EXISTS warnings (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    identifier VARCHAR(60)  NOT NULL,
+    reason     VARCHAR(255) NOT NULL,
+    issued_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+);</code></pre>
+            </figure>
+            <p>If your version matches the shape (even if the exact spacing differs), you understand the pattern. The key parts: <code>IF NOT EXISTS</code>, <code>AUTO_INCREMENT PRIMARY KEY</code>, <code>NOT NULL</code> on required fields, and <code>DEFAULT CURRENT_TIMESTAMP</code> on the time column.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>SELECT rows back</h2></header>
+        <p class="step-outcome">Outcome: you can read data from the database and use it in Lua.</p>
+        <div class="step-body">
+          <p><code>SELECT</code> asks the database for rows. You can ask for everything, or filter by conditions.</p>
+          <figure class="code">
+            <header><span>SQL examples</span></header>
+            <pre><code class="language-sql">-- Get ALL rows from player_notes
+SELECT * FROM player_notes;
+
+-- Get only rows for one player
+SELECT * FROM player_notes WHERE identifier = ?;
+
+-- Get only the note text and date, newest first
+SELECT note, created_at FROM player_notes
+WHERE identifier = ?
+ORDER BY created_at DESC;</code></pre>
+          </figure>
+          <p>In Lua, <code>MySQL.query</code> returns a table of rows. Each row is a Lua table where the keys are the column names:</p>
+          <figure class="code">
+            <header><span>qu_notes/server.lua</span></header>
+            <pre><code class="language-lua">RegisterCommand('mynotes', function(source)
+    local src = source
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then return end
+
+    local rows = MySQL.query.await(
+        'SELECT note, created_at FROM player_notes WHERE identifier = ? ORDER BY created_at DESC',
+        { identifier }
+    )
+
+    if not rows or #rows == 0 then
+        print(('[qu_notes] %s has no notes'):format(identifier))
+        return
+    end
+
+    for i, row in ipairs(rows) do
+        print(('[qu_notes] #%d: %s (%s)'):format(i, row.note, row.created_at))
+    end
+end, false)</code></pre>
+          </figure>
+          <details class="explain" open>
+            <summary>MySQL.query vs MySQL.query.await</summary>
+            <p><code>MySQL.query(sql, params)</code> fires the query and moves on without waiting. <code>MySQL.query.await(sql, params)</code> pauses the current thread until the database responds and gives you the result. Use <code>.await</code> when you need the data right now (like printing notes). Use the non-await version for fire-and-forget operations (like logging).</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-5b">
+        <header><span class="step-num">Step 5b</span><h2>UPDATE safely: the double-spend trap</h2></header>
+        <p class="step-outcome">Outcome: you understand how two clicks at once can dupe items, and the one-line SQL trick that stops it.</p>
+        <div class="step-body">
+          <p>So far you have added rows and read them back. The last piece is <strong>changing</strong> a row, like subtracting money when a player buys something. That uses <code>UPDATE</code>:</p>
+          <figure class="code">
+            <header><span>Lua</span></header>
+            <pre><code class="language-lua">-- subtract 80 from this player's cash. returns how many rows changed.
+local affected = MySQL.update.await(
+    'UPDATE accounts SET cash = cash - ? WHERE identifier = ?',
+    { 80, identifier }
+)</code></pre>
+          </figure>
+          <p>Looks harmless. But here is a real bug that has duped items on huge servers. Picture a "buy gun" button. A player has $100 and a gun costs $80. The slow, natural way to write the handler is: read their cash, check if it is enough, then subtract.</p>
+          <figure class="code">
+            <header><span>DANGER: read, check, then deduct</span></header>
+            <pre><code class="language-lua">-- step 1: read their cash
+local cash = MySQL.scalar.await('SELECT cash FROM accounts WHERE identifier = ?', { identifier })
+
+-- step 2: do they have enough?
+if cash < 80 then return end
+
+-- step 3: take the money and give the gun
+MySQL.update.await('UPDATE accounts SET cash = cash - 80 WHERE identifier = ?', { identifier })
+giveGun(identifier)</code></pre>
+          </figure>
+          <p>Now imagine the player clicks the button twice at the exact same moment (a laggy connection or a cheater spamming it). Both clicks run step 1 at the same time. Both read <code>cash = 100</code>. Both pass the check in step 2. Both subtract 80. The player ends at <code>-60</code> dollars and walks away with <strong>two guns for the price of one</strong>. That is a race condition: two things racing through the same code before either finishes.</p>
+
+          <div class="callout callout--danger">
+            <header>The fix: let the database do the checking</header>
+            <p>Do not check in Lua and then deduct. Do both in one query. Add <code>AND cash &gt;= 80</code> to the <code>UPDATE</code> so the subtraction only happens if the money is actually there. The database runs updates one at a time, so only one of the two clicks can win.</p>
+          </div>
+
+          <figure class="code">
+            <header><span>SAFE: one atomic UPDATE</span></header>
+            <pre><code class="language-lua">-- the WHERE clause does the money check AND the deduction together
+local affected = MySQL.update.await(
+    'UPDATE accounts SET cash = cash - 80 WHERE identifier = ? AND cash &gt;= 80',
+    { identifier }
+)
+
+-- affected is 1 if the money was taken, 0 if they were too poor
+if affected == 0 then return end
+
+giveGun(identifier)</code></pre>
+          </figure>
+          <p>Read that out loud: "subtract 80 from cash, but only for the row where cash is already 80 or more." If two clicks arrive together, the first one drops the cash to $20, and when the second one runs there is no longer a row where <code>cash &gt;= 80</code>, so it changes zero rows. <code>affected</code> comes back as <code>0</code>, you bail out, and no second gun is given. One click, one gun. No dupe.</p>
+          <div class="callout callout--pro">
+            <header>Frameworks already do this for you</header>
+            <p>If you are on a framework like Qbox or ESX, do not write the raw money UPDATE yourself. Use the built-in money function, for example <code>player.Functions.RemoveMoney('cash', 80)</code>. It returns <code>false</code> when the player cannot afford it and does the safe atomic check internally. You will meet these functions in the framework module. For now, just remember the rule: never read-then-deduct, always deduct-with-a-condition.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>Put it all together</h2></header>
+        <p class="step-outcome">Outcome: a complete <code>qu_notes</code> resource you can test in-game.</p>
+        <div class="step-body">
+          <figure class="code">
+            <header><span>qu_notes/fxmanifest.lua</span></header>
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'You'
+description 'Player notes with SQL persistence.'
+version '1.0.0'
+
+server_script '@oxmysql/lib/MySQL.lua'
+server_script 'server.lua'</code></pre>
+          </figure>
+          <p>Notice: <code>server_script '@oxmysql/lib/MySQL.lua'</code>. This pulls in the MySQL helper functions from oxmysql, just like we pulled ox_lib with <code>@ox_lib/init.lua</code> in earlier lessons. Without this line, <code>MySQL.query</code> and friends do not exist in your script.</p>
+          <p>The full <code>server.lua</code> is everything from Steps 3-5 combined. Add <code>ensure qu_notes</code> to your <code>server.cfg</code> (below <code>ensure oxmysql</code>), restart the server, and test:</p>
+          <ol>
+            <li>Type <code>/addnote Remember to buy ammo</code> in chat.</li>
+            <li>Type <code>/addnote Fix the garage door</code> in chat.</li>
+            <li>Type <code>/mynotes</code> to see both notes printed in the server console.</li>
+            <li>Restart the server. Type <code>/mynotes</code> again. Both notes are still there. That is persistence.</li>
+          </ol>
+          <div class="callout callout--tip">
+            <header>The restart test</header>
+            <p>The single most important test for any database feature: restart the server and check if the data survived. If it did, your persistence works. If it didn't, you're reading from memory, not the database.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Write a safe INSERT</h3></header>
+        <p>Write a <code>MySQL.insert</code> call that adds a row to the <code>warnings</code> table (from Recap 1). The identifier is stored in a variable called <code>playerId</code> and the reason is in a variable called <code>reason</code>. Use <code>?</code> placeholders.</p>
+        <div class="self-check">
+          <details>
+            <summary>Check your answer</summary>
+            <figure class="code">
+              <header><span>Lua</span></header>
+              <pre><code class="language-lua">MySQL.insert('INSERT INTO warnings (identifier, reason) VALUES (?, ?)', {
+    playerId, reason
+})</code></pre>
+            </figure>
+            <p>Two placeholders, two values in the table, in the same order. <code>id</code> and <code>issued_at</code> are auto-filled by the database, so you don't include them in the INSERT.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes</h2>
+
+        <details class="explain">
+          <summary>Connection string wrong format</summary>
+          <div class="callout callout--danger">
+            <p>The connection string must start with <code>mysql://</code> and follow the exact format: <code>mysql://user:password@host:port/database</code>. A missing <code>:</code>, an extra space, or a wrong port can produce <code>[script:oxmysql] Error: Access denied for user 'fivem'@'localhost' (using password: YES)</code> or no successful connection line. Check this line first, then restart and confirm <code>[script:oxmysql] Database server connection established!</code>.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Table already exists error</summary>
+          <div class="callout callout--danger">
+            <p>If you write <code>CREATE TABLE player_notes</code> without <code>IF NOT EXISTS</code>, the query fails the second time you start the resource because the table is already there. Always use <code>CREATE TABLE IF NOT EXISTS</code>. It costs nothing and prevents a crash.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>Forgetting ? placeholders (SQL injection)</summary>
+          <div class="callout callout--danger">
+            <p>Concatenating player input into a SQL string (<code>"... '" .. input .. "'"</code>) opens you to SQL injection. A malicious player can delete your tables, read other players' data, or worse. Use <code>?</code> placeholders every single time. There is no situation where string concatenation is OK for SQL values.</p>
+          </div>
+        </details>
+
+        <details class="explain">
+          <summary>oxmysql not in server.cfg ensure list</summary>
+          <div class="callout callout--danger">
+            <p>If you see errors like <code>MySQL is nil</code> or <code>attempt to index a nil value (global 'MySQL')</code>, oxmysql is not running. Either <code>ensure oxmysql</code> is missing from <code>server.cfg</code>, or it appears <em>after</em> the resource that needs it. Move it higher.</p>
+          </div>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What does oxmysql do?</legend>
+            <label><input type="radio" name="q1" value="a"> It is a database. It stores data on disk.</label>
+            <label><input type="radio" name="q1" value="b"> It is a bridge between your Lua scripts and a MySQL/MariaDB database.</label>
+            <label><input type="radio" name="q1" value="c"> It replaces MariaDB so you don't need a database server.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Why use <code>?</code> placeholders instead of gluing variables into the SQL string?</legend>
+            <label><input type="radio" name="q2" value="a"> Placeholders are faster.</label>
+            <label><input type="radio" name="q2" value="b"> The database requires them.</label>
+            <label><input type="radio" name="q2" value="c"> String concatenation allows SQL injection: a player could delete your tables or steal data.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What does <code>AUTO_INCREMENT PRIMARY KEY</code> do on the <code>id</code> column?</legend>
+            <label><input type="radio" name="q3" value="a"> The database automatically assigns a unique, increasing number to each new row.</label>
+            <label><input type="radio" name="q3" value="b"> It makes the column read-only after creation.</label>
+            <label><input type="radio" name="q3" value="c"> It deletes the oldest row when a new one is inserted.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: SQL essentials</h2>
+        <dl>
+          <div><dt><code>CREATE TABLE IF NOT EXISTS t (...)</code></dt><dd>Define a new table. Safe to run repeatedly.</dd></div>
+          <div><dt><code>INSERT INTO t (col1, col2) VALUES (?, ?)</code></dt><dd>Add a row. Always use <code>?</code> for values.</dd></div>
+          <div><dt><code>SELECT col FROM t WHERE col = ?</code></dt><dd>Read rows that match a condition.</dd></div>
+          <div><dt><code>MySQL.query(sql, params)</code></dt><dd>Fire-and-forget query. Good for CREATE, INSERT, UPDATE.</dd></div>
+          <div><dt><code>MySQL.query.await(sql, params)</code></dt><dd>Wait for the result. Use when you need the rows back.</dd></div>
+          <div><dt><code>MySQL.insert(sql, params)</code></dt><dd>INSERT shortcut. Returns the new row's <code>id</code>.</dd></div>
+          <div><dt><code>MySQL.scalar.await(sql, params)</code></dt><dd>Returns a single value (first column of first row). Good for <code>COUNT(*)</code> or <code>SUM()</code>.</dd></div>
+          <div><dt><code>?</code> placeholder</dt><dd>Marks where a value goes. oxmysql fills it safely. One <code>?</code> per value, matched by position.</dd></div>
+        </dl>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Why you need a database: data in Lua tables dies on restart, data in a database survives</li>
+          <li>How to install oxmysql and configure the connection string in <code>server.cfg</code></li>
+          <li>How to write <code>CREATE TABLE IF NOT EXISTS</code> with typed columns</li>
+          <li>How to <code>INSERT</code> rows safely using <code>?</code> placeholders (and why string concatenation is a security disaster)</li>
+          <li>How to <code>SELECT</code> rows back and use them in Lua</li>
+          <li>The difference between <code>MySQL.query</code> (fire-and-forget) and <code>MySQL.query.await</code> (wait for result)</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Exercise</h2>
+        <p>Create a resource called <code>qu_notes</code> that does the following:</p>
+        <ol>
+          <li>On resource start, create a <code>player_notes</code> table (id, identifier, note, created_at).</li>
+          <li>Register a <code>/addnote</code> command that inserts a row with the caller's identifier and the text they typed.</li>
+          <li>Register a <code>/mynotes</code> command that SELECTs all notes for the caller and prints them to the server console.</li>
+        </ol>
+        <p>Insert at least 2 notes, then read them back. Restart the server and confirm the notes survived.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console</span></header>
+          <pre><code>-- /addnote Buy ammo before the heist
+[qu_notes] Note saved for license:abc123
+
+-- /addnote Fix the garage script
+[qu_notes] Note saved for license:abc123
+
+-- /mynotes
+[qu_notes] #1: Fix the garage script (2026-05-03 14:30:00)
+[qu_notes] #2: Buy ammo before the heist (2026-05-03 14:29:45)</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>You already have all the code from Steps 3-6. Combine them into one <code>server.lua</code>, add the manifest with <code>@oxmysql/lib/MySQL.lua</code>, and ensure the resource. The restart test is the real verification.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+          <li><a href="https://mariadb.com/kb/en/training-tutorials/" target="_blank" rel="noopener">MariaDB beginner tutorials</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Add a <code>/delnote [id]</code> command that uses <code>DELETE FROM player_notes WHERE id = ? AND identifier = ?</code> so players can only delete their own notes.</li>
+          <li>Add a <code>/notecount</code> command that uses <code>MySQL.scalar.await('SELECT COUNT(*) FROM player_notes WHERE identifier = ?', {id})</code> to show how many notes the player has.</li>
+          <li>Try inserting a note with a single quote in it (<code>/addnote It's broken</code>) and confirm parameterized queries handle it safely. Then imagine what would happen with string concatenation.</li>
+        </ul>
+      </section>

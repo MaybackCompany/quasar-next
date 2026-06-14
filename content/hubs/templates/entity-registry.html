@@ -1,0 +1,142 @@
+<div class="shell shell--no-sidebar">
+    <main class="lesson">
+      <section class="lesson-hero">
+        <div class="crumbs">
+          <a href="/">Quasar Academy</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <a href="/templates">Templates</a> <span class="crumbs__sep" aria-hidden="true">&rsaquo;</span>
+          <span>Entity registry</span>
+        </div>
+        <h1>Entity registry</h1>
+        <p class="lede">Every spawned entity gets an id and a cleanup path. On <code>onResourceStop</code> the registry walks itself and deletes anything still alive. Zero leaks at restart.</p>
+        <dl class="hero-outcome">
+          <div><dt>Purpose</dt><dd>Track spawned entities, delete on stop.</dd></div>
+          <div><dt>Dependencies</dt><dd>FiveM client runtime.</dd></div>
+          <div><dt>Files</dt><dd><code>fxmanifest.lua</code>, <code>registry.lua</code>.</dd></div>
+          <div><dt>First log</dt><dd><code>[QUIET][registry][track] id=&hellip; entity=&hellip;</code></dd></div>
+          <div><dt>Lesson</dt><dd><a href="/lessons/cleanup-discipline">Lesson 24: entity cleanup</a></dd></div>
+        </dl>
+      </section>
+
+      <section class="callout callout--warn">
+        <header>Cleanup rule</header>
+        <p>Never spawn without a registry id and an <code>onResourceStop</code> path. One orphan entity at restart becomes a stuck object on the map for the next session.</p>
+      </section>
+
+      <section id="files">
+        <h2>Files</h2>
+        <ul class="lesson-list">
+          <li><strong>fxmanifest.lua</strong>, client-only manifest.</li>
+          <li><strong>registry.lua</strong>, the registry module: <code>add</code>, <code>cleanup</code>, and the resource stop hook.</li>
+        </ul>
+      </section>
+
+      <section id="fxmanifest-lua">
+        <h2>fxmanifest.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">fxmanifest.lua</span></header>
+<pre><code>-- PURPOSE: Manifest for the entity-registry template.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Registry uses client natives, keep it on the client side only.
+-- Expand this: add a server-side mirror that records owner identifiers.
+-- SECURITY:
+--   - Never expose the Registry table through net events.
+--   - Always run cleanup on resource stop and on player disconnect.
+--   - Validate ids server-side before mirroring any registry write.
+
+fx_version 'cerulean'
+game 'gta5'
+
+author 'Quasar Academy'
+description 'Template: track spawned entities and cleanup paths'
+version '1.0.0'
+
+client_script 'registry.lua'</code></pre>
+        </figure>
+        <p><a href="/templates/entity-registry/fxmanifest.lua">View raw fxmanifest.lua</a></p>
+      </section>
+
+      <section id="registry-lua">
+        <h2>registry.lua</h2>
+        <figure class="code">
+          <header><span class="lang">lua</span><span class="file">registry.lua</span></header>
+<pre><code>-- PURPOSE: Track spawned entities and cleanup paths.
+-- DEPENDENCIES: FiveM client runtime.
+-- WARNING: Never spawn without a registry id and cleanup path.
+-- Expand this: add timeout cleanup and ownership checks.
+-- SECURITY:
+--   - Validate id and entity handle before add or remove.
+--   - Always pair add with onResourceStop cleanup, no orphans.
+--   - Never expose the Registry table through net events.
+
+local MODULE = 'registry'
+local Registry = {}
+
+local function log(action, message)
+    print(('[QUIET][%s][%s] %s'):format(MODULE, action, message))
+end
+
+function Registry.add(id, entity)
+    if not id or not entity or entity == 0 then return false end
+    Registry[id] = entity
+    log('track', ('id=%s entity=%s'):format(id, entity))
+    return true
+end
+
+function Registry.cleanup(reason)
+    for id, entity in pairs(Registry) do
+        if type(entity) == 'number' and DoesEntityExist(entity) then
+            DeleteEntity(entity)
+        end
+        log('cleanup', ('id=%s reason=%s'):format(id, reason or 'manual'))
+        Registry[id] = nil
+    end
+end
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        Registry.cleanup('resource_stop')
+    end
+end)
+
+return Registry</code></pre>
+        </figure>
+        <p><a href="/templates/entity-registry/registry.lua">View raw registry.lua</a></p>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <ol class="lesson-list">
+          <li>Create <code>resources/[local]/qu_registry/</code>.</li>
+          <li>Copy both files into it.</li>
+          <li>Add <code>ensure qu_registry</code> to <code>server.cfg</code>.</li>
+          <li>From another resource, <code>require</code> or copy the registry module and call <code>Registry.add(id, entity)</code> after every spawn.</li>
+          <li>Restart the resource and watch the cleanup line: <code>[QUIET][registry][cleanup] reason=resource_stop</code>.</li>
+        </ol>
+      </section>
+
+      <section id="next">
+        <h2>Next steps</h2>
+        <ul class="lesson-list">
+          <li>Read <a href="/lessons/cleanup-discipline">Lesson 24</a> for the full cleanup pattern.</li>
+          <li>Pair with <a href="/templates/vehicle-spawn">the vehicle spawn template</a>, spawned vehicles register themselves.</li>
+          <li>Add a per-id timeout when an entity has a known lifetime (drop, marker, prop).</li>
+        </ul>
+      </section>
+
+      <nav class="lesson-nav">
+        <a class="prev" href="/templates/event-gateway">&larr; Event gateway</a>
+        <a class="next" href="/templates/vehicle-spawn">Next: vehicle spawn &rarr;</a>
+      </nav>
+    </main>
+
+    <aside class="rail">
+      <nav aria-label="On this page">
+        <p class="rail-title">On this page</p>
+        <a href="#files">Files</a>
+        <a href="#fxmanifest-lua">fxmanifest.lua</a>
+        <a href="#registry-lua">registry.lua</a>
+        <a href="#install">Install</a>
+        <a href="#next">Next steps</a>
+      </nav>
+    </aside>
+  </div>

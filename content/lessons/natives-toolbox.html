@@ -1,0 +1,780 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 03 · Lesson 11</span></div>
+        <h1>FiveM natives: the toolbox</h1>
+        <p class="lede">You already know some Lua. You already know there is a client side and a server side. Now you need the <em>toolbox</em>. FiveM gives you lots of built-in functions called natives. They let you do real game things like move a ped, draw text, spawn a vehicle, or read health. Nobody memorizes them all. Good developers look them up. This lesson teaches you how to do that calmly.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll build</dt><dd>A reusable native practice script: print your own coordinates, read your health, and teleport yourself safely.</dd></div>
+          <div><dt>Time</dt><dd>~22 minutes</dd></div>
+          <div><dt>You need</dt><dd>Your <code>qu_hello</code> mental model from Module 02, plus the FiveM native docs and <code>cfxnatives.dev</code> open in your browser.</dd></div>
+          <div><dt>You'll learn</dt><dd>What a native is -> how to find one -> how to check the side badge -> how to turn the docs into one small working script</dd></div>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 11: FiveM natives: the toolbox</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Natives are FiveM functions that touch GTA V.<br><span>Example: this lesson gives the smallest useful version.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Search cfxnatives.dev, then confirm official docs.<br><span>Example: check the file path before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Check side, read signature, call it in the right file.<br><span>Example: run one tiny proof before expanding.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Print coordinates with GetEntityCoords.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run one small natives example and verify the exact output.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If this layer is unclear, later FiveM code fails with vague console errors.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Native</dt><dd>A FiveM function that calls GTA V engine behavior.<br><span>Example: GetEntityCoords reads a position.</span></dd></div>
+            <div><dt tabindex="0">Side badge</dt><dd>The docs label showing client, server, or shared.<br><span>Example: PlayerPedId is client-only.</span></dd></div>
+            <div><dt tabindex="0">Signature</dt><dd>The native name, return type, and arguments.<br><span>Example: float posX means pass 100.0.</span></dd></div>
+          </dl>
+
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_natives</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_natives/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_natives</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][natives]">
+            <header><span class="file">qu_natives/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'natives'
+
+RegisterCommand('quiet_10', function()
+    local ped = PlayerPedId()
+    local pos = GetEntityCoords(ped)
+    print(('[QUIET][%s][coords] x=%.2f y=%.2f z=%.2f native=GetEntityCoords'):format(
+        MODULE,
+        pos.x,
+        pos.y,
+        pos.z
+    ))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][natives]</code> appears in the console when the test runs.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code>.</li>
+            <li>Create <code>client.lua</code> on the correct side.</li>
+            <li>Paste the example without changing event names.</li>
+            <li>Add <code>ensure qu_natives</code> in <code>server.cfg</code>.</li>
+            <li>Run the command or event once.</li>
+            <li>Confirm the expected output.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the module name to <code>natives_exercise</code>, then run the same test again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][natives_exercise]</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> means the function is misspelled or called on the wrong side.</li>
+            <li><code>attempt to index a nil value</code> means a table or player object was not loaded.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the log line into <code>quietLog(action, message)</code> so every message keeps one format.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+      
+
+      <section class="native-use-block" id="native-uses">
+        <h2>What natives let you do</h2>
+        <p>Natives are the bridge between your Lua code and the GTA V world. Use them when a script needs to read the player, move an entity, spawn something, draw UI, play an animation, manage a vehicle, or check game state.</p>
+        <dl class="vocab-list">
+          <div><dt tabindex="0">Player tools</dt><dd>Read position, heading, health, armor, sprinting, vehicle state, and current weapon.<br><span>Example: <code>GetEntityCoords(PlayerPedId())</code> powers location logs, marker checks, and zone scripts.</span></dd></div>
+          <div><dt tabindex="0">World control</dt><dd>Move entities, freeze them, delete them, spawn models, change weather, and create blips.<br><span>Example: a garage script uses vehicle natives to spawn, place, repair, and lock cars.</span></dd></div>
+          <div><dt tabindex="0">Interaction polish</dt><dd>Draw text, start animations, play sounds, set cameras, show help text, and create clean client feedback.<br><span>Example: a job script uses animation and UI natives before it pays the player on the server.</span></dd></div>
+          <div><dt tabindex="0">Safe reference habit</dt><dd>Search <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev</a>, an excellent native reference by UzStore, then confirm side and signature on the official docs.<br><span>Example: never paste a native until you know if it belongs in <code>client.lua</code> or <code>server.lua</code>.</span></dd></div>
+        </dl>
+      </section>
+
+      <section class="native-use-block" id="daily-natives">
+        <h2>Most-used natives to recognize first</h2>
+        <p>You do not need to memorize every native. Start with the names below because they appear constantly in real FiveM resources.</p>
+        <dl class="vocab-list">
+          <div><dt tabindex="0"><code>PlayerPedId()</code></dt><dd>Client. Gets your local player ped. Almost every client-side player script starts here.</dd></div>
+          <div><dt tabindex="0"><code>GetEntityCoords(entity)</code></dt><dd>Client. Reads a ped, vehicle, or prop position as <code>vector3</code>.</dd></div>
+          <div><dt tabindex="0"><code>SetEntityCoords(entity, x, y, z, ...)</code></dt><dd>Client. Teleports or positions an entity. Useful for admin tools, staging, and controlled scene setup.</dd></div>
+          <div><dt tabindex="0"><code>GetEntityHeading(entity)</code> / <code>SetEntityHeading(entity, heading)</code></dt><dd>Client. Reads or sets facing direction. You use it for parking, ped placement, and scene alignment.</dd></div>
+          <div><dt tabindex="0"><code>GetEntityHealth(entity)</code> / <code>SetEntityHealth(entity, value)</code></dt><dd>Client. Reads or changes health for peds and entities. Good for health checks and scripted recovery.</dd></div>
+          <div><dt tabindex="0"><code>FreezeEntityPosition(entity, toggle)</code></dt><dd>Client. Locks an entity in place during menus, cutscenes, setup tools, or shop previews.</dd></div>
+          <div><dt tabindex="0"><code>RequestModel(hash)</code> / <code>HasModelLoaded(hash)</code></dt><dd>Client. The loading pattern before spawning peds, vehicles, or props.</dd></div>
+          <div><dt tabindex="0"><code>CreateVehicle</code> / <code>CreatePed</code> / <code>CreateObject</code></dt><dd>Client or server depending on the native. The core spawn family for vehicles, NPCs, and props.</dd></div>
+          <div><dt tabindex="0"><code>TriggerServerEvent(name, ...)</code></dt><dd>Client. Not a GTA native, but a FiveM scripting function you will pair with natives constantly when the server must validate or save the result.</dd></div>
+          <div><dt tabindex="0"><code>GetPlayers()</code> / <code>GetPlayerPed(source)</code></dt><dd>Server. Loop through connected players and read a specific player's ped from server-side code.</dd></div>
+        </dl>
+      </section>
+
+      <section class="prereq" data-lesson="10">
+        <h2>Before you start</h2>
+        <p>These are learning helpers, not hard blockers. The website version of this lesson is about understanding the pattern first, then trying it later if you want.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="resource"> I understand what a client file is and what a server file is</label></li>
+          <li><label><input type="checkbox" data-id="client-file"> I know that client natives belong in <code>client/main.lua</code> when I later practice this on a real resource</label></li>
+          <li><label><input type="checkbox" data-id="docs"> I have <a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">docs.fivem.net/natives</a> open in a browser tab</label></li>
+          <li><label><input type="checkbox" data-id="cfxnatives"> I also have <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev/natives</a> open so I can search quickly before I confirm on the official docs</label></li>
+          <li><label><input type="checkbox" data-id="game"> I understand that the code examples below are teaching examples first, and local runtime practice can come later</label></li>
+        </ul>
+      </section>
+
+      <section class="reading-panel">
+        <h3>How to use this page</h3>
+        <p>This page has two modes. First, treat Steps 1 to 6 as today's lesson. That is the part that teaches you how to read and use a native. Second, bookmark the later sections as your field guide for peds, vehicles, props, and weapons.</p>
+        <ul>
+          <li><strong>Beginner mode:</strong> use your first native, prove it in F8, and stop there if your brain is full.</li>
+          <li><strong>Optional docs mode:</strong> read signatures, return types, model loading, entities, peds, vehicles, props, and weapons.</li>
+        </ul>
+      </section>
+
+      <section id="mental-model">
+        <h2>The mental model: a native <em>is</em> the handle on a GTA V lever</h2>
+        <p>Think of GTA V like a giant machine with lots of buttons. One button moves a ped. One button changes weather. One button draws text. Rockstar wrote those buttons in C++. You cannot call that C++ directly from Lua. FiveM gives you a bridge -> a Lua function that presses the button for you. That function is a <strong>native</strong>.</p>
+        <p>Every native has a hidden hash under the hood, like <code>0x06843DA7060A026B</code>, but you never need to type that. You use the readable name like <code>SetEntityCoords</code>, <code>GetPlayerPed</code>, or <code>DrawText</code>. FiveM does the lookup for you.</p>
+        <p>There are a lot of natives. You are not supposed to memorize them. The real skill is this -> know how to find the right one when you need it.</p>
+
+        <div class="callout callout--fivem">
+          <header>Two references, one habit</header>
+          <p>The official reference is <a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">docs.fivem.net/natives</a>. This is the official source, but it can feel heavy for beginners. The community alternative is <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev</a>, an excellent native reference by UzStore. It is faster to browse and easier to filter by side, framework, and namespace. Best habit: use <code>cfxnatives.dev</code> to <em>find</em> a native -> then use <code>docs.fivem.net</code> to <em>confirm</em> it.</p>
+        </div>
+
+        <div class="callout callout--tip">
+          <header>If this feels slow, good</header>
+          <p>This lesson is not about memorising names. It is about building a calm habit: search -> confirm the side -> copy the Lua-shaped call -> test it.</p>
+        </div>
+      </section>
+
+      <section id="cfxnatives-tour">
+        <h2>Tour: <code>cfxnatives.dev</code> in 90 seconds</h2>
+        <p>Open <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev/natives</a> in a new tab. Ignore the giant list. For a beginner, there are only four moves that matter.</p>
+
+        <dl>
+          <div><dt>1. Search first</dt><dd>Type a job, not a perfect function name: <em>coords</em>, <em>teleport</em>, <em>health</em>, <em>freeze</em>. Let the search do the remembering.</dd></div>
+          <div><dt>2. Check the side badge</dt><dd>Before you copy anything, confirm whether the native is <strong>Client</strong>, <strong>Server</strong>, or <strong>Shared</strong>. That one badge prevents most beginner errors.</dd></div>
+          <div><dt>3. Read the signature</dt><dd>Turn the types into Lua in your head: handles become numbers, floats need decimal points, booleans become <code>true</code> or <code>false</code>.</dd></div>
+          <div><dt>4. Test one tiny script</dt><dd>Do not jump straight into a big feature. First make the native print, move, or return one obvious thing you can see for yourself.</dd></div>
+        </dl>
+
+        <div class="callout callout--tip">
+          <header>The 10-second reading of any native page</header>
+          <p>When you open a native page, read it in this order: (1) <strong>name</strong>, (2) <strong>side badge</strong>, (3) <strong>signature</strong>, (4) <strong>Lua example or related natives</strong>. If you skip step 2, you can waste hours using a client native on the server or the other way around.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-native-drills">
+        <header><span class="chip">Native drills</span><h3>5 searches to build the muscle</h3></header>
+        <p>Open <code>cfxnatives.dev</code>. For each question, search the reference and answer out loud. The goal is not to memorize every native. The goal is to build the habit of finding the right one in under 30 seconds.</p>
+
+        <div class="self-check">
+          <details>
+            <summary>Drill 1: Find a native that freezes an entity in place. What's the name, and which side does it run on?</summary>
+            <p><code>FreezeEntityPosition(entity, toggle)</code>. Client-side. Namespace <code>ENTITY</code>. Useful for cutscenes, menus, and "don't let the player move during this animation" moments.</p>
+          </details>
+          <details>
+            <summary>Drill 2: Server-only -> find the native that kicks a player with a reason string.</summary>
+            <p><code>DropPlayer(playerSrc, reason)</code>. Server-side. Namespace <code>PLAYER</code>. This is an example of why filtering by side matters: try to call <code>DropPlayer</code> from a client file and Lua throws <em>attempt to call a nil value</em>.</p>
+          </details>
+          <details>
+            <summary>Drill 3: You want to force sunny weather instantly. Find the native and note its namespace.</summary>
+            <p><code>SetWeatherTypeNow('EXTRASUNNY')</code>. Client-side. Namespace <code>MISC</code>. The <em>MISC</em> namespace is the catch-all area for things that do not fit neatly anywhere else -> weather, time, hash functions, and script globals. If you cannot find something obvious, check MISC.</p>
+          </details>
+          <details>
+            <summary>Drill 4: Spot the return-type difference between <code>GetEntityCoords</code> and <code>GetEntityHeading</code>.</summary>
+            <p><code>GetEntityCoords(entity, alive)</code> returns a <strong>Vector3</strong> -> you read <code>.x .y .z</code>. <code>GetEntityHeading(entity)</code> returns a <strong>float</strong> -> one single number from 0 to 360. Mixing them up, like using <code>pos.x</code> on a float, is a classic beginner mistake. The return-type column on cfxnatives helps you catch that early.</p>
+          </details>
+          <details>
+            <summary>Drill 5: <code>GetPlayerName</code> exists on both the Client and Server filter. Why is that, and which one should your ban/allow list use?</summary>
+            <p>They are <em>two separate natives</em> with the same name. The client one takes a player index on your machine. The server one takes a <code>source</code>. For identity-sensitive work like bans or logs, always use the server version -> the client can lie. For permanent identity, pair it with the player's <em>license identifier</em>, not the display name. That comes back in Lesson 12.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-1">
+        <header><span class="step-num">Step 1</span><h2>Beginner path: use your first native</h2></header>
+        <p class="step-outcome">Outcome: one client native runs and prints one visible result before you read advanced docs details.</p>
+        <div class="step-body">
+          <p>Your first native should be boring on purpose. Put this in <code>client/main.lua</code>, restart, join the server, and open F8:</p>
+          <figure class="code">
+            <header><span>qu_hello/client/main.lua</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    Wait(2000)
+    local ped = PlayerPedId()
+    print('my ped handle is ' .. ped)
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected F8 output:</strong> <code>my ped handle is</code> followed by a number. That is enough proof for the first pass: you called a client native from a client file.</p>
+        </div>
+      </section>
+
+      <section class="step" id="step-1b">
+        <header><span class="step-num">Step 1b</span><h2>Optional advanced: read a native signature</h2></header>
+        <p class="step-outcome">Outcome: you can translate a C-style signature into a working Lua call.</p>
+        <div class="step-body">
+          <p>This section is useful, but it is not required before you run your first native. Come back when you are ready to read docs without guessing.</p>
+          <p>Here's the signature you'll see on the docs page for <code>SET_ENTITY_COORDS</code>:</p>
+          <figure class="code">
+            <header><span>As written in the docs</span></header>
+            <pre><code class="language-lua">void SET_ENTITY_COORDS(Entity entity, float posX, float posY, float posZ, BOOL alive, BOOL deadFlag, BOOL ragdollFlag, BOOL clearArea)</code></pre>
+          </figure>
+          <p>And here's how you actually call it from Lua:</p>
+          <figure class="code">
+            <header><span>In your Lua file</span></header>
+            <pre><code class="language-lua">SetEntityCoords(ped, 100.0, 200.0, 30.0, false, false, false, false)</code></pre>
+          </figure>
+          <p>Notice three things:</p>
+          <ul>
+            <li>The name flips from <code>SET_ENTITY_COORDS</code> (SCREAMING_SNAKE_CASE) to <code>SetEntityCoords</code> (PascalCase). That's the Lua convention in FiveM. Always.</li>
+            <li>The <code>void</code> at the front means it returns nothing. If you see <code>Entity</code> or <code>int</code> or <code>float</code> there, the native returns a value you can capture.</li>
+            <li>The argument types are C-style. You translate them to Lua.</li>
+          </ul>
+
+          <details class="explain" open>
+            <summary>Translation table, C type to Lua value</summary>
+            <ul>
+              <li><code>Entity</code>, <code>Player</code>, <code>Ped</code>, <code>Vehicle</code>: a handle, i.e. an integer. You get one from another native, like <code>PlayerPedId()</code> or <code>GetPlayerPed(source)</code>.</li>
+              <li><code>float</code>: a Lua number, <strong>always written with a decimal point</strong>. Use <code>100.0</code>, not <code>100</code>.</li>
+              <li><code>BOOL</code>: Lua <code>true</code> or <code>false</code>.</li>
+              <li><code>const char*</code>: a Lua string, like <code>'a_m_y_beach_01'</code>.</li>
+              <li><code>Hash</code>: an integer hash. Two ways to produce one: <code>`some_name`</code> with backticks (compile-time, when the name is hard-coded), or <code>GetHashKey(name)</code> (runtime, when the name lives in a variable). Step 6 shows both.</li>
+              <li><code>int</code>: a plain Lua integer.</li>
+            </ul>
+          </details>
+
+          <div class="callout callout--warn">
+            <header>The float trap, <code>100.0</code> vs <code>100</code></header>
+            <p>GTA natives are picky about floats. A native that expects a <code>float</code> and receives an integer-looking number can silently do nothing, misbehave, or error with a cryptic message. Train your fingers now: whenever a native argument is a coordinate, health, speed, heading, or any <em>float</em>, write it with a decimal, <code>0.0</code>, <code>1.0</code>, <code>100.0</code>, <code>-1336.0</code>. Every time.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-2">
+        <header><span class="step-num">Step 2</span><h2>Check the side before you copy-paste</h2></header>
+        <p class="step-outcome">Outcome: you never waste 20 minutes debugging a native that was on the wrong side of the wall.</p>
+        <div class="step-body">
+          <p>Lesson 10 drilled in the client/server wall. Natives live on one side or both. Every docs page shows a badge: <em>Client</em>, <em>Server</em>, or <em>Shared</em>. Read it <strong>before</strong> you paste the native into a file.</p>
+          <ul>
+            <li><code>PlayerPedId()</code>: <em>client only</em>. The server has no concept of "your" ped.</li>
+            <li><code>GetPlayers()</code>: <em>server only</em>. The client only knows about players near it.</li>
+            <li><code>GetHashKey('model')</code>: <em>shared</em>. Works on both sides.</li>
+          </ul>
+          <p>If you call a server-only native from a client file, Lua tells you <code>attempt to call a nil value</code>. That error is not random, it means the function you named doesn't exist on the side you're running on.</p>
+          <div class="callout callout--tip">
+            <header>A 10-second habit</header>
+            <p>Before you paste a native into your file, glance at the side badge and at your filename. <em>Is this <code>client/main.lua</code> or <code>server/main.lua</code>? Does the native's side match?</em> Ten seconds. Saves hours.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-3">
+        <header><span class="step-num">Step 3</span><h2>Meet the 10 natives you'll use every day</h2></header>
+        <p class="step-outcome">Outcome: you recognize the core toolbox and know which side each native lives on.</p>
+        <div class="step-body">
+          <p>You do not memorize thousands. You learn <em>these ten</em> first. The rest you look up later. Open the docs page for each one as you read. The goal here is familiarity, not perfect recall.</p>
+          <dl>
+            <div><dt><code>PlayerPedId()</code></dt><dd><em>Client.</em> Returns a handle to the local player's ped. Your starting point for almost any client script that touches the player.</dd></div>
+            <div><dt><code>GetEntityCoords(entity)</code></dt><dd><em>Client.</em> Returns the entity's position as a <code>vector3</code>: you can read <code>.x</code>, <code>.y</code>, <code>.z</code>.</dd></div>
+            <div><dt><code>SetEntityCoords(entity, x, y, z, ...)</code></dt><dd><em>Client.</em> Moves the entity. The four trailing <code>BOOL</code>s are almost always <code>false</code>.</dd></div>
+            <div><dt><code>GetEntityHealth(entity)</code> / <code>SetEntityHealth(entity, value)</code></dt><dd><em>Client.</em> Read or set HP. Peds default to 200 max.</dd></div>
+            <div><dt><code>GetPlayers()</code></dt><dd><em>Server.</em> Returns a table of all connected player source IDs. Your entry point for "loop over everyone" logic.</dd></div>
+            <div><dt><code>GetPlayerPed(source)</code></dt><dd><em>Server.</em> Given a player's server ID, returns their ped handle, the server-side equivalent of <code>PlayerPedId()</code>.</dd></div>
+            <div><dt><code>GetHashKey(name)</code></dt><dd><em>Shared.</em> Converts a string (model name, animation dict, etc.) into the integer hash natives want. <strong>Shortcut:</strong> if the name is known at write time, write <code>`a_m_y_beach_01`</code> with backticks instead. The compiler turns it into the same integer at parse time, no runtime call.</dd></div>
+            <div><dt><code>RequestModel(hash)</code> / <code>HasModelLoaded(hash)</code> / <code>SetModelAsNoLongerNeeded(hash)</code></dt><dd><em>Client.</em> The three natives behind every ped and vehicle spawn. You'll see the pattern in Step 6.</dd></div>
+            <div><dt><code>DrawText</code> (family)</dt><dd><em>Client.</em> Draws text on screen. Requires a render loop, covered in a later module, but now you know it exists.</dd></div>
+            <div><dt><code>Wait(ms)</code></dt><dd><em>Both.</em> Yields the current thread for <code>ms</code> milliseconds. Only works inside a thread, see Step 4.</dd></div>
+          </dl>
+          <p>That's your starter kit. Every other native you meet is a variant of these themes: <em>get something</em>, <em>set something</em>, <em>check something</em>, <em>spawn something</em>.</p>
+        </div>
+      </section>
+
+      <section id="native-families">
+        <h2>Native families: your beginner vocabulary</h2>
+        <p>The docs group natives into <em>families</em> (the docs call them namespaces) based on what they touch. You do not need to learn these by heart. The point is to recognize the family a native belongs to, so when you need to do something, you already know roughly where to look. Skim this once, then come back to it like a phone book.</p>
+
+        <table>
+          <thead>
+            <tr><th>Family</th><th>What it touches</th><th>Natives you'll meet first</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Player</strong></td>
+              <td>The person behind the character: their index, their name, the list of everyone connected.</td>
+              <td><code>PlayerId()</code>, <code>PlayerPedId()</code>, <code>GetPlayerName(p)</code>, <code>GetPlayerServerId(p)</code>, <code>GetPlayers()</code> (server)</td>
+            </tr>
+            <tr>
+              <td><strong>Entity</strong></td>
+              <td>The shared bucket. Anything in the world with a handle: peds, vehicles, and props all answer to these.</td>
+              <td><code>GetEntityCoords(e)</code>, <code>SetEntityCoords(e, ...)</code>, <code>GetEntityHeading(e)</code>, <code>DoesEntityExist(e)</code>, <code>DeleteEntity(e)</code></td>
+            </tr>
+            <tr>
+              <td><strong>Ped</strong></td>
+              <td>Character-specific reads and changes: health, armor, weapons, and "what is this character doing right now?" checks.</td>
+              <td><code>GetEntityHealth(ped)</code>, <code>SetPedArmour(ped, n)</code>, <code>IsPedInAnyVehicle(ped, false)</code>, <code>GiveWeaponToPed(ped, hash, ...)</code></td>
+            </tr>
+            <tr>
+              <td><strong>Vehicle</strong></td>
+              <td>Cars, bikes, boats, planes: spawning them, locking doors, reading the plate, checking the class or speed.</td>
+              <td><code>CreateVehicle(model, ...)</code>, <code>SetVehicleEngineOn(v, ...)</code>, <code>SetVehicleDoorsLocked(v, 2)</code>, <code>GetVehicleNumberPlateText(v)</code></td>
+            </tr>
+            <tr>
+              <td><strong>Coords / Math</strong></td>
+              <td>Positions and distances. FiveM's Lua adds <code>vector3</code>, so you can do real geometry without a math library.</td>
+              <td><code>GetEntityCoords(e)</code>, <code>#(coordsA - coordsB)</code> (distance), <code>Vdist(x1, y1, z1, x2, y2, z2)</code></td>
+            </tr>
+            <tr>
+              <td><strong>Blips</strong></td>
+              <td>Those icons on the pause-menu map and minimap: create one at a point, give it a sprite, color, and name.</td>
+              <td><code>AddBlipForCoord(x, y, z)</code>, <code>SetBlipSprite(b, n)</code>, <code>SetBlipColour(b, n)</code>, <code>RemoveBlip(b)</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout callout--tip">
+          <header>The distance trick worth memorizing</header>
+          <p>FiveM gives Lua a real <code>vector3</code> type, so you can subtract two positions and measure the gap in one tiny line: <code>local dist = #(GetEntityCoords(ped) - shopCoords)</code>. The <code>#</code> sign means "length of this vector", which here is the distance in meters. You will use this constantly for "is the player close enough to the counter?" checks. Plain Lua has no vectors, so this only works inside FiveM.</p>
+        </div>
+
+        <div class="callout callout--pro">
+          <header>Server IDs versus client indexes</header>
+          <p>This catches every beginner once. On the <strong>client</strong>, <code>PlayerId()</code> hands you a small local index, useful only with client natives. On the <strong>server</strong>, you work with a player's <em>server ID</em> (the number admins see, the one you target with <code>TriggerClientEvent</code>). They are not the same number, so never mix them. When you need to cross over on the client, <code>GetPlayerServerId(PlayerId())</code> gives you the server ID.</p>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap 1</span><h3>Which side, which native?</h3></header>
+        <p>Answer in your head before you peek.</p>
+        <div class="self-check">
+          <details>
+            <summary>You're in <code>client/main.lua</code> and you want the player's current position as a <code>vector3</code>. Which two natives do you chain?</summary>
+            <p><code>PlayerPedId()</code> to get your ped handle, then <code>GetEntityCoords(ped)</code> to get the position. Both client-side. One-liner: <code>local pos = GetEntityCoords(PlayerPedId())</code>.</p>
+          </details>
+          <details>
+            <summary>You're in <code>server/main.lua</code> and you want to get the ped of the player whose server ID is in <code>src</code>. What do you call?</summary>
+            <p><code>GetPlayerPed(src)</code>. The server version of <code>PlayerPedId</code>. <code>PlayerPedId()</code> itself doesn't exist on the server, it has no concept of a "local" player.</p>
+          </details>
+          <details>
+            <summary>You wrote <code>SetEntityCoords(ped, 100, 200, 30, false, false, false, false)</code> and nothing visible happens. Why?</summary>
+            <p>Integer coordinates. The native expects floats. Change to <code>100.0, 200.0, 30.0</code>. This is the single most common beginner mistake and you just inoculated yourself against it.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-4">
+        <header><span class="step-num">Step 4</span><h2>Drill 1: print your own coordinates on startup</h2></header>
+        <p class="step-outcome">Outcome: you can read a tiny client-native example and understand exactly what each line is doing.</p>
+        <div class="step-body">
+          <p>Open <code>qu_hello/client/main.lua</code>. Paste this in:</p>
+          <figure class="code">
+            <header><span>qu_hello/client/main.lua</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    Wait(2000)
+    local ped = PlayerPedId()
+    local pos = GetEntityCoords(ped)
+    print(('your position: %.2f, %.2f, %.2f'):format(pos.x, pos.y, pos.z))
+end)</code></pre>
+          </figure>
+          <p>If you later run this on a real server, you would see a line like <code>your position: -1037.41, -2737.80, 20.17</code> in F8. For the website version, the important part is understanding the chain: get the ped, get the coords, format the print.</p>
+
+          <details class="explain" open>
+            <summary>What every line is doing</summary>
+            <ol>
+              <li><code>CreateThread(function() ... end)</code>: spins up a cooperative thread. <code>Wait</code> only works inside a thread; outside one it errors. (You will also see <code>Citizen.CreateThread</code> in older code, it is the legacy alias for the same function. New code should use the short <code>CreateThread</code> form.)</li>
+              <li><code>Wait(2000)</code>: yields for two seconds, which gives the game session enough time to actually spawn your ped. Reading coordinates at millisecond zero returns garbage.</li>
+              <li><code>PlayerPedId()</code>: grab your ped handle.</li>
+              <li><code>GetEntityCoords(ped)</code>: returns a <code>vector3</code>. You read <code>pos.x</code>, <code>pos.y</code>, <code>pos.z</code>.</li>
+              <li><code>('...'):format(...)</code>: Lua's <code>string.format</code>. <code>%.2f</code> means "a float rounded to 2 decimals". You'll use this constantly to print readable numbers.</li>
+            </ol>
+          </details>
+
+          <div class="callout callout--tip">
+            <header>Vector3 is a first-class citizen here</header>
+            <p>FiveM's Lua understands <code>vector3(x, y, z)</code> natively. You can subtract two vectors and take the length, <code>#(v1 - v2)</code> gives you distance in meters. You'll lean on this for "is the player near the shop counter?" checks in later modules.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="step" id="step-5">
+        <header><span class="step-num">Step 5</span><h2>Drill 2: teleport to LSX runway 24 on spawn</h2></header>
+        <p class="step-outcome">Outcome: you can read the standard teleport pattern and understand why each argument exists.</p>
+        <div class="step-body">
+          <p>Add a second thread below the first one in <code>client/main.lua</code>:</p>
+          <figure class="code">
+            <header><span>qu_hello/client/main.lua</span></header>
+            <pre><code class="language-lua">CreateThread(function()
+    Wait(3000)
+    local ped = PlayerPedId()
+    SetEntityCoords(ped, -1336.0, -2987.0, 13.9, false, false, false, false)
+    print('moved to LSX runway 24')
+end)</code></pre>
+          </figure>
+          <p>If you later run this on a real local server, your character would slide to the runway after three seconds. For now, read it as a worked example: delayed start, get the ped, move the ped, print a confirmation line.</p>
+          <p>Read the call carefully. Every <code>.0</code> is deliberate. Every <code>false</code> is one of the trailing <code>BOOL</code>s from the signature. The three-second <code>Wait</code> exists because <code>PlayerPedId()</code> returns <code>0</code> while the session is still loading, and moving ped <code>0</code> does nothing.</p>
+
+          <div class="callout callout--gotcha">
+            <header>"Why doesn't this work on the server?"</header>
+            <p>Drop this same code into <code>server/main.lua</code> and it breaks. <code>PlayerPedId()</code> doesn't exist server-side, the server has no <em>local</em> player. To move a specific player from the server, you'd use <code>GetPlayerPed(source)</code> first, and you'd need a <code>source</code>: which means you need an event handler. That's Module 04. For now: <strong>anything that touches "my ped" belongs on the client</strong>.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-exercises">
+        <header><span class="chip">Exercise ladder</span><h3>Three native exercises, easiest to hardest</h3></header>
+        <p>Do these in order. The point is not “more code.” The point is layering one native skill on top of another without skipping steps.</p>
+        <div class="self-check">
+          <details open>
+            <summary>Exercise 1: <code>/coords</code></summary>
+            <p>Register a command called <code>/coords</code>. Inside it, get the local ped with <code>PlayerPedId()</code>, then get the position with <code>GetEntityCoords(ped)</code>, then print the three values. Success means: you can explain the full line in plain English, and if you later run it locally, F8 would show one readable coordinate line.</p>
+          </details>
+          <details>
+            <summary>Exercise 2: <code>/myhp</code></summary>
+            <p>Search <code>GetEntityHealth</code> on <code>cfxnatives.dev</code>. Use the side badge and signature to wire a command called <code>/myhp</code>. Success means: typing the command prints your current health as a whole number.</p>
+          </details>
+          <details>
+            <summary>Exercise 3: <code>/airport</code></summary>
+            <p>Turn the teleport drill into a reusable command. Register <code>/airport</code>. When the player runs it, move the ped to <code>-1336.0, -2987.0, 13.9</code> and print <code>teleported to airport</code>. Success means: the move happens and the message prints every time.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="step" id="step-6">
+        <header><span class="step-num">Step 6</span><h2>The model loading pattern</h2></header>
+        <p class="step-outcome">Outcome: you recognize the four-line boilerplate that precedes every ped or vehicle spawn.</p>
+        <div class="step-body">
+          <p>Most "spawn something" natives take a model hash. The engine streams models on demand, you have to <em>ask</em> for one, <em>wait</em> for it, then <em>release</em> it when you're done. The pattern is everywhere:</p>
+          <figure class="code">
+            <header><span>The idiomatic model load</span></header>
+            <pre><code class="language-lua">local hash = `a_m_y_beach_01`  -- backtick literal: compile-time hash
+RequestModel(hash)
+while not HasModelLoaded(hash) do
+    Wait(10)
+end
+
+SetModelAsNoLongerNeeded(hash)</code></pre>
+          </figure>
+          <p>Reading line by line:</p>
+          <ul>
+            <li><code>`a_m_y_beach_01`</code> (backticks, not single quotes): a <strong>compile-time hash literal</strong>. The CfxLua parser sees the backticks and replaces the whole thing with the integer hash before your script ever runs. Zero runtime cost. Use this whenever the model name is known at write time.</li>
+            <li><code>RequestModel(hash)</code>: tell the engine "start streaming this in".</li>
+            <li><code>while not HasModelLoaded(hash) do Wait(10) end</code>: poll every 10ms until the model is ready. Yes, this is a busy-wait. Yes, it feels clunky. No, there is no cleaner way, this <em>is</em> the FiveM idiom.</li>
+            <li>Between the loop and <code>SetModelAsNoLongerNeeded</code>, you spawn whatever needs the model (a ped, a vehicle, a prop).</li>
+            <li><code>SetModelAsNoLongerNeeded(hash)</code>: tell the engine you're done. The engine can now unload the asset when it needs the memory.</li>
+          </ul>
+          <p>This is your first taste of an <strong>async pattern</strong> in FiveM. <code>RequestModel</code> starts a fetch, <code>HasModelLoaded</code> checks progress, the loop holds the thread until it's ready. Every engine has trade-offs; this is one of GTA V's.</p>
+          <div class="callout callout--fivem">
+            <header>Backticks vs <code>GetHashKey</code></header>
+            <p>Both produce the same integer hash for the same string. Pick by where the name lives:</p>
+            <ul>
+              <li><strong>Backticks</strong> <code>`a_m_y_beach_01`</code> when the name is hard-coded in your file. Free at runtime, no function call.</li>
+              <li><strong><code>GetHashKey(name)</code></strong> when the name is in a variable, a config table, a database row, or anything decided at runtime. <code>local hash = GetHashKey(model)</code>.</li>
+            </ul>
+            <p>Older lessons and old resources use <code>GetHashKey</code> for everything. It still works fine, but new code should use backticks for compile-time-known names. It is shorter and faster.</p>
+          </div>
+          <div class="callout callout--pro">
+            <header>Why the <code>while</code> loop matters</header>
+            <p>Skip the loop and call the spawn native immediately, the model isn't loaded yet, so nothing spawns. No error. No warning. Just silence. The polite wait is not optional; it's the reason your ped exists.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="reading-panel reading-panel--accent">
+        <h3>Lesson complete. The rest is your field guide.</h3>
+        <p>If you only came here to learn what a native is and how to use one, you can stop here and continue the course. Everything below is reference material you will come back to when you need peds, vehicles, props, or weapons.</p>
+      </section>
+
+      <section id="entity-map">
+        <h2>What are entities, objects, peds, and weapons?</h2>
+        <p>Beginners often see these words everywhere and treat them like the same thing. They are related, but not the same. Think of this section like your tiny field guide.</p>
+        <dl>
+          <div><dt>Entity</dt><dd>The broad bucket. In FiveM and GTA V, an entity is a thing that exists in the game world and has a handle. Peds, vehicles, and objects are all entities.</dd></div>
+          <div><dt>Ped</dt><dd>A character model. The player is a ped. NPCs are peds. Police officers, shopkeepers, and random civilians are peds.</dd></div>
+          <div><dt>Object / prop</dt><dd>A world item like a chair, ATM, crate, cone, cash pile, or vending machine. In community talk, <em>object</em> and <em>prop</em> are often used almost interchangeably.</dd></div>
+          <div><dt>Vehicle</dt><dd>A car, bike, truck, plane, boat, or helicopter. It is its own entity type with vehicle-specific natives.</dd></div>
+          <div><dt>Weapon</dt><dd>A weapon is usually identified by a weapon name or weapon hash. It is not the same thing as a ped or prop. You give a weapon to a ped, or check what weapon a ped is holding.</dd></div>
+        </dl>
+        <div class="callout callout--tip">
+          <header>The simple mental model</header>
+          <p>If it exists in the world, start by asking: is it a ped, a vehicle, or an object? If yes, it is also an entity. That helps you search the right native family faster.</p>
+        </div>
+        <div class="callout callout--pro">
+          <header>The beginner story version</header>
+          <p>You are not "coding GTA." You are usually doing one of four things: reading something from a ped, moving a ped or vehicle, spawning a prop, or giving a weapon. Once you name the bucket correctly, the docs become much less scary.</p>
+        </div>
+      </section>
+
+      <section id="finding-models">
+        <h2>Where do you find ped names, object names, and weapon names?</h2>
+        <p>There are two separate things you usually need to find:</p>
+        <ul>
+          <li>The <strong>native</strong> you want to call, like <code>CreatePed</code> or <code>GiveWeaponToPed</code>.</li>
+          <li>The <strong>model or weapon name</strong> you want to pass into it, like a shopkeeper ped name, a cone prop name, or a pistol weapon name.</li>
+        </ul>
+        <p>For the native itself, use <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev</a> first and confirm on <a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">docs.fivem.net</a>.</p>
+        <p>For the model or weapon name, the practical beginner workflow is:</p>
+        <ol>
+          <li>Search the web for the thing in plain English, like <em>fivem shopkeeper ped name</em> or <em>fivem cone prop name</em>.</li>
+          <li>Check a trusted model list or code example.</li>
+          <li>Use <code>GetHashKey('name_here')</code> if the native wants a hash.</li>
+          <li>Test one small spawn or one small print before building a whole system around it.</li>
+        </ol>
+        <div class="callout callout--pro">
+          <header>Do not memorize names</header>
+          <p>You are not expected to remember every ped name, prop name, or weapon name. The real skill is finding the right name quickly, then testing it in a tiny script.</p>
+        </div>
+      </section>
+
+      <section id="reference-guide">
+        <h2>Field guide: where to look for each kind of thing</h2>
+        <p>Use this when you know <em>what</em> you want, but you do not yet know the exact name or native.</p>
+        <dl>
+          <div><dt>Natives</dt><dd>Search <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev</a> first, then confirm the side and signature on <a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">docs.fivem.net/natives</a>.</dd></div>
+          <div><dt>Peds</dt><dd>Use the official ped model guide: <a href="https://docs.fivem.net/docs/game-references/ped-models/" target="_blank" rel="noopener">docs.fivem.net/docs/game-references/ped-models</a>. Search by the kind of character you want, then test the model in one tiny spawn script.</dd></div>
+          <div><dt>Vehicles</dt><dd>Use the official vehicle model guide: <a href="https://docs.fivem.net/docs/game-references/vehicle-models/" target="_blank" rel="noopener">docs.fivem.net/docs/game-references/vehicle-models</a>. This is where you find the model names for cars, bikes, boats, and aircraft.</dd></div>
+          <div><dt>Weapons</dt><dd>Use the official weapon model guide: <a href="https://docs.fivem.net/docs/game-references/weapon-models/" target="_blank" rel="noopener">docs.fivem.net/docs/game-references/weapon-models</a>. Search for the weapon name first, then use the matching give or check native.</dd></div>
+          <div><dt>Objects / props</dt><dd>Props are the messiest category. There is not one tidy official prop list like vehicles have. The safe workflow is: find a known prop name from a trusted example, test one spawn, then keep it in your own notes list.</dd></div>
+          <div><dt>Game assets in general</dt><dd>If you want to explore models and GTA assets more deeply later, FiveM's asset guide is a good next step: <a href="https://docs.fivem.net/docs/game-references/part-2-exploring-exporting-gta-assets/" target="_blank" rel="noopener">Part 2: Exploring &amp; Exporting GTA Assets</a>.</dd></div>
+        </dl>
+        <div class="callout callout--tip">
+          <header>The safe search habit</header>
+          <p>Search for the <strong>thing</strong> first, not the whole feature. Search <em>police ped model</em>, <em>sultan vehicle model</em>, <em>pistol weapon model</em>, or <em>ATM prop name</em>. Once you know the name, the code part gets much easier.</p>
+        </div>
+      </section>
+
+      <section id="starter-guides">
+        <h2>Starter guides: peds, cars, props, and weapons</h2>
+        <p>If you are a total beginner, build in this order. Each guide is one small kind of script, not a giant system.</p>
+        <dl>
+          <div><dt>Ped guide</dt><dd>Find one ped model -> load it -> spawn it -> clean up the model. First goal: one shopkeeper or guard standing where you expect.</dd></div>
+          <div><dt>Vehicle guide</dt><dd>Find one vehicle model -> load it -> spawn it at fixed coordinates -> print a success line. First goal: one known car appears in one known spot.</dd></div>
+          <div><dt>Object / prop guide</dt><dd>Find one simple prop name like a cone or crate -> load it -> create the object -> confirm it exists. First goal: one prop appears and stays there.</dd></div>
+          <div><dt>Weapon guide</dt><dd>Find one weapon name -> use the correct native to give it to a ped -> confirm the ped now holds it. First goal: one weapon, one ped, one clear result.</dd></div>
+        </dl>
+        <p>The pattern is always the same: find the name -> confirm the native -> load if needed -> create or give -> print one clear success line. That is the beginner rhythm.</p>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-entity-drills">
+        <header><span class="chip">Entity drills</span><h3>Extra exercises for peds, props, and weapons</h3></header>
+        <p>These are the next useful native drills after coordinates and teleporting.</p>
+        <div class="self-check">
+          <details open>
+            <summary>Drill 1: identify the thing before you code</summary>
+            <p>Pick three examples, for example a police officer, an ATM, and a pistol. Say out loud what each one is: ped, object, or weapon. Success means: you stop searching the wrong docs family.</p>
+          </details>
+          <details>
+            <summary>Drill 2: spawn one ped</summary>
+            <p>Find one ped model name, load the model, and spawn the ped. Success means: you can explain the load loop and why the ped model name is not the same thing as the native name.</p>
+          </details>
+          <details>
+            <summary>Drill 3: spawn one object</summary>
+            <p>Find one simple prop name, like a cone or crate, and spawn it as an object. Success means: you can tell the difference between spawning a ped and spawning a prop.</p>
+          </details>
+          <details>
+            <summary>Drill 4: give one weapon</summary>
+            <p>Find one weapon name, then wire a tiny test that gives it to the local ped. Success means: you can explain why the weapon name is separate from the ped itself.</p>
+          </details>
+          <details>
+            <summary>Drill 5: spawn one vehicle</summary>
+            <p>Pick one simple car model from the official vehicle list, load it, and spawn it at one fixed location. Success means: you can explain why a vehicle is still an entity, but uses a different spawn native than a ped.</p>
+          </details>
+          <details>
+            <summary>Drill 6: make your own mini reference sheet</summary>
+            <p>Save one ped model, one vehicle model, one prop name, and one weapon name in a notes file. Success means: next time you want to test something, you already have known-good examples ready.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-2">
+        <header><span class="chip">Recap 2</span><h3>Prove the drills ran</h3></header>
+        <p>If you later put both drills into <code>client/main.lua</code> and run them locally, the expected output would look like this:</p>
+        <figure class="code">
+          <header><span>F8 client console</span></header>
+          <pre><code class="language-bash">your position: -1037.41, -2737.80, 20.17
+moved to LSX runway 24</code></pre>
+        </figure>
+        <div class="self-check">
+          <details>
+            <summary>Only the first line shows up, what's wrong?</summary>
+            <p>Check Drill 2's <code>Wait(3000)</code>. Make sure every coordinate is a float (<code>.0</code> suffix). Make sure the second <code>CreateThread</code> block is actually a block, two <code>end</code>s, one for the function and one closing the call. If the file has a syntax error the whole script silently stops.</p>
+          </details>
+          <details>
+            <summary>Both show up but the teleport didn't happen, what's wrong?</summary>
+            <p>Check you're running the code in <code>client/main.lua</code>, not <code>server/main.lua</code>. Check your <code>fxmanifest.lua</code> declares <code>client_script 'client/main.lua'</code>. On the server, <code>PlayerPedId()</code> returns <code>0</code> and <code>SetEntityCoords(0, ...)</code> is a no-op.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="mistakes">
+        <h2>Common mistakes &amp; what the console tells you</h2>
+
+        <details class="explain">
+          <summary>Bug: teleport line runs, nothing moves</summary>
+          <p>You passed integers where floats belong. <code>SetEntityCoords(ped, 100, 200, 30, ...)</code> fails silently. Change every coordinate to have a decimal: <code>100.0, 200.0, 30.0</code>. This is the single most common FiveM-beginner bug. Train your fingers to always type the <code>.0</code>.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Error: <code>attempt to call a nil value (global 'GetPlayers')</code></summary>
+          <p>You called a server-only native (like <code>GetPlayers</code>) from a client file, or a client-only native (like <code>PlayerPedId</code>) from a server file. The native doesn't exist on that side. Check the docs page's side badge, then move the code to the matching file.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Bug: ped or vehicle just doesn't spawn</summary>
+          <p>You skipped the <code>RequestModel</code> / <code>HasModelLoaded</code> loop. The engine needs time to stream the model in. Without the polite <code>while Wait(10)</code> wait, the spawn native runs before the model is ready and returns a useless handle. Always load before you spawn.</p>
+        </details>
+
+        <details class="explain">
+          <summary>Error: <code>attempt to yield from outside a coroutine</code></summary>
+          <p><code>Wait</code> only works inside a <code>CreateThread</code> (or an event handler, later module). Wrap the code that uses <code>Wait</code> in <code>CreateThread(function() ... end)</code> and the error disappears. (Older code uses <code>Citizen.CreateThread</code>: same function, legacy alias.)</p>
+        </details>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quiz: 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is a FiveM native?</legend>
+            <label><input type="radio" name="q1" value="a"> A Lua-only helper function like <code>string.format</code>.</label>
+            <label><input type="radio" name="q1" value="b"> A function FiveM exposes that reaches into GTA V's engine to do something (move a ped, draw text, spawn a vehicle).</label>
+            <label><input type="radio" name="q1" value="c"> A database query run against the server's SQL store.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. The docs say <code>void SET_ENTITY_COORDS(Entity entity, float posX, ...)</code>. Which Lua call is correct?</legend>
+            <label><input type="radio" name="q2" value="a"> <code>SetEntityCoords(ped, 100, 200, 30, false, false, false, false)</code></label>
+            <label><input type="radio" name="q2" value="b"> <code>SET_ENTITY_COORDS(ped, 100.0, 200.0, 30.0)</code></label>
+            <label><input type="radio" name="q2" value="c"> <code>SetEntityCoords(ped, 100.0, 200.0, 30.0, false, false, false, false)</code></label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why do you wrap <code>Wait(2000)</code> in <code>CreateThread</code>?</legend>
+            <label><input type="radio" name="q3" value="a"> <code>Wait</code> only works inside a thread, outside one it errors.</label>
+            <label><input type="radio" name="q3" value="b"> <code>CreateThread</code> makes the code run faster.</label>
+            <label><input type="radio" name="q3" value="c"> It's optional, <code>Wait</code> works anywhere in Lua.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="cheatsheet">
+        <h2>Cheat sheet: keep this open next lesson</h2>
+        <dl>
+          <div><dt><code>PlayerPedId()</code></dt><dd>Client. Your local ped handle, the starting point for client-side player code.</dd></div>
+          <div><dt><code>GetEntityCoords(entity)</code></dt><dd>Client. Returns a <code>vector3</code>; read <code>.x</code>, <code>.y</code>, <code>.z</code>.</dd></div>
+          <div><dt><code>SetEntityCoords(entity, x, y, z, false, false, false, false)</code></dt><dd>Client. Move an entity. Coords are floats, always write <code>.0</code>.</dd></div>
+          <div><dt><code>GetPlayers()</code> / <code>GetPlayerPed(source)</code></dt><dd>Server. Loop over connected players; get a specific player's ped by server ID.</dd></div>
+          <div><dt><code>GetHashKey('name')</code> / <code>`name`</code></dt><dd>Shared. String → integer hash. Backtick form is a compile-time literal, prefer it when the name is hard-coded; use <code>GetHashKey</code> when the name lives in a variable or config.</dd></div>
+          <div><dt><code>RequestModel</code> / <code>HasModelLoaded</code> / <code>SetModelAsNoLongerNeeded</code></dt><dd>Client. The three-native pattern every ped/vehicle spawn uses.</dd></div>
+          <div><dt><code>CreateThread(fn)</code> / <code>Wait(ms)</code></dt><dd>Spin up a cooperative thread; yield for <code>ms</code> milliseconds. <code>Wait</code> only works inside a thread or event handler. <code>Citizen.CreateThread</code> is the legacy alias, same function.</dd></div>
+          <div><dt><code>string.format</code> / <code>('%.2f'):format(x)</code></dt><dd>Format numbers for readable logs. <code>%.2f</code> = float with 2 decimals.</dd></div>
+          <div><dt>Peds guide</dt><dd><a href="https://docs.fivem.net/docs/game-references/ped-models/" target="_blank" rel="noopener">docs.fivem.net/docs/game-references/ped-models</a></dd></div>
+          <div><dt>Vehicles guide</dt><dd><a href="https://docs.fivem.net/docs/game-references/vehicle-models/" target="_blank" rel="noopener">docs.fivem.net/docs/game-references/vehicle-models</a></dd></div>
+          <div><dt>Weapons guide</dt><dd><a href="https://docs.fivem.net/docs/game-references/weapon-models/" target="_blank" rel="noopener">docs.fivem.net/docs/game-references/weapon-models</a></dd></div>
+          <div><dt>Docs (official)</dt><dd><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">docs.fivem.net/natives</a> -> the official reference.</dd></div>
+          <div><dt>Docs (easy search)</dt><dd><a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev</a> -> the easiest place to search by idea first, then filter by side before you paste code.</dd></div>
+      </dl>
+      </section>
+
+      <section id="native-ladder">
+        <h2>Native exercise ladder for total beginners</h2>
+        <p>If you are starting from zero, do not jump straight from "I found a native" to "I built a whole feature". Build up in tiny wins. Each drill below is deliberately small enough to verify with your own eyes.</p>
+        <ol>
+          <li><strong>Coords drill.</strong> Write one thread that prints your current coordinates. Success means you can explain why <code>GetEntityCoords</code> returns a <code>vector3</code>.</li>
+          <li><strong>Heading drill.</strong> Add <code>GetEntityHeading(ped)</code> and print it beside the coords. Success means you understand the difference between a vector return and a single float return.</li>
+          <li><strong>Teleport drill.</strong> Move your ped to one safe location with <code>SetEntityCoords</code>. Success means you remembered the side badge and the <code>.0</code> habit.</li>
+          <li><strong>Health drill.</strong> Search for <code>GetEntityHealth</code> and wire a command called <code>/myhp</code> that prints your current health. Success means you can find and use a native without the lesson handing you the answer.</li>
+          <li><strong>Model-loading drill.</strong> Write the full <code>GetHashKey</code> → <code>RequestModel</code> → <code>HasModelLoaded</code> loop → spawn → <code>SetModelAsNoLongerNeeded</code> pattern. Success means you understand why "requested" and "loaded" are two different states.</li>
+        </ol>
+        <p>Workflow every time: search on <a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev</a>, check the side badge, confirm the signature on <a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">docs.fivem.net</a>, then write the Lua call yourself.</p>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>A native is a Lua function that reaches into GTA V's engine -- you look them up, you do not memorize them</li>
+          <li>How to read a C-style signature and translate it into a working Lua call (PascalCase, floats with <code>.0</code>, booleans)</li>
+          <li>Always check the side badge (Client / Server / Shared) before pasting a native into your file</li>
+          <li>The model-loading pattern: <code>RequestModel</code> then <code>HasModelLoaded</code> loop then spawn then <code>SetModelAsNoLongerNeeded</code></li>
+          <li>How to use <code>cfxnatives.dev</code> to find a native quickly, then confirm on <code>docs.fivem.net</code></li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a client command called <code>/whereami</code> that prints your current coordinates and your heading on one line. Use <code>PlayerPedId()</code>, <code>GetEntityCoords</code>, and <code>GetEntityHeading</code>.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console</span></header>
+          <pre><code>pos: -1037.41, -2737.80, 20.17 heading: 145.30</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Chain <code>PlayerPedId()</code> into both <code>GetEntityCoords</code> and <code>GetEntityHeading</code>. Use <code>('pos: %.2f, %.2f, %.2f heading: %.2f'):format(pos.x, pos.y, pos.z, heading)</code> to format the output neatly.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="../resources/">Quasar Academy Resources</a></li>
+          <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM Native Reference (official)</a></li>
+          <li><a href="https://cfxnatives.dev/natives" target="_blank" rel="noopener">cfxnatives.dev -- fast native search</a></li>
+          <li><a href="https://docs.fivem.net/docs/game-references/ped-models/" target="_blank" rel="noopener">Ped Models Reference</a></li>
+        </ul>
+      </section>
+
+      <section class="level-up">
+        <h2>Stretch yourself (optional)</h2>
+        <ul>
+          <li>Open the docs, search for <code>GetEntityHealth</code>, read the signature, and add a command that prints your current HP every time you run it.</li>
+          <li>Find three coordinates you like (open the pause menu map, drop a waypoint, read the values) and cycle through them on spawn, a mini airport tour.</li>
+          <li>Look up <code>GetDistanceBetweenCoords</code> and compare its output to <code>#(v1 - v2)</code>. Which one feels cleaner in Lua?</li>
+          <li>Replace the <code>%.2f</code> log with a single-line <code>vector3</code> print. What does <code>print(pos)</code> actually output?</li>
+        </ul>
+      </section>
+
+      <section class="deep-dive-section" aria-labelledby="deep-dive-heading">
+        <h2 id="deep-dive-heading">Go deeper (production expansion)</h2>
+        <p>Once natives feel familiar, this expansion lesson groups them by job so the docs read faster.</p>
+        <a class="deep-dive-card" href="../expansion/native-families.html">
+          <div>
+            <span class="deep-dive-card__kicker">Expansion · Module 03B</span>
+            <h3 class="deep-dive-card__title">Native families in production</h3>
+            <p class="deep-dive-card__lede">Group natives by entity, ped, vehicle, and HUD use so the reference stops feeling random.</p>
+          </div>
+          <span class="deep-dive-card__arrow" aria-hidden="true">›</span>
+        </a>
+      </section>

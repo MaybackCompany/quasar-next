@@ -1,0 +1,78 @@
+<LessonHero
+  crumbs="Module B9 · Migrations & identity"
+  title="Inventory migration: QB, ESX, ox"
+  meta={[
+    { label: "You'll learn", value: "What changes when you swap a framework inventory for ox_inventory, and how to plan the migration without losing items." },
+    { label: "Time", value: "~25 minutes." },
+    { label: "You need", value: "A framework server and the ox/oxmysql lessons." },
+    { label: "You'll learn", value: "Why inventory is load-bearing -> compatibility bridges -> the migration plan -> what breaks and how to test" },
+  ]}
+>
+  Replacing your inventory is one of the most disruptive changes you can make, because half your scripts touch items. Moving to ox_inventory is popular for good reason, but it is a migration, not a drop-in. This lesson gives you the plan, the bridge concept, and the test that proves you did not lose anyone's items.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a framework with a working inventory.",
+    "I understand ox_inventory depends on oxmysql and ox_lib.",
+    "I have database backups (the backup SOP)."
+  ]}
+/>
+
+<Callout variant="danger" title="Back up before you migrate">
+  Inventory data is player property. Take a full database backup (the backup SOP) before you touch anything. A failed inventory migration without a backup means wiped player items and a community revolt.
+</Callout>
+
+## Plan the migration
+
+<StepGroup>
+  <Step num={1} title="Map what touches the inventory" outcome="You know every script that adds, removes, or checks items.">
+    List the resources that call inventory functions: shops, jobs, crafting, drugs, anything that grants or takes items. These are what will break, and what you must update or bridge.
+  </Step>
+
+  <Step num={2} title="Understand the compatibility bridge" outcome="You know whether old scripts can keep working during the move.">
+    ox_inventory provides compatibility shims for common framework inventory exports, so many scripts work with minimal change. But it warns these are best-effort: some scripts still need real edits. Plan for both.
+  </Step>
+
+  <Step num={3} title="Migrate the data and items definitions" outcome="Existing items map into the ox_inventory format.">
+    Move your items definitions into ox_inventory's format and ensure existing player inventory data maps over. This is the step that loses items if done blind; do it on a copy first, against your backup.
+  </Step>
+
+  <Step num={4} title="Test on a copy before going live" outcome="Items survive and scripts still grant/take correctly.">
+    On a test server with the backup restored: load a character, confirm their items are intact, then run each item-touching script (buy, sell, job reward) and confirm it works.
+
+    <ExpectedOutput>
+      A test character keeps its items, and shops/jobs add and remove items correctly.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Players lost items after migration", fix: "Restore the pre-migration backup. Re-run the data mapping on a copy until items survive, then deploy." },
+    { symptom: "Shops/jobs no longer give items", fix: "Those scripts used the old inventory exports. Update them or rely on the compatibility bridge, and test each one." },
+    { symptom: "ox_inventory will not start", fix: "Missing oxmysql or ox_lib, or items definitions in the wrong format. Check dependencies and the items file." },
+    { symptom: "Bridge works for some scripts, not others", fix: "Compatibility shims are best-effort. The stubborn scripts need real edits to ox_inventory's API." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "List every script that touches the inventory before migrating.",
+    "Use ox_inventory's compatibility bridge but expect some scripts to need edits.",
+    "Map items definitions and player data into the ox_inventory format on a copy first.",
+    "Test that items survive and item-touching scripts still work before going live."
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "ox_inventory documentation", href: "https://overextended.dev/ox_inventory" },
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" },
+    { label: "ox_lib documentation", href: "https://overextended.dev/ox_lib" }
+  ]}
+/>

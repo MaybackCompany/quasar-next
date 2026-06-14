@@ -1,0 +1,209 @@
+<LessonHero
+  crumbs="Step 06"
+  title="Connect, restart, read console"
+  meta={[
+    { label: "You'll do", value: "Direct-connect to your own server with localhost, open the in-game console (F8), run tx, learn ensure / restart / refresh, and read a real server log line by line." },
+    { label: "Time", value: "~15 minutes" },
+    { label: "You need", value: "Steps 03, 04, 05 done. txAdmin online (green badge) on http://localhost:40120, and the FiveM client installed." },
+    { label: "You'll learn", value: "F8 console -> connect localhost -> the tx command -> ensure vs restart vs refresh -> reading info / warn / error lines -> where logs live on disk" },
+  ]}
+>
+  This is the last 15 minutes of Track 0. You'll join your own server, learn the three reload commands every developer memorizes, and start reading the server console with confidence. You already have a server running because **txAdmin ships bundled inside FXServer** and opened on `http://localhost:40120` the first time you booted it. After this lesson you are ready for Lua.
+</LessonHero>
+
+<Prereq
+  items={[
+    "txAdmin shows a green \"Server Online\" badge at http://localhost:40120.",
+    "The FiveM client is installed (Step 01) and I have a Cfx.re license key from portal.cfx.re in server.cfg.",
+    "My server.cfg has no red error lines in the Live Console.",
+    "I can keep VS Code and the txAdmin Live Console open side by side."
+  ]}
+/>
+
+<Callout variant="fivem" title="Two consoles, two jobs">
+  You are about to use two different consoles. The **server console** is txAdmin's Live Console (or the window where `FXServer` runs); it prints what the *server* is doing and you read it to debug script crashes. The **client console** is in-game, opened with `F8`; it prints what your *client* sees and is where you type `connect`. Think of the server console as the kitchen pass and the client console as your own receipt. Different views of the same server.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Connect to your own server" outcome="You spawn in-game on your own localhost server.">
+    Your server is already running through txAdmin. Now join it from the game client:
+
+    1. Open the FiveM client.
+    2. Top tab, click **Play**.
+    3. Right side, click **Direct Connect**.
+    4. Type the address below in the bar, then click **Connect**.
+
+    ```text
+    localhost
+    ```
+
+    The first connect downloads any resources your server added, so the loading screen takes a moment. `localhost` means "this same computer" because you run the server and the client on one PC. Real players join later with your public IP or a Cfx.re join code.
+
+    <ExpectedOutput>
+    Loading screen progresses, then you spawn in-game on the default map.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Open F8 and run tx" outcome="The txAdmin in-game menu opens from the console.">
+    While in-game, press `F8`. A black console drops down from the top. Type this and press Enter:
+
+    ```text
+    tx
+    ```
+
+    `tx` opens the txAdmin admin menu, the same panel that `F1` opens, but from the console. This is handy when you are testing keybinds and `F1` is busy. Press `F8` again to close the console. F8 is also where you run client-side commands later, like your own `RegisterCommand` callbacks.
+
+    <ExpectedOutput>
+    The txAdmin admin menu opens on screen (identical to pressing F1).
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Learn ensure vs restart vs refresh" outcome="You can pick the right reload command without guessing.">
+    Three commands, three jobs. Run them from the txAdmin Live Console or from F8 in-game.
+
+    ```text
+    ensure my-resource
+    ```
+
+    `ensure` starts the resource if it is stopped, and restarts it if it is already running. This is the line you put in `server.cfg` for every resource. It is the safe re-bounce.
+
+    ```text
+    restart my-resource
+    ```
+
+    `restart` stops then starts a running resource in one atomic step. Use it after you edit a Lua or JS file. Do not type `stop` then `start` as two separate commands; that leaves a window where the resource is dead.
+
+    ```text
+    refresh
+    ```
+
+    `refresh` re-scans the `resources/` folder for new sub-folders. It does not start anything on its own. After you drop in a brand-new resource folder, run `refresh` first, then `ensure my-resource`.
+
+    Try it on a resource that already ships with your server:
+
+    ```text
+    restart chat
+    ```
+
+    <ExpectedOutput>
+    [    info] Stopping resource chat
+    [    info] Started resource chat
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Read the server console one line at a time" outcome="You can label any console line as info, warn, or error.">
+    Open txAdmin, then Live Console. Lines look like the ones below. Read them top to bottom:
+
+    ```text
+    [    info] Console: Resource scoreboard started.
+    [    info] Player [Kishi] connected from 127.0.0.1.
+    [    warn] CFX: dependency 'es_extended' not found, scoreboard may misbehave
+    [   error] SCRIPT ERROR: @scoreboard/cl_score.lua:42: attempt to index a nil value (global 'PlayerData')
+    stack traceback:
+        @scoreboard/cl_score.lua:42: in function <@scoreboard/cl_score.lua:40>
+    ```
+
+    How to read them:
+
+    - `info` (white) is just FYI. A resource started, a player joined, nothing is wrong.
+    - `warn` (yellow) means "you should know". The server still runs, but something is off, such as a missing dependency or a deprecated API.
+    - `error` (red) means something broke. It almost always names the file and line number. Open that file, read that line, fix it.
+    - `stack traceback` is the call chain. The top line is where it actually broke; the lines under it are who called it.
+
+    Triage rule: red before yellow before white. One error often cascades into many warnings, so fix the topmost red line first and the warnings frequently disappear with it.
+
+    <ExpectedOutput>
+    You can point at each line above and say which is info, warn, or error.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Find the logs on disk" outcome="You know where to look when the Live Console cannot show you something.">
+    The Live Console only keeps the most recent output. Older history is written to disk by txAdmin under `txData/<server>/`. The log folders are:
+
+    ```text
+    txData/<server>/logs/fxserver/    full FXServer console rolling log
+    txData/<server>/logs/admin/       admin actions: kick, ban, restarts
+    txData/<server>/logs/server/      server-side script and event logs
+    ```
+
+    If you started txAdmin with a different profile or moved your data folder, the path shifts. The reliable move is to search for it. On Windows:
+
+    ```bash
+    dir /s /b txData\*\logs
+    ```
+
+    On macOS or Linux:
+
+    ```bash
+    find . -type d -path "*txData*/logs*"
+    ```
+
+    <ExpectedOutput>
+    The search prints the logs folder under txData/&lt;server&gt;/logs.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Run the edit, restart, observe loop" outcome="You complete the loop you will repeat thousands of times.">
+    Every script change from now on follows the same three beats. Practice it once on the `chat` resource:
+
+    1. **Edit** the Lua file in VS Code and save with `Ctrl`+`S`.
+    2. **Restart** the resource. Two ways:
+
+    ```text
+    restart chat
+    ```
+
+    Or in txAdmin, open the Resources tab and click **Restart** on the row.
+
+    3. **Observe**. Watch the Live Console for the lifecycle lines, then trigger the feature you changed to confirm it works.
+
+    Keep VS Code on the left half of your screen and the Live Console on the right half. You edit on the left, save, and watch the right side react with no alt-tab.
+
+    <ExpectedOutput>
+    [    info] Stopping resource chat
+    [    info] Started resource chat
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Connection failed: timed out", fix: "Your server is on a different port than expected. Check the Live Console for the UDP listener port and connect with localhost:PORT instead of plain localhost." },
+    { symptom: "F8 does not open the console", fix: "Your keyboard layout may map F8 elsewhere. In FiveM go to Settings -> Key Bindings, search \"console\", and re-bind it." },
+    { symptom: "could not find resource", fix: "Folder name typo, or you skipped refresh after dropping in a new folder. Run refresh first, then ensure my-resource. Names are case-sensitive on Linux." },
+    { symptom: "I edited the file but the server still runs old code", fix: "Saving does not reload anything. Run restart my-resource so FXServer drops the cached version." },
+    { symptom: "FXServer window vanished or the server crashed", fix: "Open the newest log under txData/&lt;server&gt;/logs/fxserver; the bottom of the file shows the crash. Comment out suspect ensure lines in server.cfg, restart, and isolate the bad resource." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Direct-connect to your own server with localhost from the FiveM client.",
+    "Open F8 for the client console and run tx to reach the txAdmin menu.",
+    "Pick ensure for server.cfg, restart for a hot reload after editing, and refresh for a brand-new folder.",
+    "Label every console line as info, warn, or error and fix the topmost red line first.",
+    "Find persistent logs under txData/&lt;server&gt;/logs, and search for them if the path moved.",
+    "Run the edit -> restart -> observe loop that every later lesson assumes."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Run the full dev loop once end to end without looking back at the steps: direct-connect to `localhost`, open `F8` and run `tx` to confirm the menu opens, then run `restart chat` and find the `Started resource chat` info line in the Live Console. Write down the exact command you typed and the exact output line you saw.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "CFX docs: server commands (start, stop, restart, ensure, refresh)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "CFX docs: setting up a server with txAdmin", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
+    { label: "Cfx.re Portal (free license keys)", href: "https://portal.cfx.re/" },
+    { label: "CFX docs: Lua scripting runtime (next track)", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" }
+  ]}
+/>

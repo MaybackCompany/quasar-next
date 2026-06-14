@@ -1,0 +1,136 @@
+<LessonHero
+  crumbs="Module 02 · Tooling"
+  title="Set up VS Code for FiveM"
+  meta={[
+    { label: "You'll build", value: "A FiveM-ready editor: VS Code with the Lua language server and the Cfx Lua native definitions, so you get autocomplete and red squiggles before you ever restart the server." },
+    { label: "Time", value: "~15 minutes." },
+    { label: "You need", value: "A Windows PC and a resources folder to open. No coding yet, just tooling." },
+    { label: "You'll learn", value: "Install VS Code -> add the Lua extension -> add Cfx native definitions -> open your server as a workspace -> prove autocomplete works" },
+  ]}
+>
+  Writing Lua in Notepad is how beginners burn hours on typos. The right editor catches the mistake *as you type* instead of in the server console after a restart. This lesson sets up VS Code the way working FiveM developers run it in 2026: the Lua language server plus the Cfx native definitions, so `RegisterCommand` autocompletes and a missing `end` lights up red.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a resources folder (a local FiveM server) to open as a workspace.",
+    "I can install Windows programs.",
+    "I finished the orientation, so framework and library names are familiar."
+  ]}
+/>
+
+<Callout variant="fivem" title="Why two extensions, not one">
+  The **Lua** extension (the language server) understands Lua syntax: it autocompletes your variables and flags missing `end` or `then`. It does *not* know FiveM exists. The **Cfx Lua** extension adds definitions for FiveM's thousands of natives, so `GetEntityCoords` autocompletes too. You want both.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Install VS Code" outcome="VS Code opens and you can open a folder as a workspace.">
+    Download and run the Windows User Installer, accept the defaults, and tick the **Open with Code** context-menu options on the Additional Tasks screen.
+
+    <TechLink id="vscode" />
+
+    <ExpectedOutput>
+      Right-clicking a folder in File Explorer shows "Open with Code".
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Install the Lua language server" outcome="The Lua extension by sumneko is installed and enabled.">
+    Open the Extensions panel (the four-squares icon in the left bar, or `Ctrl+Shift+X`). Search for **Lua** and install the one published by **sumneko** (the identifier is `sumneko.lua`, marketplace name "Lua"). This is the language server: autocomplete, go-to-definition, and live error checking.
+
+    Do not confuse it with older "Lua" extensions that only do syntax coloring. You want the one with millions of installs by sumneko.
+
+    <ExpectedOutput>
+      The Extensions panel shows "Lua" by sumneko with a blue "Disable" / "Uninstall" state, meaning it is installed.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Add the Cfx native definitions" outcome="FiveM natives autocomplete, not just plain Lua.">
+    Still in Extensions, search for **Cfx Lua** and install **cfxlua-vscode** published by **overextended** (identifier `overextended.cfxlua-vscode`). It plugs FiveM's native function definitions into the Lua language server.
+
+    Configs for this extension change over time, so treat its marketplace README as the source of truth for the exact `.luarc.json` snippet. The reliable parts below do not change.
+
+    <TechLinks ids={["vscode-luals", "vscode-cfxlua"]} />
+  </Step>
+
+  <Step num={4} title="Open your server as a workspace and add .luarc.json" outcome="The editor treats your resources as one Lua 5.4 project with FiveM globals known.">
+    In VS Code choose **File -> Open Folder** and pick your `server-data` (or `resources`) folder. Opening the *folder*, not a single file, is what lets the language server see your whole project.
+
+    At the root of that folder, create a file named `.luarc.json` and paste this safe baseline. It sets the Lua version FiveM uses and stops false "undefined global" warnings for the most common FiveM globals:
+
+    ```json
+{
+  "runtime.version": "Lua 5.4",
+  "diagnostics.globals": [
+    "exports",
+    "RegisterCommand",
+    "RegisterNetEvent",
+    "AddEventHandler",
+    "TriggerEvent",
+    "TriggerServerEvent",
+    "TriggerClientEvent",
+    "Citizen",
+    "vector3",
+    "vector4",
+    "GetResourceState",
+    "GetPlayerName"
+  ]
+}
+    ```
+
+    With the Cfx Lua extension installed, the full native list autocompletes on top of this. The `.luarc.json` is just the floor.
+  </Step>
+
+  <Step num={5} title="Prove autocomplete works" outcome="Typing a native shows a suggestion popup and a missing end shows a red squiggle.">
+    Open any `client.lua` or `server.lua` (or make a scratch `test.lua`). Start typing:
+
+    ```lua
+RegisterComm
+    ```
+
+    A suggestion popup should offer `RegisterCommand`. Press Tab to accept it. Then delete an `end` from a function and watch the red squiggle appear under the line.
+
+    <ExpectedOutput>
+      Typing "RegisterComm" pops up a "RegisterCommand" suggestion, and removing an "end" underlines the code in red.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "No autocomplete at all", fix: "You opened a single file, not a folder. Use File -> Open Folder on your resources/server-data folder, then reopen the .lua file." },
+    { symptom: "Natives like GetEntityCoords are underlined as undefined", fix: "The Cfx Lua extension is not active. Confirm overextended.cfxlua-vscode is installed and reload the window (Ctrl+Shift+P -> Developer: Reload Window)." },
+    { symptom: "Everything is flagged red, even valid code", fix: "Two competing Lua extensions are installed. Keep sumneko.lua, uninstall any other syntax-only Lua extension, then reload." },
+    { symptom: "Wrong Lua version warnings", fix: "Check .luarc.json has \"runtime.version\": \"Lua 5.4\". Lua 5.4 is the only FiveM runtime as of 2025, so no fxmanifest flag is needed." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Install VS Code with the Open with Code shortcut.",
+    "Add the sumneko Lua language server for autocomplete and live error checking.",
+    "Add the overextended Cfx Lua extension so FiveM natives autocomplete.",
+    "Open your whole server folder as a workspace and add a .luarc.json baseline.",
+    "Confirm the setup by watching RegisterCommand autocomplete and a missing end go red."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Open a real lesson resource (like `qu_first_line_of_lua`), delete a closing `end`, and watch the editor flag it before you ever restart the server. Put the `end` back. That red squiggle is the feedback loop you just bought yourself.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "VS Code download", href: "https://code.visualstudio.com/" },
+    { label: "Lua (sumneko) on the marketplace", href: "https://marketplace.visualstudio.com/items?itemName=sumneko.lua" },
+    { label: "Cfx Lua (overextended) on the marketplace", href: "https://marketplace.visualstudio.com/items?itemName=overextended.cfxlua-vscode" },
+    { label: "cfxlua-vscode on GitHub", href: "https://github.com/overextended/cfxlua-vscode" }
+  ]}
+/>
