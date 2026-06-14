@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/discord";
 import { authErrorResponse } from "@/lib/auth/responses";
 import { AUTH_ENABLED, getMissingAuthEnv, getSession, safeReturnTo } from "@/lib/auth/session";
+import { PRICING_URL } from "@/lib/links";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!AUTH_ENABLED) {
@@ -56,7 +57,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     delete session.returnTo;
     await session.save();
 
-    return NextResponse.redirect(new URL(access.authorized ? returnTo : "/pricing", request.url));
+    return NextResponse.redirect(
+      access.authorized ? new URL(returnTo, request.url) : new URL(PRICING_URL),
+    );
   } catch (err) {
     const message =
       err instanceof Error && err.message.startsWith("token_exchange_failed_400")

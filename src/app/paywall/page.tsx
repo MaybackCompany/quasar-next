@@ -41,7 +41,9 @@ export default async function PaywallPage() {
 
             <div className="mt-8 flex flex-wrap gap-3">
               <a
-                href="/pricing"
+                href="https://fivemcoach.com/en"
+                target="_blank"
+                rel="noopener"
                 className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-brand-hi hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 See plans

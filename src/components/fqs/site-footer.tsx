@@ -17,7 +17,7 @@ export function SiteFooter() {
         </span>
         <span style={{ display: "flex", gap: 18, fontSize: 13.5, color: "var(--muted)" }}>
           <Link href="/cheatsheets">Cheatsheets</Link>
-          <Link href="/pricing">Pricing</Link>
+          <Link href="/toolbox">Toolbox</Link>
         </span>
       </div>
     </footer>

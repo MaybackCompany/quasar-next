@@ -32,7 +32,7 @@ function useTheme(): [string, () => void] {
 }
 
 interface SiteNavProps {
-  active?: "tracks" | "cheatsheets" | "pricing" | null;
+  active?: "tracks" | "cheatsheets" | null;
 }
 
 export function SiteNav({ active }: SiteNavProps) {
@@ -89,9 +89,6 @@ export function SiteNav({ active }: SiteNavProps) {
           </Link>
           <Link className="nav-link hide-m" href="/toolbox">
             Toolbox
-          </Link>
-          <Link className={"nav-link hide-m" + (active === "pricing" ? " active" : "")} href="/pricing">
-            Pricing
           </Link>
         </nav>
         <div className="nav-right">

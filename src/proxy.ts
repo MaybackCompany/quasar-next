@@ -2,6 +2,7 @@ import { unsealData } from "iron-session";
 import { NextResponse, type NextProxy, type NextRequest, type ProxyConfig } from "next/server";
 
 import type { AuthSession } from "@/lib/auth/session";
+import { PRICING_URL } from "@/lib/links";
 
 const accessMode = (process.env.ACCESS_MODE || "public").trim().toLowerCase();
 const authEnabled = accessMode === "discord";
@@ -11,10 +12,10 @@ const sessionPassword = process.env.SESSION_SECRET || "public-mode-placeholder-s
 // Members-only model: the marketing layer and the track OUTLINES are public so
 // prospects can see what they'd buy. Every lesson, cheatsheet, and reference hub
 // requires an allowed Discord role (Builder / Elite / Enterprise / member).
+// Pricing is not in this app; gated-out non-members go to the marketing site.
 const PUBLIC_PREFIXES = ["/auth/", "/_next/", "/api/me", "/track"];
 const PUBLIC_PATHS = new Set([
   "/",
-  "/pricing",
   "/toolbox",
   "/paywall",
   "/favicon.ico",
@@ -61,7 +62,7 @@ export const proxy: NextProxy = async (request: NextRequest): Promise<NextRespon
   }
 
   if (!session.authorized) {
-    return NextResponse.redirect(new URL("/pricing", request.url));
+    return NextResponse.redirect(new URL(PRICING_URL));
   }
 
   return NextResponse.next();
