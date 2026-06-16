@@ -1,26 +1,28 @@
 <LessonHero
-  crumbs="Module 07 · Lesson 23"
-  title="Server-only banking with audit logs"
+  crumbs="Module B6 · Build real features"
+  title="Server-authoritative banking with an audit log"
   meta={[
-    { label: "You'll ship", value: "A SQL-backed banking resource with persistent balances and a complete audit trail." },
-    { label: "Time", value: "~40 minutes" },
-    { label: "You'll learn", value: "Migration pattern -> audit log table -> server-computed balance -> INSERT on every action -> reading the trail" },
-    { label: "Prereqs", value: "Lesson 21 (mini banking) and Lesson 22 (SQL from zero) complete. oxmysql running." },
+    { label: "You'll ship", value: "qu_audit_bank: two MariaDB tables and one server file where the real player triggers a deposit or withdraw, and every transaction writes an audit row." },
+    { label: "Time", value: "~50 minutes" },
+    { label: "You'll learn", value: "Client sends an intent, never a balance -> server reads the real balance -> one safe UPDATE -> an INSERT into the audit log on every action -> read the trail back" },
+    { label: "Prereqs", value: "SQL from zero (oxmysql, parameterized queries) and the mini bank capstone (server-held balance, reject-if-larger) complete." },
   ]}
 >
-  In Lesson 21 you built a mini bank that held balances in memory. Restart the server and all the money vanished. Now you fix that. This lesson reworks the banking script to persist balances in SQL, adds an audit log that records every deposit and withdrawal, and enforces the rule that the server computes everything. The client never sends an amount. Ever.
+  The mini bank proved the server owns the balance. This lesson adds the part a real economy cannot run without: a record. Every deposit and withdraw now goes through a server net event fired by a real connected player, the server reads that player's true balance, applies the change in a single safe UPDATE, and writes an audit row that captures who, what, how much, the balance before, and the balance after. The client sends an intent. It never sends a balance, and now it can never move money without leaving a trace.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I have oxmysql installed and a MariaDB connection string set in server.cfg.",
+    "I can read txAdmin Live Console output.",
+    "I can join my own server so a command has a real player source."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds bank balance table plus audit log transaction as a working FiveM resource named `qu_server_only_banking_audit`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a server-authoritative bank with a full audit trail as a working FiveM resource named `qu_audit_bank`. It is server-only: there is no client file and no NUI, so there is no F8 output. Every line lands in the txAdmin Live Console. Follow the folder names, file names, SQL, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
 </Callout>
 
 ## Build it
@@ -30,7 +32,7 @@
     Inside your server's `resources` folder, create this folder:
 
     ```text
-    resources/qu_server_only_banking_audit
+    resources/qu_audit_bank
     ```
   </Step>
 
@@ -38,10 +40,12 @@
     Create this exact file layout:
 
     ```text
-resources/qu_server_only_banking_audit/
+resources/qu_audit_bank/
   fxmanifest.lua
   server.lua
     ```
+
+    This is a server-only resource. There is no client file and no NUI, so there is no F8 output to read. You will drive it with commands that you run from your own in-game chat, because a command typed in chat by a connected player carries a real player `source`, and the `source` is the heart of this lesson.
   </Step>
 
   <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
@@ -54,68 +58,265 @@ game 'gta5'
 server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
-dependency 'oxmysql'
+dependencies {
+    'oxmysql'
+}
     ```
 
-    Run this SQL before starting the resource:
-
-    ```sql
-CREATE TABLE IF NOT EXISTS qu_server_only_banking_audit_rows (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(80) NOT NULL,
-  amount INT NOT NULL DEFAULT 0
-);
-    ```
+    There is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored, since Lua 5.4 is the only Lua runtime. The `dependencies { 'oxmysql' }` block is the canonical plural form and tells the server to start oxmysql before `qu_audit_bank`, so the `@oxmysql/lib/MySQL.lua` import resolves.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Create the two tables" outcome="The database has one balance per player and one append-only audit log.">
+    A bank with a record needs two tables, not one. Run this SQL once against your database before starting the resource. oxmysql speaks to MariaDB, the recommended engine for FiveM in 2026:
+
+    ```sql
+CREATE TABLE IF NOT EXISTS qu_audit_balances (
+  citizenid VARCHAR(64) NOT NULL,
+  balance INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (citizenid)
+);
+
+CREATE TABLE IF NOT EXISTS qu_audit_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  citizenid VARCHAR(64) NOT NULL,
+  source INT NOT NULL,
+  action VARCHAR(16) NOT NULL,
+  amount INT NOT NULL,
+  balance_before INT NOT NULL,
+  balance_after INT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+    ```
+
+    The balances table keys on `citizenid`: one row per player, and the primary key forbids a duplicate. The audit log is the opposite shape on purpose. It keys on an `AUTO_INCREMENT` id and is append-only, so every transaction adds a new row and nothing is ever overwritten. The `created_at` column fills itself in with the server time on every insert, so you never pass a timestamp by hand.
+  </Step>
+
+  <Step num={5} title="Write the lesson code" outcome="A real player's intent flows through a server event into a balance change plus an audit row.">
     Open `server.lua` and paste this:
 
     ```lua
-RegisterCommand('dbtest', function(src)
-    local id = MySQL.insert.await('INSERT INTO qu_server_only_banking_audit_rows (name, amount) VALUES (?, ?)', { 'lesson', 100 })
-    local row = MySQL.single.await('SELECT * FROM qu_server_only_banking_audit_rows WHERE id = ?', { id })
-    print('[qu_server_only_banking_audit] selected ' .. row.name .. ' ' .. row.amount)
-    MySQL.update.await('UPDATE qu_server_only_banking_audit_rows SET amount = ? WHERE id = ?', { 150, id })
-    print('[qu_server_only_banking_audit] updated ' .. id)
+-- In a real server the citizenid comes from the player's framework identity
+-- (QBCore, Qbox, ESX). For the lesson we derive a stable id from the source so
+-- you can test with a real connected player and still get a consistent account.
+local function citizenIdFor(source)
+    return 'player_' .. source
+end
+
+-- Read the balance, creating the account at 0 on first touch.
+local function getBalance(citizenid)
+    local row = MySQL.single.await(
+        'SELECT balance FROM qu_audit_balances WHERE citizenid = ?',
+        { citizenid }
+    )
+    if not row then
+        MySQL.insert.await(
+            'INSERT INTO qu_audit_balances (citizenid, balance) VALUES (?, ?)',
+            { citizenid, 0 }
+        )
+        return 0
+    end
+    return row.balance
+end
+
+-- The single trusted path. Every money move on the server goes through here.
+RegisterNetEvent('qu_audit_bank:request', function(action, amount)
+    local source = source
+    local citizenid = citizenIdFor(source)
+
+    -- Validate the intent. The client may only ask to deposit or withdraw a
+    -- positive whole number. It never sends a balance.
+    amount = tonumber(amount)
+    if action ~= 'deposit' and action ~= 'withdraw' then return end
+    if not amount or amount <= 0 or amount ~= math.floor(amount) then
+        print('[qu_audit_bank] REJECTED bad amount from source ' .. source)
+        return
+    end
+
+    local balanceBefore = getBalance(citizenid)
+    local balanceAfter
+
+    if action == 'deposit' then
+        balanceAfter = balanceBefore + amount
+    else -- withdraw
+        if amount > balanceBefore then
+            print('[qu_audit_bank] REJECTED withdraw of ' .. amount .. ', balance is only ' .. balanceBefore)
+            return
+        end
+        balanceAfter = balanceBefore - amount
+    end
+
+    -- One safe UPDATE applies the change the server computed.
+    MySQL.update.await(
+        'UPDATE qu_audit_balances SET balance = ? WHERE citizenid = ?',
+        { balanceAfter, citizenid }
+    )
+
+    -- One INSERT records the transaction. This runs for every action.
+    MySQL.insert.await(
+        'INSERT INTO qu_audit_log (citizenid, source, action, amount, balance_before, balance_after) VALUES (?, ?, ?, ?, ?, ?)',
+        { citizenid, source, action, amount, balanceBefore, balanceAfter }
+    )
+
+    print('[qu_audit_bank] ' .. action .. ' ' .. amount ..
+        ' for ' .. citizenid .. ': ' .. balanceBefore .. ' -> ' .. balanceAfter)
+end)
+
+-- Thin commands so you can fire the event as a real player from chat.
+-- The command runs on the client and triggers the server event, which is
+-- exactly how a finished UI would call the server.
+RegisterCommand('deposit', function(source, args)
+    TriggerServerEvent('qu_audit_bank:request', 'deposit', args[1])
+end, false)
+
+RegisterCommand('withdraw', function(source, args)
+    TriggerServerEvent('qu_audit_bank:request', 'withdraw', args[1])
+end, false)
+
+-- Print the last few audit rows so you can read the trail.
+RegisterCommand('auditlog', function()
+    local rows = MySQL.query.await(
+        'SELECT id, citizenid, source, action, amount, balance_before, balance_after FROM qu_audit_log ORDER BY id DESC LIMIT 5',
+        {}
+    )
+    for i = #rows, 1, -1 do
+        local r = rows[i]
+        print('[qu_audit_bank] #' .. r.id .. ' src=' .. r.source ..
+            ' ' .. r.action .. ' ' .. r.amount ..
+            ' (' .. r.balance_before .. ' -> ' .. r.balance_after .. ')')
+    end
 end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={6} title="Start, join, and test it" outcome="The expected proof appears in the txAdmin Live Console.">
     Open `server.cfg` and add this line:
 
     ```text
-    ensure qu_server_only_banking_audit
+    ensure qu_audit_bank
     ```
 
     Save, then run:
 
     ```text
-    restart qu_server_only_banking_audit
+    restart qu_audit_bank
     ```
 
-    Run this test:
+    Now join your own server so you have a real player source. The `deposit` and `withdraw` commands are not restricted, so run them from your in-game chat box (press T). The `auditlog` command is restricted, so run it from the txAdmin Live Console:
 
     ```text
-    dbtest
+    /deposit 100
+    /withdraw 250
+    /withdraw 40
+    ```
+
+    Then in the txAdmin Live Console:
+
+    ```text
+    auditlog
     ```
 
     <ExpectedOutput>
-      [qu_server_only_banking_audit] selected lesson 100
-[qu_server_only_banking_audit] updated rowId
+      [qu_audit_bank] deposit 100 for player_1: 0 -> 100
+[qu_audit_bank] REJECTED withdraw of 250, balance is only 100
+[qu_audit_bank] withdraw 40 for player_1: 100 -> 60
+[qu_audit_bank] #1 src=1 deposit 100 (0 -> 100)
+[qu_audit_bank] #2 src=1 withdraw 40 (100 -> 60)
     </ExpectedOutput>
+
+    Your source number may differ from `1`; it is your real server slot. Notice the rejected withdraw of 250 never reaches the audit log, because no money moved. Only the two transactions that actually changed the balance left a row.
   </Step>
 </StepGroup>
 
-## If something went wrong
+## How it works
+
+You ran it as a real player, the server moved your money, and a permanent record appeared. Now take the code apart so you understand the three things that make this different from a number on a screen: where `source` comes from, why the client can only send an intent, and why the audit row is written on the same trip as the balance change.
+
+### source is the server's proof of who asked
+
+```lua
+RegisterNetEvent('qu_audit_bank:request', function(action, amount)
+    local source = source
+```
+
+The mini bank ran from the console, where there is no real player. This lesson runs from a connected player, so the request arrives as a **server net event**. Inside a server net-event handler, FiveM gives you a magic variable named `source`: the server slot of the player who fired the event. That is the one piece of identity the player cannot fake, because the server assigns the slot, not the client.
+
+The first line, `local source = source`, copies that magic value into a normal local at the top of the handler. Do this immediately. The global `source` can change out from under you if your handler later yields at an `.await` and another event fires, so the safe habit is to capture it into a local on line one and use the local everywhere after. From `source` you derive the `citizenid`, and that is the account the rest of the handler reads and writes. The client sent you `action` and `amount`. It did not, and could not, send you the identity.
+
+### The client sends an intent, never a balance
+
+```lua
+amount = tonumber(amount)
+if action ~= 'deposit' and action ~= 'withdraw' then return end
+if not amount or amount <= 0 or amount ~= math.floor(amount) then
+    print('[qu_audit_bank] REJECTED bad amount from source ' .. source)
+    return
+end
+```
+
+Look at what crosses the wire from the client: an `action` string and an `amount`. That is the entire intent. The client is saying "I would like to deposit 100." It is not saying "my balance is now 100," and it has no way to. The server never reads a balance from the request, so there is nothing the client can lie about that touches the truth.
+
+Because the intent is untrusted, the server validates it at the boundary before acting. The `action` must be exactly `deposit` or `withdraw`. The `amount` must be a number, must be positive, and must be a whole number, so `withdraw -500` (a deposit in disguise), `deposit 0`, and `deposit 10.5` are all refused before any query runs. This is the same edge-validation rule you follow with `?` placeholders: distrust input the moment it arrives, and only let clean values past the gate.
+
+### Read, decide, write, in that order
+
+```lua
+local balanceBefore = getBalance(citizenid)
+local balanceAfter
+
+if action == 'deposit' then
+    balanceAfter = balanceBefore + amount
+else -- withdraw
+    if amount > balanceBefore then
+        print('[qu_audit_bank] REJECTED withdraw of ' .. amount .. ', balance is only ' .. balanceBefore)
+        return
+    end
+    balanceAfter = balanceBefore - amount
+end
+
+MySQL.update.await(
+    'UPDATE qu_audit_balances SET balance = ? WHERE citizenid = ?',
+    { balanceAfter, citizenid }
+)
+```
+
+The server reads the real `balanceBefore` from its own table, decides the `balanceAfter` itself, then writes it in a single UPDATE. The reject-if-larger check sits between the read and the write, comparing the requested `amount` against the balance the server just read, never against anything the client sent. A withdraw bigger than the balance prints a rejection and returns before the UPDATE, so the balance never goes negative.
+
+Notice the deposit and the withdraw both end at the same single UPDATE. There is exactly one place in this handler where the stored balance changes, and it writes the value the server computed. Keeping the write to one statement is what makes the audit row trustworthy: the number you log as `balance_after` is the number you actually stored, computed in the same handler, not a second guess.
+
+### The audit row is written on every action, on the same trip
+
+```lua
+MySQL.insert.await(
+    'INSERT INTO qu_audit_log (citizenid, source, action, amount, balance_before, balance_after) VALUES (?, ?, ?, ?, ?, ?)',
+    { citizenid, source, action, amount, balanceBefore, balanceAfter }
+)
+```
+
+This INSERT is the lesson. Immediately after the balance changes, the server appends one row to the append-only log: who (`citizenid` and `source`), what (`action`), how much (`amount`), and the balance on both sides of the move (`balance_before`, `balance_after`). The `created_at` timestamp fills itself in from `DEFAULT CURRENT_TIMESTAMP`, so you do not pass it.
+
+Two details matter. First, the INSERT runs for every successful action, not just some, so the log is complete: any balance the table holds can be reconstructed by replaying the rows. Second, it sits below both rejection `return`s on purpose. A rejected withdraw never moved money, so it never writes an audit row. The log records transactions, not attempts. If you also wanted to record refused attempts for fraud review, you would add a separate INSERT before each `return`, with its own action like `withdraw_rejected`.
+
+<Checkpoint question="A player edits their game and fires qu_audit_bank:request with action 'withdraw' and amount 1000000 while holding 50. What does the audit log show afterward, and why?">
+  Nothing new. The amount lives on the client, but the identity, the balance, and the decision all live on the server. The handler captures the real `source`, derives the `citizenid`, reads the true balance of 50 from its own table, sees the requested 1,000,000 is larger, prints a rejection, and `return`s before either the UPDATE or the audit INSERT runs. No money moved, so no row is logged. The player can lie about the amount they want, but they cannot touch the balance the server reads, cannot forge the `source` the server assigns, and cannot reach the INSERT. The only thing they control is the request, never the record.
+</Checkpoint>
+
+### When you reach for this pattern
+
+A server-owned balance plus an append-only audit log is the shape every economy a server admin will ever have to answer for. Three real cases:
+
+- **Money disputes.** A player claims a shop charged them twice. With an audit log you read the two rows, see the two `balance_before -> balance_after` steps, and settle it in seconds instead of guessing. Without it, you have only the current number and no history.
+- **Catching exploits.** A balance that jumps from 200 to nine million between two rows is a hole in some other resource. The audit log is where that jump becomes visible, because every legitimate change leaves a small, explainable step.
+- **Reversals and refunds.** Because the log records `balance_before` for every move, you can undo a bad transaction by writing the inverse, and that reversal is itself a logged row. The trail stays honest even when you correct it.
+
+## Common mistakes
 
 <FailureList
   items={[
-    { symptom: "Resource qu_server_only_banking_audit does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_server_only_banking_audit", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_server_only_banking_audit, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "source is nil or attempt to concatenate a nil value (source)", fix: "You ran deposit or withdraw from the server console instead of in-game. The console has no player source. Join the server and run the commands from your chat box (press T), so the net event carries a real source." },
+    { symptom: "The balance changes but qu_audit_log stays empty", fix: "The audit INSERT is above a return, or you only wired it into one branch. It must run after the UPDATE for both deposit and withdraw, below every rejection return, so every successful move writes a row." },
+    { symptom: "Unknown column 'created_at' or it inserts a wrong time", fix: "You added created_at to the INSERT column list. Leave it out. The DEFAULT CURRENT_TIMESTAMP on the column fills it in with server time; passing it by hand defeats the point." },
+    { symptom: "A player deposits a negative number and gains money", fix: "Your validation is missing or runs after the math. Check amount > 0 and amount == math.floor(amount) at the top of the handler, before you compute balanceAfter, so withdraw -500 and deposit 10.5 are refused at the boundary." },
+    { symptom: "balance_after in the log does not match the stored balance", fix: "You computed the logged value separately from the value you UPDATE. Compute balanceAfter once, write it in the single UPDATE, and log that same variable, so the row can never disagree with the table." },
   ]}
 />
 
@@ -123,23 +324,38 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_server_only_banking_audit folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for bank balance table plus audit log transaction.",
-    "Add ensure qu_server_only_banking_audit to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Take a player's request through a server net event and read the trusted source the server assigns, capturing it into a local on the first line of the handler.",
+    "Accept only an intent (action plus a bounded, positive, whole amount) from the client, and validate it at the boundary before any query runs.",
+    "Read the real balance, decide the new balance on the server, and apply it in a single safe UPDATE that the client cannot influence.",
+    "Write one append-only audit row for every successful transaction, capturing citizenid, source, action, amount, balance_before, balance_after, and an automatic timestamp.",
+    "Read the audit trail back to settle disputes, spot exploits, and reverse a bad transaction with an honest logged inverse.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_server_only_banking_audit`, rerun the test, and confirm the output changed.
+  Right now a rejected withdraw vanishes without a trace, which is exactly the attempt a server admin most wants to see. Add a second audit action that records refused withdrawals, so the log captures attempts as well as transactions. Replace the withdraw rejection branch with a logged version:
+
+  ```lua
+  if amount > balanceBefore then
+      MySQL.insert.await(
+          'INSERT INTO qu_audit_log (citizenid, source, action, amount, balance_before, balance_after) VALUES (?, ?, ?, ?, ?, ?)',
+          { citizenid, source, 'withdraw_rejected', amount, balanceBefore, balanceBefore }
+      )
+      print('[qu_audit_bank] REJECTED withdraw of ' .. amount .. ', balance is only ' .. balanceBefore)
+      return
+  end
+  ```
+
+  Restart `qu_audit_bank`, join the server, run `/deposit 100` then `/withdraw 250`, and then run `auditlog` in the console. Confirm a `withdraw_rejected` row now appears with `balance_before` equal to `balance_after` (no money moved), alongside the real deposit. Notice the rejected row logs the same `source` the server trusts, so a player spamming oversized withdrawals leaves a visible pattern you can act on. You just turned the audit log from a record of money moved into a record of intent, which is what real fraud review needs.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
+    { label: "FiveM RegisterNetEvent and server source", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/" },
+    { label: "FiveM triggering events (client to server)", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
+    { label: "MariaDB CURRENT_TIMESTAMP and TIMESTAMP", href: "https://mariadb.com/kb/en/timestamp/" }
   ]}
 />

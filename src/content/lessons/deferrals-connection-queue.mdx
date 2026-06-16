@@ -1,0 +1,270 @@
+<LessonHero
+  crumbs="Module A2 · Operate and ship"
+  title="The connection flow: deferrals, queue, and whitelist"
+  meta={[
+    { label: "You'll build", value: "A server resource that holds a connecting player, shows a loading message, checks a hardcoded license allowlist, and either lets them in or rejects them with a reason." },
+    { label: "Time", value: "~24 minutes" },
+    { label: "You need", value: "Your qu_first_line_of_lua mental model, a local FiveM server you can restart, and the ability to read txAdmin Live Console." },
+    { label: "You'll learn", value: "The playerConnecting handshake -> the deferrals object (defer, update, presentCard, done) -> reading a player's license identifier server side -> gating entry with a server-authoritative allowlist" },
+  ]}
+>
+  Every player who joins your server passes through one server-side gate before they load a single thing. That gate is the `playerConnecting` event, and the platform hands you an object called `deferrals` that lets you pause the join, show the player a message, and then decide: let them in, or send them away with a reason. This is the only place you can stop a join. By the end you will have a working resource that holds a connection, checks a license against an allowlist, and rejects anyone who is not on it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and watch a player connect.",
+    "I understand that server.lua runs on the server, not on the player's machine."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a real connection gate as a working FiveM resource named `qu_connection_gate`. It defers the join, shows a loading message, reads the connecting player's `license` identifier, checks it against a hardcoded allowlist, and calls `deferrals.done()` to allow or `deferrals.done('reason')` to reject. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes every line apart so you can read the handshake on your own.
+</Callout>
+
+## The handshake before the player loads
+
+When someone clicks Connect, the server fires a `playerConnecting` event **before** the player has a ped, a server id slot they can act from, or any resource loaded on their screen. This is the handshake window. It runs entirely on the server, and it is the one moment where you hold all the control and the player holds none.
+
+The platform passes your handler three things: the connecting player's `name`, a `setKickReason` function you can mostly ignore in favor of deferrals, and a `deferrals` object. That last one is the whole point of this lesson. Calling `deferrals.defer()` tells the server "do not finish this join yet, I am going to take my time and decide." Until you call `deferrals.done()`, the player sits on the connecting screen and waits for you.
+
+Why does this matter so much? Because **this is the only place you can block a join**. Once a player is fully connected, they already have a slot and their client is loading resources. Kicking them then is a cleanup, not a gate. Blocking them here, during `playerConnecting`, means they never get in at all. And because the check runs on the server, the player cannot fake their way past it. The client may *request* a connection, but only the server *grants* it. That is what server-authoritative means: the decision lives on the machine the player does not control.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_connection_gate
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_connection_gate/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+
+    Everything in this lesson runs on the server, so there is one `server_script` and no client file. The `playerConnecting` event and the player's identifiers only exist server side. Note there is no `lua54 'yes'` line: as of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only runtime.
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this:
+
+    ```lua
+-- Hardcoded allowlist of permitted license identifiers.
+-- Replace these with your own. Format is 'license:' followed by a long hex string.
+local allowedLicenses = {
+    ['license:0000000000000000000000000000000000000000'] = true,
+}
+
+AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
+    local source = source
+
+    -- Pause the join. Nothing finishes until we call deferrals.done().
+    deferrals.defer()
+
+    -- Give the player something to read while we work. A short yield first
+    -- lets the deferral register cleanly before the first update.
+    Wait(0)
+    deferrals.update(('Hello %s, checking your access...'):format(name))
+
+    -- Read this player's license identifier on the server.
+    local license = GetPlayerIdentifierByType(source, 'license')
+
+    Wait(500)
+
+    if license and allowedLicenses[license] then
+        print(('[qu_connection_gate] ALLOW %s (%s)'):format(name, license))
+        deferrals.done()
+    else
+        print(('[qu_connection_gate] REJECT %s (%s)'):format(name, tostring(license)))
+        deferrals.done('Not whitelisted')
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_connection_gate
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_connection_gate
+    ```
+
+    Now connect to your own server. With the placeholder allowlist above you will be rejected, which is the point: you will see the reject reason on your connecting screen and the matching line in the console. Watch the txAdmin Live Console as you connect:
+
+    <ExpectedOutput>
+      [qu_connection_gate] REJECT YourName (license:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b)
+    </ExpectedOutput>
+
+    The console line shows your real `license` identifier in the parentheses. Copy that exact string, paste it into the `allowedLicenses` table in place of the placeholder, save, run `restart qu_connection_gate`, and connect again. This time you pass:
+
+    <ExpectedOutput>
+      [qu_connection_gate] ALLOW YourName (license:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b)
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## How it works
+
+You connected and the gate decided. Now take the handshake apart so the next time you need to control who gets in, you are deciding, not copying. The whole flow is one event handler and four calls on the `deferrals` object.
+
+### The event and its three arguments
+
+```lua
+AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
+    local source = source
+```
+
+`playerConnecting` is a built-in server event. You attach to it with `AddEventHandler`, not `RegisterNetEvent`, because the **server itself** raises it, not a client. The platform calls your function once per connecting player with three arguments in this order:
+
+- `name` is the display name the player is connecting with, a string. Use it for friendly messages and log lines, never as a security check, because a name is trivial to fake.
+- `setKickReason` is a function you could call to set a plain kick message. In modern code you let `deferrals.done('reason')` do that job instead, so this argument usually goes unused.
+- `deferrals` is the object that controls the join. Everything that follows hangs off it.
+
+The first line of the body, `local source = source`, captures the connecting player's source into a local. In a server event handler, `source` is the special value that identifies which player triggered the event. Copying it into a local right away is a habit worth keeping, because any `Wait` you call later can let other code run, and reading the global `source` after a yield is a classic way to read the wrong player. You read it once, up front, and use the local from then on.
+
+### Pausing the join: deferrals.defer
+
+```lua
+deferrals.defer()
+```
+
+This is the call that buys you time. The instant you call `deferrals.defer()`, the server stops trying to finish this join and waits for you to make a decision. The player stays on the connecting screen. If you never call `deferrals.done()`, they sit there forever, which is itself a bug to avoid. Think of `defer` as raising your hand and saying "wait, I am not done deciding." Everything after it runs while the player is held.
+
+### Talking to the player: deferrals.update
+
+```lua
+Wait(0)
+deferrals.update(('Hello %s, checking your access...'):format(name))
+```
+
+`deferrals.update(message)` replaces the text on the player's connecting screen with whatever string you pass. This is your one channel to tell a held player what is happening, for example "checking your access," "you are number 3 in queue," or "verifying your account." The `:format(name)` method drops the player's name into the `%s` placeholder so the message reads personally.
+
+The `Wait(0)` before it yields for a single frame. Calling `defer` and then immediately calling `update` in the same tick can race, so a one-frame yield lets the deferral register cleanly first. It is a small piece of defensive timing, not decoration.
+
+### Reading who is connecting: GetPlayerIdentifierByType
+
+```lua
+local license = GetPlayerIdentifierByType(source, 'license')
+```
+
+This is the heart of the gate. `GetPlayerIdentifierByType(source, kind)` is a server native that returns one of the player's identifiers as a string. Ask for `'license'` and you get back something like `license:1a2b3c...`, a stable id tied to the player's Rockstar/Cfx account. A license does not change when the player reboots or moves house, which is exactly why it is the standard handle for an allowlist. A player has several identifier types (`steam`, `discord`, `ip`, and more), but `ip` changes and `steam` can be absent, so `license` is the dependable one to gate on.
+
+Because you are reading this server side during `playerConnecting`, the value is trustworthy. The player cannot hand you a fake license here. Compare that to anything the client sends you over a net event, which you must always treat as a claim, not a fact.
+
+### Deciding: deferrals.done and deferrals.done(reason)
+
+```lua
+if license and allowedLicenses[license] then
+    print(('[qu_connection_gate] ALLOW %s (%s)'):format(name, license))
+    deferrals.done()
+else
+    print(('[qu_connection_gate] REJECT %s (%s)'):format(name, tostring(license)))
+    deferrals.done('Not whitelisted')
+end
+```
+
+`allowedLicenses[license]` is the allowlist check. The table uses each permitted license string as a key set to `true`, so looking up a key that exists returns `true` and any other key returns `nil`. The `license and` guard in front handles the rare case where the identifier comes back `nil`, so you never index the table with a missing value.
+
+Then comes the decision, and it is the same function both ways:
+
+- `deferrals.done()` with **no argument** ends the deferral and **allows** the join. The player leaves the connecting screen and starts loading in.
+- `deferrals.done('Not whitelisted')` with a **string argument** ends the deferral and **rejects** the join. The player is dropped, and the string you passed shows up as the reason on their disconnect screen.
+
+That single function, called with or without a reason, is the entire allow/reject switch. You must call `done` exactly once on every path through the handler. Miss it on one branch and that player hangs on the connecting screen.
+
+<Checkpoint question="Why is playerConnecting the only place you can truly block a join, and why can the player not fake their way past it?">
+  Because `playerConnecting` fires on the server before the player is fully connected. At that point you hold the join open with `deferrals.defer()` and the player has no slot, no ped, and no loaded resources, so calling `deferrals.done('reason')` stops them from ever getting in. Anywhere later is a kick after the fact, not a gate. They cannot fake it because the check runs entirely on the server: you read the `license` with `GetPlayerIdentifierByType` server side, and the player has no way to forge that value or to grant their own connection. The client requests, the server grants. That is what server-authoritative means.
+</Checkpoint>
+
+### When you reach for this pattern
+
+The deferrals handshake is the backbone of nearly every access feature a serious server runs:
+
+- **A whitelist.** Exactly what you built. Swap the hardcoded table for a database lookup against MariaDB and you have a real whitelist that staff can manage without editing code.
+- **A connection queue.** While a player is deferred you can hold them and stream `deferrals.update` messages like "you are number 4 in queue" until a slot opens, then call `deferrals.done()`. The held state is what makes a queue possible at all.
+- **An adaptive card prompt.** `deferrals.presentCard(card, cb)` renders a richer Adaptive Card on the connecting screen with buttons and inputs, for example a rules screen with an Accept button or a code entry. You build the card as a Lua table or JSON, and the callback fires when the player submits it. You still finish with `deferrals.done()` or `deferrals.done('reason')` based on what they chose.
+
+All three are the same shape: defer, communicate, decide. You just built the smallest complete version of it.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Players get stuck on the connecting screen forever", fix: "A code path reached the end without calling deferrals.done(). Make sure every branch, both allow and reject, calls done() exactly once. An error thrown after defer() also leaves the player hanging, so wrap risky lookups carefully." },
+    { symptom: "attempt to call a nil value (field 'defer')", fix: "The deferrals argument was not received, usually because the handler signature is wrong. The order is function(name, setKickReason, deferrals) and you must use AddEventHandler('playerConnecting', ...), not RegisterNetEvent." },
+    { symptom: "Everyone is rejected even after you add a real license", fix: "The license string in the table does not match exactly. Copy the full value from the console log, keep the license: prefix, and watch for trailing spaces. Table keys are compared character for character." },
+    { symptom: "license comes back nil so every player is rejected", fix: "You read source after a Wait without capturing it first, or asked for an identifier the player does not have. Capture local source = source before any Wait, and gate on 'license', which every Cfx account has." },
+    { symptom: "The reject reason does not show on the player's screen", fix: "You passed the reason to setKickReason or called deferrals.done() with no argument. The reason must be the string argument to deferrals.done('Not whitelisted')." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain that playerConnecting fires on the server before the player loads, and that it is the only place a join can be blocked.",
+    "Use deferrals.defer() to hold a connection open and deferrals.update() to show the held player a message.",
+    "Read a connecting player's license server side with GetPlayerIdentifierByType(source, 'license') and trust the value because the check is server-authoritative.",
+    "Allow a join with deferrals.done() and reject one with deferrals.done('reason'), calling done exactly once on every path.",
+    "Gate entry against a hardcoded allowlist and know how that same shape grows into a queue or an adaptive card prompt.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Turn the silent reject into a friendly, informative one, and prove the held state is real. Two changes:
+
+  First, before you decide, hold the player for three seconds while counting down a visible message, so you can see `deferrals.update` working over time:
+
+  ```lua
+  for i = 3, 1, -1 do
+      deferrals.update(('Verifying access... %d'):format(i))
+      Wait(1000)
+  end
+  ```
+
+  Second, when you reject, tell the player exactly which license was refused so they can send it to staff to be added:
+
+  ```lua
+  deferrals.done(('Not whitelisted. Send this to staff: %s'):format(tostring(license)))
+  ```
+
+  Restart `qu_connection_gate` and connect with a license that is not in the table. Confirm you watch the countdown tick from 3 to 1 on the connecting screen, then get dropped with a reason that includes your own license string. You have now used every part of the deferrals object: defer to hold, update to communicate over time, and done with a reason to reject. Bonus: move the allowlist into a separate Lua table file and load it, so adding a license never means touching the handler logic.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM deferrals and player connection", href: "https://docs.fivem.net/docs/scripting-reference/events/list/playerConnecting/" },
+    { label: "FiveM deferring connections guide", href: "https://docs.fivem.net/docs/scripting-manual/migrating-from-deprecated-methods/deferring-connections/" },
+    { label: "FiveM GetPlayerIdentifierByType", href: "https://docs.fivem.net/natives/?_0xA61C8FCAFF3E230E" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+  ]}
+/>

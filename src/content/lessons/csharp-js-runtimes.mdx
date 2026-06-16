@@ -1,0 +1,246 @@
+<LessonHero
+  crumbs="Module B1 · Lua basics"
+  title="Choosing a runtime: Lua, JavaScript, or C#"
+  meta={[
+    { label: "You'll build", value: "A two-file resource that proves Lua and JavaScript run side by side: a Lua server script and a JavaScript server script that both print on start." },
+    { label: "Time", value: "~16 minutes" },
+    { label: "You need", value: "A local FiveM practice setup you can restart, and a text editor. You do not need Node or the .NET SDK installed for this lesson. FiveM ships the JavaScript runtime inside the server." },
+    { label: "You'll learn", value: "What the three FiveM runtimes are, how each is declared in fxmanifest, when to reach for each, and why this course stays Lua-first." },
+  ]}
+>
+  This is a decision lesson, not a heavy build. FiveM does not run one language. It runs three: **Lua 5.4**, **JavaScript** on Node, and **C#** on .NET. Most of what you will read, fork, and ship is Lua, which is why this course teaches Lua. But you should know the other two exist, how the manifest declares them, and the narrow cases where reaching past Lua is the right call. The build at the end is small on purpose: one JavaScript server script printing alongside a Lua one, so you see with your own eyes that they coexist in the same resource.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console output.",
+    "I have written at least one Lua server_script (Your first line of Lua)."
+  ]}
+/>
+
+<Callout variant="fivem" title="Decide first, then prove it">
+  This lesson is mostly about judgement: which runtime, and why. Read the comparison, then build one tiny resource named `qu_runtimes` that runs a Lua script and a JavaScript script together. The proof is two startup lines in the console, one from each language. That is all you need to retire the myth that FiveM is a Lua-only platform.
+</Callout>
+
+## The three runtimes
+
+FiveM exposes the same scripting platform through three language runtimes. They all see the same natives, the same events, the same resource model. The difference is the language you write and the engine that runs it.
+
+<Cheatsheet
+  title="The three runtimes at a glance"
+  rows={[
+    { cmd: "Lua 5.4", desc: "The default. Around 90% of public resources are Lua. Lightweight, fast to iterate, no build step. This course teaches Lua." },
+    { cmd: "JavaScript", desc: "Runs on Node inside the server. Good for NUI-heavy resources and for developers who already know JS. No compile step, but you opt into the Node version in the manifest." },
+    { cmd: "C# / .NET", desc: "Compiled to a .dll, then loaded. Static types and tooling suit large or enterprise-scale systems. Heaviest setup: you build before you run." },
+  ]}
+/>
+
+### Lua 5.4: the default this course teaches
+
+Lua is the path of least resistance in FiveM. There is no build step: you save the file and restart the resource. The ecosystem assumes Lua, so the natives docs, the framework code (ESX, Qbox, the active QBCore successor since QBCore itself stalled), and the community resources you will lean on, like the Overextended set (`ox_lib`, `oxmysql`, `ox_target`, `ox_inventory`), are all written to be consumed from Lua first. When 90% of what you read and fork is Lua, writing Lua means you can read everyone else's code and they can read yours. That network effect is the real reason Lua is the right default, not any raw language merit.
+
+One accuracy note for 2026: you do **not** add a `lua54 'yes'` line to the manifest anymore. That directive was deprecated in June 2025 and is ignored. Lua 5.4 is the only Lua runtime now, so there is nothing to opt into.
+
+### JavaScript on Node: for NUI-heavy work and JS developers
+
+FiveM ships a Node runtime, so a `.js` file declared as a `client_script` or `server_script` runs with no compile step, the same as Lua. Two honest reasons to reach for it. First, your NUI front end is already HTML, CSS, and JavaScript, so a JS server or client script lets you share types and mental model across the boundary instead of switching languages mid-resource. Second, if your team already lives in JavaScript, the ramp is shorter than learning Lua from zero.
+
+The one manifest detail that trips people up: you pin the Node major version with a `node_version` line, for example `node_version '22'`. Leave it off and you inherit whatever default the server ships, which can change under you. Pin it and your resource behaves the same across server updates.
+
+### C# on .NET: compiled, for large or enterprise systems
+
+C# does not run from source. You write `.cs` files, compile them with the .NET SDK into a `.dll`, and the manifest loads that compiled assembly rather than the source. At a high level the flow is: write C# referencing the CitizenFX runtime, run a build (typically `dotnet build`) that produces a `.net.dll`, and declare that dll in the manifest as a client or server assembly. The payoff is static typing, real IDE refactoring, and structure that holds up across a large codebase. The cost is a build step between every change and a heavier toolchain. For a single feature script this is overkill. For a large team shipping an enterprise-scale system where compile-time safety earns its keep, it is a reasonable choice.
+
+## Build it
+
+You will build one resource, `qu_runtimes`, that declares a Lua server script and a JavaScript server script together. Both print one line on start. This is the proof that the runtimes coexist.
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_runtimes
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_runtimes/
+  fxmanifest.lua
+  server.lua
+  server.js
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows to load both a Lua and a JavaScript script.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+node_version '22'
+
+server_script 'server.lua'
+server_script 'server.js'
+    ```
+
+    Two `server_script` lines, one ending in `.lua` and one in `.js`. The file extension is how FiveM picks the runtime: `.lua` loads on the Lua runtime, `.js` loads on Node. The `node_version '22'` line pins the Node major version so the JavaScript side behaves the same across server updates. There is no `lua54` line: that directive was deprecated in June 2025 and Lua 5.4 is now the only Lua runtime.
+  </Step>
+
+  <Step num={4} title="Write the Lua script" outcome="The Lua runtime has one line to print on start.">
+    Open `server.lua` and paste this:
+
+    ```lua
+print('[qu_runtimes] hello from Lua 5.4')
+    ```
+
+    This is top-level code, not inside a handler, so it runs once the moment the resource starts.
+  </Step>
+
+  <Step num={5} title="Write the JavaScript script" outcome="The Node runtime has one line to print on start.">
+    Open `server.js` and paste this:
+
+    ```js
+console.log('[qu_runtimes] hello from JavaScript on Node');
+    ```
+
+    `console.log` is the JavaScript equivalent of Lua's `print`: it writes a line to the same server console. This file also runs its top-level code once on start.
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="Two startup lines appear, one per runtime.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_runtimes
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_runtimes
+    ```
+
+    Watch the txAdmin Live Console as the resource starts. You do not type a command for this one. Both scripts print on start.
+
+    <ExpectedOutput>
+      [qu_runtimes] hello from Lua 5.4
+[qu_runtimes] hello from JavaScript on Node
+    </ExpectedOutput>
+
+    The two lines may print in either order. What matters is that both appear from one resource, proving the Lua and Node runtimes ran side by side.
+  </Step>
+</StepGroup>
+
+## How it works
+
+Two scripts, two languages, one resource, two lines in the console. Take it apart so you understand exactly what made both runtimes start.
+
+### The two server_script lines
+
+```lua
+server_script 'server.lua'
+server_script 'server.js'
+```
+
+A `server_script` directive tells FiveM to load a file on the server side. You can list as many as you want, and FiveM loads each in order. The thing that decides which runtime handles a file is the **file extension**, nothing else. A `.lua` file goes to the Lua runtime. A `.js` file goes to the Node runtime. A `.cs` build output, a `.net.dll`, would go to the .NET runtime. So the manifest is not declaring languages by name; it is listing files, and each file's extension routes it to the right engine. That is why one resource can mix runtimes freely: the manifest treats every script the same way and lets the extension sort it out.
+
+### The node_version pin
+
+```lua
+node_version '22'
+```
+
+This line only matters because you included a `.js` file. It pins the Node major version the JavaScript runtime uses. Without it, your resource runs on whatever Node the server happens to ship, which can shift when the server updates. Pinning it means the behaviour you tested is the behaviour you get later. There is no Lua equivalent line, because Lua is fixed at 5.4 platform-wide and the old `lua54` opt-in is gone as of June 2025.
+
+### print versus console.log
+
+```lua
+print('[qu_runtimes] hello from Lua 5.4')
+```
+
+```js
+console.log('[qu_runtimes] hello from JavaScript on Node');
+```
+
+These two lines do the same job through each language's normal API. Lua writes to the console with `print`. JavaScript writes to the console with `console.log`. Both land in the same place, the server console, because FiveM routes every runtime's standard output there. Notice the JavaScript line ends in a semicolon and the Lua line does not. That is a language convention difference, not a FiveM one. The shared `[qu_runtimes]` tag at the front of each line is text you typed on purpose, so you can pick your own output out of a console where many resources print at once.
+
+The mental model to keep: the resource is the unit, and inside it each file speaks its own language to the same platform. You are not bridging two programs. You are running two scripts that both have the full FiveM surface available, just expressed in different syntax.
+
+<Checkpoint question="The manifest never says the word 'JavaScript' or 'Lua'. So how does FiveM know which runtime to use for each script?">
+  By the file extension on each `server_script` (or `client_script`) entry. `.lua` routes to the Lua 5.4 runtime, `.js` routes to the Node runtime, and a compiled `.net.dll` routes to the .NET runtime. The manifest is a list of files, not a list of languages; the extension is the only signal. That is exactly why one resource can run Lua and JavaScript together with no extra wiring: each file is dispatched to its engine independently. The `node_version` line is the one JavaScript-specific knob, and it only takes effect because a `.js` file is present.
+</Checkpoint>
+
+### When you reach for each runtime
+
+You now know they coexist. The real skill is choosing, and the choice is usually easy:
+
+- **Reach for Lua by default.** Almost every resource. No build step, instant iterate-and-restart, and the entire ecosystem speaks Lua. The frameworks (ESX, Qbox), and the Overextended community resources (`ox_lib`, `oxmysql`, `ox_target`, `ox_inventory`) are all consumed from Lua first. Writing Lua means you can read the code you depend on and others can read yours.
+- **Reach for JavaScript when the UI is the resource.** If a script is mostly NUI, sharing the language with your HTML front end keeps one mental model across the boundary. Same call if your team already writes JavaScript and learning Lua from zero would slow you down. Pin `node_version` when you do.
+- **Reach for C# only at scale.** A large or enterprise-grade system where compile-time type safety and heavy refactoring tools pay for the build step. For one feature it is too much ceremony. The honest rule: if you are asking whether you need C#, you do not.
+
+This course stays Lua-first on purpose. Not because the other runtimes are wrong, but because Lua is what you will overwhelmingly read and ship, and fluency in the common language is worth more early on than coverage of all three.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Only the Lua line prints; the JavaScript line never appears", fix: "The server.js server_script line is missing from fxmanifest.lua, or the file is named server.js but the manifest points at a different name. Add server_script 'server.js' and confirm the filename matches exactly." },
+    { symptom: "Could not find dependency node for resource, or the JS script fails to load on an older server", fix: "The node_version pin is missing or set to a version the server cannot provide. Add node_version '22' to the manifest and update the server artifact if it predates Node 22 support." },
+    { symptom: "Adding lua54 'yes' produces a warning or has no effect", fix: "That directive was deprecated in June 2025 and is ignored. Lua 5.4 is the only Lua runtime now. Delete the line; it does nothing." },
+    { symptom: "Expecting C# to run from a .cs file in server_script", fix: "C# does not run from source. You compile the .cs files with the .NET SDK into a .net.dll first, then declare that dll in the manifest. There is no source-level C# script directive." },
+    { symptom: "Nothing prints at all for either language", fix: "The resource is not started. Confirm ensure qu_runtimes is in server.cfg, then run restart qu_runtimes and read the txAdmin Live Console at the moment of restart, since both lines fire on start, not on a command." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Name the three FiveM runtimes (Lua 5.4, JavaScript on Node, C# on .NET) and say which one this course teaches and why.",
+    "Declare a Lua and a JavaScript server_script in the same fxmanifest, and explain that the file extension picks the runtime.",
+    "Add a node_version pin and explain why it matters only when a .js file is present.",
+    "Describe the C# flow at a high level: write .cs, build to a .net.dll with the .NET SDK, then load the dll in the manifest.",
+    "Decide which runtime to reach for: Lua by default, JavaScript for NUI-heavy or JS-team work, C# only for large or enterprise systems.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Prove the runtimes coexist on the **client** side too, and make each one read its own runtime fact rather than printing a hardcoded label. Add a client Lua file and a client JavaScript file to `qu_runtimes`, and have each print which language it is running plus the resource name, read from the platform instead of typed by hand.
+
+  ```lua
+  -- client.lua
+  print(('[%s] client running on Lua'):format(GetCurrentResourceName()))
+  ```
+
+  ```js
+  // client.js
+  console.log(`[${GetCurrentResourceName()}] client running on JavaScript`);
+  ```
+
+  Then add both to the manifest:
+
+  ```lua
+  client_script 'client.lua'
+  client_script 'client.js'
+  ```
+
+  Restart `qu_runtimes`, join the server so the client scripts load, and open the F8 console. Confirm two client lines appear, one per language, each showing `qu_runtimes` pulled from `GetCurrentResourceName()`. You have now run the same native from two runtimes and seen client output land in F8 while the earlier server output landed in txAdmin. That split, server output to the server console and client output to F8, is the same regardless of which language wrote the line.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM scripting in JavaScript", href: "https://docs.fivem.net/docs/scripting-manual/runtimes/javascript/" },
+    { label: "FiveM scripting in C#", href: "https://docs.fivem.net/docs/scripting-manual/runtimes/csharp/" },
+    { label: "FiveM scripting in Lua", href: "https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

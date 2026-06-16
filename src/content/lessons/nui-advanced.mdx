@@ -1,56 +1,190 @@
 <LessonHero
-  crumbs="/"
-  title="NUI advanced: messages, callbacks, focus"
+  crumbs="Module C3 · Interfaces (NUI)"
+  title="Production NUI: a React and Vite build pipeline"
   meta={[
-    { label: "You will learn", value: "Open/close, two-way messages, callbacks, focus, dev reload." },
-    { label: "Time", value: "~30 min" },
-    { label: "Prereqs", value: "NUI from scratch, P3 exports, and P8 server validation." },
-    { label: "Pass condition", value: "/phone opens, Escape releases focus, and one NUI callback returns { ok = true }." },
-    { label: "Project", value: "qu_phone" },
+    { label: "You'll build", value: "A React + Vite NUI that opens on a command, shows one value Lua sent, and POSTs back to close. The resource serves a built dist folder, not loose HTML." },
+    { label: "Time", value: "~35 minutes" },
+    { label: "You need", value: "The NUI from scratch lesson done so you know SendNUIMessage, RegisterNUICallback, and SetNuiFocus. Node 18+ installed, and a server you can restart." },
+    { label: "You'll learn", value: "A ui/ source folder vs a built dist/ output, ui_page on the build artifact, typed Lua-to-React messages, the cfx-nui fetch back to Lua, and the build-then-refresh dev loop." },
+    { label: "Pass condition", value: "/phone opens a React panel showing a balance Lua pushed, the Close button POSTs to Lua, and F8 prints the round-trip." },
   ]}
 >
-  NUI is a tablet glued over the windshield. Lua talks to it with `SendNUIMessage` (a walkie-talkie); the page talks back with `fetch` to `RegisterNUICallback`. Focus and cursor are how you decide whether the player is driving or typing.
+  In the from-scratch lesson you wrote three loose files and FiveM served them as-is. That stops scaling the moment you want React, TypeScript, or any npm package. Production NUI is a real frontend project: you write source under **ui/**, run a **build step** that bundles everything into a **dist/** folder, and the resource serves that built output. This lesson wires that pipeline end to end with React and Vite, then drills the one workflow detail everyone trips on: editing source does nothing in-game until you rebuild.
 </LessonHero>
-
-<YouTube id="6sRWkqon048" title="UI/UX masterclass" caption="RED: FiveM UI/UX masterclass." />
 
 <Prereq
   items={[
-    "I can find my server resources folder.",
-    "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I finished NUI from scratch, so SendNUIMessage, RegisterNUICallback, and SetNuiFocus are familiar.",
+    "I have Node 18 or newer installed (run node --version to check).",
+    "I can edit server.cfg and restart one resource, and I can join the server and read F8 output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds NUI focus, messages, and callback response as a working FiveM resource named `qu_nui_advanced`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a React + Vite NUI as a working FiveM resource named `qu_nui_react`. You will run an actual frontend build, point `ui_page` at the build artifact, and prove a typed message and a callback both cross the boundary. Follow the folder names, file names, commands, and expected output exactly. NUI is a client feature, so the proof appears in F8, not the server console.
 </Callout>
 
 ## Build it
 
 <StepGroup>
-  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
-    Inside your server's `resources` folder, create this folder:
+  <Step num={1} title="Make the resource and the ui source folder" outcome="The resource holds a separate ui/ folder for frontend source.">
+    Inside your server's `resources` folder, create this layout. The `ui/` folder is your React project; everything outside it is the FiveM resource:
 
     ```text
-    resources/qu_nui_advanced
-    ```
-  </Step>
-
-  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
-    Create this exact file layout:
-
-    ```text
-resources/qu_nui_advanced/
+resources/qu_nui_react/
   fxmanifest.lua
   client.lua
-  web/index.html
-  web/app.js
-  web/style.css
+  ui/
+    index.html
+    package.json
+    vite.config.js
+    src/
+      main.jsx
+      App.jsx
+    ```
+
+    You will not create `dist/` by hand. The build step in Step 6 generates it. That separation is the whole point: `ui/` is source you edit, `dist/` is the compiled bundle the game actually loads.
+  </Step>
+
+  <Step num={2} title="Write the ui project files" outcome="Vite knows how to bundle React into a relative-path dist.">
+    Open `ui/package.json` and paste this:
+
+    ```json
+{
+  "name": "qu-nui-react",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
+  }
+}
+    ```
+
+    Open `ui/vite.config.js` and paste this:
+
+    ```js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  base: './',
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets'
+  }
+});
+    ```
+
+    Open `ui/index.html` and paste this:
+
+    ```html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>qu_nui_react</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write the React app" outcome="The app listens for a Lua message and POSTs back on close.">
+    Open `ui/src/main.jsx` and paste this:
+
+    ```jsx
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App.jsx';
+
+createRoot(document.getElementById('root')).render(<App />);
+    ```
+
+    Open `ui/src/App.jsx` and paste this:
+
+    ```jsx
+import React, { useEffect, useState } from 'react';
+
+const RESOURCE = 'qu_nui_react';
+
+function nuiPost(endpoint, body) {
+  return fetch(`https://cfx-nui-${RESOURCE}/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+export default function App() {
+  const [open, setOpen] = useState(false);
+  const [balance, setBalance] = useState(0);
+
+  useEffect(() => {
+    function onMessage(event) {
+      const msg = event.data;
+      if (msg.type === 'open') {
+        setBalance(msg.balance);
+        setOpen(true);
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  function close() {
+    nuiPost('close', {}).then(() => setOpen(false));
+  }
+
+  if (!open) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, display: 'grid', placeItems: 'center',
+      fontFamily: 'sans-serif'
+    }}>
+      <div style={{ background: '#14161a', color: '#fff', padding: 28, borderRadius: 12 }}>
+        <h1>Phone</h1>
+        <p>Balance: ${balance}</p>
+        <button onClick={close}>Close</button>
+      </div>
+    </div>
+  );
+}
+    ```
+  </Step>
+
+  <Step num={4} title="Write client.lua" outcome="Lua opens the panel with a typed message and answers the close callback.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('phone', function()
+    SetNuiFocus(true, true)
+    SendNUIMessage({ type = 'open', balance = 4200 })
+    print('[qu_nui_react] open sent, focus captured')
+end, false)
+
+RegisterNUICallback('close', function(data, cb)
+    SetNuiFocus(false, false)
+    print('[qu_nui_react] close callback, focus released')
+    cb({ ok = true })
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Write fxmanifest.lua pointing at the build output" outcome="The manifest serves dist/, not the ui/ source.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -58,86 +192,159 @@ fx_version 'cerulean'
 game 'gta5'
 
 client_script 'client.lua'
-ui_page 'web/index.html'
+
+ui_page 'ui/dist/index.html'
+
 files {
-    'web/index.html',
-    'web/app.js',
-    'web/style.css'
+    'ui/dist/index.html',
+    'ui/dist/assets/*.js',
+    'ui/dist/assets/*.css'
 }
     ```
+
+    Read the paths carefully. `ui_page` and every line in `files` point at `ui/dist`, the compiled output, never at `ui/src`. The game cannot run `.jsx` or import npm packages. It can only load the plain HTML, JS, and CSS that Vite emits into `dist/`. The `assets/*.js` and `assets/*.css` globs whitelist the hashed bundle filenames Vite produces, so you do not have to rename `files` every build.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `client.lua` and paste this:
-
-    ```lua
-RegisterCommand('openui', function()
-    SetNuiFocus(true, true)
-    SendNUIMessage({ show = true })
-    print('[qu_nui_advanced] opened')
-end, false)
-
-RegisterNUICallback('close', function(_, cb)
-    SetNuiFocus(false, false)
-    print('[qu_nui_advanced] closed')
-    cb({ ok = true })
-end)
-    ```
-
-    Open `web/index.html` and paste this:
+  <Step num={6} title="Build the ui, then start the resource" outcome="A dist/ folder exists and the proof appears in F8.">
+    From a terminal, install dependencies and build once. Run these inside the `ui/` folder:
 
     ```text
-<!doctype html>
-<html><body><button id="close">Close</button><script src="app.js"></script></body></html>
+    cd resources/qu_nui_react/ui
+    npm install
+    npm run build
     ```
 
-    Open `web/app.js` and paste this:
+    After the build, confirm `ui/dist/index.html` and a `ui/dist/assets/` folder now exist. That is the artifact `ui_page` will serve.
 
-    ```text
-document.getElementById('close').addEventListener('click', () => { fetch('https://qu_nui_advanced/close', { method: 'POST', body: '{}' }) })
-    ```
-
-    Open `web/style.css` and paste this:
-
-    ```text
-body { display: grid; place-items: center; min-height: 100vh; }
-    ```
-  </Step>
-
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
     Open `server.cfg` and add this line:
 
     ```text
-    ensure qu_nui_advanced
+    ensure qu_nui_react
     ```
 
     Save, then run:
 
     ```text
-    restart qu_nui_advanced
+    restart qu_nui_react
     ```
 
-    Run this test:
+    Join the server, then run this test:
 
     ```text
-    /openui, then click Close
+    /phone, then click Close
     ```
 
     <ExpectedOutput>
-      F8: [qu_nui_advanced] opened
-F8: [qu_nui_advanced] closed
+      [qu_nui_react] open sent, focus captured
+[qu_nui_react] close callback, focus released
     </ExpectedOutput>
+
+    On screen the React panel reads `Balance: $4200`, the value Lua pushed in the open message. Clicking Close hides the panel and releases focus.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran a build, a `dist/` folder appeared, the resource served it, and a React component reacted to a Lua message and answered a callback. The from-scratch lesson taught the four NUI primitives. This lesson is about the layer that sits on top of them in every real server: a frontend build pipeline. Take the new pieces in the order they matter.
+
+### ui/ is source, dist/ is what the game loads
+
+```text
+ui/src/App.jsx      <- you edit this
+ui/dist/index.html  <- the game loads this
+```
+
+This split is the single most important idea in the lesson. The game's NUI browser is a sandboxed Chromium instance that understands plain HTML, JS, and CSS. It does not understand `.jsx`, it cannot resolve `import React from 'react'`, and it has no npm. So you never point FiveM at your source. You point it at the output of a build.
+
+Vite is the build tool doing the translation. `npm run build` reads everything under `ui/src`, resolves every import, compiles JSX to plain JavaScript, bundles React and your code into one or two hashed files, and writes the result into `ui/dist`. That `dist` folder is self-contained: an `index.html` that references hashed `assets/*.js` and `assets/*.css`, with no source files and no node_modules. It is the only thing the game ever sees.
+
+The `base: './'` line in `vite.config.js` is not optional. By default Vite writes absolute asset paths like `/assets/index-abc.js`. NUI serves your page from `https://cfx-nui-qu_nui_react/ui/dist/`, so an absolute `/assets/...` path resolves to the wrong place and the bundle 404s. Setting `base` to a relative `./` makes Vite emit `./assets/index-abc.js`, which resolves correctly under the resource scope. Skip that line and you get a blank panel with a 404 in the NUI devtools.
+
+### ui_page and files both point at the build artifact
+
+```lua
+ui_page 'ui/dist/index.html'
+
+files {
+    'ui/dist/index.html',
+    'ui/dist/assets/*.js',
+    'ui/dist/assets/*.css'
+}
+```
+
+The roles are the same as the from-scratch lesson, the targets are different. `ui_page` names the one HTML file FiveM mounts as the NUI layer; here that is the built `index.html`, not your source `index.html`. `files` is still the mandatory whitelist of every asset the browser may load, and a missing entry still 404s silently with no Lua error.
+
+The new detail is the glob. Vite fingerprints bundle filenames with a content hash, so today's bundle is `index-a1b2c3.js` and tomorrow's is `index-d4e5f6.js`. If you hardcoded the filename in `files`, every rebuild would break the whitelist. The `ui/dist/assets/*.js` and `*.css` globs match whatever hashed names Vite emits, so the whitelist survives rebuilds untouched.
+
+### Typed messages from Lua to React
+
+```lua
+SendNUIMessage({ type = 'open', balance = 4200 })
+```
+
+```jsx
+function onMessage(event) {
+  const msg = event.data;
+  if (msg.type === 'open') {
+    setBalance(msg.balance);
+    setOpen(true);
+  }
+}
+```
+
+`SendNUIMessage` is unchanged from the from-scratch lesson: Lua serializes the table to JSON and the browser receives it as a DOM `message` event. What changes is the React side. Instead of poking the DOM directly, the listener drives React state. A `type` field acts as a discriminator, the same convention as `action` in the raw lesson, so one listener can switch on many message kinds. When `type` is `open`, you copy `balance` into state with `setBalance` and flip `setOpen(true)`. React re-renders, and because `App` returns `null` while `open` is false, the panel only mounts once Lua says so.
+
+Note the cleanup. The listener is attached inside `useEffect` with an empty dependency array, and the effect returns `removeEventListener`. Without that teardown a hot reload or remount would stack duplicate listeners, and each Lua message would fire your handler several times. Registering an event listener in React without removing it in the cleanup is a real leak, not a style preference.
+
+### The cfx-nui fetch from React back to Lua
+
+```jsx
+function nuiPost(endpoint, body) {
+  return fetch(`https://cfx-nui-${RESOURCE}/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+```
+
+This is the same callback scope as before, wrapped in a helper so you write the URL once. The scheme is always `https://cfx-nui-&lt;resource&gt;/&lt;endpoint&gt;`. Here the resource is `qu_nui_react` and the endpoint is `close`, giving `https://cfx-nui-qu_nui_react/close`. The `cfx-nui-` prefix is the scheme FiveM intercepts to route the request into your Lua rather than out to the internet. Drop it, or use the bare resource name, and the request escapes the sandbox and fails.
+
+On the Lua side `RegisterNUICallback('close', function(data, cb) ... end)` answers that endpoint. The endpoint string after the last slash must match the registered name exactly. The contract on `cb` is identical to the raw lesson: the `fetch` promise stays pending until you call `cb` exactly once, so the `.then(() => setOpen(false))` that hides the panel never runs if you forget it. `SetNuiFocus(false, false)` on the first line of the callback releases the cursor the instant the click arrives.
+
+A boundary rule worth carrying past this lesson: the React app can only ever *request*. It can ask Lua to close, to buy, to teleport. It cannot grant any of it. NUI runs on the client, which a player can tamper with, so Lua, and ultimately the server, decides what actually happens. Treat every NUI callback payload as an untrusted request, never as a command you obey blindly.
+
+### The build-then-refresh dev loop
+
+This is the workflow that catches everyone moving up from raw HTML. With loose files, you edited `app.js`, ran `restart`, and the change was live. With a build pipeline there is an extra step, and skipping it makes you debug a change that was never compiled.
+
+The loop is: edit source under `ui/src`, run `npm run build` in `ui/`, then refresh the page in-game. Refreshing in-game means either `restart qu_nui_react`, or, if only the UI changed, the faster path is to press F8 and run `nui_devtools` or simply re-trigger the page. The rebuild is the non-negotiable part. The game serves `dist/`, and `dist/` does not change until `npm run build` regenerates it. Edit `App.jsx`, forget to rebuild, restart the resource, and you will stare at the old UI convinced your code is broken when in fact the game never saw it.
+
+When you want a tight inner loop without rebuilding every keystroke, run `npm run dev` in a second terminal. Vite serves the app at a local URL with hot reload, so you can iterate on layout in a normal browser tab. Just remember the game still loads `dist/`, so a final `npm run build` is what ships the change into FiveM.
+
+<Checkpoint question="You edit App.jsx to show a new field, run restart qu_nui_react, and /phone still shows the old panel with no F8 error. What did you forget, and why is there no error?">
+  You forgot `npm run build`. The game serves `ui/dist`, the compiled bundle, not `ui/src`. Editing `App.jsx` changes the source, but until you run `npm run build` in the `ui/` folder, `dist/` still holds the previous bundle, and that is what `restart` reloads. There is no error because nothing is wrong from FiveM's point of view: it loaded a valid `dist/index.html` and a valid bundle, just an old one. The fix is to make the build a reflex. Edit source, rebuild, then refresh in-game, in that order, every time. If you also see a blank panel rather than a stale one, check the NUI devtools at http://localhost:13172 for a 404, which usually means `base: './'` is missing from vite.config.js.
+</Checkpoint>
+
+### When you reach for this pattern
+
+You reach for a build pipeline the moment a UI outgrows a single hand-written file. Three real cases:
+
+- **A real app surface.** A phone, an inventory, a banking UI, a job menu with many screens. Component state, routing, and reusable pieces are why React exists, and a build step is the price of using it.
+- **TypeScript and npm packages.** The instant you want types across the Lua boundary, a date library, an icon set, or a charting package, you need a bundler. Loose files cannot import from node_modules.
+- **A shared design system.** Studios build one NUI component library and reuse it across many resources. That only works through a build pipeline that can pull a shared package into each resource's `dist/`.
+
+For smaller jobs you would still pull in a community wrapper. `ox_lib`, from the Overextended team rather than a Cfx.re built-in, ships ready-made menus and dialogs so you do not rebuild a React app for a three-option prompt. Reach for this full pipeline when the UI is the product, not a one-off prompt.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_nui_advanced does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_nui_advanced", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_nui_advanced, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The panel is blank and the NUI devtools Network tab shows a 404 for assets/index-*.js", fix: "vite.config.js is missing base: './'. Vite emitted absolute asset paths that do not resolve under the cfx-nui scope. Add the base line, run npm run build again, then restart qu_nui_react." },
+    { symptom: "Couldn't load resource qu_nui_react: ui/dist/index.html not found", fix: "You never ran the build, so dist/ does not exist. cd into resources/qu_nui_react/ui and run npm install then npm run build before ensuring the resource." },
+    { symptom: "Code changes do not show up in game after restart", fix: "You edited ui/src but did not rebuild. The game serves ui/dist. Run npm run build in the ui/ folder, then restart qu_nui_react." },
+    { symptom: "Mouse and movement are frozen after closing", fix: "Focus was captured but never released. Confirm SetNuiFocus(false, false) runs in the close callback and that the React Close button actually reaches the cfx-nui-qu_nui_react/close endpoint." },
+    { symptom: "The button POSTs but the panel stays open", fix: "The Lua close callback never called cb. Every RegisterNUICallback must call cb exactly once, even cb({}), or the fetch promise never resolves and the .then that sets open to false never runs." }
   ]}
 />
 
@@ -145,23 +352,50 @@ F8: [qu_nui_advanced] closed
 
 <Recap
   items={[
-    "Make the qu_nui_advanced folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for NUI focus, messages, and callback response.",
-    "Add ensure qu_nui_advanced to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Lay out a NUI resource as a ui/ source project plus a generated ui/dist build artifact, and explain why the game only ever loads dist.",
+    "Configure Vite for NUI with base set to a relative path so hashed assets resolve under the cfx-nui scope.",
+    "Point ui_page and the files block at ui/dist, using assets/*.js and *.css globs so the whitelist survives every rebuild.",
+    "Drive React state from a typed SendNUIMessage, switching on a type field and cleaning up the message listener in useEffect.",
+    "POST from React back to Lua over the cfx-nui-<resource>/<endpoint> scope and resolve the fetch with cb in the callback.",
+    "Run the build-then-refresh dev loop without debugging a change that was never compiled, and use npm run dev for a faster inner loop."
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_nui_advanced`, rerun the test, and confirm the output changed.
+  Make the round-trip carry data both ways. Add a Deposit button next to Close that sends an amount to Lua, and have Lua reply with the new balance so the React panel updates without reopening.
+
+  On the React side, add a second endpoint and use the value `cb` returns:
+
+  ```jsx
+  function deposit() {
+    nuiPost('deposit', { amount: 500 })
+      .then((res) => res.json())
+      .then((data) => setBalance(data.balance));
+  }
+  ```
+
+  On the Lua side, register the matching callback and reply with the updated number through `cb`:
+
+  ```lua
+  local balance = 4200
+
+  RegisterNUICallback('deposit', function(data, cb)
+      balance = balance + (data.amount or 0)
+      print('[qu_nui_react] deposit, new balance ' .. balance)
+      cb({ balance = balance })
+  end)
+  ```
+
+  Rebuild the ui with `npm run build`, restart `qu_nui_react`, open `/phone`, and click Deposit. Confirm the balance on screen jumps to `$4700` without closing the panel, and that F8 prints the new balance. You just used the `cb` reply as a real return value, which is how a NUI app reads a server-authoritative result back into its own state instead of guessing. Keep the boundary rule in mind: a production version would route that deposit through a server event so the server, not the client, owns the real balance.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM NUI development guide", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "Vite build guide", href: "https://vite.dev/guide/build.html" },
+    { label: "React useEffect reference", href: "https://react.dev/reference/react/useEffect" }
   ]}
 />

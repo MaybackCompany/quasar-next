@@ -1,0 +1,279 @@
+<LessonHero
+  crumbs="Module B5 · Data that survives a restart"
+  title="Persistence without a database: the KVS"
+  meta={[
+    { label: "You'll build", value: "A server resource that increments a counter on command and reloads the same number after a full server restart, proving the value lives on disk and not just in memory." },
+    { label: "Time", value: "~18 minutes" },
+    { label: "You need", value: "A local FiveM practice setup you can restart, a text editor, and the heal-command or natives-toolbox resource already working so you are comfortable with RegisterCommand on the server." },
+    { label: "You'll learn", value: "The built-in key-value store, the typed get and set natives, deleting and listing keys, and the exact line where KVS stops being enough and you reach for MariaDB plus oxmysql instead." },
+  ]}
+>
+  Most beginners think the only way to make data survive a restart is a database. It is not. FiveM ships a per-resource **key-value store**, the KVS, that writes small values straight to disk for you. No schema, no connection string, no SQL. In this lesson you build a counter that climbs every time you run a command, then survives a full server restart untouched. Once it works, you will know exactly when the KVS is the right tool and when it is the wrong one.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console output.",
+    "I can register a server command with RegisterCommand."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a persistent counter from one Lua file as a working FiveM resource named `qu_kvs_counter`. Follow the folder names, file names, code, restart command, and expected output exactly. The whole point is the second test: you stop the entire server, start it again, and the number is still there. Once the proof holds, the next section takes the code apart line by line.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_kvs_counter
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_kvs_counter/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+
+    The KVS natives are SERVER natives, so the code lives in one `server_script`. There is no `client_script` here, and there is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only runtime.
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The counter reads from disk, increments, and writes back.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local KEY = 'visit_count'
+
+-- Read the saved number on startup. nil means the key has never been written.
+local count = GetResourceKvpInt(KEY)
+print(('[qu_kvs_counter] loaded count from KVS: %d'):format(count))
+
+RegisterCommand('countup', function()
+    count = count + 1
+    SetResourceKvpInt(KEY, count)
+    print(('[qu_kvs_counter] count is now %d (saved to disk)'):format(count))
+end, true)
+
+RegisterCommand('countshow', function()
+    print(('[qu_kvs_counter] current count: %d'):format(GetResourceKvpInt(KEY)))
+end, true)
+
+RegisterCommand('countreset', function()
+    DeleteResourceKvp(KEY)
+    count = 0
+    print('[qu_kvs_counter] count deleted from KVS, back to 0')
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The number climbs, then survives a full restart.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_kvs_counter
+    ```
+
+    Save, then run this in the txAdmin Live Console:
+
+    ```text
+    restart qu_kvs_counter
+    ```
+
+    Run the counter up three times, then check it:
+
+    ```text
+    countup
+    countup
+    countup
+    countshow
+    ```
+
+    <ExpectedOutput>
+      [qu_kvs_counter] loaded count from KVS: 0
+[qu_kvs_counter] count is now 1 (saved to disk)
+[qu_kvs_counter] count is now 2 (saved to disk)
+[qu_kvs_counter] count is now 3 (saved to disk)
+[qu_kvs_counter] current count: 3
+    </ExpectedOutput>
+
+    Now the real proof. Fully stop the server process and start it again. This is not a `restart qu_kvs_counter`, it is a cold boot of the whole server, the thing a database is supposed to survive. When the resource loads, watch the startup line:
+
+    <ExpectedOutput>
+      [qu_kvs_counter] loaded count from KVS: 3
+    </ExpectedOutput>
+
+    The number came back as `3` with no database anywhere. That is the KVS doing its job.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran it, the count climbed, and it survived a cold restart. Now take the code apart so you understand where the data actually lives and why no `console.log` style guesswork was needed to confirm it. There are three natives doing the real work and one habit that keeps you out of trouble.
+
+### Reading the saved value on startup
+
+```lua
+local count = GetResourceKvpInt(KEY)
+print(('[qu_kvs_counter] loaded count from KVS: %d'):format(count))
+```
+
+`GetResourceKvpInt(key)` is a SERVER native that reads an integer you previously stored under that key. The key is just a string you choose, here `'visit_count'`. The store is **scoped to this one resource**, so `qu_kvs_counter` cannot see, read, or stomp on a key written by `qu_persistence` or any other resource. Each resource gets its own private drawer.
+
+The most important detail is what happens the very first time, before you have ever written the key. `GetResourceKvpInt` returns `0` for a key that has never been set, so your `count` starts at a clean zero with no extra guard. If you used `GetResourceKvpString` instead, an unset key comes back as `nil`, which is why string reads almost always need an `or` fallback. The integer and float variants are friendlier here because they hand you a usable number on a fresh server.
+
+This line runs once, at the top level of the file, the moment the resource starts. That timing is the whole reason persistence works: on every boot, the first thing the resource does is rehydrate its state from disk before any command can touch it.
+
+### Incrementing and writing back
+
+```lua
+RegisterCommand('countup', function()
+    count = count + 1
+    SetResourceKvpInt(KEY, count)
+    print(('[qu_kvs_counter] count is now %d (saved to disk)'):format(count))
+end, true)
+```
+
+`SetResourceKvpInt(key, value)` writes an integer to the store under that key. There is no save button, no flush, no commit. The value is on disk the instant the call returns. That simplicity is the KVS selling point and also its trap, which the mistakes section comes back to.
+
+Notice the two-step rhythm: bump the in-memory `count`, then push it to the KVS. The local variable is your fast working copy for this session; the KVS is the durable copy that outlives the process. Keeping both in sync by hand is fine here because there is exactly one value. The restricted flag is `true`, so only the server console and aces can fire the command. A counter you do not want random players inflating belongs behind that flag. Remember the rule from the trust lessons: the client may request, only the server grants. KVS lives entirely on the server, so a player can never reach it directly.
+
+FiveM gives you three typed pairs, and you pick by the shape of your value:
+
+- `SetResourceKvpInt` / `GetResourceKvpInt` for whole numbers like this counter.
+- `SetResourceKvpFloat` / `GetResourceKvpFloat` for decimals like `1000.50`.
+- `SetResourceKvp` / `GetResourceKvpString` for text, and for anything structured you serialize with `json.encode` into a string first.
+
+Match the setter to the getter. Write with `SetResourceKvpInt` and read with `GetResourceKvpInt`. Mixing types, for example writing an int and reading it as a string, gives you garbage or `nil`.
+
+### Deleting a key
+
+```lua
+RegisterCommand('countreset', function()
+    DeleteResourceKvp(KEY)
+    count = 0
+    print('[qu_kvs_counter] count deleted from KVS, back to 0')
+end, true)
+```
+
+`DeleteResourceKvp(key)` removes the key from the store entirely. After this, `GetResourceKvpInt(KEY)` reads `0` again because the key no longer exists. Setting the value to `0` and deleting the key are not the same thing: a deleted key is gone, while a key set to `0` still occupies a slot you can find when you list. We reset the local `count` to `0` in the same handler so the working copy matches the now-empty store.
+
+<Checkpoint question="After countreset, you restart the whole server. What does the startup line print, and why?">
+  It prints `loaded count from KVS: 0`. `DeleteResourceKvp` removed the `visit_count` key, so on the next boot `GetResourceKvpInt(KEY)` finds nothing under that key and returns its default of `0`. The number did not come back as `3` because there is no longer anything saved to come back. That is the difference between deleting a key and merely zeroing it: deleting wipes the durable copy, so the restart starts from the same blank slate a brand-new resource would.
+</Checkpoint>
+
+### Listing every key your resource owns
+
+The three commands above each work on one known key. Sometimes you do not know the keys ahead of time, for example you stored one entry per player under keys like `player_money_42` and `player_money_57` and now you want to walk all of them. That is what the find iterator is for:
+
+```lua
+RegisterCommand('countkeys', function()
+    local handle = StartFindKvp('')
+    local found = 0
+    while true do
+        local key = FindKvp(handle)
+        if not key then break end
+        found = found + 1
+        print(('[qu_kvs_counter] key %d: %s'):format(found, key))
+    end
+    EndFindKvp(handle)
+    print(('[qu_kvs_counter] total keys: %d'):format(found))
+end, true)
+```
+
+`StartFindKvp(prefix)` opens a search over every key in this resource's store whose name begins with the prefix string. An empty `''` prefix matches every key. It hands back a **handle**, a number that points at the search, the same idea as the ped handle from the natives lesson. `FindKvp(handle)` returns the next matching key name each time you call it, and returns `nil` once there are no more, which is why the `if not key then break end` line ends the loop. `EndFindKvp(handle)` closes the search and frees it. Always pair a `StartFindKvp` with an `EndFindKvp`, the same way you pair `function` with `end`, or you leak the handle.
+
+The find natives return key **names**, not their values. To read each one you take the returned key and call the matching getter, for example `GetResourceKvpInt(key)`. The iterator finds the drawers; you still open each drawer yourself.
+
+### When you reach for the KVS, and when you do not
+
+The KVS is the right tool when all of these are true:
+
+- The data is **small** and **per-resource**: settings, a counter, a feature toggle, the last value a script saw. No other resource needs to read it.
+- There is **no schema and no relationships**. You are storing loose keys, not rows that join to other rows.
+- You will **never query it**. You can fetch a key by name or list keys by prefix, and that is the entire query language. There is no "find every player with more than 5000 dollars".
+
+You reach for **MariaDB plus oxmysql** the moment any of those breaks. oxmysql is the Overextended community resource that connects your server to a MariaDB database, and MariaDB is the database engine to prefer in 2026 over plain MySQL. You need it when the data is **relational** (players own vehicles, vehicles belong to garages), when you must **query and filter** (leaderboards, "all characters for this license"), or when the data is **shared across many resources** that each read and write the same tables. A whole-server economy with 64 players hammering wallets is squarely database territory, not KVS territory.
+
+This is the exact line that separates this lesson from the **Persistence: cache plus write-back** lesson. That lesson keeps player money in a database and uses an in-memory cache with a dirty flag and a timed flush so the database is not hit on every change. It exists because a database write is expensive and you want to batch them. The KVS has the opposite shape: each `SetResourceKvpInt` is a cheap direct write, so there is no cache and no flush, but you also give up queries, relationships, and cross-resource sharing. KVS is for small private state that must survive a restart. The cache plus write-back pattern is for large shared relational state that must survive a restart **and** be queryable. Pick by what the data looks like, not by which one you learned first.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Writing with SetResourceKvpInt but reading back nil or a wrong number", fix: "You read with the wrong typed getter. An int written with SetResourceKvpInt must be read with GetResourceKvpInt, a float with GetResourceKvpFloat, a string with GetResourceKvpString. Match the getter to the setter exactly." },
+    { symptom: "attempt to perform arithmetic on a nil value (local 'count')", fix: "You used GetResourceKvpString to read a numeric key. String reads return nil for an unset key, and nil cannot be added to. Use GetResourceKvpInt for whole numbers, which returns 0 for an unset key, or add an 'or 0' fallback." },
+    { symptom: "The counter resets to 0 every time you restart the whole server", fix: "You are reading the key into count but never writing it with a Set call, or you are writing to a different key string than you read from. Confirm the same KEY value is used in both the GetResourceKvpInt and the SetResourceKvpInt calls." },
+    { symptom: "countkeys prints nothing or hangs", fix: "Either the store is genuinely empty (run countup first), or you forgot the 'if not key then break end' guard so the while loop never ends. FindKvp returns nil when there are no more keys, and that nil is your only signal to stop." },
+    { symptom: "Other resources cannot read your visit_count key", fix: "That is by design, not a bug. The KVS is scoped per resource. If two resources must share the same data, the KVS is the wrong tool and you want a database via oxmysql instead." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Store data that survives a full server restart with zero database setup, using the per-resource key-value store.",
+    "Read and write whole numbers with GetResourceKvpInt and SetResourceKvpInt, and pick the float or string pair when the value is a decimal or text.",
+    "Remove a key with DeleteResourceKvp, and explain why a deleted key differs from a key set to 0.",
+    "Walk every key your resource owns with the StartFindKvp, FindKvp, EndFindKvp iterator, always closing the handle.",
+    "State the line where KVS stops being enough and you move to MariaDB plus oxmysql: relational data, real queries, or data shared across resources.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Turn the single counter into a per-player visit tracker that survives restarts, then list the leaderboard. The key for each player is built from their identifier, and the find iterator reads them all back. Build a server command that increments the caller's own count and one that prints every stored player count:
+
+  ```lua
+  -- Server side. source is the player who fired the command.
+  RegisterCommand('myvisits', function(source)
+      local key = ('visits_%s'):format(source)
+      local n = GetResourceKvpInt(key) + 1
+      SetResourceKvpInt(key, n)
+      print(('[qu_kvs_counter] player %s now has %d visits'):format(source, n))
+  end, false)
+
+  RegisterCommand('allvisits', function()
+      local handle = StartFindKvp('visits_')
+      while true do
+          local key = FindKvp(handle)
+          if not key then break end
+          print(('[qu_kvs_counter] %s = %d'):format(key, GetResourceKvpInt(key)))
+      end
+      EndFindKvp(handle)
+  end, true)
+  ```
+
+  Notice the restricted flag is `false` on `myvisits` so a joined player can run it from F8 and `source` is their real server id, but `true` on `allvisits` so only the console can dump the full list. The `'visits_'` prefix on `StartFindKvp` means `allvisits` only walks the visit keys and ignores the `visit_count` key from the main lesson. Run `myvisits` from a couple of different connected clients, restart the whole server, then run `allvisits` from the console and confirm every player's number came back. Now ask yourself the design question: at what player count, or what added feature like sorting the leaderboard by visits, would this stop being a KVS job and become a MariaDB plus oxmysql job?
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM KVS SetResourceKvp reference", href: "https://docs.fivem.net/natives/?_0x21C7A35B" },
+    { label: "FiveM KVS GetResourceKvpInt reference", href: "https://docs.fivem.net/natives/?_0x557B586A" },
+    { label: "FiveM StartFindKvp reference", href: "https://docs.fivem.net/natives/?_0xDD379006" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" }
+  ]}
+/>

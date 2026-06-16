@@ -1,0 +1,317 @@
+<LessonHero
+  crumbs="Module C1 · World indicators"
+  title="Reading player input: controls and keys"
+  meta={[
+    { label: "You'll build", value: "A client resource that watches for the E key near a fixed coordinate and prints when you press it, plus a second key it takes over from the game while a fake menu is open." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "Your client-script mental model from the natives toolbox lesson, a local server you can restart, and the FiveM controls reference open in your browser." },
+    { label: "You'll learn", value: "What a control ID is -> the input group argument -> IsControlJustPressed vs IsControlPressed vs IsControlReleased -> disabling a game key while a menu is open -> RegisterKeyMapping as the rebindable alternative." },
+  ]}
+>
+  Almost every interaction in FiveM starts with a key. Open a door, talk to an NPC, loot a body, sprint, holster a weapon. FiveM does not hand you raw keyboard codes for these. It hands you **control IDs**, stable numbers that survive the player remapping their keys. This lesson teaches you to read those controls in a client thread, then proves it with a resource that detects the E key near a coordinate and takes over a second key while a menu is open.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output.",
+    "I know why a client_script runs on my own game instance, not the server."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a per-frame input thread as a working FiveM resource named `qu_controls_and_input`. It detects the E key near a fixed spot, then disables and re-reads a second key while a fake menu flag is on. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes every line apart so you can read any control without copying.
+</Callout>
+
+## Control IDs, not keycodes
+
+When you press E, your operating system sees a raw keyboard scancode. FiveM does not. FiveM works one layer above that, in terms of **controls**: named game actions like "context interact", "jump", or "vehicle handbrake". Each control has a stable number, the **control ID**. You ask the game "is control 38 pressed right now" and the game answers, no matter which physical key the player has bound to that action.
+
+This matters because players rebind keys. Someone on an AZERTY keyboard, someone using a controller, someone who moved interact off E on purpose, all of them still trigger control 38 when they hit their bound key. If you read raw keycodes you break for every one of those players. If you read control IDs you work for all of them. This is why every input native in this lesson takes a control ID, never a letter.
+
+Here are the control IDs you will reach for most often, straight from the FiveM controls reference:
+
+<Cheatsheet
+  title="Common control IDs"
+  rows={[
+    { cmd: "38", desc: "E key. Context interact, the default press-to-use key." },
+    { cmd: "47", desc: "G key. Spawn/secondary interact, often used as a second action key." },
+    { cmd: "23", desc: "F key. Enter or exit a vehicle." },
+    { cmd: "22", desc: "Spacebar. Jump." },
+    { cmd: "21", desc: "Left Shift. Sprint." },
+    { cmd: "24", desc: "Left mouse button. Attack." },
+    { cmd: "25", desc: "Right mouse button. Aim." },
+    { cmd: "18", desc: "Enter. Accept or select in menus." },
+    { cmd: "73", desc: "X key. Duck or cover, a common menu cancel." },
+    { cmd: "246", desc: "Y key. Used as a free interaction key by many scripts." },
+  ]}
+/>
+
+Do not memorize this table. Bookmark the controls reference and look the number up when you need it, the same way you look up any other native.
+
+### The input group argument
+
+Every input native starts with a number you will see set to `0` almost everywhere:
+
+```lua
+IsControlJustPressed(0, 38)
+```
+
+That leading `0` is the **input group** (also called the padIndex). It tells the game which input layer to read. Group `0` is the normal "in the world, controlling your player" layer, and it is what you want roughly all of the time. The other groups exist for special contexts like camera or frontend menus, and you will almost never touch them. Treat `0` as the default and move on. The control ID, the second argument, is the part that actually changes.
+
+<Checkpoint question="A player remaps interact from E to T. You wrote IsControlJustPressed(0, 38). Does your code still fire for them?">
+  Yes. `38` is the control ID for the interact action, not the letter E. When the player rebinds interact to T, the game maps T to control 38 for that player. Your check reads the control, so it fires on T for them and on E for everyone who left the default. That is the entire reason FiveM gives you control IDs instead of raw keycodes: you write against the action, the player owns the key.
+</Checkpoint>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_controls_and_input
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_controls_and_input/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    Reading input means reading your own keyboard on your own game instance, so all the code is a single `client_script`. There is no `server_script` here on purpose: the server never sees a key press, only the results you choose to send it. Note there is no `lua54 'yes'` line. As of June 2025 that setting is deprecated and ignored, so you leave it out.
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local targetCoords = vector3(215.0, -810.0, 30.0)
+local menuOpen = false
+
+-- Toggle a fake "menu" on and off so we can demonstrate taking over a key.
+RegisterCommand('togglemenu', function()
+    menuOpen = not menuOpen
+    print('[qu_controls_and_input] menuOpen is now ' .. tostring(menuOpen))
+end, false)
+
+CreateThread(function()
+    while true do
+        local sleep = 500
+        local ped = PlayerPedId()
+        local dist = #(GetEntityCoords(ped) - targetCoords)
+
+        if dist < 3.0 then
+            sleep = 0  -- close enough to interact, read input every frame
+
+            -- E (control 38) interact, one fire per press.
+            if IsControlJustPressed(0, 38) then
+                print('[qu_controls_and_input] E pressed near the target')
+            end
+        end
+
+        if menuOpen then
+            sleep = 0  -- a menu is open, read input every frame
+
+            -- Stop the GAME from using F (control 23) this frame.
+            DisableControlAction(0, 23, true)
+
+            -- Now read our own meaning for that same disabled key.
+            if IsDisabledControlJustPressed(0, 23) then
+                print('[qu_controls_and_input] F captured by the menu, not the game')
+            end
+        end
+
+        Wait(sleep)
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the F8 console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_controls_and_input
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_controls_and_input
+    ```
+
+    Join the server so your ped exists, then walk to roughly `215.0, -810.0` near Legion Square. Open F8 and run these tests:
+
+    ```text
+    Stand on the spot and tap E.
+    Then run /togglemenu and tap F.
+    ```
+
+    <ExpectedOutput>
+      [qu_controls_and_input] E pressed near the target
+[qu_controls_and_input] menuOpen is now true
+[qu_controls_and_input] F captured by the menu, not the game
+    </ExpectedOutput>
+
+    While `menuOpen` is true, tapping F should print the captured line and should NOT make your ped enter a nearby vehicle, because you disabled the game's use of that control for the frame. Run `/togglemenu` again to turn it off and confirm F goes back to its normal vehicle behavior.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran it and the lines appeared. Now take the code apart so the next time you read a key you are deciding, not copying. There are three ideas here: how often you read input, which read function to use, and how to take a key away from the game.
+
+### The thread and the distance gate
+
+```lua
+CreateThread(function()
+    while true do
+        local sleep = 500
+        local ped = PlayerPedId()
+        local dist = #(GetEntityCoords(ped) - targetCoords)
+
+        if dist < 3.0 then
+            sleep = 0
+            -- ...read input...
+        end
+
+        Wait(sleep)
+    end
+end)
+```
+
+Input is not an event you subscribe to. You **poll** it: every frame you ask the game "is this control down right now". That is why the code lives inside a `while true` loop in a thread. `CreateThread` is the FiveM native that starts a background loop that runs alongside the game; `Wait(sleep)` at the bottom yields control back so the game keeps running, then resumes the loop after `sleep` milliseconds.
+
+The `sleep` variable is the most important performance idea in any input thread. `Wait(0)` means "run again next frame", which on a 60 FPS client is sixty times a second. Doing that forever, for every player, just to check a key they are nowhere near, is wasted work that adds up across a full server. So you gate it: the default `sleep = 500` makes the loop nearly idle, waking only twice a second to check distance. Only when `dist < 3.0`, when the player is actually standing near the interaction spot, do you set `sleep = 0` and read input every frame. `#(a - b)` is the vector length operator: it gives you the straight line distance between two vector3 points in one expression. This distance gate is the difference between a script that scales and one that quietly eats frames.
+
+### IsControlJustPressed vs IsControlPressed vs IsControlReleased
+
+This is the choice beginners get wrong, and it changes how your feature feels. All three take the input group and a control ID and return a boolean, but they answer different questions:
+
+- **`IsControlJustPressed(0, 38)`** is true on the single frame the key goes down, then false until it is released and pressed again. This is "one fire per press". Use it for discrete actions: open a door, confirm a menu, toggle something. You used it for E because one tap should mean one interaction.
+- **`IsControlPressed(0, 38)`** is true on every frame the key is held down. If you put it in a per-frame loop it fires sixty times a second while the key is held. Use it for continuous actions: holding sprint, holding to charge a throw, a hold-to-loot progress bar that fills while the key stays down.
+- **`IsControlReleased(0, 38)`** is true on the single frame the key comes back up. Use it to pair with a hold: start charging on pressed, finish and fire on released.
+
+The trap is reaching for `IsControlPressed` when you meant `JustPressed`. If you open a door with `IsControlPressed`, a normal half-second hold of E triggers the open thirty times in a row, and your door slams open and shut. The mental rule: a one-shot action wants `JustPressed`; a held-down action wants `Pressed`; the end of a hold wants `Released`.
+
+<Checkpoint question="You want a hold-to-search action: the search fills a progress bar while E is held and cancels if the player lets go early. Which read functions do you use?">
+  Two of them, working together. You start the search on `IsControlJustPressed(0, 38)`, the single frame E goes down, so it begins exactly once. While the bar fills you check `IsControlPressed(0, 38)` every frame; the moment it returns false the player has let go, so you cancel. You could also watch `IsControlReleased(0, 38)` for that same release edge. What you would never use here is `IsControlJustPressed` for the fill loop, because it is only true for one frame and would never keep the bar going.
+</Checkpoint>
+
+### Taking over a key: DisableControlAction and IsDisabledControlJustPressed
+
+```lua
+if menuOpen then
+    sleep = 0
+    DisableControlAction(0, 23, true)
+    if IsDisabledControlJustPressed(0, 23) then
+        print('[qu_controls_and_input] F captured by the menu, not the game')
+    end
+end
+```
+
+Here is the problem this solves. When your menu is open, you want F to mean "do a menu thing", but F (control 23) is also the game's enter-vehicle key. If you only read the press normally, the player presses F to pick a menu option and their ped also jumps into the nearest car. You need to take the key away from the game first.
+
+`DisableControlAction(0, 23, true)` is the native that does it. The three arguments are the input group, the control ID, and a boolean that, when `true`, disables that control. It only lasts **one frame**, which is why it sits inside the per-frame loop: you re-disable it every frame the menu is open. Stop calling it and the control wakes back up next frame. While it is disabled, the game ignores F, so no more accidental vehicle entry.
+
+But now a plain `IsControlJustPressed(0, 23)` returns false too, because as far as that native is concerned the control is off. That is what `IsDisabledControlJustPressed` is for. It is the exact same edge detector as `IsControlJustPressed`, one fire per press, except it reads the key **even though it is disabled**. So the pattern is always a pair: `DisableControlAction` to silence the game's use of the key, and `IsDisabledControlJustPressed` (or `IsDisabledControlPressed`) to read your own meaning for it. There are disabled-control versions of all three read functions, matching the three above one for one.
+
+### When you reach for this pattern
+
+The disable-then-read-disabled pattern is everywhere in real FiveM resources, because almost every menu or interaction overlaps a key the game already uses:
+
+- **Any in-world menu or context UI.** A radial menu, an inventory, a target eye. They all disable movement, attack, and accept keys so the player drives the menu and not the character behind it.
+- **Mini games and skill checks.** A lockpick or a hacking game disables the normal keys and reads the disabled versions, so pressing the game key does only the minigame thing.
+- **Vehicle and weapon overrides.** Scripts that change what aim or handbrake does while a feature is active disable the real control for the frame and substitute their own logic.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Nothing prints when I tap E, even standing on the spot", fix: "Your ped is not within 3.0 units of 215.0, -810.0, so the sleep never drops to 0 and input is never read. Run a /whereami style command or walk closer; the gate is intentionally tight." },
+    { symptom: "The E line prints many times from one press", fix: "You used IsControlPressed instead of IsControlJustPressed. Pressed is true every frame the key is held; JustPressed is true only on the down edge. Switch to JustPressed for a one-shot action." },
+    { symptom: "F still makes my ped enter a vehicle while the menu is open", fix: "DisableControlAction must be called every frame, inside the loop, because it only lasts one frame. Confirm it sits inside the menuOpen block with sleep set to 0, not run once at startup." },
+    { symptom: "F prints nothing while the menu is open", fix: "You disabled the control but read it with IsControlJustPressed, which returns false for a disabled control. Read it with IsDisabledControlJustPressed instead." },
+    { symptom: "The whole script feels like it lags the game", fix: "Your loop is running Wait(0) every frame regardless of distance. Keep the default sleep = 500 and only set sleep = 0 inside the conditions that need per-frame reads." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain why FiveM gives you control IDs instead of raw keycodes, and why that keeps your script working when players rebind keys.",
+    "Read input in a polling thread and use a distance gate so the loop sleeps until the player is near the interaction.",
+    "Choose between IsControlJustPressed, IsControlPressed, and IsControlReleased for one-shot, held, and release-edge actions.",
+    "Take a game key over with DisableControlAction every frame and read your own meaning for it with IsDisabledControlJustPressed.",
+    "Look up any control ID in the FiveM controls reference instead of guessing.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Turn the E interaction into a hold-to-confirm. Right now one tap of E prints once. Change it so the player must hold E for a full second near the spot before it fires, and so letting go early cancels and prints a cancel line.
+
+  ```lua
+  local holdStart = nil
+
+  -- inside the dist < 3.0 block, replace the JustPressed check:
+  if IsControlPressed(0, 38) then
+      if not holdStart then
+          holdStart = GetGameTimer()  -- record when the hold began
+      elseif GetGameTimer() - holdStart >= 1000 then
+          print('[qu_controls_and_input] held E for 1s, confirmed')
+          holdStart = nil
+      end
+  else
+      if holdStart then
+          print('[qu_controls_and_input] released E early, cancelled')
+      end
+      holdStart = nil
+  end
+  ```
+
+  `GetGameTimer()` returns the milliseconds the game has been running, so subtracting the start time tells you how long E has been held. Test it: tap E quickly and confirm you get the cancel line, then hold E for a full second and confirm you get the confirm line. You just combined `IsControlPressed` for the hold with the release branch for the cancel, which is the exact skeleton behind every hold-to-loot progress bar.
+</Exercise>
+
+<Callout variant="fivem" title="The modern rebindable alternative: RegisterKeyMapping">
+  Polling a control in a thread is the right tool when the key only matters in a narrow context, like standing near one spot. For a key that should work anywhere and that players should be able to rebind in the GTA settings menu, FiveM gives you `RegisterKeyMapping`. You register a command, a description, a default input source, and a default key, and FiveM wires the binding for you and exposes it in the settings UI:
+
+  ```lua
+  RegisterCommand('+myinteract', function()
+      print('[qu_controls_and_input] interact key pressed')
+  end, false)
+
+  RegisterKeyMapping('+myinteract', 'Interact with the world', 'keyboard', 'E')
+  ```
+
+  The leading `+` makes it a key-down command, and FiveM pairs it with a matching `-` command on release automatically. The win is that the player can open Settings, find "Interact with the world", and rebind it without you writing a single line of polling. Reach for `RegisterKeyMapping` for global, user-rebindable keys; reach for the polling thread you built above when the key only has meaning in a specific place or state.
+</Callout>
+
+<Refs
+  items={[
+    { label: "FiveM controls reference (control IDs)", href: "https://docs.fivem.net/docs/game-references/controls/" },
+    { label: "FiveM IsControlJustPressed", href: "https://docs.fivem.net/natives/?_0x580417101DDB492F" },
+    { label: "FiveM DisableControlAction", href: "https://docs.fivem.net/natives/?_0xFE99B66D079CF6BC" },
+    { label: "FiveM RegisterKeyMapping", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterKeyMapping/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

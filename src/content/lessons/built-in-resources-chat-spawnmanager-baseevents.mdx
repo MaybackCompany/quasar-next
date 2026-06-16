@@ -1,0 +1,266 @@
+<LessonHero
+  crumbs="Module B4 · Talking to the game"
+  title="The built-in resources: chat, spawnmanager, baseevents"
+  meta={[
+    { label: "You'll build", value: "A resource that registers a chat command hint, posts a styled system message into the chat box, and reacts the moment a player gets into a vehicle." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A FiveM practice server you can join and restart, plus the qu_first_line_of_lua and qu_natives_toolbox mental models from the earlier modules." },
+    { label: "You'll learn", value: "What chat, spawnmanager, baseevents, and sessionmanager already give you for free, and how to call into them instead of rebuilding them" },
+  ]}
+>
+  Every FiveM server you start, even an empty one, already runs a handful of stock resources from Cfx.re. They handle chat, where players spawn, and the basic life events of a session. You do not install them and you do not write them. You call into them. This lesson shows you the three you reach for most, then proves it by wiring a single resource that talks to all three: a chat suggestion, a styled system message, and a reaction to a real game event.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output.",
+    "I can write a fxmanifest.lua with a client_script and a server_script."
+  ]}
+/>
+
+<Callout variant="fivem" title="These ship with the server, so check before you build">
+  Open your server's default `server.cfg` and you will already see lines like `ensure chat`, `ensure spawnmanager`, and `ensure sessionmanager`. Those are stock Cfx.re resources that boot before yours. You never write them; you trigger their events and call their exports. This lesson builds one resource named `qu_builtins_tour` that leans on three of them. Follow the names and code exactly, then the next section takes every line apart.
+</Callout>
+
+## What you already have running
+
+Before the build, here is the map of what is sitting in your server doing work you never wrote. Each one is a real resource folder inside the FiveM artifacts, and each one exposes events or exports you call by name.
+
+<Cheatsheet
+  title="Stock resources and what they give you"
+  rows={[
+    { cmd: "chat", desc: "The chat box. You post messages with the chat:addMessage event, register slash-command hints with chat:addSuggestion, and filter or rewrite messages with the exports.chat:registerMessageHook export." },
+    { cmd: "spawnmanager", desc: "Decides where players appear. You call exports.spawnmanager:addSpawnPoint, setAutoSpawnCallback, and forceRespawn to control respawning." },
+    { cmd: "baseevents", desc: "Emits life events: baseevents:onPlayerDied and onPlayerKilled on the server, baseevents:enteredVehicle and leftVehicle on the client." },
+    { cmd: "sessionmanager", desc: "Manages the player session and fires playerActivated on the server once a player is fully loaded in and ready." },
+  ]}
+/>
+
+The point of this lesson is a habit, not a single script. When you need a chat message, a spawn point, or a notification that a player got in a car, your first move is to ask whether a stock resource already does it. It almost always does.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_builtins_tour
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    This resource talks to chat from the client and reacts to a client baseevent, so both pieces of code live in one `client_script`. Create this exact layout:
+
+    ```text
+resources/qu_builtins_tour/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and which resources must load first.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+dependencies { 'chat', 'baseevents' }
+
+client_script 'client.lua'
+    ```
+
+    The `dependencies` block names the stock resources you call into. It tells the server to load `chat` and `baseevents` before `qu_builtins_tour`, so their events exist by the time your code runs. Note there is no `lua54 'yes'` line: that directive was deprecated in June 2025 and is ignored, since Lua 5.4 is now the only runtime.
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+-- 1. Tell the chat box about a command we want to hint at.
+TriggerEvent('chat:addSuggestion', '/wave', 'Wave at nearby players', {
+    { name = 'style', help = 'Optional: short or long' }
+})
+
+-- 2. Post one styled system message into the chat box.
+TriggerEvent('chat:addMessage', {
+    color = { 0, 200, 120 },
+    multiline = true,
+    args = { 'Quasar', 'Builtins tour loaded. Get in a vehicle to test baseevents.' }
+})
+
+-- 3. React to a stock client baseevent: fired when this player enters a vehicle.
+AddEventHandler('baseevents:enteredVehicle', function(vehicle, seat, displayName, netId)
+    TriggerEvent('chat:addMessage', {
+        color = { 0, 200, 120 },
+        multiline = true,
+        args = { 'Quasar', ('You entered a %s (seat %d).'):format(displayName, seat) }
+    })
+    print(('[qu_builtins_tour] enteredVehicle: %s seat %d netId %s'):format(displayName, seat, tostring(netId)))
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the chat box and the F8 console.">
+    Open `server.cfg` and add this line below the stock resources:
+
+    ```text
+    ensure qu_builtins_tour
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_builtins_tour
+    ```
+
+    Join the server so your ped exists. As you load in, watch the chat box for the system message. Then type `/` and look for the `/wave` hint. Finally, get into any vehicle and watch chat plus the F8 console:
+
+    ```text
+    open F8, get into a car
+    ```
+
+    <ExpectedOutput>
+      [Quasar] Builtins tour loaded. Get in a vehicle to test baseevents.
+[Quasar] You entered a Sultan (seat -1).
+[qu_builtins_tour] enteredVehicle: Sultan seat -1 netId 65538
+    </ExpectedOutput>
+
+    The vehicle name and netId depend on the car you enter, and seat `-1` is the driver's seat. The two `[Quasar]` lines appear in the in-game chat box; the `[qu_builtins_tour]` line appears in the F8 console because it comes from `print`.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran it, the message appeared, the hint showed up, and getting in a car triggered a reaction. None of that chat or vehicle plumbing is yours. You only sent events to resources that were already running. Now take each call apart so you know exactly which resource you are talking to and why.
+
+### The chat suggestion: a hint, not a command
+
+```lua
+TriggerEvent('chat:addSuggestion', '/wave', 'Wave at nearby players', {
+    { name = 'style', help = 'Optional: short or long' }
+})
+```
+
+`TriggerEvent` fires a named event on the same side it is called from, here the client. The event name `chat:addSuggestion` belongs to the stock `chat` resource. The colon is just a naming convention: the part before it tells you which resource owns the event. You are not defining this event, you are sending it to chat, which is listening for it.
+
+The arguments are read left to right. `'/wave'` is the command text that shows up in the autocomplete list when a player types `/`. `'Wave at nearby players'` is the help text shown next to it. The fourth argument is a table of parameter hints, where each entry has a `name` and a `help` string, so the player sees what to type after the command.
+
+One thing this does not do: it does not create the `/wave` command. A suggestion is only the hint in the autocomplete dropdown. If you want `/wave` to actually do something you still register it yourself with `RegisterCommand`, exactly as you learned in the first-line and natives lessons. Pairing a real `RegisterCommand` with a matching `chat:addSuggestion` is the polished pattern: the command works, and players can discover it.
+
+### The system message: color, args, and the name tag
+
+```lua
+TriggerEvent('chat:addMessage', {
+    color = { 0, 200, 120 },
+    multiline = true,
+    args = { 'Quasar', 'Builtins tour loaded. Get in a vehicle to test baseevents.' }
+})
+```
+
+`chat:addMessage` is how every server announcement, notification, and bot line you have ever seen in a FiveM chat box gets there. You hand it one table with three fields.
+
+`color` is an RGB triple as a Lua table: red, green, blue, each from 0 to 255. Here `{ 0, 200, 120 }` is a calm green that tints the name tag. `multiline = true` lets a long message wrap onto more than one line instead of being clipped. `args` is the message itself, split into parts. By convention the first entry is the sender name shown in brackets, and the second is the body text. So `{ 'Quasar', 'Builtins tour loaded...' }` renders as a `[Quasar]` tag followed by the message. You can think of the name tag as a label that says who is talking, which is why server messages usually read `[System]` or the server name.
+
+### The baseevent handler: reacting to the game
+
+```lua
+AddEventHandler('baseevents:enteredVehicle', function(vehicle, seat, displayName, netId)
+    -- ...
+end)
+```
+
+`AddEventHandler` registers a listener for an event that some other code fires. This is different from `TriggerEvent`, which sends an event. Sending versus listening is the whole shape of event-driven code: one resource triggers, another handles. Here the `baseevents` resource is doing the triggering. It watches the game and, the moment your local ped sits in a vehicle, it fires `baseevents:enteredVehicle` and hands your handler four values.
+
+Read the parameters in order: `vehicle` is the entity handle of the car, the same kind of handle `PlayerPedId` gave you for your ped. `seat` is which seat you took, where `-1` is the driver and `0` is the front passenger. `displayName` is the readable model name like `Sultan`. `netId` is the network id, the identifier other clients and the server use to refer to that same vehicle across the network.
+
+Inside the handler we do two things: post a chat message confirming the car and seat, and `print` a line to the F8 console. The chat line is the user-facing proof; the `print` is your developer probe. The `('...'):format(...)` method fills the placeholders, `%s` for the model name string and `%d` for the integer seat, exactly the formatting you saw in the natives lesson.
+
+Why use the stock baseevent instead of writing your own vehicle detection? Without it you would have to spin up a thread that runs every frame, calls `IsPedInAnyVehicle`, and tracks whether the answer changed since last frame. That is a real loop you would have to write, tune, and keep from eating CPU. `baseevents` already does that work and simply tells you the instant it happens. Calling its event is cheaper, cleaner, and the same data every other resource on the server is reading.
+
+<Checkpoint question="Why does the vehicle reaction use AddEventHandler, while the chat message uses TriggerEvent?">
+  Because the two calls are on opposite ends of the same event. `TriggerEvent` sends an event out, so you use it to push a message into the `chat` resource that is listening for `chat:addMessage`. `AddEventHandler` listens for an event, so you use it to catch `baseevents:enteredVehicle`, which the stock `baseevents` resource fires when your ped gets in a car. You are the sender for chat and the listener for baseevents. If you swapped them, your chat message would never reach chat and your vehicle handler would never run, because triggering an event you mean to listen for, or listening for one you mean to send, does nothing useful.
+</Checkpoint>
+
+### Sides matter: which events live where
+
+The events in this lesson are client events, which is why all the code is a `client_script`. `chat:addMessage` and `chat:addSuggestion` are triggered from the client, and `baseevents:enteredVehicle` and `leftVehicle` are client events because the vehicle and the ped exist on each player's own game instance.
+
+The other half of `baseevents` lives on the server. `baseevents:onPlayerDied` and `baseevents:onPlayerKilled` are server events, and a server handler for them receives the player as `source`. That `source` is only meaningful in a server-side net-event handler; it tells you which player the event is about. `sessionmanager` is the same shape: it fires `playerActivated` on the server once a player has fully loaded in, which is the correct moment to set up that player's data, far more reliable than reacting to them merely connecting.
+
+The rule to carry forward: the client can request things, but only the server grants them. A client can ask to spawn or to be given an item; the server is what actually decides and applies it. Reading a stock event on the wrong side is the most common reason a beginner's handler "never fires."
+
+### When you reach for these
+
+You will touch these stock resources in nearly every script you write:
+
+- **chat:addMessage** for any server notification, command feedback, or bot line. Before you reach for a third-party notification library, remember the chat box is already there and free.
+- **chat:addSuggestion** every time you add a `RegisterCommand`, so players can discover it by typing `/`. A command without a suggestion is a command nobody finds.
+- **baseevents** when a feature should react to a player getting in a car, leaving it, dying, or being killed. Seatbelt scripts, insurance, and kill feeds all start here.
+- **spawnmanager** when you control where players appear. `exports.spawnmanager:addSpawnPoint` registers a location, `setAutoSpawnCallback` lets you decide the spawn point in code, and `forceRespawn` sends the player there on demand.
+- **sessionmanager** when setup must wait until a player is genuinely ready. `playerActivated` is that moment.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "The /wave hint never appears in the autocomplete list", fix: "chat:addSuggestion only registers the hint, not the command, and it is a client event. Make sure the TriggerEvent call is in a client_script and that 'chat' is listed in your dependencies so it loads first." },
+    { symptom: "attempt to index a nil value, or the message never shows", fix: "The table passed to chat:addMessage is malformed. color must be a three-number table like { 0, 200, 120 }, and args must be a table, usually { 'Name', 'Body text' }. A missing comma or brace breaks the whole table." },
+    { symptom: "The enteredVehicle handler never runs", fix: "You used TriggerEvent instead of AddEventHandler, or you put the handler in a server_script. baseevents:enteredVehicle is a client event you listen for, so it belongs in a client_script registered with AddEventHandler." },
+    { symptom: "onPlayerDied or onPlayerKilled never fires in your client file", fix: "Those two are server events, not client ones. Move that handler into a server_script and read the player from source. Only enteredVehicle and leftVehicle are client side." },
+    { symptom: "The colors look wrong or the message is one washed-out shade", fix: "RGB values run 0 to 255, not 0 to 1. { 0, 200, 120 } is correct; { 0, 0.8, 0.5 } collapses to near black because the numbers are read as raw 0 to 255 values." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Name the four stock resources, chat, spawnmanager, baseevents, and sessionmanager, and say what each one already does for you.",
+    "Post a styled message to the chat box with chat:addMessage, controlling the name tag, color, and body through the args and color fields.",
+    "Register a slash-command hint with chat:addSuggestion, and explain why it is only a hint and still needs a real RegisterCommand.",
+    "Listen for a stock client baseevent with AddEventHandler and read the values it hands your handler, instead of writing your own per-frame detection loop.",
+    "Tell which stock events live on the client and which live on the server, and why onPlayerDied and playerActivated belong in a server_script with source.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Make the resource a real driving companion. First, register an actual `/wave` command so the suggestion you added is not a dead hint. Then add a second baseevent handler for `baseevents:leftVehicle` so the chat box reacts when the player gets out, not just in.
+
+  ```lua
+  -- A real command to back the suggestion you already added.
+  RegisterCommand('wave', function(source, args)
+      local style = args[1] or 'short'
+      TriggerEvent('chat:addMessage', {
+          color = { 0, 200, 120 },
+          multiline = true,
+          args = { 'Quasar', ('You wave (%s) at the locals.'):format(style) }
+      })
+  end, false)
+
+  -- React when the player leaves a vehicle.
+  AddEventHandler('baseevents:leftVehicle', function(vehicle, seat, displayName, netId)
+      TriggerEvent('chat:addMessage', {
+          color = { 200, 120, 0 },
+          multiline = true,
+          args = { 'Quasar', ('You stepped out of the %s.'):format(displayName) }
+      })
+  end)
+  ```
+
+  Restart `qu_builtins_tour`, type `/wave long` and confirm the styled line appears, then get into a car and back out and watch the green entered line followed by the orange left line. For a stretch, add a `chat:addSuggestion` for `/wave` so a player typing `/` sees the style argument hint, and notice how the command, the hint, and the events all route through chat without you writing a single line of UI.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM chat resource and message API", href: "https://docs.fivem.net/docs/resources/chat/" },
+    { label: "FiveM spawnmanager resource", href: "https://docs.fivem.net/docs/resources/spawnmanager/" },
+    { label: "FiveM baseevents (player and vehicle events)", href: "https://docs.fivem.net/docs/scripting-reference/events/list/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+  ]}
+/>

@@ -1,0 +1,362 @@
+<LessonHero
+  crumbs="Module C1 · World indicators"
+  title="Blips, markers, and checkpoints"
+  meta={[
+    { label: "You'll build", value: "A client resource that drops a map blip and a glowing cylinder at one coordinate, then prints to F8 the moment your ped walks into the cylinder." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "Your qu_natives_toolbox mental model: PlayerPedId, GetEntityCoords, and a client_script you can restart. Plus the FiveM native docs open in your browser." },
+    { label: "You'll learn", value: "Map blips with AddBlipForCoord -> the BeginTextCommandSetBlipName naming dance -> per-frame DrawMarker with distance gating -> detecting a player inside a zone with #(coords - target)" },
+  ]}
+>
+  A blip is the icon on the minimap. A marker is the glowing shape on the ground you walk up to. A checkpoint is the logic that fires when you arrive. Almost every job, shop, garage, and interaction in FiveM is built from these three pieces stacked together. In this lesson you place all three at a single coordinate and prove each one: the blip shows on the map, the marker draws on the ground, and a line prints the instant you stand inside it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output.",
+    "I know PlayerPedId() and GetEntityCoords() return my ped handle and a vector3 position."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a blip, a marker, and an in-zone check as a working FiveM resource named `qu_world_indicators`. Every native here reads or draws on your own screen, so all of it lives in one `client_script`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes every line apart so you can place any blip or marker without copying.
+</Callout>
+
+## The three ways to mark the world
+
+Before any code, get the three layers straight in your head. They look similar in game but they are three different systems and you will mix them up if you do not separate them now.
+
+- **A blip** is a minimap and pause-map icon. You create it once and the game keeps drawing it for you. It lives in 2D map space, not the 3D world. You set it up and forget it.
+- **A marker** is a shape rendered in the 3D world: a cylinder, a chevron, a ring. The game does **not** remember it. You have to call `DrawMarker` every single frame or it vanishes. That per-frame cost is why you gate it by distance.
+- **A checkpoint** here means the detection logic: measuring how far the player is from the target and acting when that distance crosses a threshold. We do this by hand with `#(coords - target)` rather than the built-in `CreateCheckpoint` native, because the hand-built version is the pattern every framework actually uses and it teaches you the math.
+
+<Cheatsheet
+  title="Common blip sprite IDs (from the KB)"
+  rows={[
+    { cmd: "1", desc: "White dot, the default" },
+    { cmd: "38", desc: "Police" },
+    { cmd: "59", desc: "Mask (heists)" },
+    { cmd: "280", desc: "Ammu-nation" },
+    { cmd: "304", desc: "Dollar sign" },
+    { cmd: "431", desc: "Wrench / mechanic" },
+  ]}
+/>
+
+<Cheatsheet
+  title="Common marker type IDs (from the KB)"
+  rows={[
+    { cmd: "0", desc: "Upside-down triangle, no texture" },
+    { cmd: "1", desc: "Vertical cylinder, the one you want for a zone" },
+    { cmd: "2", desc: "Thick chevron, the default arrow" },
+    { cmd: "21", desc: "Vertical rotating ring" },
+    { cmd: "25", desc: "Flat ring" },
+    { cmd: "27", desc: "Flat circle" },
+    { cmd: "29", desc: "Double-sided arrow" },
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_world_indicators
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_world_indicators/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    Every native this lesson uses draws on your own screen and reads your own ped, so all the code lives in one `client_script`. There is no `server_script` here on purpose: blips and markers are local to each player's game, not something the server draws. Older tutorials add a `lua54 'yes'` line in the manifest. As of June 2025 that setting is deprecated and ignored, so leave it out.
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+-- One target coordinate near Legion Square. Everything points here.
+local target = vector3(195.0, -933.0, 30.69)
+local radius = 1.5
+
+-- 1) The blip: created once, the game keeps drawing it on the map.
+CreateThread(function()
+    local blip = AddBlipForCoord(target.x, target.y, target.z)
+    SetBlipSprite(blip, 304)   -- dollar sign
+    SetBlipColour(blip, 2)     -- green
+    SetBlipScale(blip, 0.9)
+    SetBlipAsShortRange(blip, true)
+
+    -- The name "dance": three calls that set the label shown in the pause map.
+    BeginTextCommandSetBlipName('STRING')
+    AddTextComponentSubstringPlayerName('QU Checkpoint')
+    EndTextCommandSetBlipName(blip)
+end)
+
+-- 2) The marker + 3) the in-zone check, in one distance-gated thread.
+CreateThread(function()
+    local inside = false
+    while true do
+        local sleep = 1000 -- far away: sleep a full second, do nothing
+        local ped = PlayerPedId()
+        local coords = GetEntityCoords(ped)
+        local dist = #(coords - target)
+
+        if dist < 25.0 then
+            sleep = 0 -- close enough to see it: run every frame and draw
+            DrawMarker(
+                1,                          -- type 1, vertical cylinder
+                target.x, target.y, target.z - 0.95, -- position, sunk so it sits on the floor
+                0.0, 0.0, 0.0,              -- direction (unused for a cylinder)
+                0.0, 0.0, 0.0,              -- rotation (unused for a cylinder)
+                radius * 2, radius * 2, 1.0, -- scale x, y, z
+                0, 150, 255, 120,           -- colour r, g, b, a
+                false, false, 2,            -- bobUpDown, faceCamera, p19
+                false, nil, nil, false      -- rotate, textureDict, textureName, drawOnEnts
+            )
+
+            -- The checkpoint: detect crossing the edge, fire once on enter.
+            if dist < radius and not inside then
+                inside = true
+                print('[qu_world_indicators] entered the zone')
+            elseif dist >= radius and inside then
+                inside = false
+                print('[qu_world_indicators] left the zone')
+            end
+        end
+
+        Wait(sleep)
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_world_indicators
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_world_indicators
+    ```
+
+    Join the server so your ped exists. Open the pause map and confirm a green dollar-sign blip sits near Legion Square. Then walk your ped to that spot. As you get close a blue cylinder appears on the ground. Step into it and watch the F8 console:
+
+    <ExpectedOutput>
+      [qu_world_indicators] entered the zone
+[qu_world_indicators] left the zone
+    </ExpectedOutput>
+
+    The first line prints the frame you step into the cylinder. The second prints the frame you step back out. Walk in and out a few times and you get one matched pair each time, never a flood of repeats.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran it and all three layers proved out: the icon on the map, the shape on the ground, and the line in the console. Now take the code apart so the next time you place a zone you are deciding, not copying.
+
+### The target and why it is a vector3
+
+```lua
+local target = vector3(195.0, -933.0, 30.69)
+local radius = 1.5
+```
+
+`vector3(x, y, z)` bundles three numbers into one value, the same shape `GetEntityCoords` hands back. Storing the destination as a single `target` instead of three loose variables is what makes the distance math on the last line read so cleanly. The `radius` is how wide the trigger is in meters. Keep this number separate and named so the marker and the in-zone check stay in agreement: if you widen one you widen both.
+
+### The blip: create once, forget it
+
+```lua
+local blip = AddBlipForCoord(target.x, target.y, target.z)
+SetBlipSprite(blip, 304)   -- dollar sign
+SetBlipColour(blip, 2)     -- green
+SetBlipScale(blip, 0.9)
+SetBlipAsShortRange(blip, true)
+```
+
+`AddBlipForCoord(x, y, z)` is a CLIENT native that creates a map icon at a fixed world position and returns a **blip handle**, the same kind of number handle a ped or vehicle gives you. A fresh blip is a plain white dot, so the next three calls dress it up, and every one of them takes that handle as its first argument:
+
+- `SetBlipSprite(blip, 304)` swaps the icon. `304` is the dollar sign from the KB sprite table. Change this number to change the picture.
+- `SetBlipColour(blip, 2)` tints it. `2` is green. These are blip colour indices, not red-green-blue, so a single number picks a whole color.
+- `SetBlipScale(blip, 0.9)` shrinks it slightly. The default of `1.0` is a touch large on a crowded map.
+- `SetBlipAsShortRange(blip, true)` hides the blip from the full pause map until the player is near. This stops a busy server's map from drowning in icons.
+
+You do this once inside a thread that runs and exits. There is no loop, because a blip is not redrawn frame by frame. The game owns it from the moment you create it. That is the opposite of a marker, and the contrast is the single most important idea in this lesson.
+
+### The blip name dance
+
+```lua
+BeginTextCommandSetBlipName('STRING')
+AddTextComponentSubstringPlayerName('QU Checkpoint')
+EndTextCommandSetBlipName(blip)
+```
+
+You cannot just hand a blip a label as a plain argument. GTA's text system is built around a three-call ritual, and naming a blip follows it exactly:
+
+1. `BeginTextCommandSetBlipName('STRING')` opens a text command. The `'STRING'` argument tells the game you are about to supply raw text, as opposed to a built-in localized game string.
+2. `AddTextComponentSubstringPlayerName('QU Checkpoint')` feeds in the actual text. Despite the name, this native is the standard way to push any custom string into a text command, not just player names.
+3. `EndTextCommandSetBlipName(blip)` closes the command and applies the assembled text to that blip handle.
+
+Run all three in that order or the label does not take. Skip the middle call and the blip shows up with no name at all. This same begin / add / end pattern shows up across GTA's UI, from on-screen subtitles to help text, so learning it once on a blip pays off everywhere.
+
+<Checkpoint question="Why does the blip need a three-call dance just to set a name, when SetBlipSprite took the value directly?">
+  Because a sprite is a single number the native can read in one shot, but a label is text routed through GTA's localized text system. That system was designed to assemble strings from pieces, so it works in three stages: begin a text command, add one or more text components, then end and apply it. `BeginTextCommandSetBlipName('STRING')` says "raw text is coming," `AddTextComponentSubstringPlayerName(...)` supplies that text, and `EndTextCommandSetBlipName(blip)` commits it to the handle. The sprite and colour natives skip all of this because a number does not need assembling.
+</Checkpoint>
+
+### The marker: drawn every single frame
+
+```lua
+DrawMarker(
+    1,                          -- type 1, vertical cylinder
+    target.x, target.y, target.z - 0.95,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+    radius * 2, radius * 2, 1.0,
+    0, 150, 255, 120,
+    false, false, 2,
+    false, nil, nil, false
+)
+```
+
+`DrawMarker` is the long one, and the argument count scares people, but it is just a few ideas padded with options you rarely touch. Read it in groups:
+
+- **`1`** is the marker type. `1` is the vertical cylinder, the shape you want for a "stand here" zone. Swap it for `2` to get the bouncing chevron arrow, or any ID from the marker table above.
+- **`target.x, target.y, target.z - 0.95`** is the position. The `- 0.95` sinks the cylinder so its base sits flush on the ground instead of floating with its middle at the player's waist. Markers draw from their center, so you almost always nudge the z down.
+- The two `0.0, 0.0, 0.0` rows are **direction** and **rotation**. A cylinder does not use them, so they stay zero. Arrow-type markers do.
+- **`radius * 2, radius * 2, 1.0`** is the **scale** in x, y, z. Tying the width to `radius * 2` makes the visible cylinder match the trigger size: the player sees exactly the area that will fire. The `1.0` is the height.
+- **`0, 150, 255, 120`** is the **colour** as red, green, blue, alpha, each `0` to `255`. This is a translucent blue. Unlike a blip, a marker takes real RGBA, and the alpha of `120` is what makes it glow rather than look like solid plastic.
+- The trailing `false, false, 2, false, nil, nil, false` are options: bob up and down, face the camera, a draw-order value, rotate, and a texture dict and name you only set for image markers. Leave them as shown for a plain cylinder.
+
+The reason this whole call sits inside a `while true` loop is the one rule that defines markers: the game forgets a marker the instant the frame ends. There is no "create marker" handle to keep, the way there was for the blip. If `DrawMarker` does not run this frame, there is no marker this frame. So you redraw it forever, which is exactly why the next idea matters so much.
+
+### The distance gate, so you are not drawing across the map
+
+```lua
+local sleep = 1000
+local ped = PlayerPedId()
+local coords = GetEntityCoords(ped)
+local dist = #(coords - target)
+
+if dist < 25.0 then
+    sleep = 0
+    DrawMarker(...)
+    -- in-zone check here
+end
+
+Wait(sleep)
+```
+
+A naive marker loop calls `Wait(0)` every frame for the life of the server, computing and drawing a cylinder the player cannot even see from two miles away. On a real server with dozens of these, that is wasted frames stacked on wasted frames. The fix is a distance gate.
+
+`#(coords - target)` is the magnitude operator. `coords - target` subtracts two vector3 values into the vector pointing from the target to the player, and the `#` in front collapses that vector into its length: the straight-line distance in meters. It is the vector form of the distance formula, written in one symbol. This single expression is the workhorse of nearly every proximity feature in FiveM.
+
+Now follow the `sleep` variable. It starts at `1000`, meaning when the player is far the loop yields for a full second between checks and does nothing else. That is almost free. Only when `dist < 25.0`, the player is within drawing range, do you set `sleep = 0` so the loop runs every frame and draws the marker smoothly. The `Wait(sleep)` at the bottom is what cashes this in: a one-second nap when idle, a per-frame tick when active. You get a smooth marker up close and near-zero cost from across the map.
+
+### The checkpoint: fire once on the edge, not every frame
+
+```lua
+if dist < radius and not inside then
+    inside = true
+    print('[qu_world_indicators] entered the zone')
+elseif dist >= radius and inside then
+    inside = false
+    print('[qu_world_indicators] left the zone')
+end
+```
+
+Here is the trap that catches everyone. The obvious version is "if the player is inside the radius, do the thing." But this code runs every frame, so a plain `if dist < radius then print(...)` would print sixty times a second the entire time you stand in the cylinder. That is a flood, not a checkpoint.
+
+The `inside` flag fixes it by tracking state across frames. You declared it once above the loop as `false`. The logic only acts on a **change**:
+
+- You **enter** when the distance drops below the radius **and** `inside` was still `false`. You print once and flip `inside` to `true`, so the next frame's check fails and stays quiet.
+- You **leave** when the distance climbs back to the radius or beyond **and** `inside` was `true`. You print once and flip it back to `false`.
+
+This edge detection, comparing now against a remembered last state, is how every interaction prompt in FiveM works: show "press E to open" once on entry, hide it once on exit, never spam in between. The `print` lines you have now are placeholders. In a real script this is where you would open a menu, give a job, or show a help prompt.
+
+<Checkpoint question="If you delete the inside flag and just write `if dist < radius then print(...) end`, what happens, and why?">
+  The console floods with the "entered" line as fast as the loop runs, which is every frame while you stand in the cylinder, so dozens of identical prints per second. The reason is that the loop has no memory: it re-evaluates `dist < radius` from scratch each frame and the answer stays `true` the whole time you are inside. The `inside` flag gives the loop that memory. By only acting when the current frame's result differs from the remembered last state, you turn a continuous condition into two single events, an enter and a leave. Edge detection, not level detection, is what makes it a checkpoint.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Blip plus marker plus in-zone check is the skeleton of almost every interactable place in FiveM, and you will rebuild it constantly:
+
+- **Shops, jobs, and garages.** A clothing store, a job sign-up point, a vehicle garage: each is a blip on the map so players can find it, a marker on the ground so they can see it, and an in-zone check that opens the menu when they arrive.
+- **Quest and mission objectives.** A delivery point or a "go here next" objective is the same three layers, often with the blip and marker created and then destroyed once the step is done.
+- **Admin and debug zones.** Mark a coordinate you are testing so you can find it again, and print when you reach it to confirm the trigger fires where you expect. You just built exactly that.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "The blip shows on the map but has no name", fix: "The name dance is broken. You must call all three in order: BeginTextCommandSetBlipName('STRING'), then AddTextComponentSubstringPlayerName('your text'), then EndTextCommandSetBlipName(blip). Skipping the middle call leaves the blip unnamed." },
+    { symptom: "No marker appears even though you are standing on the spot", fix: "DrawMarker only draws for the single frame it runs in. It must live inside a while-true thread that calls it every frame. If your DrawMarker is in a thread that runs once and exits (like the blip thread), the cylinder flashes for one frame and is gone." },
+    { symptom: "The cylinder floats at waist height instead of sitting on the ground", fix: "Markers draw from their center, so the z must be lowered. Subtract roughly 0.95 to 1.0 from target.z in the DrawMarker position so the base of the cylinder rests on the floor." },
+    { symptom: "The enter line prints dozens of times per second while you stand inside", fix: "You are doing level detection, not edge detection. Add an inside boolean declared above the loop and only print when dist crosses the radius (dist < radius and not inside). Flip the flag so it fires once per crossing." },
+    { symptom: "The whole server hitches and the script eats frames even when no player is near", fix: "Your loop is running Wait(0) at all times. Gate it: default sleep to 1000, compute #(coords - target), and only set sleep to 0 and draw when the player is within about 25 meters." },
+    { symptom: "attempt to perform arithmetic on a nil value near GetEntityCoords", fix: "PlayerPedId() ran before your ped existed. Join and spawn into the server before the thread reads coords, or guard the loop until the ped is valid." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Create a map blip with AddBlipForCoord and dress it with SetBlipSprite, SetBlipColour, and SetBlipScale using the KB sprite IDs.",
+    "Run the three-call name dance (Begin / AddTextComponentSubstringPlayerName / End) to label a blip in the pause map.",
+    "Explain why a blip is created once while a marker must be redrawn every frame inside a thread.",
+    "Read every group of DrawMarker arguments: type, position, scale, and RGBA, and sink the z so a cylinder sits on the ground.",
+    "Gate a per-frame marker loop by distance so it costs almost nothing until the player is close.",
+    "Use #(coords - target) to measure distance and an inside flag to fire a checkpoint once on enter and once on leave, not every frame.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a second target so you have two zones, each with its own blip, marker color, and printed message. Instead of one `target` and one `radius`, store a list of zones and loop over it:
+
+  ```lua
+  local zones = {
+      { coords = vector3(195.0, -933.0, 30.69), sprite = 304, color = 2,  label = 'Cash drop',  rgb = { 0, 150, 255 } },
+      { coords = vector3(-47.0, -1757.0, 29.42), sprite = 52,  color = 5, label = 'Yellow shop', rgb = { 255, 200, 0 } },
+  }
+  ```
+
+  Create one blip per zone in the setup thread, looping over `zones` and running the name dance for each `label`. In the draw thread, loop over `zones` every frame, compute `#(coords - zone.coords)` for each, and draw a marker tinted with that zone's `rgb`. Keep the distance gate so you only draw and check the zones the player is actually near, and give each zone its own `inside` flag so they fire independently. Test by walking between both spots and confirming each prints its own enter and leave lines without the other one firing.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "AddBlipForCoord native", href: "https://docs.fivem.net/natives/?_0x5A039BB0BCA604B6" },
+    { label: "SetBlipSprite native", href: "https://docs.fivem.net/natives/?_0xDF735600A4696DAF" },
+    { label: "DrawMarker native", href: "https://docs.fivem.net/natives/?_0x28477EC23D892089" },
+    { label: "FiveM blips game reference", href: "https://docs.fivem.net/docs/game-references/blips/" },
+    { label: "FiveM markers game reference", href: "https://docs.fivem.net/docs/game-references/markers/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
+  ]}
+/>

@@ -66,6 +66,7 @@ export const PATHS: Path[] = [
         lessons: [
           { num: "08", title: "ConVars and secrets", blurb: "Keep webhook URLs and keys out of the repo with GetConvar.", slug: "convars-server-cfg", tag: "Security" },
           { num: "09", title: "Shipping: launch checklist", blurb: "Production server.cfg and the pre-launch sweep.", slug: "shipping", tag: "Ops" },
+          { num: "10", title: "The connection flow: deferrals and queue", blurb: "playerConnecting, deferral cards, and gating who gets in.", slug: "deferrals-connection-queue", tag: "Ops", bonus: true },
         ],
       },
       {
@@ -106,6 +107,7 @@ export const PATHS: Path[] = [
           { num: "04", title: "Loops: for, while, when to stop", blurb: "Repeat actions and why a loop without Wait freezes the server.", slug: "loops", tag: "Lua core" },
           { num: "05", title: "Functions", blurb: "Reuse logic instead of copy-paste. Arguments and return values.", slug: "functions", tag: "Lua core" },
           { num: "06", title: "Tables", blurb: "Arrays, dictionaries, nesting. Lua's everything structure.", slug: "tables", tag: "Lua core" },
+          { num: "Bonus", title: "Choosing a runtime: Lua, JS, or C#", blurb: "Why Lua is the default, and when JavaScript or C# fit instead.", slug: "csharp-js-runtimes", tag: "Runtimes", bonus: true },
         ],
       },
       {
@@ -144,6 +146,7 @@ export const PATHS: Path[] = [
           { num: "17", title: "ox_lib: notifications and UI", blurb: "Notifications, inputs, progress bars, and context menus.", slug: "ox-lib-notifications-ui", tag: "ox_lib" },
           { num: "18", title: "Callbacks", blurb: "Ask and wait for an answer with lib.callback.", slug: "callbacks", tag: "Callbacks" },
           { num: "Bonus", title: "State bags", blurb: "Shared state without events.", slug: "state-bags", tag: "State", bonus: true },
+          { num: "Bonus", title: "Built-in resources: chat, spawnmanager, baseevents", blurb: "The stock resources every server runs and their hooks.", slug: "built-in-resources-chat-spawnmanager-baseevents", tag: "Built-ins", bonus: true },
         ],
       },
       {
@@ -154,6 +157,7 @@ export const PATHS: Path[] = [
           { num: "19", title: "SQL from zero: oxmysql", blurb: "Parameterized queries, remember data safely.", slug: "sql-from-zero", tag: "SQL" },
           { num: "20", title: "Database with oxmysql (CRUD)", blurb: "CRUD without footguns, prepared statements, transactions.", slug: "oxmysql-crud", tag: "SQL" },
           { num: "21", title: "Persistence: cache and write-back", blurb: "Survive restarts without smashing the DB.", slug: "persistence", tag: "SQL" },
+          { num: "Bonus", title: "Persistence without a database: the KVS", blurb: "SetResourceKvp/GetResourceKvp for small state with no SQL.", slug: "kvs-no-database-persistence", tag: "SQL", bonus: true },
         ],
       },
       {
@@ -182,6 +186,7 @@ export const PATHS: Path[] = [
           { num: "33", title: "OneSync and routing buckets", blurb: "Cull distance, instancing, population.", slug: "network-onesync", tag: "Networking" },
           { num: "34", title: "Anti-cheat patterns", blurb: "Server-authority, rate limits, integrity.", slug: "anti-cheat", tag: "Security" },
           { num: "35", title: "Debugging like a developer", blurb: "Structured logging, pcall, the stop-and-collect checklist.", slug: "debugging-like-a-developer", tag: "Debug" },
+          { num: "Bonus", title: "Voice scripting: proximity, channels, radio", blurb: "The mumble natives that build voice features, beyond config.", slug: "voice-scripting-natives", tag: "Voice", bonus: true },
         ],
       },
       {
@@ -226,6 +231,8 @@ export const PATHS: Path[] = [
           { num: "01", title: "ox_target: interact with anything", blurb: "Eye targeting on props, peds, vehicles.", slug: "ox-target-interactions", tag: "ox_target" },
           { num: "02", title: "Spawning entities safely", blurb: "Model loading, handles, a registry for objects, props, peds.", slug: "spawning-entities-safely", tag: "Entities" },
           { num: "03", title: "Cleanup discipline", blurb: "Delete on stop, drop, and timeout. No leaks.", slug: "cleanup-discipline", tag: "Cleanup" },
+          { num: "Bonus", title: "Reading player input: controls and keys", blurb: "Control IDs, IsControlJustPressed, disabling keys, RegisterKeyMapping.", slug: "controls-and-input", tag: "Input", bonus: true },
+          { num: "Bonus", title: "Blips, markers, and checkpoints", blurb: "Map icons, world markers, and standing-in-it detection.", slug: "blips-markers-checkpoints", tag: "World", bonus: true },
         ],
       },
       {
@@ -246,6 +253,7 @@ export const PATHS: Path[] = [
         lessons: [
           { num: "08", title: "NUI from scratch", blurb: "A Chromium overlay with two-way messages.", slug: "nui-from-scratch", tag: "NUI" },
           { num: "09", title: "NUI advanced: React and Vite", blurb: "SetNuiFocus, callbacks, the production React setup.", slug: "nui-advanced", tag: "NUI" },
+          { num: "Bonus", title: "DUI: render HTML on 3D surfaces", blurb: "Paint a live webpage onto a prop or screen with CreateDui.", slug: "dui-3d-surfaces", tag: "NUI", bonus: true },
         ],
       },
       {

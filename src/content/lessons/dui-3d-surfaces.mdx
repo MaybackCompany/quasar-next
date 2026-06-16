@@ -1,0 +1,395 @@
+<LessonHero
+  crumbs="Module C3 · Interfaces (NUI)"
+  title="DUI: render live HTML on 3D surfaces"
+  meta={[
+    { label: "You'll build", value: "A resource that renders a live HTML clock onto an in-world texture, so a billboard prop shows a webpage you control instead of its baked GTA texture." },
+    { label: "Time", value: "~28 minutes" },
+    { label: "You need", value: "The NUI lessons done. You should already know SetNuiFocus, SendNUIMessage, RegisterNUICallback, and the cfx-nui callback URL format. DUI reuses the same web stack, just pointed at a texture instead of the screen." },
+    { label: "You'll learn", value: "What DUI is and how it differs from full-screen NUI -> the native chain CreateDui -> GetDuiHandle -> CreateRuntimeTxd -> CreateRuntimeTextureFromDuiHandle -> AddReplaceTexture -> how to push updates with SendDuiMessage, swap pages with SetDuiUrl, and clean up with DestroyDui" },
+  ]}
+>
+  Full-screen NUI paints a webpage over the whole screen. **DUI** paints a webpage onto a single GTA texture instead, so the page becomes a surface in the world: a TV, a billboard, an advert, a dashboard. The browser is the same one NUI uses. The only thing that changes is where the pixels land. This lesson builds the smallest honest DUI: a live HTML clock that replaces a prop's texture so it ticks in the world, then takes the native chain apart so you can point it at any texture you like.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I finished the full-screen NUI lessons and can wire SendNUIMessage to a window message listener.",
+    "I know the NUI callback URL format https://cfx-nui-<resource>/<endpoint>.",
+    "I can find my server resources folder, edit server.cfg, and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working FiveM resource named `qu_dui_surfaces`. It creates a DUI from a local HTML page, wraps it in a runtime texture, and uses `AddReplaceTexture` to paint that texture over a known prop so a live clock shows in-world. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes the native chain apart line by line so you can target any texture you want.
+</Callout>
+
+## DUI vs NUI: pick the right tool
+
+Both use the same embedded Chromium browser the runtime ships with. The difference is the render target.
+
+- **NUI** renders your page to a full-screen layer over the game. You reach for it when the UI is something the player looks *at* and interacts with directly: menus, HUDs, inventories, phones, dialogs. Input flows through `SetNuiFocus` and `RegisterNUICallback`.
+- **DUI** renders your page to an offscreen texture you then paint onto game geometry. You reach for it when the UI lives *in the world*: an in-world TV, a digital billboard, a stadium screen, a slot machine display, an advert board, a gas-station price sign. A DUI surface has no cursor and no direct click input. It is pixels on a polygon. You drive it one way, from Lua, with `SendDuiMessage`.
+
+The quick test: if the player needs to move a mouse over it, that is NUI. If it is something they walk past and see, that is DUI.
+
+<Callout variant="fivem" title="DUI is client-only">
+  Everything in this lesson runs in a `client_script`. The DUI texture and the prop both live on your own game instance, not on the server. There is no `server_script` here. If you later want a server to tell every client what to show, the server triggers a client event and the client does the DUI work. The client requests and renders; the server only coordinates. The server uses `source` to know which player asked, but it never creates a DUI itself.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_dui_surfaces
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout. The `html` folder holds the page DUI will render, exactly like a NUI page:
+
+    ```text
+resources/qu_dui_surfaces/
+  fxmanifest.lua
+  client.lua
+  html/
+    index.html
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and which web files to serve.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+
+files {
+    'html/index.html'
+}
+    ```
+
+    Notice there is no `ui_page` line. That is the first real difference from NUI: a full-screen NUI declares `ui_page`, but a DUI page is loaded by URL from Lua, so you only need to ship the file with `files {}` so the runtime can serve it. Do not add a `lua54 'yes'` line either. As of June 2025 that directive is deprecated and ignored; Lua 5.4 is the only runtime now, so you leave it out.
+  </Step>
+
+  <Step num={4} title="Write the HTML page" outcome="There is a page for DUI to render: a clock that listens for Lua messages.">
+    Open `html/index.html` and paste this. It is a plain page with a clock that updates itself, plus a listener for messages from Lua so you can change its label live:
+
+    ```html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body {
+    margin: 0;
+    width: 512px;
+    height: 256px;
+    background: #0b0f1a;
+    color: #e8edf6;
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #label { font-size: 28px; letter-spacing: 2px; opacity: 0.8; }
+  #clock { font-size: 92px; font-weight: 700; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <div id="label">QUASAR LIVE</div>
+  <div id="clock">00:00:00</div>
+  <script>
+    function tick() {
+      var d = new Date();
+      var p = function (n) { return String(n).padStart(2, '0'); };
+      document.getElementById('clock').textContent =
+        p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    setInterval(tick, 1000);
+    tick();
+
+    window.addEventListener('message', function (event) {
+      if (event.data.type === 'setLabel') {
+        document.getElementById('label').textContent = event.data.text;
+      }
+    });
+  </script>
+</body>
+</html>
+    ```
+
+    The body is fixed at 512 by 256 pixels on purpose. That is the resolution you will hand `CreateDui`, and matching the page size to the texture size keeps the result crisp instead of stretched.
+  </Step>
+
+  <Step num={5} title="Write the lesson code" outcome="The topic is now represented by runnable code: a DUI painted onto a prop.">
+    Open `client.lua` and paste this:
+
+    ```lua
+local dui          -- the DUI object handle (from CreateDui)
+local txd          -- the runtime texture dictionary (from CreateRuntimeTxd)
+local active = false
+
+-- The texture we will replace. prop_billboard_03 ships with a texture
+-- dictionary and texture name we can override with our DUI texture.
+local TARGET_TXD = 'prop_billboard_03'
+local TARGET_TXN = 'P_Billboard_03'
+
+local RUNTIME_TXD = 'qu_dui_txd'
+local RUNTIME_TXN = 'qu_dui_tex'
+
+local function startDui()
+    if active then return end
+
+    -- 1. Create the browser surface from our local page, at 512x256.
+    local url = ('https://cfx-nui-%s/html/index.html'):format(GetCurrentResourceName())
+    dui = CreateDui(url, 512, 256)
+
+    -- 2. Get the low-level handle the texture system understands.
+    local duiHandle = GetDuiHandle(dui)
+
+    -- 3. Make a runtime texture dictionary to hold our new texture.
+    txd = CreateRuntimeTxd(RUNTIME_TXD)
+
+    -- 4. Turn the DUI's live output into a texture inside that dictionary.
+    CreateRuntimeTextureFromDuiHandle(txd, RUNTIME_TXN, duiHandle)
+
+    -- 5. Replace the prop's baked texture with our live DUI texture.
+    AddReplaceTexture(TARGET_TXD, TARGET_TXN, RUNTIME_TXD, RUNTIME_TXN)
+
+    active = true
+    print('[qu_dui_surfaces] DUI created and texture replaced')
+end
+
+local function stopDui()
+    if not active then return end
+
+    -- Undo the texture swap first, then destroy the browser surface.
+    RemoveReplaceTexture(TARGET_TXD, TARGET_TXN)
+    DestroyDui(dui)
+    dui, txd, active = nil, nil, false
+    print('[qu_dui_surfaces] DUI destroyed and texture restored')
+end
+
+RegisterCommand('dui_start', function()
+    startDui()
+end, false)
+
+RegisterCommand('dui_stop', function()
+    stopDui()
+end, false)
+
+-- Push a new label into the live page without recreating anything.
+RegisterCommand('dui_label', function(source, args)
+    if not active then
+        print('[qu_dui_surfaces] start the DUI first with /dui_start')
+        return
+    end
+    local text = table.concat(args, ' ')
+    SendDuiMessage(dui, json.encode({ type = 'setLabel', text = text }))
+    print('[qu_dui_surfaces] sent label: ' .. text)
+end, false)
+
+-- Always clean up if the resource stops, or the swap leaks until map reload.
+AddEventHandler('onResourceStop', function(res)
+    if res == GetCurrentResourceName() then
+        stopDui()
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The expected proof appears, and the billboard shows your live clock.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_dui_surfaces
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_dui_surfaces
+    ```
+
+    Join the server so your game world exists, then run these from the F8 console:
+
+    ```text
+    dui_start
+    ```
+
+    Look at any `prop_billboard_03` in the world. The most reliable spot to test is to spawn the prop in front of you, but if you are near a billboard that uses this prop you will see its face change to a dark clock that ticks every second. Then push a label and stop it:
+
+    ```text
+    dui_label OPEN 24 / 7
+    dui_stop
+    ```
+
+    <ExpectedOutput>
+      [qu_dui_surfaces] DUI created and texture replaced
+[qu_dui_surfaces] sent label: OPEN 24 / 7
+[qu_dui_surfaces] DUI destroyed and texture restored
+    </ExpectedOutput>
+
+    The console lines are your proof the chain ran. The visible proof is the billboard face: a ticking clock after `dui_start`, the label changing to `OPEN 24 / 7` after `dui_label`, and the original texture back after `dui_stop`.
+  </Step>
+</StepGroup>
+
+<Callout variant="fivem" title="Do not see the billboard? It is still working">
+  `prop_billboard_03` is a specific prop, and not every map area has one in view. If the console lines printed, the DUI and the texture swap succeeded. To force a visible target, spawn the prop yourself with `CreateObject` near you, or point `TARGET_TXD` and `TARGET_TXN` at a prop you can see. The exercise at the end walks you through spawning your own prop and painting the DUI onto it, so the result is always on screen.
+</Callout>
+
+## How it works
+
+You ran it, the console confirmed the chain, and the billboard showed a live page. Now take the chain apart so the next time you want a webpage on a surface you are deciding which native does what, not copying. DUI is a five-link chain plus a few maintenance natives. Read each link by what it produces and what consumes it.
+
+### Link 1: CreateDui makes the browser surface
+
+```lua
+local url = ('https://cfx-nui-%s/html/index.html'):format(GetCurrentResourceName())
+dui = CreateDui(url, 512, 256)
+```
+
+`CreateDui(url, width, height)` spins up an offscreen browser instance and starts rendering the page at `url` into a buffer of the size you give. It returns a **DUI object**: a handle you keep and pass to every other DUI native. Notice the URL is the exact same `cfx-nui` scheme you already know from NUI callbacks, just used to *load* a page instead of post to it. `https://cfx-nui-<resource>/html/index.html` resolves to the file you shipped in `files {}`. You build it from `GetCurrentResourceName()` so the resource works no matter what folder name it is installed under.
+
+The width and height matter. They are the resolution of the offscreen buffer, and they are why the HTML body was set to 512 by 256. Match the page to the buffer and the texture is sharp. Mismatch them and the browser renders at one size while the texture samples at another, which is the usual cause of a blurry or squashed DUI.
+
+You can point DUI at a remote URL too, not just a local file, but a local page you ship is the predictable choice: it loads instantly, works offline, and you control every pixel.
+
+### Link 2: GetDuiHandle hands the texture system a pointer
+
+```lua
+local duiHandle = GetDuiHandle(dui)
+```
+
+The DUI object from link 1 is a high-level thing you command. The texture system underneath needs a low-level reference to the actual render output. `GetDuiHandle(dui)` returns that: a **DUI handle string** the runtime texture natives understand. You do not read it or parse it. You just pass it straight to the next link. Think of it as the difference between a remote control (the DUI object you press buttons on) and the wire the picture actually travels down (the handle).
+
+### Link 3: CreateRuntimeTxd makes a home for the texture
+
+```lua
+txd = CreateRuntimeTxd(RUNTIME_TXD)
+```
+
+Textures in GTA live inside texture dictionaries (TXDs). To make a brand-new texture at runtime, you first need a runtime dictionary to put it in. `CreateRuntimeTxd(name)` creates one with the name you choose and returns it. The name is yours to pick, but it has to be unique while it exists, which is why the resource uses a tagged name like `qu_dui_txd`. This native does not touch DUI at all yet. It is just allocating an empty shelf you are about to put a texture on.
+
+### Link 4: CreateRuntimeTextureFromDuiHandle turns pixels into a game texture
+
+```lua
+CreateRuntimeTextureFromDuiHandle(txd, RUNTIME_TXN, duiHandle)
+```
+
+This is the link that fuses the two worlds. It takes the runtime dictionary from link 3, a texture name you choose (`qu_dui_tex`), and the DUI handle from link 2, and it creates a live game texture whose contents are whatever the browser is currently rendering. Because it is wired to the DUI handle, it is not a snapshot. When the page repaints, the texture updates. That is the whole reason the clock ticks in the world without you doing anything more: link 4 made a texture that mirrors the browser, frame for frame.
+
+### Link 5: AddReplaceTexture paints it onto the world
+
+```lua
+AddReplaceTexture(TARGET_TXD, TARGET_TXN, RUNTIME_TXD, RUNTIME_TXN)
+```
+
+Now you have a live texture, but nothing in the world is using it yet. `AddReplaceTexture(origTxd, origTxn, newTxd, newTxn)` tells the renderer: anywhere the game would draw the original texture (`prop_billboard_03` / `P_Billboard_03`), draw mine instead (`qu_dui_txd` / `qu_dui_tex`). From that moment, every model on screen that samples the billboard texture shows your live page. This is also the link that explains why DUI has no click input: you are overriding a texture on existing geometry, not adding a clickable surface. The player sees pixels; they cannot poke them.
+
+There is a second way to send DUI output into the world that the docs cover: drawing the runtime texture onto a **render target** that a specific model is set up to use, with the named render-target natives. `AddReplaceTexture` is the broadest and simplest path and the right one to learn first, because it works on any prop without the model needing a pre-declared render target.
+
+### Driving it after it is live: SendDuiMessage and SetDuiUrl
+
+```lua
+SendDuiMessage(dui, json.encode({ type = 'setLabel', text = text }))
+```
+
+`SendDuiMessage(dui, jsonString)` is the DUI twin of `SendNUIMessage`. It posts a JSON string into the page, where it arrives on the same `window` message event you already use in NUI. In `index.html` the listener checks `event.data.type === 'setLabel'` and updates the label. This is how you change what a live DUI shows without tearing the whole chain down and rebuilding it: the browser stays up, you just message it. Note you pass a JSON *string* here, so you call `json.encode` yourself, unlike `SendNUIMessage` which encodes the table for you.
+
+When you need a different page entirely, not just new data on the same page, you call `SetDuiUrl(dui, newUrl)`. The same browser surface navigates to the new URL and the texture keeps updating from it. Reach for `SetDuiUrl` when one billboard cycles between completely different layouts; reach for `SendDuiMessage` when it is the same layout with changing content.
+
+### Tearing it down: RemoveReplaceTexture and DestroyDui
+
+```lua
+RemoveReplaceTexture(TARGET_TXD, TARGET_TXN)
+DestroyDui(dui)
+```
+
+Cleanup is two steps in the right order. `RemoveReplaceTexture` undoes link 5, so the prop goes back to its real texture. `DestroyDui(dui)` shuts down the browser instance from link 1 and frees its memory. The `onResourceStop` handler runs the same teardown when the resource stops, which matters: a DUI you never destroy keeps a whole browser alive in the background, and a texture replacement you never remove lingers until the map reloads. Treat every `CreateDui` as having a matching `DestroyDui`, the same way every `function` has its `end`.
+
+<Checkpoint question="Why does a DUI surface ignore mouse clicks, while a full-screen NUI page can handle them?">
+  Because DUI never receives input. NUI is a layer the runtime composites over the screen, and `SetNuiFocus` routes the real cursor and keyboard into that layer so the page can fire click and key events. DUI is the opposite direction: its page is rendered offscreen into a texture, and `AddReplaceTexture` paints that texture onto geometry in the world. The player is looking at a polygon wearing your pixels, not at a focused browser. There is no cursor over it and no input channel back. That is exactly why you drive a DUI one way from Lua with `SendDuiMessage`: the page cannot tell you anything, so you tell it everything. If you need a surface the player can click, that is an NUI job, or a world-interaction native like a target system in front of a static DUI.
+</Checkpoint>
+
+### When you reach for this pattern
+
+A live page on a texture is the foundation of every dynamic surface in a modern server, and the chain you just built is the one every one of them uses:
+
+- **In-world screens and TVs.** A clubhouse TV showing a stream, a stadium jumbotron, a security-camera monitor. Create one DUI per screen, replace each screen's texture, and push content with `SendDuiMessage`.
+- **Dynamic adverts and billboards.** Rotating sponsor boards, server news tickers, price signs at a gas station. Use `SetDuiUrl` or `SendDuiMessage` to cycle them on a timer.
+- **Machine and device faces.** Slot-machine reels, ATM screens, a vending-machine display, a custom phone mounted on a wall. Anything where the screen is part of the prop, not a menu the player opens.
+
+The rule of thumb stays the same as the top of the lesson: looked-at-in-the-world is DUI, interacted-with-directly is NUI.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "The billboard never changes but the console prints all three success lines", fix: "The chain ran on a prop_billboard_03 that is not in your view. The texture swap is global to that texture name, so it worked; you just cannot see a matching prop. Spawn the prop yourself in front of you, or point TARGET_TXD and TARGET_TXN at a prop you can see." },
+    { symptom: "The DUI surface is blurry or stretched", fix: "The HTML page size does not match the CreateDui width and height. Set the body to the same pixel dimensions you pass CreateDui (512 by 256 here) so the browser renders at the texture's resolution." },
+    { symptom: "attempt to call a nil value (global 'CreateDui')", fix: "The native name is misspelled or the call is in the wrong file. DUI natives are CLIENT side. Keep this code in client_script, and check the capitals: CreateDui, GetDuiHandle, CreateRuntimeTxd, CreateRuntimeTextureFromDuiHandle." },
+    { symptom: "dui_label does nothing and the page never updates", fix: "You passed a Lua table to SendDuiMessage. Unlike SendNUIMessage, SendDuiMessage takes a JSON string, so wrap the table in json.encode first. Also confirm the page's window message listener checks the same type string you send." },
+    { symptom: "Memory climbs every time you run dui_start, or the billboard stays overridden after a stop", fix: "You created a DUI without destroying the old one, or replaced a texture without removing it. Guard with an active flag so dui_start cannot stack, and always pair RemoveReplaceTexture with DestroyDui in stopDui and in onResourceStop." },
+    { symptom: "Error about a runtime txd name already existing", fix: "CreateRuntimeTxd names must be unique while they live. You called startDui twice without cleanup, so the name qu_dui_txd was taken. The active guard prevents this; make sure stopDui ran before you start again." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain the difference between DUI and full-screen NUI by render target: DUI paints a page onto a world texture, NUI paints it over the screen, and only NUI takes direct input.",
+    "Build the DUI chain in order: CreateDui makes the browser surface, GetDuiHandle exposes it to the texture system, CreateRuntimeTxd allocates a dictionary, CreateRuntimeTextureFromDuiHandle makes a live texture, and AddReplaceTexture paints it onto a prop.",
+    "Update a live DUI two ways: SendDuiMessage to push new data into the same page via its window message listener, and SetDuiUrl to swap the page entirely.",
+    "Tear a DUI down correctly: RemoveReplaceTexture to restore the prop, then DestroyDui to free the browser, and do both on onResourceStop so nothing leaks.",
+    "Reason about which surface is a DUI job and why DUI natives belong in a client_script, since the texture and prop only exist on the local game instance.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Make the result always visible by spawning your own target prop and painting the DUI onto it, instead of hoping a `prop_billboard_03` is in view. Add a `/dui_demo` command that loads a TV prop, places it in front of you, and replaces its texture with the live page.
+
+  ```lua
+  RegisterCommand('dui_demo', function()
+      startDui()  -- reuse the chain you already built
+
+      local model = GetHashKey('prop_tv_flat_01')
+      RequestModel(model)
+      while not HasModelLoaded(model) do Wait(0) end
+
+      local ped = PlayerPedId()
+      local fwd = GetEntityForwardVector(ped)
+      local pos = GetEntityCoords(ped) + (fwd * 2.0)
+
+      local obj = CreateObject(model, pos.x, pos.y, pos.z + 0.5, true, true, false)
+      SetEntityHeading(obj, GetEntityHeading(ped) + 180.0)
+      SetModelAsNoLongerNeeded(model)
+
+      -- Now point startDui's TARGET_TXD / TARGET_TXN at this prop's
+      -- texture instead of the billboard, then re-run the chain.
+  end, false)
+  ```
+
+  Your job: find `prop_tv_flat_01`'s texture dictionary and texture name (use CodeWalker or OpenIV from the developer tools list, or the FiveM forum's prop texture threads), set `TARGET_TXD` and `TARGET_TXN` to those values, and re-run. Confirm the spawned TV in front of you shows the ticking clock, then run `/dui_label LIVE NOW` and watch the label change on a screen you can actually see. When you are done, extend `dui_stop` to also delete the spawned object with `DeleteEntity(obj)` so you leave no props behind. You just turned a guessed-at billboard into a controlled, on-screen DUI target.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM CreateDui native", href: "https://docs.fivem.net/natives/?_0x23EAF899" },
+    { label: "FiveM CreateRuntimeTextureFromDuiHandle native", href: "https://docs.fivem.net/natives/?_0xB135472B" },
+    { label: "FiveM AddReplaceTexture native", href: "https://docs.fivem.net/natives/?_0xA66F8F75" },
+    { label: "FiveM SendDuiMessage native", href: "https://docs.fivem.net/natives/?_0xCD380DA9" },
+    { label: "FiveM NUI development guide", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>
