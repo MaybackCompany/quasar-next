@@ -2,13 +2,13 @@
   crumbs="Module 07 · Bonus"
   title="Convars: server.cfg config you can read from Lua"
   meta={[
-    { label: "You'll learn", value: "The three convar types (set, setr, sets), how each replicates, and which API to call from server vs client." },
+    { label: "You'll learn", value: "The three convar prefixes (set, setr, sets), exactly who can read each, the four read functions, and why a client can only see a setr value." },
     { label: "You'll ship", value: "A debug toggle and a configurable starting balance for the banking script: both flippable from server.cfg with no code redeploy." },
     { label: "Time", value: "~15 minutes" },
     { label: "Why now", value: "You finished the banking lesson with a hard-coded starting balance. Convars let you tune that per server." },
   ]}
 >
-  A **convar** (configuration variable) is a server-side key/value pair you set in `server.cfg` or at runtime, then read from any resource. Convars are how you externalize things that *change per server*, debug flags, database name, max stack size, Discord invite, owner ID, without editing Lua and without rebuilding the resource. Three flavors decide who sees them, the API is four functions, and you already use them every time you write `sv_hostname`.
+  A **convar** (configuration variable) is a key/value pair you set in `server.cfg` or at runtime, then read from Lua. Convars are how you externalize the things that *change per server*: a debug flag, a database name, a starting balance, an owner ID. You tune them without editing Lua and without rebuilding the resource. The catch that trips up everyone is replication: the prefix you use to declare a convar decides whether a client can ever read it. Get that wrong and your client silently reads the default forever. This lesson makes the difference visible.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds server.cfg convars read from server and client Lua as a working FiveM resource named `qu_convars_server_cfg`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds server.cfg convars read from both server and client Lua, as a working FiveM resource named `qu_convars_server_cfg`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart so you understand why a client can read one convar but not the other.
 </Callout>
 
 ## Build it
@@ -52,38 +52,46 @@ resources/qu_convars_server_cfg/
 fx_version 'cerulean'
 game 'gta5'
 
-client_script 'client.lua'
 server_script 'server.lua'
+client_script 'client.lua'
     ```
 
-    Add these lines to server.cfg above `ensure qu_convars_server_cfg`:
-
-    ```text
-set qu_convars_server_cfg_cash 750
-setr qu_convars_server_cfg_debug true
-    ```
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Declare the convars in server.cfg" outcome="The server has two config values it can read.">
+    Open `server.cfg` and add these two lines **above** the line that ensures this resource. You will add the `ensure` line in Step 6.
+
+    ```text
+set qu_convars_cash 750
+setr qu_convars_debug true
+    ```
+
+    The two prefixes are not interchangeable. `set` is server-only. `setr` is replicated, which means it is also sent to every client. You will see in a moment why the client half of this lesson reads the `setr` one and not the `set` one.
+  </Step>
+
+  <Step num={5} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
 RegisterCommand('cashcfg', function()
-    print('[qu_convars_server_cfg] cash ' .. GetConvarInt('qu_convars_server_cfg_cash', 500))
-end, true)
+    local cash = GetConvarInt('qu_convars_cash', 500)
+    print('[qu_convars_server_cfg] server reads cash ' .. cash)
+end, false)
     ```
 
     Open `client.lua` and paste this:
 
     ```lua
 RegisterCommand('debugcfg', function()
-    print('[qu_convars_server_cfg] debug ' .. GetConvar('qu_convars_server_cfg_debug', 'false'))
+    local debug = GetConvar('qu_convars_debug', 'false')
+    print('[qu_convars_server_cfg] client reads debug ' .. debug)
 end, false)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    Add this line to `server.cfg`, below the two convar lines from Step 4:
 
     ```text
     ensure qu_convars_server_cfg
@@ -95,27 +103,92 @@ end, false)
     restart qu_convars_server_cfg
     ```
 
-    Run this test:
+    Run the first test in the txAdmin Live Console:
 
     ```text
-    cashcfg, then /debugcfg
+    cashcfg
+    ```
+
+    Join the server, open the F8 console, and run the second test there:
+
+    ```text
+    debugcfg
     ```
 
     <ExpectedOutput>
-      [qu_convars_server_cfg] cash 750
-F8: [qu_convars_server_cfg] debug true
+      [qu_convars_server_cfg] server reads cash 750
+F8: [qu_convars_server_cfg] client reads debug true
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+It worked, so now make it make sense. Two convars, two read functions, two consoles. The reason the lesson is split that way, and not just dumped into one file, is the single most important fact about convars: the prefix you declared each one with decided whether the client could ever see it.
+
+### The three prefixes, and who can read each
+
+When you write a convar in `server.cfg` you choose one of three commands. They look almost identical and they behave completely differently.
+
+- `set name value` declares a **server-only** convar. The server can read it. Clients cannot. If a client tries, it gets the fallback default you passed, not the real value. This is the right choice for anything a player should never see: database strings, API keys, owner IDs.
+- `setr name value` declares a **replicated** convar. The `r` is for replicated. The server reads it, and the value is also pushed to every connected client, so client Lua can read the real value too. Use this only for config that is safe for players to know and that the client genuinely needs, like a debug flag that turns on extra on-screen logging.
+- `sets name value` declares a **server-list info string**. It does not feed your Lua at all. It populates the server-browser metadata that players see before they connect, like `sets tags "roleplay, economy"`. You set these for the listing, not to read them back in code.
+
+That is the whole rule. `set` stays on the server, `setr` rides along to clients, `sets` is for the browser. In this lesson `qu_convars_cash` is a `set` because the starting balance is a server decision a player has no business reading, and `qu_convars_debug` is a `setr` because the client console needs to know whether debug logging is on.
+
+<Checkpoint question="If you change qu_convars_debug from setr to set and restart, what does the F8 line print, and why?">
+  It prints `client reads debug false`. With plain `set`, the convar is server-only and never replicates to clients, so on the client side `GetConvar('qu_convars_debug', 'false')` cannot find a value and returns the fallback you supplied, the string `'false'`. The server console would still read the real value, but the client is permanently blind to a non-replicated convar. This is the number one convar bug: a value that "works on the server" but silently reads the default on every client because it was declared with `set` instead of `setr`.
+</Checkpoint>
+
+### The four read functions
+
+You read a convar with one of four natives. They differ only in the type they return, and every one of them takes the same two arguments: the convar name, and a fallback default to use when the convar is missing or unreadable.
+
+- `GetConvar(name, default)` returns a **string**. Everything is a string at heart in `server.cfg`, so this is the most general reader.
+- `GetConvarInt(name, default)` returns an **integer**. It parses the stored text into a whole number for you, which is why the server side of this lesson uses it on `qu_convars_cash`: a balance is a number, not text.
+- `GetConvarFloat(name, default)` returns a **floating-point number**, for decimals like a price multiplier.
+- `GetConvarBool(name, default)` returns a **boolean** `true` or `false`.
+
+The default argument is not optional decoration. It is your safety net. If the convar line is missing from `server.cfg`, misspelled, or (the case you just met) declared with the wrong prefix so the client cannot see it, the read returns the default instead of crashing. That is exactly why the F8 line prints `false` when the convar does not reach the client: `'false'` is the default you handed `GetConvar`.
+
+### The restricted flag on the command
+
+Both commands here end with `false`:
+
+```lua
+RegisterCommand('cashcfg', function()
+    -- ...
+end, false)
+```
+
+That last argument is the **restricted flag**. With `false`, anyone can run the command, including the server console and any connected player. With `true`, the command requires an ace permission, so only the server console (which holds all aces) and explicitly authorized admins can run it. The original version of this lesson used `true` on the server command, which is why a beginner typing it from anywhere but the console got silence. For a teaching command you want to fire freely while learning, `false` is correct. When you later wrap a real admin action like granting cash, you would switch to `true` and grant the ace, so players cannot run it on themselves.
+
+### Runtime versus server.cfg
+
+One more model to lock in. A convar set in `server.cfg` is read when the resource starts. If you edit `server.cfg` you must restart the resource (or the server) for the new value to take effect, which is why every step here ends with `restart qu_convars_server_cfg`. But you can also set a convar live from the console:
+
+```text
+setr qu_convars_debug false
+```
+
+A live `set`/`setr` takes effect immediately, no restart needed, and a `setr` change is pushed to connected clients right away. The cfg line is just the value the convar starts at on boot.
+
+### When you reach for this pattern
+
+Convars are how you stop hard-coding the things that differ between your test server and a live server. Three real cases:
+
+- **A debug switch.** Wrap your noisy `print` calls in `if GetConvarBool('myresource_debug', false) then`. Flip `setr myresource_debug true` while you investigate, flip it off in production, and you never ship a build to change logging.
+- **Per-server tuning.** Starting balance, max stack size, payout rates. One resource, many servers, each with its own numbers in its own `server.cfg`.
+- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`, so the value never replicates to a client that could read it.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_convars_server_cfg does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_convars_server_cfg", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_convars_server_cfg, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Server reads cash 500 instead of 750", fix: "The set qu_convars_cash line is missing, misspelled, or below the ensure line in server.cfg. Convars are read at resource start, so the set line must load before the resource. Fix it, then restart qu_convars_server_cfg." },
+    { symptom: "F8 client reads debug false (not true)", fix: "The convar was declared with set, not setr. Plain set never reaches clients, so the client read falls back to the default. Change the line to setr qu_convars_debug true and restart." },
+    { symptom: "debugcfg prints nothing in F8", fix: "Client convars are read on the client, so you must join the server and run debugcfg in the F8 console, not in txAdmin. txAdmin shows server output only." },
+    { symptom: "cashcfg prints nothing", fix: "Run cashcfg in the txAdmin Live Console. If you had left the restricted flag as true, only the console and authorized aces could run it; this lesson uses false so it runs anywhere." },
   ]}
 />
 
@@ -123,23 +196,46 @@ F8: [qu_convars_server_cfg] debug true
 
 <Recap
   items={[
-    "Make the qu_convars_server_cfg folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for server.cfg convars read from server and client Lua.",
-    "Add ensure qu_convars_server_cfg to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Name the three convar prefixes and say who can read each: set is server-only, setr replicates to clients, sets is the server-browser info string.",
+    "Explain why a client reading a plain set convar silently gets the default, and that setr is required for any value client Lua must see.",
+    "Pick the right read function by return type: GetConvar (string), GetConvarInt (int), GetConvarFloat (float), GetConvarBool (bool), each with a fallback default.",
+    "Declare config in server.cfg and read it from Lua so a value changes per server with no code redeploy.",
+    "Explain that cfg convars are read at resource start, so a server.cfg edit needs a restart, while a live set in the console applies immediately.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_convars_server_cfg`, rerun the test, and confirm the output changed.
+  Add a third convar and prove the replication rule with your own hands. Put a server-only secret next to the existing lines in `server.cfg`:
+
+  ```text
+  set qu_convars_secret supersecret
+  ```
+
+  Now try to read it from **both** sides. Add to `server.lua`:
+
+  ```lua
+  RegisterCommand('secretcfg_server', function()
+      print('[qu_convars_server_cfg] server secret ' .. GetConvar('qu_convars_secret', 'hidden'))
+  end, false)
+  ```
+
+  And add the matching client command to `client.lua`:
+
+  ```lua
+  RegisterCommand('secretcfg_client', function()
+      print('[qu_convars_server_cfg] client secret ' .. GetConvar('qu_convars_secret', 'hidden'))
+  end, false)
+  ```
+
+  Restart `qu_convars_server_cfg`. Run `secretcfg_server` in txAdmin and `secretcfg_client` in F8. The server prints `server secret supersecret`. The client prints `client secret hidden`, because a plain `set` convar never crosses to the client and the read falls back to your default. You have just demonstrated, in your own console, why every secret stays a `set` and never a `setr`.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM convars reference", href: "https://docs.fivem.net/docs/scripting-reference/convars/" },
+    { label: "FiveM server.cfg / setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

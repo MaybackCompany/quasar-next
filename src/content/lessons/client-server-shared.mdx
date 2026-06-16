@@ -2,25 +2,26 @@
   crumbs="Module 02 · Lesson 08"
   title="Client, server, shared: three folders, one resource"
   meta={[
-    { label: "You'll build", value: "A refactor of qu_hello into a proper three-folder resource with a shared config." },
+    { label: "You'll build", value: "A three-folder resource where a shared config table is read by both the client and the server, proven across the network with one command." },
     { label: "Time", value: "~20 minutes" },
-    { label: "You need", value: "The qu_hello resource from Lesson 07 and your text editor." },
-    { label: "You'll learn", value: "The three-folder convention -> how to decide what goes where -> glob imports -> what should never go in shared" },
+    { label: "You need", value: "A local FiveM practice setup you can restart, a text editor, and the ability to read both txAdmin Live Console and F8 output." },
+    { label: "You'll learn", value: "The client / server / shared split, the decision rule for what goes where, why shared runs on both sides, glob imports, and what must never live in shared" },
   ]}
 >
-  Open almost any serious FiveM resource and you will see the same three folders: `client/`, `server/`, and `shared/`. Think of them as three rooms with three different jobs. This lesson teaches what belongs in each room so your scripts stop feeling mixed up.
+  Open almost any serious FiveM resource and you see the same three folders: `client/`, `server/`, and `shared/`. They are not decoration. Each one runs in a different place, and putting a line in the wrong folder is how beginners leak secrets, crash the client, or wonder why a value is `nil`. This lesson builds the split for real and then teaches the rule for deciding where every line you write belongs.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console and F8 output.",
+    "I have built at least one single-file resource before (Lesson 07)."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds client, server, and shared folders with shared config as a working FiveM resource named `qu_client_server_shared`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working FiveM resource named `qu_client_server_shared` with real `client/`, `server/`, and `shared/` folders. One shared config table is read by both sides, and a command proves it crosses the network. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
 </Callout>
 
 ## Build it
@@ -34,95 +35,168 @@
     ```
   </Step>
 
-  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
-    Create this exact file layout:
+  <Step num={2} title="Create the three folders and their files" outcome="The three-folder convention exists on disk.">
+    Create this exact layout. The folder names are the convention you will see everywhere:
 
     ```text
 resources/qu_client_server_shared/
   fxmanifest.lua
-  config.lua
-  server.lua
-  client.lua
+  shared/
+    config.lua
+  server/
+    main.lua
+  client/
+    main.lua
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM loads each folder into the right runtime.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
 fx_version 'cerulean'
 game 'gta5'
 
-client_script 'client.lua'
-server_script 'server.lua'
-shared_script 'config.lua'
+shared_scripts {
+    'shared/*.lua'
+}
+
+server_scripts {
+    'server/*.lua'
+}
+
+client_scripts {
+    'client/*.lua'
+}
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `config.lua` and paste this:
+  <Step num={4} title="Write the shared config" outcome="One config table that both sides will read.">
+    Open `shared/config.lua` and paste this:
 
     ```lua
 Config = {}
-Config.Label = 'qu_client_server_shared shared config'
+Config.Greeting = 'three folders, one resource'
+Config.MaxDistance = 25.0
     ```
+  </Step>
 
-    Open `server.lua` and paste this:
+  <Step num={5} title="Write the server code" outcome="The server reads shared config and fires an event across the network.">
+    Open `server/main.lua` and paste this:
 
     ```lua
-print('[qu_client_server_shared] server loaded ' .. Config.Label)
+print('[qu_client_server_shared] server read Config.Greeting: ' .. Config.Greeting)
 
 RegisterCommand('splitproof', function(src)
-    TriggerClientEvent('qu_client_server_shared:clientProof', src)
-    print('[qu_client_server_shared] server handled splitproof')
-end, false)
+    print('[qu_client_server_shared] server fired splitproof for src ' .. src)
+    TriggerClientEvent('qu_client_server_shared:proof', src, Config.MaxDistance)
+end, true)
     ```
+  </Step>
 
-    Open `client.lua` and paste this:
+  <Step num={6} title="Write the client code" outcome="The client reads the same shared config and receives the server's event.">
+    Open `client/main.lua` and paste this:
 
     ```lua
-print('[qu_client_server_shared] client loaded ' .. Config.Label)
+print('[qu_client_server_shared] client read Config.Greeting: ' .. Config.Greeting)
 
-RegisterNetEvent('qu_client_server_shared:clientProof', function()
-    print('[qu_client_server_shared] client ped ' .. PlayerPedId())
+RegisterNetEvent('qu_client_server_shared:proof', function(maxDistance)
+    print('[qu_client_server_shared] client received event, Config.MaxDistance = ' .. maxDistance)
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={7} title="Start and test it" outcome="The shared value appears on both sides, and the event crosses the network.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_client_server_shared
     ```
 
-    Save, then run:
+    Save, then run in the server console:
 
     ```text
     restart qu_client_server_shared
     ```
 
-    Run this test:
+    Join the server, then run this in the F8 console (the command is restricted, but your own client is an ace when you run it from F8 as the host; if it does not fire, run `splitproof` from the txAdmin Live Console instead):
 
     ```text
-    /splitproof
+    splitproof
     ```
 
     <ExpectedOutput>
-      Server: [qu_client_server_shared] server handled splitproof
-F8: [qu_client_server_shared] client ped playerPedId
+      Server: [qu_client_server_shared] server read Config.Greeting: three folders, one resource
+Server: [qu_client_server_shared] server fired splitproof for src 1
+F8: [qu_client_server_shared] client read Config.Greeting: three folders, one resource
+F8: [qu_client_server_shared] client received event, Config.MaxDistance = 25.0
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+It worked, so now take it apart. The whole point of this lesson is one idea that beginners get wrong constantly: a FiveM resource is not one program. It is two programs that happen to ship in the same folder, plus a shared layer that gets copied into both. Once you see it that way, the folder split stops being a style choice and becomes the map of where your code actually runs.
+
+### Two runtimes, not one
+
+When the resource starts, FiveM spins up two separate Lua virtual machines. One runs on the server machine. A separate copy runs inside every connected player's game. They do not share memory. A variable you set on the server is invisible to the client unless you deliberately send it across the network.
+
+That is why the proof printed in two different places. The server's print landed in txAdmin Live Console because `server/main.lua` only ever runs on the server. The client's print landed in F8 because `client/main.lua` runs inside your game. Same resource, two consoles, because two runtimes.
+
+### What shared_script actually does
+
+Here is the part that trips people up. `Config` is not a synced object. The `shared/config.lua` file is loaded into BOTH Lua VMs, so the code runs twice, once per side, and `Config` becomes a plain global on each side independently.
+
+Read that again, because it is the core mental model. There is no magic link between the server's `Config` and the client's `Config`. They are two separate tables that happen to start identical because they were built from the same source file. If the server later does `Config.MaxDistance = 99.0`, the client's copy is still `25.0`. Shared means "the same starting code runs on both sides," not "the same live value lives on both sides."
+
+That is exactly why config belongs in shared. Both sides need to agree on constants like a max interaction distance or a label. Putting those constants in one shared file means both VMs read the same numbers without an event round-trip on startup. One source of truth, zero network traffic to read it.
+
+### The decision rule for where a line goes
+
+Stop guessing per file. Use this rule for every line you write:
+
+- **client/** if the line touches the local player: the ped, the camera, drawing on screen, NUI, key presses, anything that only makes sense for one person's game. Natives like `PlayerPedId()`, `DrawMarker`, `SetNuiFocus` live here.
+- **server/** if the line touches authority: the `source` of an event, money, inventory, the database, bans, or anything a cheating client must not be allowed to decide. This side is the referee. It is the only side a player cannot edit.
+- **shared/** only for pure config tables and stateless helper functions: a number, a label, a list of job names, a function that turns cents into a money string. No natives. No secrets. No state.
+
+When you are unsure, ask one question: does this line decide something a player could cheat? If yes, it goes in server. The server is the only side you control; the client runs on the player's machine and they can read and change it.
+
+### What must never go in shared
+
+Two things will burn you if they end up in `shared/`.
+
+The first is secrets. Database connection strings, API keys, admin passwords. Anything in `shared/` is shipped to every client and a determined player can dump it out of their game memory. A secret in shared is a secret you have handed to the public. Secrets belong in `server/` or, better, in convars set in `server.cfg`.
+
+The second is server-only natives. Natives like `GetPlayerIdentifiers` or `DropPlayer` only exist in the server runtime. If a shared file calls one, it loads fine on the server but throws `attempt to call a nil value` the instant the client VM runs that same file. Shared code has to be safe to run on both sides, which in practice means no natives at all.
+
+### Why the glob import works and why load order matters
+
+Look back at the manifest. You wrote `shared_scripts { 'shared/*.lua' }`, not a single filename. The `*` is a glob: FiveM expands it to every `.lua` file in that folder, in name order. Add `shared/jobs.lua` tomorrow and the manifest already loads it, no edit needed. That is why real resources use globs per folder instead of listing twenty files by hand.
+
+The curly-brace list also matters for a second reason: order. FiveM loads `shared_scripts` before `client_scripts` and `server_scripts`. That ordering is the reason your prints worked. By the time `server/main.lua` and `client/main.lua` run, `shared/config.lua` has already run on that side, so `Config` exists. Flip the order, load a script before the shared file that defines `Config`, and you get `attempt to index a nil value (global 'Config')`. Shared first is not a suggestion; it is what makes the config available when the rest of your code reads it.
+
+One more detail on the manifest key for the future. When this resource depends on another (say `oxmysql` or `ox_lib`, the community Overextended libraries you will meet later), the canonical key is the plural `dependencies { 'oxmysql' }`. The singular `dependency 'oxmysql'` is tolerated but the plural braced form is the one to learn.
+
+<Checkpoint question="You set Config.MaxDistance = 25.0 in shared. On the server you later write Config.MaxDistance = 99.0. What does the client print when the event fires, and why?">
+  The client still prints `25.0`. The server and the client each loaded their own copy of `shared/config.lua`, so they hold two independent `Config` tables. Editing the server's copy does nothing to the client's copy. Shared means the same starting code ran on both sides, not that the live value is synced. If you genuinely needed the new value on the client, you would have to send it, which is exactly what the `TriggerClientEvent` line does: it pushes `Config.MaxDistance` across the network as the event payload, and the client reads what arrived in its handler, not its own table.
+</Checkpoint>
+
+### When you reach for this split
+
+You reach for it on the very first file of every resource, not as cleanup later. The moment a resource has both a server rule and a client display, you split it. A shop: the client draws the marker and menu, the server validates the purchase and moves the money, and shared holds the item list and prices both sides reference. A job: client handles the on-screen prompts, server tracks who is clocked in, shared lists the job names. Set the three folders up first and the decision rule answers "where does this go" for you every time you add a line.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_client_server_shared does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_client_server_shared", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_client_server_shared, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (global 'Config')", fix: "A client or server file ran before shared loaded, or the file is in the wrong folder. Confirm config.lua is inside shared/ and the manifest lists shared_scripts before client_scripts and server_scripts." },
+    { symptom: "Could not find dependency / no script files matched 'shared/*.lua'", fix: "The folder name or glob is wrong. The path is case sensitive and relative to the resource root. Confirm the folder is named shared (not Shared) and the file ends in .lua." },
+    { symptom: "Server console prints, but F8 shows nothing", fix: "The client print and event live in client/main.lua, which only runs in-game. You must join the server, not just restart it from the console. Read F8 while connected." },
+    { symptom: "attempt to call a nil value when the resource starts", fix: "A shared file is calling a server-only or client-only native. Shared code must use no natives. Move that line into server/ or client/ where the native exists." },
+    { symptom: "splitproof does nothing in F8", fix: "The command is restricted (the true flag). Run it from F8 as the host, or run splitproof from the txAdmin Live Console, which always has ace rights." },
   ]}
 />
 
@@ -130,22 +204,42 @@ F8: [qu_client_server_shared] client ped playerPedId
 
 <Recap
   items={[
-    "Make the qu_client_server_shared folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for client, server, and shared folders with shared config.",
-    "Add ensure qu_client_server_shared to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Lay out a resource as client/, server/, and shared/ folders and point the manifest at each with a glob.",
+    "Explain that a resource is two separate Lua VMs, so server and client never share memory unless you send data across the network.",
+    "State that shared_script runs the same file on both sides as two independent globals, not one synced value.",
+    "Apply the decision rule: local player and UI go in client, authority and data go in server, pure config and stateless helpers go in shared.",
+    "Name the two things that must never go in shared: secrets and server-only natives, and say why each one breaks.",
+    "Explain why shared loads first and what error you get when load order is wrong.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_client_server_shared`, rerun the test, and confirm the output changed.
+  Prove the "two independent copies" claim with your own eyes. In `server/main.lua`, set `Config.Greeting = 'server edited this'` on the line right after the existing server print, then add a second command:
+
+  ```lua
+  RegisterCommand('checkconfig', function(src)
+      print('[qu_client_server_shared] server Config.Greeting is now: ' .. Config.Greeting)
+      TriggerClientEvent('qu_client_server_shared:checkconfig', src)
+  end, true)
+  ```
+
+  In `client/main.lua`, add the matching handler:
+
+  ```lua
+  RegisterNetEvent('qu_client_server_shared:checkconfig', function()
+      print('[qu_client_server_shared] client Config.Greeting is still: ' .. Config.Greeting)
+  end)
+  ```
+
+  Restart `qu_client_server_shared`, join, and run `checkconfig`. The server prints `server edited this` while the client still prints `three folders, one resource`. You just watched the two VMs disagree, which is the whole lesson. Now move that `Config.Greeting = ...` edit into `shared/config.lua` instead and confirm both sides agree again, because now both copies start from the changed source.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM scripting: understanding scopes", href: "https://docs.fivem.net/docs/scripting-manual/introduction/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}

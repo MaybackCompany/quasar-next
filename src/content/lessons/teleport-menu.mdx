@@ -2,25 +2,26 @@
   crumbs="Module 06 · Lesson 20"
   title="Build a teleport menu, step by step"
   meta={[
-    { label: "You will build", value: "qu_tp: a teleport menu with permission checks and a smooth fade" },
+    { label: "You will build", value: "qu_teleport_menu: a teleport menu with a server-checked destination list and a smooth fade" },
     { label: "Time", value: "About 45 minutes the first time" },
-    { label: "You should know", value: "How to start a FiveM resource and that ox_lib is installed on your server" },
+    { label: "You should know", value: "How to start a FiveM resource, the client and server split, and that ox_lib is installed on your server" },
     { label: "You will not need", value: "Any prior teleport experience. Every term is defined the first time it is used." },
   ]}
 >
-  By the end of this lesson you will type `/tpmenu`, click a place name, and watch your character arrive there with a smooth fade.
+  By the end of this lesson you will type `/tpmenu`, click a place name, and watch your character arrive there with a smooth fade. The interesting part is not the teleport. It is that the **server** decides whether the move is allowed, so a player cannot edit the menu to send themselves anywhere they like.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console and F8 output.",
+    "I have ox_lib installed and started on my server."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ox_lib teleport menu with server validation and screen fade as a working FiveM resource named `qu_teleport_menu`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a teleport menu as a working FiveM resource named `qu_teleport_menu`. It uses three pieces you will meet often: an ox_lib context menu for the UI, a client to server to client round-trip so the server can approve the destination, and a fade so the move looks clean. Follow the folder names, file names, code, restart command, and expected output exactly. Then the next section takes the code apart line by line so you know why it works.
 </Callout>
 
 ## Build it
@@ -45,7 +46,7 @@ resources/qu_teleport_menu/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load, and loads ox_lib first.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -56,38 +57,65 @@ shared_script '@ox_lib/init.lua'
 client_script 'client.lua'
 server_script 'server.lua'
 
-dependency 'ox_lib'
+dependencies {
+    'ox_lib'
+}
     ```
+
+    Two things to know about this manifest. There is no `lua54 'yes'` line: as of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only Lua runtime. And `ox_lib` is an Overextended (community) library, not a built-in Cfx.re resource. You install it yourself and it must be running before this resource, which is what the `dependencies` block enforces.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the lesson code" outcome="The menu, the server check, and the fade all exist as runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
+local allowed = { legion = true, airport = true }
+
 RegisterNetEvent('qu_teleport_menu:request', function(destination)
-    if destination ~= 'legion' and destination ~= 'airport' then return end
-    TriggerClientEvent('qu_teleport_menu:approved', source, destination)
+    local src = source
+    if not allowed[destination] then
+        print('[qu_teleport_menu] rejected source ' .. src .. ' for ' .. tostring(destination))
+        return
+    end
+    print('[qu_teleport_menu] approved source ' .. src .. ' for ' .. destination)
+    TriggerClientEvent('qu_teleport_menu:approved', src, destination)
 end)
     ```
 
     Open `client.lua` and paste this:
 
     ```lua
-local spots = { legion = vec3(215.76, -810.12, 30.73), airport = vec3(-1037.62, -2737.86, 20.17) }
+local spots = {
+    legion = vec3(215.76, -810.12, 30.73),
+    airport = vec3(-1037.62, -2737.86, 20.17),
+}
+
 RegisterCommand('tpmenu', function()
-    lib.registerContext({ id = 'qu_teleport_menu_menu', title = 'Teleport', options = { { title = 'Legion', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'legion') end }, { title = 'Airport', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'airport') end } } })
+    lib.registerContext({
+        id = 'qu_teleport_menu_menu',
+        title = 'Teleport',
+        options = {
+            { title = 'Legion Square', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'legion') end },
+            { title = 'Airport', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'airport') end },
+        },
+    })
     lib.showContext('qu_teleport_menu_menu')
 end, false)
+
 RegisterNetEvent('qu_teleport_menu:approved', function(destination)
     local c = spots[destination]
-    DoScreenFadeOut(500) Wait(600) SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false) DoScreenFadeIn(500)
+    if not c then return end
+    DoScreenFadeOut(500)
+    Wait(600)
+    SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false)
+    DoScreenFadeIn(500)
     print('[qu_teleport_menu] moved to ' .. destination)
 end)
     ```
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Open `server.cfg` and add this line (after the line that ensures ox_lib):
 
     ```text
     ensure qu_teleport_menu
@@ -99,26 +127,116 @@ end)
     restart qu_teleport_menu
     ```
 
-    Run this test:
+    Join the server, then run this test in the F8 chat box:
 
     ```text
-    /tpmenu and choose Legion
+    /tpmenu
     ```
+
+    Choose `Legion Square` from the menu. Your screen fades out, you arrive at Legion, and the screen fades back in.
 
     <ExpectedOutput>
       F8: [qu_teleport_menu] moved to legion
+      Server console: [qu_teleport_menu] approved source 1 for legion
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and you teleported. Now take the code apart so the next time you build a menu-driven action you are deciding, not copying. Three ideas carry this lesson: the ox_lib context menu, the client to server to client round-trip that lets the server approve the move, and the fade timing. We will walk each one.
+
+### The ox_lib context menu
+
+ox_lib is a utility library from Overextended, the same community group behind oxmysql and ox_target. It is not shipped by Cfx.re, so you install it yourself and start it before any resource that uses it. The `shared_script '@ox_lib/init.lua'` line in the manifest pulls ox_lib's helper table into your resource. From that point on, `lib` is a global you can call. If ox_lib is not started, `lib` is `nil` and every line that touches it errors. That is the most common failure in this lesson.
+
+```lua
+lib.registerContext({
+    id = 'qu_teleport_menu_menu',
+    title = 'Teleport',
+    options = {
+        { title = 'Legion Square', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'legion') end },
+        { title = 'Airport', onSelect = function() TriggerServerEvent('qu_teleport_menu:request', 'airport') end },
+    },
+})
+lib.showContext('qu_teleport_menu_menu')
+```
+
+A **context menu** is a list of options the player clicks through. `lib.registerContext` describes the menu but does not display it. You hand it a table with an `id` (a unique name you choose so you can refer to it later), a `title` shown at the top, and an `options` array. Each option is its own table with a `title` the player reads and an `onSelect` function that runs when the player clicks that row. `lib.showContext` takes the `id` you registered and actually opens the menu on screen. Registering and showing are two separate calls on purpose: you can register a menu once at startup and show it many times.
+
+Look closely at what `onSelect` does. It does **not** teleport. It calls `TriggerServerEvent('qu_teleport_menu:request', 'legion')`, which sends a message to the server saying "this player wants to go to legion." That word, `legion`, is the only thing that crosses the network. The client never decides the coordinates here. That sets up the whole point of the lesson.
+
+### Why the server checks the destination
+
+This is the idea the lesson exists to teach, and it comes straight from trust and authority: never let the client be the final word on anything that matters. A player can edit their own client files. If the client picked the coordinates and teleported itself, a cheater could add a menu option that drops them inside a locked bank vault. So the client only sends an **intent**, the name `legion`, and the server decides whether that is allowed.
+
+```lua
+local allowed = { legion = true, airport = true }
+
+RegisterNetEvent('qu_teleport_menu:request', function(destination)
+    local src = source
+    if not allowed[destination] then
+        print('[qu_teleport_menu] rejected source ' .. src .. ' for ' .. tostring(destination))
+        return
+    end
+    print('[qu_teleport_menu] approved source ' .. src .. ' for ' .. destination)
+    TriggerClientEvent('qu_teleport_menu:approved', src, destination)
+end)
+```
+
+`allowed` is an **allow-list**: a table of the only destination names the server will accept. `RegisterNetEvent` registers a handler that runs on the server when a client fires `qu_teleport_menu:request`. Inside a server net event, the global `source` holds the server ID of the player who sent it, so the first line copies it into `src` before anything else can overwrite it. The guard `if not allowed[destination] then ... return end` is the gate: if the player sent a name that is not in the allow-list, the server logs a rejection and returns, and nothing happens. Only when the name passes does the server fire `TriggerClientEvent('qu_teleport_menu:approved', src, destination)`, which sends an approval back to that one player by their `src`.
+
+Notice the shape of the trip. Client to server with `TriggerServerEvent`, then server back to one client with `TriggerClientEvent` plus the target `src`. That out-and-back is the round-trip. The client asks, the server judges, the server answers. A cheater editing the client cannot bypass the `allowed` table, because that table lives on the server where they cannot touch it.
+
+<Checkpoint question="A player edits their client.lua to add a third menu option that sends 'bank_vault' to the server. Do they teleport into the vault?">
+  No. The client can send any string it likes, including `bank_vault`, but the server's handler checks `allowed['bank_vault']`, which is `nil`. The guard `if not allowed[destination]` is true, so the server logs a rejection and returns without ever firing the approval event. The client never receives `qu_teleport_menu:approved`, so `SetEntityCoords` never runs. The only way to add a real destination is to edit the server's `allowed` table, which the player cannot reach. That is server authority in one table.
+</Checkpoint>
+
+### The fade and the teleport
+
+The approval comes back to the client, and only now does the actual move happen.
+
+```lua
+RegisterNetEvent('qu_teleport_menu:approved', function(destination)
+    local c = spots[destination]
+    if not c then return end
+    DoScreenFadeOut(500)
+    Wait(600)
+    SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false)
+    DoScreenFadeIn(500)
+    print('[qu_teleport_menu] moved to ' .. destination)
+end)
+```
+
+`spots` is the client-side table that maps each approved name to a `vec3`, a value holding x, y, and z coordinates. The server sent the name; the client looks up the coordinates. The guard `if not c then return end` protects against a name with no matching spot.
+
+The four lines after that are a small choreography, and the order matters:
+
+- `DoScreenFadeOut(500)` fades the screen to black over 500 milliseconds. The number is the duration in ms.
+- `Wait(600)` pauses this handler for 600 ms. Net event handlers run in a thread that can yield, so `Wait` is allowed here. This number is deliberately larger than the fade. You want the screen fully black **before** you move the player, so they never see the world snap. If you teleport at 400 ms while the fade is still finishing, the player catches a glimpse of the jump. Wait longer than the fade, always.
+- `SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false)` does the move. `PlayerPedId()` returns the handle of the player's own character on this client. The three coordinates are the destination. The four `false` flags are, in order, `keepVehicle` (do not drag a vehicle along), `keepTasks`, `clearArea`, and a deprecated alive flag. For a plain on-foot teleport, all false is fine.
+- `DoScreenFadeIn(500)` fades back from black now that the player is standing in the new spot.
+
+So the sequence reads: black out, wait until fully black, move, fade back in. The teleport hides inside the black frame, which is what makes it feel smooth instead of jarring.
+
+### When you reach for this pattern
+
+The client-asks, server-approves, server-answers round-trip is the backbone of almost every action a player can trigger that the server must police. You just built it once; here is where it shows up again:
+
+- **Job and shop menus.** A player clicks "buy the rifle." The client sends the item id, the server checks the player can afford it and is allowed to buy it, then the server grants it. The client never sets its own money.
+- **Admin teleports and noclip.** Same menu shape, but the server's allow-list is "is this player an admin" instead of a list of place names.
+- **Any menu that grants something.** Garages, stashes, faction doors. The menu is just the UI. The decision always belongs on the server.
+
+When the action is purely cosmetic and local, like opening a settings panel, you can skip the server trip. The moment the action changes anything other players can see or anything a cheater would want, route it through the server.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_teleport_menu does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_teleport_menu", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_teleport_menu, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (global 'lib')", fix: "ox_lib is not started. Add ensure ox_lib to server.cfg before the line that ensures qu_teleport_menu, then restart. The @ox_lib/init.lua import only works when ox_lib is running first." },
+    { symptom: "The menu opens but choosing a place does nothing", fix: "The destination name in onSelect does not match a key in the server allowed table or the client spots table. Check that 'legion' and 'airport' are spelled the same in all three places." },
+    { symptom: "Server console shows rejected source N for ...", fix: "That destination is not in the server allowed table. This is the server doing its job. Add the name to allowed on the server and to spots on the client if it is a real destination." },
+    { symptom: "Screen fades but you do not move, or the world snaps without a clean fade", fix: "Confirm the Wait after DoScreenFadeOut is larger than the fade duration. With DoScreenFadeOut(500) the wait should be 600 or more so the screen is black before SetEntityCoords runs." },
   ]}
 />
 
@@ -126,23 +244,37 @@ end)
 
 <Recap
   items={[
-    "Make the qu_teleport_menu folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ox_lib teleport menu with server validation and screen fade.",
-    "Add ensure qu_teleport_menu to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Build an ox_lib context menu with lib.registerContext and open it with lib.showContext, and explain that ox_lib is a community library that must be started first.",
+    "Send a player intent from the client to the server with TriggerServerEvent instead of acting locally.",
+    "Check that intent against a server-side allow-list and reply to one player with TriggerClientEvent and their source.",
+    "Explain why the destination is validated on the server and not the client, in terms of trust and authority.",
+    "Sequence DoScreenFadeOut, a Wait longer than the fade, SetEntityCoords, and DoScreenFadeIn so the teleport looks smooth.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_teleport_menu`, rerun the test, and confirm the output changed.
+  Add an admin-only destination that the menu offers to everyone but the server refuses unless the player is an admin. Add a third option `Police Armory` to the client menu that sends `armory`, and add `armory` to the client `spots` table with any coordinates you like. On the server, do not put `armory` in the plain `allowed` table. Instead, inside the request handler, check the player's permission before approving it:
+
+  ```lua
+  if destination == 'armory' then
+      if not IsPlayerAceAllowed(src, 'qu_teleport_menu.armory') then
+          print('[qu_teleport_menu] denied armory to source ' .. src)
+          return
+      end
+      TriggerClientEvent('qu_teleport_menu:approved', src, destination)
+      return
+  end
+  ```
+
+  Grant yourself the ace in server.cfg with `add_ace identifier.fivem:YOUR_ID qu_teleport_menu.armory allow`, restart, and confirm you reach the armory while a second account without the ace gets the denied line in the server console. You have now built a menu where the same UI gives different power to different players, with the server as the only judge.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "ox_lib context menu documentation", href: "https://overextended.dev/ox_lib/Modules/Interface/Client/context" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

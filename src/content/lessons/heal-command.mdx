@@ -20,7 +20,7 @@
 />
 
 <Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds server-approved /heal command with client health native as a working FiveM resource named `qu_heal_command`. Follow the folder names, file names, code, restart command, and expected output exactly.
+  This lesson builds a server-approved `/heal` command as a working FiveM resource named `qu_heal_command`. The server decides who is allowed to heal, and the client applies the health. Follow the folder names, file names, code, restart command, and expected output exactly, then read How it works to understand every line.
 </Callout>
 
 ## Build it
@@ -116,14 +116,93 @@ F8: [qu_heal_command] healed
   </Step>
 </StepGroup>
 
+## How it works
+
+You just built a command that crosses the network twice. The chat input lands on the server, the server decides, and the answer travels back to your game to apply the health. Most beginner heal scripts skip the server and heal directly on the client. That version works on your screen and breaks the moment a cheater opens a menu. This one is built the right way from the first line. Here is what every line does.
+
+### The manifest is just a list of files
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+```
+
+`fx_version 'cerulean'` is the manifest format version. `cerulean` is the current one, so always use it. `game 'gta5'` says this resource runs on GTA V. The two `*_script` lines tell FiveM where each file runs. `server.lua` runs once on the server machine, `client.lua` runs on every connected player's PC. That split is the whole reason this command is safe. Notice there is no `lua54 'yes'` line. That directive was removed in June 2025. Lua 5.4 is now the only runtime, so the line does nothing and you should not add it.
+
+### server.lua, the part that says yes
+
+```lua
+local cooldown = {}
+```
+
+This is a Lua table used as a lookup. The key is a player's server id, the value is the last time that player healed. Because it lives in `server.lua`, it exists once on the server, so no player can see it or tamper with it. A client variable would be reset or faked instantly by anyone running a cheat menu. Keeping the rule on the server is the entire point.
+
+```lua
+RegisterCommand('heal', function(src)
+```
+
+`RegisterCommand` tells FiveM that the text `/heal` should run this function. The first argument the function receives is `src`, the server id of the player who typed the command. On the server this number is trustworthy. The player cannot lie about who they are, because FiveM fills in `src` itself. That is why the heal logic belongs here and not on the client.
+
+```lua
+    local now = os.time()
+    if cooldown[src] and now - cooldown[src] < 60 then
+        TriggerClientEvent('qu_heal_command:deny', src, 60 - (now - cooldown[src]))
+        return
+    end
+```
+
+`os.time()` returns the current time in whole seconds. The `if` reads as: if this player has healed before, and fewer than 60 seconds have passed since then, refuse. When it refuses, it fires `qu_heal_command:deny` back to that one player and passes the seconds remaining, then `return` stops the function so the heal never happens. The second argument to `TriggerClientEvent`, the `src`, is the target. The event goes only to the player who asked, not to everyone.
+
+```lua
+    cooldown[src] = now
+    TriggerClientEvent('qu_heal_command:heal', src)
+    print('[qu_heal_command] approved heal for ' .. GetPlayerName(src))
+end, false)
+```
+
+If the code reaches here, the request is approved. It stamps the current time into `cooldown[src]` so the next attempt is measured from now, fires `qu_heal_command:heal` to that one player, and prints a server log so you can see the approval. The `false` at the very end is the `restricted` argument of `RegisterCommand`. `false` means any player may run the command. If you passed `true`, only players with an ace permission could run it, which is how you would build an admin only command later.
+
+### client.lua, the part that does the work
+
+```lua
+RegisterNetEvent('qu_heal_command:heal', function()
+    local ped = PlayerPedId()
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+    print('[qu_heal_command] healed')
+end)
+```
+
+`RegisterNetEvent` listens for a networked event, here the approval the server just sent. `PlayerPedId()` returns the entity handle of your character, the body the camera follows. `GetEntityMaxHealth(ped)` reads the health ceiling for that ped, and `SetEntityHealth` writes it back, so the player refills to full no matter what the max is. Health natives like these only exist on the client because the ped is a client side entity. The server cannot call `SetEntityHealth` on your ped directly, which is exactly why the work is split. The server approves, the client acts.
+
+```lua
+RegisterNetEvent('qu_heal_command:deny', function(seconds)
+    print('[qu_heal_command] wait ' .. seconds .. ' seconds')
+end)
+```
+
+This second listener handles the refusal. It receives the `seconds` the server calculated and prints them to F8. In a finished resource you would replace this print with a chat message or a notification, but as a proof a print is enough to confirm the cooldown path fired.
+
+### The mental model
+
+Picture two rooms. The server room holds the rulebook and never lets players in. The client room is the player's own PC, where the character actually lives. A command is a request slipped under the server door. The server reads its rulebook, the cooldown table, decides yes or no, and slides an answer back. Only on a yes does the client room refill the health. Whenever a script changes something a player should not be able to control, money, health, items, admin powers, the decision lives on the server and the visible effect lives on the client. Events are the slot under the door.
+
+When would you reach for this pattern again? Any time you write a command that grants something. A `/giveweapon`, a `/repair`, a `/revive`, a shop purchase. They all share this shape: the server validates, then the client or the database applies. Learn it once here and you will reuse it for the rest of your scripting.
+
+<Checkpoint question="Why is the cooldown table in server.lua instead of client.lua?">
+  Because the server is the only side a player cannot tamper with. If the cooldown lived in `client.lua`, anyone running a cheat menu could reset or fake the table and heal as often as they liked. Keeping the rule on the server means the answer is decided somewhere the player has no access to. The client only ever receives a yes or a no.
+</Checkpoint>
+
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_heal_command does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_heal_command", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_heal_command, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "approved heal prints in the server console but F8 shows nothing", fix: "You are reading the wrong console for that line, or you are not in game. The healed line only appears in the F8 client console. Join the server and run /heal again." },
+    { symptom: "attempt to index a nil value (global 'cooldown')", fix: "The local cooldown line is missing or sits below RegisterCommand. Put it on the first line of server.lua so the table exists before the command uses it." },
+    { symptom: "Nothing happens and there is no deny message either", fix: "You ran /heal again within 60 seconds, so the cooldown blocked it, but the deny listener is not loading. Confirm client.lua is listed in fxmanifest.lua, restart, then wait the full minute." },
+    { symptom: "Health refills but the server line never prints", fix: "An older client only heal script is also running and answering /heal first. Stop it, then restart qu_heal_command so only this resource owns the command." },
   ]}
 />
 
@@ -131,23 +210,35 @@ F8: [qu_heal_command] healed
 
 <Recap
   items={[
-    "Make the qu_heal_command folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for server-approved /heal command with client health native.",
-    "Add ensure qu_heal_command to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Register a chat command with RegisterCommand and read the trusted src argument it hands you.",
+    "Keep a rule, here a 60 second cooldown, in a server side table players cannot touch.",
+    "Send an approval or a denial to one specific player with TriggerClientEvent and a target src.",
+    "Apply health on the client with PlayerPedId, GetEntityMaxHealth, and SetEntityHealth, and explain why those natives must run client side.",
+    "State the server decides, client acts pattern and name other commands that reuse it."
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_heal_command`, rerun the test, and confirm the output changed.
+  Right now a denied heal only prints to F8, so the player never sees why nothing happened. Make the refusal visible in chat. In `client.lua`, change the deny listener to send a chat message instead of a print:
+
+  ```lua
+  RegisterNetEvent('qu_heal_command:deny', function(seconds)
+      TriggerEvent('chat:addMessage', {
+          args = { 'Heal', 'Wait ' .. seconds .. ' more seconds.' }
+      })
+  end)
+  ```
+
+  Restart `qu_heal_command`, run `/heal` twice within a minute, and confirm the second attempt shows a chat line counting down instead of healing. Bonus: add a matching `chat:addMessage` to the heal listener so a successful heal confirms itself in chat too.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "RegisterCommand native", href: "https://docs.fivem.net/natives/?_0x5FA79B0F" },
+    { label: "SetEntityHealth native", href: "https://docs.fivem.net/natives/?_0x6B76DC1F3AE6E6A3" },
+    { label: "FiveM events: triggering events", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

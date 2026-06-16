@@ -2,13 +2,13 @@
   crumbs="Module 01 · Lesson 06"
   title="Tables: the one data structure to rule them all"
   meta={[
-    { label: "You'll build", value: "A qu_roster resource that prints a live player roster with levels and statuses, stacking everything you learned in Module 01." },
+    { label: "You'll build", value: "A qu_tables resource that prints a live player roster with levels, then proves the reference gotcha live in the console." },
     { label: "Time", value: "~22 minutes (longest in the module, earned)" },
     { label: "You need", value: "Module 01 lessons 01–05 under your belt. Server running. Console visible." },
     { label: "You'll learn", value: "Array tables -> dictionary tables -> ipairs vs pairs -> nested tables -> table.insert / table.remove -> the reference gotcha" },
   ]}
 >
-  In Lua, almost every collection of data is a **table**. Player lists, config files, inventories, job data, and many other things all use tables. This lesson teaches you how to read them, write them, loop through them, and avoid the classic beginner mistake: forgetting that tables are references, not copies.
+  In Lua, almost every collection of data is a **table**. Player lists, config files, inventories, job data: they are all tables. This lesson teaches you how to read them, write them, loop through them, and avoid the classic beginner mistake that the rest of this lesson is built to expose: forgetting that tables are references, not copies.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds array table roster with ipairs and table.insert as a working FiveM resource named `qu_tables`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a player roster as a working server-only FiveM resource named `qu_tables`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes every line apart and then makes the reference gotcha happen on purpose so you never get caught by it.
 </Callout>
 
 ## Build it
@@ -53,20 +53,41 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+    Open `server.lua` and paste this exactly. It packs every concept from the arc into one file, and the two commands at the bottom let you prove the reference gotcha by hand.
 
     ```lua
-local roster = { { name = 'Maya', level = 5 }, { name = 'Rami', level = 12 } }
+    -- Nested table: a list (array) whose values are themselves tables (dictionaries).
+    local roster = {
+        { name = 'Maya', level = 5,  status = 'online' },
+        { name = 'Rami', level = 12, status = 'afk' },
+    }
 
-RegisterCommand('roster', function()
-    table.insert(roster, { name = 'New Player', level = 1 })
-    for index, player in ipairs(roster) do
-        print(('[qu_tables] %d %s level %d'):format(index, player.name, player.level))
+    -- Print the roster in order. ipairs walks 1, 2, 3... and stops at the first gap.
+    local function printRoster()
+        print('[qu_tables] --- roster ---')
+        for index, player in ipairs(roster) do
+            print(('[qu_tables] %d. %s (level %d, %s)'):format(index, player.name, player.level, player.status))
+        end
     end
-end, true)
+
+    -- /roster: add a player to the end, then print the list.
+    RegisterCommand('roster', function()
+        table.insert(roster, { name = 'New Player', level = 1, status = 'online' })
+        printRoster()
+    end, true)
+
+    -- /alias: prove the reference gotcha. We "copy" Maya, then rename the copy.
+    RegisterCommand('alias', function()
+        local maya = roster[1]      -- this does NOT copy Maya. maya now points at the SAME table.
+        maya.name = 'Maya_ALT'      -- so this rename also changes roster[1].name.
+        print(('[qu_tables] alias set name to "%s"'):format(maya.name))
+        print(('[qu_tables] roster[1].name is now "%s" (same table!)'):format(roster[1].name))
+    end, true)
     ```
   </Step>
 
@@ -83,28 +104,144 @@ end, true)
     restart qu_tables
     ```
 
-    Run this test:
+    Run this test in the server console:
 
     ```text
     roster
     ```
 
     <ExpectedOutput>
-      [qu_tables] 1 Maya level 5
-[qu_tables] 2 Rami level 12
-[qu_tables] 3 New Player level 1
+      [qu_tables] --- roster ---
+[qu_tables] 1. Maya (level 5, online)
+[qu_tables] 2. Rami (level 12, afk)
+[qu_tables] 3. New Player (level 1, online)
+    </ExpectedOutput>
+
+    Now run the second command to see the gotcha fire:
+
+    ```text
+    alias
+    ```
+
+    <ExpectedOutput>
+      [qu_tables] alias set name to "Maya_ALT"
+[qu_tables] roster[1].name is now "Maya_ALT" (same table!)
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it, the roster printed in order, and then `alias` renamed one variable and somehow changed the roster too. That second result looks like a bug. It is not. It is the single most important fact about tables in Lua, and the whole point of this lesson. Let us take the file apart in the order it runs.
+
+### Two shapes of table: array vs dictionary
+
+Every table you will ever write is one of two shapes, or a mix of both.
+
+An **array table** uses sequential integer keys starting at 1. You write it as a bare list and Lua numbers the slots for you:
+
+```lua
+local items = { 'bread', 'water', 'radio' }
+-- items[1] is 'bread', items[2] is 'water', items[3] is 'radio'
+```
+
+A **dictionary table** uses named string keys. You write the key, an equals sign, then the value:
+
+```lua
+local player = { name = 'Maya', level = 5, status = 'online' }
+-- player.name is 'Maya', player.level is 5
+```
+
+`player.name` and `player['name']` mean exactly the same thing. The dot is just shorthand for the bracket form when the key is a plain word.
+
+Now look at `roster` in your file. It is **both shapes at once, nested**: an array table on the outside, and each slot holds a dictionary table.
+
+```lua
+local roster = {
+    { name = 'Maya', level = 5,  status = 'online' },
+    { name = 'Rami', level = 12, status = 'afk' },
+}
+```
+
+So `roster[1]` is the whole dictionary `{ name = 'Maya', level = 5, status = 'online' }`, and `roster[1].name` reaches inside it to pull out `'Maya'`. This array-of-dictionaries shape is exactly how FiveM frameworks hand you player lists, inventory slots, and job grades. Learn to read this one structure and most framework data stops looking scary.
+
+### Looping: ipairs versus pairs
+
+```lua
+for index, player in ipairs(roster) do
+    print(('[qu_tables] %d. %s (level %d, %s)'):format(index, player.name, player.level, player.status))
+end
+```
+
+`ipairs` walks an array table **in order**: index 1, then 2, then 3, and it **stops the instant it hits a nil hole**. That ordered, predictable walk is exactly what you want for a roster you intend to print in rank order. On each pass, `index` is the slot number and `player` is the dictionary in that slot.
+
+`pairs` is the other looping tool. It visits **every** key in the table, including string keys, but in **no guaranteed order**. You reach for `pairs` when the table is a dictionary (named keys, no sequence) or when you genuinely do not care about order. The rule of thumb: ordered list, use `ipairs`; bag of named fields, use `pairs`. The trap that bites beginners is using `ipairs` on a table that has a gap, for example slots 1, 2, and 4 with nothing at 3. `ipairs` stops at the hole and silently skips slot 4, and you spend an hour wondering where your data went.
+
+### What ('...'):format(...) is doing
+
+This piece confuses everyone the first time:
+
+```lua
+('[qu_tables] %d. %s (level %d, %s)'):format(index, player.name, player.level, player.status)
+```
+
+In Lua, strings have **methods** you can call on them, and `format` is one. The colon syntax `someString:format(...)` calls the `format` method on that string. The parentheses around the string literal are required so Lua knows you mean to call a method on that exact piece of text. Inside the template, each `%` marker is a slot that gets filled in order by the arguments you pass: `%d` means "a whole number goes here" and `%s` means "a string goes here". So the four arguments drop into the four markers left to right. This is cleaner than gluing strings with `..` once you have more than two pieces, and it is the standard way FiveM scripts build readable log lines.
+
+### Growing the table: table.insert
+
+```lua
+table.insert(roster, { name = 'New Player', level = 1, status = 'online' })
+```
+
+`table.insert` appends a value to the end of an array table and bumps the length by one. Before this line `roster` has two slots; after it, three, and the new dictionary lands at `roster[3]`. That is why your first test printed a third line. Its sibling is `table.remove(roster, 2)`, which deletes slot 2 and then **shifts every later element down** to close the gap, so the old slot 3 becomes the new slot 2. That shifting is the reason you almost never remove items inside an `ipairs` loop: you are renumbering the very list you are walking.
+
+<Checkpoint question="You loop a roster with ipairs and call table.remove on the current slot when a player is offline. Some offline players survive the purge. Why?">
+  Because `table.remove` shifts every later element down by one the moment you delete a slot, but the loop's index keeps marching forward. Remove slot 2 and the old slot 3 slides into slot 2, then the loop moves to slot 3 and skips the element that just moved into 2. The fix is to either loop backwards (from the last index down to 1, so removals never affect slots you have not visited yet) or build a fresh table of the survivors instead of editing the list you are iterating.
+</Checkpoint>
+
+### The reference gotcha (the whole point)
+
+Here is the line that surprised you, broken down:
+
+```lua
+local maya = roster[1]   -- maya points at the SAME table as roster[1]
+maya.name = 'Maya_ALT'   -- editing through maya edits roster[1] too
+```
+
+When you write `local maya = roster[1]`, Lua does **not** copy Maya's dictionary into a new table. It copies the **reference**: the address of the existing table. Now `maya` and `roster[1]` are two names for the one same table in memory. Mutate it through either name and both names see the change, because there is only one table. That is why renaming `maya` also renamed `roster[1]`, exactly as your `alias` output proved.
+
+Numbers and strings do not behave this way. If you write `local x = roster[1].level` and then `x = 99`, you change only `x`; the roster is untouched, because numbers are copied by value. Tables are the exception, and forgetting it causes some of the nastiest FiveM bugs: you "duplicate" a config block or an inventory item, edit the duplicate, and silently corrupt the original that other code still relies on.
+
+When you actually want an independent copy, you must build a new table and copy the fields in yourself:
+
+```lua
+-- A shallow copy: a brand-new table with the same top-level values.
+local function shallowCopy(t)
+    local out = {}
+    for key, value in pairs(t) do
+        out[key] = value
+    end
+    return out
+end
+
+local mayaCopy = shallowCopy(roster[1])
+mayaCopy.name = 'Maya_ALT'   -- now roster[1].name stays 'Maya'
+```
+
+Note this is a **shallow** copy: it copies the top level only. If a value is itself a table, the copy still shares that inner table by reference. For the flat dictionaries in this roster a shallow copy is enough. In real projects most teams reach for a battle-tested deep-copy helper instead, such as the one in `ox_lib` (a community utility library from Overextended, not a Cfx.re built-in), so they do not hand-roll this on every resource.
+
+### When you reach for tables
+
+You reach for a table the moment you have more than one of anything, or more than one fact about one thing. A single player has a name, a level, and a status: that is a dictionary. A list of players is an array of those dictionaries. Config blocks, job grades, vehicle spawn lists, and shop inventories are all this same array-of-dictionaries shape. The reference behaviour matters every time you pass a table into a function or pull one out of a list to edit: you are handing over a live reference, not a snapshot, so the function can change your data out from under you. Decide on purpose whether you want that shared edit or an independent copy.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_tables does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_tables", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_tables, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Resource qu_tables does not exist", fix: "The folder name or the ensure line do not match. The folder must be resources/qu_tables and server.cfg must say ensure qu_tables, spelled identically." },
+    { symptom: "attempt to index a nil value (field 'level')", fix: "A roster entry is missing a key, or you typed player.lvl instead of player.level. Every dictionary in the array needs name, level, and status." },
+    { symptom: "bad argument #2 to 'format' (no value)", fix: "The format template has more % markers than you passed arguments. Count the %d and %s slots and make sure one value follows for each, in order." },
+    { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run roster or alias. Type them in the txAdmin Live Console, not the F8 chat box." },
   ]}
 />
 
@@ -112,26 +249,59 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_tables folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for array table roster with ipairs and table.insert.",
-    "Add ensure qu_tables to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Tell an array table (integer keys) from a dictionary table (string keys), and read a nested array-of-dictionaries like the roster.",
+    "Choose ipairs for an ordered list and pairs for a bag of named keys, and explain why ipairs stops at the first nil hole.",
+    "Use table.insert to append and know that table.remove shifts later indices down, so you do not remove inside a forward ipairs loop.",
+    "Read ('%d %s'):format(...) as a method call on a string literal that fills % markers in order.",
+    "State the reference gotcha out loud: assigning a table copies the reference, not the data, so mutating one name mutates both, and copy fields into a new table when you need independence.",
   ]}
 />
 
 ## Run it live
 
-No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4.
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. The script proves the reference gotcha without FiveM around it: watch the original change when you edit the alias.
 
-<Sandbox initial={`local items = {"bread", "water", "radio"}
-for i, item in ipairs(items) do
-  print(i, item)
-end`} />
+<Sandbox initial={`local roster = {
+  { name = "Maya", level = 5 },
+  { name = "Rami", level = 12 },
+}
+
+-- ipairs walks the list in order
+for i, player in ipairs(roster) do
+  print(("%d. %s (level %d)"):format(i, player.name, player.level))
+end
+
+-- the reference gotcha, live:
+local alias = roster[1]
+alias.name = "Maya_ALT"
+print("alias.name     =", alias.name)
+print("roster[1].name =", roster[1].name)  -- changed too!`} />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_tables`, rerun the test, and confirm the output changed.
+  Add a `/promote` command that gives every roster entry one extra level, then add a `/clone` command that proves you can edit a real copy of a player without touching the original.
+
+  ```lua
+  RegisterCommand('promote', function()
+      for _, player in ipairs(roster) do
+          player.level = player.level + 1
+      end
+      printRoster()
+  end, true)
+
+  RegisterCommand('clone', function()
+      local copy = {}
+      for key, value in pairs(roster[1]) do
+          copy[key] = value
+      end
+      copy.name = copy.name .. '_CLONE'
+      print(('[qu_tables] copy.name      = %s'):format(copy.name))
+      print(('[qu_tables] roster[1].name = %s (unchanged)'):format(roster[1].name))
+  end, true)
+  ```
+
+  Restart `qu_tables`, run `promote` and confirm every level went up by one, then run `clone` and confirm `roster[1].name` stayed put while the copy got the `_CLONE` suffix. The `pairs` loop here is the shallow copy from the lesson: it builds a brand new table so your edit cannot leak back into the roster.
 </Exercise>
 
 <Refs

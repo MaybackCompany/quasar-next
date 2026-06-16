@@ -8,7 +8,7 @@
     { label: "Outcome", value: "One client file that shows a notification, opens a menu, asks for input, and runs a progress bar." },
   ]}
 >
-  So far you have built things the long way so you could see how they work. Now it is time to use the standard toolbox real FiveM servers rely on. `ox_lib` gives you ready-made pop-ups, menus, dialogs, and progress bars so you can focus on script logic instead of rebuilding UI every time.
+  So far you have built things the long way so you could see how they work. Now it is time to use the toolbox most modern FiveM servers reach for. `ox_lib` gives you ready-made pop-ups, menus, dialogs, and progress bars so you can focus on script logic instead of rebuilding UI every time. It is a community library from the Overextended team, not an official Cfx.re resource, but it is so widely used that knowing it is part of the job.
 </LessonHero>
 
 <Prereq
@@ -19,14 +19,25 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ox_lib notify, context menu, input dialog, and progress circle as a working FiveM resource named `qu_ox_lib_notifications_ui`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds an ox_lib notification, context menu, input dialog, and progress circle as a working FiveM resource named `qu_ox_lib_notifications_ui`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why it works.
 </Callout>
 
 ## Build it
 
 <StepGroup>
-  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+  <Step num={1} title="Confirm ox_lib is installed and started" outcome="The lib global will exist when your resource loads.">
+    Your resource borrows the `lib` global from ox_lib, so ox_lib has to be running before your resource starts. In `server.cfg`, ox_lib must be ensured above your lesson resource:
+
+    ```text
+    ensure ox_lib
+    ensure qu_ox_lib_notifications_ui
+    ```
+
+    If you do not have ox_lib yet, download the latest release from the Overextended GitHub and drop the `ox_lib` folder into `resources`. Do not rename it: the `@ox_lib/init.lua` path in the next step depends on the folder being called exactly `ox_lib`.
+  </Step>
+
+  <Step num={2} title="Make the resource folder" outcome="The server has one folder for this lesson.">
     Inside your server's `resources` folder, create this folder:
 
     ```text
@@ -34,7 +45,7 @@
     ```
   </Step>
 
-  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+  <Step num={3} title="Create the files" outcome="Every file named in the manifest exists.">
     Create this exact file layout:
 
     ```text
@@ -44,7 +55,7 @@ resources/qu_ox_lib_notifications_ui/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={4} title="Write fxmanifest.lua" outcome="FiveM knows which files to load, and in what order.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -54,62 +65,171 @@ game 'gta5'
 shared_script '@ox_lib/init.lua'
 client_script 'client.lua'
 
-dependency 'ox_lib'
+dependencies {
+    'ox_lib'
+}
     ```
+
+    Older guides write the dependency as `dependency 'ox_lib'` (singular). That form is still tolerated, but the documented modern form is the plural table `dependencies { 'ox_lib' }`, so that is what you use here.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={5} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `client.lua` and paste this:
 
     ```lua
 RegisterCommand('oxdemo', function()
-    lib.notify({ title = 'qu_ox_lib_notifications_ui', description = 'Notification works', type = 'success' })
-    lib.registerContext({ id = 'qu_ox_lib_notifications_ui_menu', title = 'qu_ox_lib_notifications_ui', options = { { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' } } })
+    lib.notify({
+        title = 'qu_ox_lib_notifications_ui',
+        description = 'Notification works',
+        type = 'success'
+    })
+
+    lib.registerContext({
+        id = 'qu_ox_lib_notifications_ui_menu',
+        title = 'qu_ox_lib_notifications_ui',
+        options = {
+            { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' }
+        }
+    })
+
     lib.showContext('qu_ox_lib_notifications_ui_menu')
 end, false)
 
 RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
-    local input = lib.inputDialog('Name', { 'Name' })
+    local input = lib.inputDialog('Save a name', { 'Name' })
     if not input then return end
+
     lib.progressCircle({ duration = 1000, label = 'Saving' })
+
     print('[qu_ox_lib_notifications_ui] saved ' .. input[1])
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
-
-    ```text
-    ensure qu_ox_lib_notifications_ui
-    ```
-
-    Save, then run:
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the correct console.">
+    With the two `ensure` lines from Step 1 already in `server.cfg`, save the file, then run:
 
     ```text
     restart qu_ox_lib_notifications_ui
     ```
 
-    Run this test:
+    Join the server, then type this in the F8 chat box:
 
     ```text
     /oxdemo
     ```
 
+    A green notification appears, a menu opens with one option, choosing it asks for a name, a progress circle runs for one second, and then the line below prints to your F8 client console. Type `Mike` when the dialog asks.
+
     <ExpectedOutput>
-      F8: [qu_ox_lib_notifications_ui] saved yourName
+      F8: [qu_ox_lib_notifications_ui] saved Mike
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the four widgets fired in sequence. Now take the code apart so the next time you want a notification or a menu you are deciding which ox_lib call to use, not copying a block you do not understand. The whole resource is two pieces: a manifest that loads the library, and a client file that calls into it.
+
+### Why the manifest line `@ox_lib/init.lua` comes first
+
+```lua
+shared_script '@ox_lib/init.lua'
+client_script 'client.lua'
+```
+
+The `@` prefix means "reach into another resource and load this file from it." So `@ox_lib/init.lua` runs ox_lib's own init file inside your resource. That init file is what creates the `lib` global you call everywhere. Without this line, `lib` does not exist in your resource and the first `lib.notify` blows up with `attempt to index a nil value (global 'lib')`.
+
+Order matters here. Manifest entries load top to bottom, so `@ox_lib/init.lua` is listed before `client.lua` on purpose: the library has to be in place before your code tries to use it. It is declared as a `shared_script` rather than a `client_script` because ox_lib runs on both the client and the server, and loading its init on both sides is what lets the same `lib` table work wherever you need it.
+
+The `dependencies { 'ox_lib' }` line is a second, coarser guarantee. It tells the server not to start `qu_ox_lib_notifications_ui` at all until the `ox_lib` resource is already started. The `@` path handles loading the file; the dependency handles resource start order. You want both.
+
+<Checkpoint question="The console says attempt to index a nil value (global 'lib') the moment you run /oxdemo. What is wrong?">
+  The `lib` global was never created in your resource, which almost always means the `shared_script '@ox_lib/init.lua'` line is missing, misspelled, or placed below `client.lua` in the manifest. Check that the line is present, that the folder is named exactly `ox_lib` (the `@` path is case and name sensitive), and that ox_lib is ensured above your resource in `server.cfg`. Fix the manifest, save, then run `restart qu_ox_lib_notifications_ui`.
+</Checkpoint>
+
+### lib.notify and the type field
+
+```lua
+lib.notify({
+    title = 'qu_ox_lib_notifications_ui',
+    description = 'Notification works',
+    type = 'success'
+})
+```
+
+`lib.notify` takes one table of options, not a list of separate arguments. That table style is how almost every ox_lib call works: you pass a single `{ }` and set named keys inside it. Here `title` is the bold top line, `description` is the body text, and `type` controls the colour and icon. The common values are `'success'` (green), `'error'` (red), and `'inform'` (neutral blue). You chose `'success'` so the proof reads as a green toast. There are more keys available, such as `duration`, `position`, and `icon`. The full list lives in the ox_lib docs linked at the bottom of this lesson, and that is the page you will return to most.
+
+### Why the context option uses `event=` and not the handler directly
+
+```lua
+lib.registerContext({
+    id = 'qu_ox_lib_notifications_ui_menu',
+    title = 'qu_ox_lib_notifications_ui',
+    options = {
+        { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' }
+    }
+})
+
+lib.showContext('qu_ox_lib_notifications_ui_menu')
+```
+
+A context menu is built in two moves. `lib.registerContext` defines the menu and stores it under an `id`. `lib.showContext` then opens the menu by that same `id`. Splitting definition from display means you can register a menu once and reopen it as many times as you like.
+
+Each entry in `options` is one row in the menu. Our single row has a `title` (what the player reads) and an `event`. When the player clicks that row, ox_lib fires the named event with `TriggerEvent`, which is why you have a matching `RegisterNetEvent('qu_ox_lib_notifications_ui:ask', ...)` further down. The event fires on the same client that clicked: ox_lib menus are client-side UI, so the click and the handler both live on the player's machine. Nothing crosses the network here.
+
+`event=` is one of two ways to wire a menu row. The other is `onSelect`, where you hand the option an inline function instead of an event name:
+
+```lua
+{ title = 'Ask name', onSelect = function() askForName() end }
+```
+
+`onSelect` is convenient when the action is small and local to this file. `event=` is the better choice when the same action needs to be triggerable from somewhere else too, since any code can `TriggerEvent('qu_ox_lib_notifications_ui:ask')` to reuse it. This lesson uses `event=` so you see the wiring explicitly.
+
+### Why inputDialog returns a table and how the cancel case is handled
+
+```lua
+local input = lib.inputDialog('Save a name', { 'Name' })
+if not input then return end
+```
+
+`lib.inputDialog` opens a form with a title and a list of fields. The second argument `{ 'Name' }` is a list of one field, so the dialog shows one text box labelled `Name`. Because a dialog can have many fields, ox_lib gives you the answers back as a table, indexed in the order the fields were declared. With one field, your answer is `input[1]`. If you had asked for three things, you would read `input[1]`, `input[2]`, and `input[3]`. That is why the print joins `input[1]` and not `input`: `input` is the whole table, `input[1]` is the first answer inside it.
+
+The `if not input then return end` line handles the player pressing Escape or closing the dialog without submitting. In that case `lib.inputDialog` returns `nil` instead of a table. If you skipped this guard and went straight to `input[1]`, indexing `nil` would throw `attempt to index a nil value (local 'input')` every time someone cancels. Reading the cancel path first, before you touch the data, is the habit to keep: treat a cancelled dialog as a normal outcome, not an error.
+
+### Why the progress circle runs after input is collected
+
+```lua
+lib.progressCircle({ duration = 1000, label = 'Saving' })
+print('[qu_ox_lib_notifications_ui] saved ' .. input[1])
+```
+
+`lib.progressCircle` shows a circular timer and, importantly, it blocks until the timer finishes. `duration = 1000` means it waits one thousand milliseconds, one second, before the code continues. So the `print` on the next line does not run until the circle completes. This is why the order on screen is exactly: dialog closes, circle spins for a second, line prints. If you put the progress circle before `lib.inputDialog`, the player would watch a bar fill before you even asked them anything, which makes no sense. The pattern is collect the input first, then show progress while you pretend to do the work, then report the result. In a real script the gap during the progress bar is where you would actually save to a database or call the server.
+
+<Checkpoint question="A teammate moves the lib.progressCircle call above the lib.inputDialog call. What does the player experience, and why?">
+  The progress circle runs first, blocking for a full second while the screen shows a spinner, and only after it finishes does the input dialog appear asking for the name. The behaviour is backwards because `lib.progressCircle` blocks until its `duration` elapses, so whatever you place after it waits. You want the bar to represent work done on data you already have, so the input has to be collected before the circle, not after.
+</Checkpoint>
+
+### When you reach for this pattern
+
+These four calls cover most of the UI a gameplay script needs, and you will combine them constantly:
+
+- **lib.notify** for any quick confirmation or rejection. Bought an item, action failed, cooldown active.
+- **lib.registerContext plus lib.showContext** whenever a player needs to pick from a short list. Shop categories, vehicle options, a job menu.
+- **lib.inputDialog** when you need typed or selected values back. Naming something, entering an amount, choosing from a dropdown.
+- **lib.progressCircle** to gate an action behind a visible timer. Lockpicking, crafting, repairing, anything that should not be instant.
+
+The reason to use ox_lib instead of building these by hand, the way earlier lessons built things from scratch, is consistency and time. Every script on your server using the same library means one visual style and one set of behaviours your players already understand, and you write logic instead of UI plumbing.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_ox_lib_notifications_ui does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_ox_lib_notifications_ui", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_ox_lib_notifications_ui, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (global 'lib')", fix: "ox_lib was not loaded into your resource. Confirm the manifest has shared_script '@ox_lib/init.lua' above client_script, the folder is named exactly ox_lib, and ox_lib is ensured before this resource in server.cfg." },
+    { symptom: "Resource qu_ox_lib_notifications_ui does not exist", fix: "The folder is not inside resources, or the ensure line does not match the folder name exactly. Names are case sensitive." },
+    { symptom: "attempt to index a nil value (local 'input')", fix: "The cancel guard is missing. Add if not input then return end right after lib.inputDialog so an Escape or closed dialog does not try to read input[1]." },
+    { symptom: "/oxdemo does nothing and there is no notification", fix: "Run restart qu_ox_lib_notifications_ui, then trigger /oxdemo from the F8 chat box in game. The command is restricted false, so it runs from chat, not the server console." },
+    { symptom: "The menu opens but clicking the row does nothing", fix: "The option event name and the RegisterNetEvent name must match exactly. Both must read qu_ox_lib_notifications_ui:ask, character for character." },
   ]}
 />
 
@@ -117,23 +237,43 @@ end)
 
 <Recap
   items={[
-    "Make the qu_ox_lib_notifications_ui folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ox_lib notify, context menu, input dialog, and progress circle.",
-    "Add ensure qu_ox_lib_notifications_ui to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain that @ox_lib/init.lua loads ox_lib's lib global into your resource, why it must sit above client.lua, and why ox_lib is ensured first.",
+    "Show a notification with lib.notify and pick the right type of success, error, or inform.",
+    "Build a context menu with lib.registerContext and open it with lib.showContext, and wire a row with event= versus onSelect.",
+    "Read a value back from lib.inputDialog as input[1] and handle the cancel case with if not input then return end.",
+    "Use lib.progressCircle as a blocking timer and place it after the input it depends on.",
+    "Say that ox_lib is an Overextended community library and find its full options in the ox_lib docs.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_ox_lib_notifications_ui`, rerun the test, and confirm the output changed.
+  Extend the dialog to collect two fields and gate the save behind a longer timer. Ask for both a name and an amount, then report both:
+
+  ```lua
+  RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
+      local input = lib.inputDialog('Save a record', { 'Name', 'Amount' })
+      if not input then return end
+
+      lib.progressCircle({ duration = 2500, label = 'Saving record' })
+
+      lib.notify({
+          title = 'Saved',
+          description = input[1] .. ' set to ' .. input[2],
+          type = 'success'
+      })
+      print('[qu_ox_lib_notifications_ui] saved ' .. input[1] .. ' = ' .. input[2])
+  end)
+  ```
+
+  Restart `qu_ox_lib_notifications_ui`, run `/oxdemo`, choose the menu row, and enter a name and an amount. Confirm the progress circle now runs for 2.5 seconds, a second notification reports both values, and F8 prints a line like `[qu_ox_lib_notifications_ui] saved Mike = 500`. You just read a second field as `input[2]`, proving the dialog hands answers back in field order.
 </Exercise>
 
 <Refs
   items={[
+    { label: "ox_lib documentation (Overextended)", href: "https://overextended.dev/ox_lib" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

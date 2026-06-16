@@ -2,13 +2,13 @@
   crumbs="Module 07 · Lesson 22, Capstone"
   title="Capstone: a mini bank, step by step"
   meta={[
-    { label: "You'll build", value: "qu_bank: one table in MySQL, one server file, one client file." },
+    { label: "You'll build", value: "qu_bank: one balance table in MariaDB and one server file that runs /bank deposit, withdraw, and balance." },
     { label: "Time", value: "About 60 minutes if you have never used oxmysql before." },
     { label: "Prereqs", value: "Lessons 14 (events), 15 (callbacks), and 16 (ox_lib menus)." },
-    { label: "Outcome", value: "A bank a cheater cannot drain, because the server holds the truth." },
+    { label: "Outcome", value: "A bank a cheater cannot drain, because the server holds the truth and rejects a withdraw larger than the balance." },
   ]}
 >
-  By the end of this lesson you will run a working `/bank` command that lets a player deposit cash, withdraw cash, and check a balance saved in MySQL.
+  By the end of this lesson you will run a working `/bank` command that lets a player deposit cash, withdraw cash, and check a balance saved in MariaDB. The balance lives only on the server, and a withdraw larger than the balance is refused. That refusal is the capstone idea: the server holds the truth, so the client cannot lie its way to free money.
 </LessonHero>
 
 <LessonVideo loomId="cd89f7885d564617bb886d16649de125" title="ATM robbery with ox_lib" caption="Cruze builds an ATM robbery with ox_lib, the same server-authority pattern." />
@@ -17,12 +17,13 @@
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I have oxmysql installed and a MariaDB database connection string set in server.cfg.",
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds server-authoritative oxmysql deposit flow as a working FiveM resource named `qu_mini_banking_capstone`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a server-authoritative bank as a working FiveM resource named `qu_bank`. Follow the folder names, file names, SQL, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why a cheater cannot drain it.
 </Callout>
 
 ## Build it
@@ -32,7 +33,7 @@
     Inside your server's `resources` folder, create this folder:
 
     ```text
-    resources/qu_mini_banking_capstone
+    resources/qu_bank
     ```
   </Step>
 
@@ -40,10 +41,12 @@
     Create this exact file layout:
 
     ```text
-resources/qu_mini_banking_capstone/
+resources/qu_bank/
   fxmanifest.lua
   server.lua
     ```
+
+    This is a server-only resource. There is no client file and no NUI, so there is no F8 output to read. Every line you see will land in the txAdmin Live Console.
   </Step>
 
   <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
@@ -56,68 +59,200 @@ game 'gta5'
 server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
-dependency 'oxmysql'
+dependencies {
+    'oxmysql'
+}
     ```
 
-    Run this SQL before starting the resource:
-
-    ```sql
-CREATE TABLE IF NOT EXISTS qu_mini_banking_capstone_rows (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(80) NOT NULL,
-  amount INT NOT NULL DEFAULT 0
-);
-    ```
+    Notice there is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored, since Lua 5.4 is now the only Lua runtime. The `dependencies { 'oxmysql' }` block is the canonical plural form: it tells the server to start oxmysql before `qu_bank`, so the `@oxmysql/lib/MySQL.lua` import resolves. You may see the singular `dependency 'oxmysql'` in older code; it is tolerated, but the plural block is the form to learn.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Create the balance table" outcome="The database has one row per player, keyed so it cannot duplicate.">
+    Run this SQL in your database before starting the resource. oxmysql speaks to MariaDB, which is the recommended engine for FiveM in 2026:
+
+    ```sql
+CREATE TABLE IF NOT EXISTS qu_bank_accounts (
+  citizenid VARCHAR(64) NOT NULL,
+  balance INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (citizenid)
+);
+    ```
+
+    The table keys on `citizenid`, not an auto-increment `id`. That primary key is what makes the account unique: one row per player, and the database itself refuses to store a second row for the same `citizenid`. A real bank needs exactly this shape.
+  </Step>
+
+  <Step num={5} title="Write the lesson code" outcome="The /bank command runs deposit, withdraw, and balance on the server.">
     Open `server.lua` and paste this:
 
     ```lua
-RegisterCommand('dbtest', function(src)
-    local id = MySQL.insert.await('INSERT INTO qu_mini_banking_capstone_rows (name, amount) VALUES (?, ?)', { 'lesson', 100 })
-    local row = MySQL.single.await('SELECT * FROM qu_mini_banking_capstone_rows WHERE id = ?', { id })
-    print('[qu_mini_banking_capstone] selected ' .. row.name .. ' ' .. row.amount)
-    MySQL.update.await('UPDATE qu_mini_banking_capstone_rows SET amount = ? WHERE id = ?', { 150, id })
-    print('[qu_mini_banking_capstone] updated ' .. id)
+-- For the lesson we use one fixed account so you can test from the console.
+-- In a real server this comes from the player's framework identity.
+local TEST_CITIZEN = 'ABC12345'
+
+-- Read the balance, creating the account at 0 on first touch.
+local function getBalance(citizenid)
+    local row = MySQL.single.await(
+        'SELECT balance FROM qu_bank_accounts WHERE citizenid = ?',
+        { citizenid }
+    )
+    if not row then
+        MySQL.insert.await(
+            'INSERT INTO qu_bank_accounts (citizenid, balance) VALUES (?, ?)',
+            { citizenid, 0 }
+        )
+        return 0
+    end
+    return row.balance
+end
+
+RegisterCommand('bank', function(source, args)
+    local action = args[1]
+    local amount = tonumber(args[2]) or 0
+    local citizenid = TEST_CITIZEN
+    local balance = getBalance(citizenid)
+
+    if action == 'balance' then
+        print('[qu_bank] balance for ' .. citizenid .. ' is ' .. balance)
+
+    elseif action == 'deposit' then
+        local newBalance = balance + amount
+        MySQL.update.await(
+            'UPDATE qu_bank_accounts SET balance = ? WHERE citizenid = ?',
+            { newBalance, citizenid }
+        )
+        print('[qu_bank] deposited ' .. amount .. ', balance now ' .. newBalance)
+
+    elseif action == 'withdraw' then
+        if amount > balance then
+            print('[qu_bank] REJECTED withdraw of ' .. amount .. ', balance is only ' .. balance)
+            return
+        end
+        local newBalance = balance - amount
+        MySQL.update.await(
+            'UPDATE qu_bank_accounts SET balance = ? WHERE citizenid = ?',
+            { newBalance, citizenid }
+        )
+        print('[qu_bank] withdrew ' .. amount .. ', balance now ' .. newBalance)
+
+    else
+        print('[qu_bank] usage: bank deposit|withdraw|balance <amount>')
+    end
 end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the txAdmin console.">
     Open `server.cfg` and add this line:
 
     ```text
-    ensure qu_mini_banking_capstone
+    ensure qu_bank
     ```
 
     Save, then run:
 
     ```text
-    restart qu_mini_banking_capstone
+    restart qu_bank
     ```
 
-    Run this test:
+    Now run these four commands in order, from the txAdmin Live Console:
 
     ```text
-    dbtest
+    bank balance
+    bank deposit 100
+    bank withdraw 250
+    bank withdraw 40
     ```
 
     <ExpectedOutput>
-      [qu_mini_banking_capstone] selected lesson 100
-[qu_mini_banking_capstone] updated rowId
+      [qu_bank] balance for ABC12345 is 0
+[qu_bank] deposited 100, balance now 100
+[qu_bank] REJECTED withdraw of 250, balance is only 100
+[qu_bank] withdrew 40, balance now 60
     </ExpectedOutput>
+
+    The third line is the whole point. You asked to withdraw 250 from a balance of 100, and the server said no. The balance never went negative, and the fourth line proves the account still works afterward.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the bank refused an over-withdraw. That refusal is what separates a real bank from a number on a screen. Now take the code apart so you understand where the truth lives and why a cheater cannot move it.
+
+### Why the balance lives only on the server
+
+In FiveM, a `client_script` runs inside every player's own game, on their own machine. A `server_script` runs once, on the box you control. The single most important security rule in the whole platform follows from that split: never trust a number the client sends you, only trust what the server decides.
+
+If the balance lived on the client, a cheater would edit it to a billion and you could not stop them, because they own that machine. So the balance lives in the database, which only the server can read and write. The client is allowed to *ask* for a deposit or a withdraw, but the server is the one that checks the rules and changes the number. That is what "server authority" means, and it is the reason this lesson is the capstone.
+
+In this lesson the command runs from the console, which is already on the server, so you are testing the authoritative half directly. In a finished feature the player's UI would fire a client to server event or an `ox_lib` callback with the requested amount, and this exact server code would be the handler that validates it. The validation does not move when you add a UI. It stays right here.
+
+### The reject-if-larger check
+
+```lua
+if amount > balance then
+    print('[qu_bank] REJECTED withdraw of ' .. amount .. ', balance is only ' .. balance)
+    return
+end
+```
+
+This is the four lines that make it a bank. Before any money moves, the server compares the requested `amount` against the `balance` it just read from its own database. If the request is too big, it prints a rejection and `return`s immediately, so the `UPDATE` below never runs and the balance never changes. The client does not get a vote. It can send `withdraw 999999999` all day and the answer is the same.
+
+Notice the order: read the real balance first, then check, then write. If you checked against a number the client sent instead of the number the server read, you would have rebuilt the exact hole you were trying to close. The check is only worth anything because it runs against server-owned data.
+
+### MySQL.single, insert, and update with .await
+
+```lua
+local row = MySQL.single.await(
+    'SELECT balance FROM qu_bank_accounts WHERE citizenid = ?',
+    { citizenid }
+)
+```
+
+`MySQL` here is the oxmysql library. oxmysql is a community resource from Overextended, not an official Cfx.re component, and it is the standard database layer most modern FiveM servers use. The three calls you used each do one job:
+
+- `MySQL.single` returns one row, or `nil` if nothing matched.
+- `MySQL.insert` runs an INSERT and returns the new row's auto-increment id.
+- `MySQL.update` runs an UPDATE and returns how many rows changed.
+
+The `.await` on the end is the part worth slowing down on. A database query takes time, and you do not want to freeze the whole server while it runs. So oxmysql runs the query in the background. The `.await` suffix says: pause *this* command handler until the result comes back, then hand me the value and continue. The rest of the server keeps running the whole time. Without `.await` you would use a callback instead, passing a function that fires later with the result, and your code would read out of order. `.await` lets you write the query as a straight line and read the result on the very next line, which is far easier to reason about.
+
+One rule comes with `.await`: it only works inside a coroutine. A FiveM command handler already runs inside one, so you are fine here. If you ever call `.await` at the top level of a file, outside any thread or handler, you will get an error, because there is no coroutine to pause. When that happens, wrap the call in `Citizen.CreateThread(function() ... end)`.
+
+The `?` marks in the SQL are placeholders. The real values come from the table in the second argument, like `{ citizenid }`. Always pass values this way. Never glue a player's input straight into the SQL string, or you open the door to SQL injection.
+
+### Why one row per player beats a generic table
+
+```sql
+PRIMARY KEY (citizenid)
+```
+
+The table keys on `citizenid` and stores exactly one balance per player. Compare that to a generic log table with an auto-increment `id` that just appends a row every time something happens. With the per-player design, reading a balance is one lookup by `citizenid`, and there is physically no way to end up with two conflicting balances for the same person, because the primary key forbids a duplicate. That guarantee is doing real work: it is the database enforcing "one account per player" for you, even if your code has a bug.
+
+This is also why you would reach for an upsert in a fuller version. An upsert (INSERT ... ON DUPLICATE KEY UPDATE) only works because `citizenid` is a unique key. Without that key the database has nothing to detect the duplicate on, and the upsert silently inserts a second row instead. In this lesson we kept it explicit with a SELECT then INSERT then UPDATE so each step is visible, but the unique key is what makes the safe version possible later.
+
+<Checkpoint question="A player edits their game memory and sends the server a withdraw request for 1,000,000 from an account holding 50. Why do they still get nothing?">
+  Because the amount lives on the client, but the balance and the decision live on the server. The server reads the real balance (50) from its own database, compares the requested 1,000,000 against it, sees the request is larger, prints a rejection, and returns before any UPDATE runs. The player can lie about how much they want, but they cannot touch the number the server reads, so the check always runs against the truth. The only thing the client controls is the request, never the answer.
+</Checkpoint>
+
+### When you reach for this pattern
+
+This read, check, then write shape is the backbone of every economy feature you will ever build in FiveM. Three real cases:
+
+- **Any money transfer.** Paychecks, shop purchases, player to player transfers. Each one reads a balance, checks a rule (enough funds, valid target), then writes. Skip the check and you have a money printer.
+- **Limited inventory or stock.** A shop with five of an item left does the same dance: read the count, refuse if zero, then decrement. The item count is your balance.
+- **Cooldowns and limits.** A heist a player may run once an hour reads the last-run time, checks it is old enough, then writes the new time. Same pattern, different number.
+
+In every one of these, the rule is the same: the server reads its own data, decides, and only then writes. The client asks. It never decides.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_mini_banking_capstone does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_mini_banking_capstone", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_mini_banking_capstone, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Resource qu_bank does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name, qu_bank." },
+    { symptom: "Failed to execute query ... near 'qu_bank_accounts'", fix: "You started the resource before running the CREATE TABLE SQL. Run the SQL from step 4, then restart qu_bank." },
+    { symptom: "No such export oxmysql ... or MySQL is nil", fix: "oxmysql is not started before qu_bank. Confirm ensure oxmysql comes before ensure qu_bank in server.cfg, and that the dependencies block names oxmysql." },
+    { symptom: "Connection refused / unable to connect to the database", fix: "Your MariaDB connection string is wrong or the server is not running. Check the mysql_connection_string convar in server.cfg points at a live MariaDB instance." },
+    { symptom: "attempt to perform arithmetic on a nil value (amount)", fix: "You ran bank deposit with no number. tonumber(args[2]) fell back to 0; pass an amount, like bank deposit 100." },
   ]}
 />
 
@@ -125,23 +260,45 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_mini_banking_capstone folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for server-authoritative oxmysql deposit flow.",
-    "Add ensure qu_mini_banking_capstone to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain why a balance must live on the server, and why the client may only request a change, never make one.",
+    "Write a reject-if-larger check that reads the real balance first, then refuses an over-withdraw before any write runs.",
+    "Use MySQL.single, MySQL.insert, and MySQL.update with .await, and explain that .await pauses the handler until the query returns and only works inside a coroutine.",
+    "Design a one-row-per-player balance table keyed on citizenid, and say why that primary key prevents duplicate accounts and enables a safe upsert.",
+    "Pass values through ? placeholders instead of concatenating user input into SQL.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_mini_banking_capstone`, rerun the test, and confirm the output changed.
+  Add a `transfer` action so a player can move money to another account, with the server enforcing every rule. Extend the command to accept `bank transfer &lt;toCitizenid&gt; &lt;amount&gt;`:
+
+  ```lua
+  elseif action == 'transfer' then
+      local target = args[2]
+      local moveAmount = tonumber(args[3]) or 0
+      if moveAmount <= 0 then
+          print('[qu_bank] transfer amount must be positive')
+          return
+      end
+      if moveAmount > balance then
+          print('[qu_bank] REJECTED transfer of ' .. moveAmount .. ', balance is only ' .. balance)
+          return
+      end
+      local targetBalance = getBalance(target)
+      MySQL.update.await('UPDATE qu_bank_accounts SET balance = ? WHERE citizenid = ?', { balance - moveAmount, citizenid })
+      MySQL.update.await('UPDATE qu_bank_accounts SET balance = ? WHERE citizenid = ?', { targetBalance + moveAmount, target })
+      print('[qu_bank] transferred ' .. moveAmount .. ' to ' .. target)
+  ```
+
+  Restart `qu_bank`, run `bank deposit 200`, then `bank transfer XYZ99999 250` and confirm it is rejected, then `bank transfer XYZ99999 50` and confirm both balances move. Notice you added two server-side checks: the amount must be positive, and it cannot exceed the balance. A real transfer also needs the two updates to succeed or fail together as a transaction, which is the next thing to learn after this.
 </Exercise>
 
 <Refs
   items={[
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM events and server authority", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

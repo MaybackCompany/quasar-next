@@ -2,13 +2,13 @@
   crumbs="Module 08 · Lesson 24"
   title="Spawning entities safely"
   meta={[
-    { label: "You'll ship", value: "A script that loads a model, spawns a prop, registers it in a table, and deletes it cleanly on command." },
+    { label: "You'll ship", value: "A client resource that loads a model, spawns a prop in front of you, tracks it in a registry table, auto-deletes it after 30 seconds, and clears everything on command and on restart." },
     { label: "Time", value: "~25 minutes" },
-    { label: "You'll learn", value: "What entities are, how model loading works, spawn functions for objects/peds/vehicles, and the entity registry pattern." },
-    { label: "Prereqs", value: "Comfortable with tables, client/server split, and registering commands." },
+    { label: "You'll learn", value: "What an entity is, the model load lifecycle, the CreateObject argument list, the registry-and-cleanup pattern, and how the same shape extends to peds and vehicles." },
+    { label: "Prereqs", value: "Comfortable with tables, the client/server split, and registering commands." },
   ]}
 >
-  Everything you see in the game world -- every car, every pedestrian, every traffic cone -- is an **entity**. In this lesson you learn how to create them from code, track them in a table, and delete them when you are done. This is the foundation for props, NPCs, and vehicle spawners.
+  Everything you see in the game world -- every car, every pedestrian, every traffic cone -- is an **entity**. In this lesson you learn how to create one from code, track it in a table, and delete it cleanly so it never lingers in the world. This is the foundation every prop, NPC, and vehicle spawner is built on.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds model load, CreateObject, registry, and DeleteEntity as a working FiveM resource named `qu_spawning_entities_safely`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds model load, `CreateObject`, a registry table, and clean deletion as a working client resource named `qu_spawning_entities_safely`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you can spawn anything, not just this one box.
 </Callout>
 
 ## Build it
@@ -44,7 +44,7 @@ resources/qu_spawning_entities_safely/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which file to load.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -53,6 +53,8 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -67,7 +69,7 @@ RegisterCommand('spawnbox', function()
     while not HasModelLoaded(model) do Wait(0) end
 
     local coords = GetEntityCoords(PlayerPedId())
-    local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, true, true, false)
+    local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, false, false, false)
     objects[object] = true
     SetModelAsNoLongerNeeded(model)
     print('[qu_spawning_entities_safely] spawned object ' .. object)
@@ -76,61 +78,212 @@ RegisterCommand('spawnbox', function()
         if DoesEntityExist(object) then
             DeleteEntity(object)
             objects[object] = nil
-            print('[qu_spawning_entities_safely] timeout deleted object')
+            print('[qu_spawning_entities_safely] timeout deleted object ' .. object)
         end
     end)
 end, false)
 
 RegisterCommand('clearboxes', function()
+    local count = 0
     for object in pairs(objects) do
         if DoesEntityExist(object) then DeleteEntity(object) end
         objects[object] = nil
+        count = count + 1
     end
-    print('[qu_spawning_entities_safely] registry cleared')
+    print('[qu_spawning_entities_safely] registry cleared, removed ' .. count)
 end, false)
 
 AddEventHandler('onResourceStop', function(name)
-    if name == GetCurrentResourceName() then
-        ExecuteCommand('clearboxes')
+    if name ~= GetCurrentResourceName() then return end
+    for object in pairs(objects) do
+        if DoesEntityExist(object) then DeleteEntity(object) end
     end
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the F8 client console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_spawning_entities_safely
     ```
 
-    Save, then run:
+    Save, then run in the txAdmin Live Console:
 
     ```text
     restart qu_spawning_entities_safely
     ```
 
-    Run this test:
+    Now join the server, open the F8 console, and run this test. Spawn one box, spawn a second, then clear them. Watch a box appear two metres in front of you each time:
 
     ```text
-    /spawnbox then /clearboxes
+    spawnbox
+    spawnbox
+    clearboxes
     ```
 
+    Then spawn one more box and **do not** clear it. Wait 30 seconds and watch it delete itself.
+
     <ExpectedOutput>
-      F8: [qu_spawning_entities_safely] spawned object
-F8: [qu_spawning_entities_safely] registry cleared
+[qu_spawning_entities_safely] spawned object 73
+[qu_spawning_entities_safely] spawned object 122
+[qu_spawning_entities_safely] registry cleared, removed 2
+[qu_spawning_entities_safely] spawned object 145
+[qu_spawning_entities_safely] timeout deleted object 145
     </ExpectedOutput>
+
+    The handle numbers (73, 122, 145) will differ on your machine. They are runtime handles the game hands out, not fixed IDs. What matters is that every spawn prints a handle, `clearboxes` reports how many it removed, and an uncleared box prints its own `timeout deleted` line about half a minute later.
   </Step>
 </StepGroup>
+
+## How it works
+
+You spawned a box, cleared it, and watched a stray one delete itself. Now take the code apart so the next time you need a prop, an NPC, or a parked car you are deciding, not copying. The whole file is built from three ideas stacked on top of each other: load a model, create an entity from it, and never lose track of what you created.
+
+### Loading the model before you spawn
+
+```lua
+local model = joaat('prop_boxpile_07d')
+RequestModel(model)
+while not HasModelLoaded(model) do Wait(0) end
+```
+
+A model in GTA is an asset on disk: a mesh, textures, a collision shape. You cannot place one in the world until the game has it loaded into memory. These three lines are the load lifecycle, and you will repeat this exact shape for every entity you ever spawn.
+
+`joaat('prop_boxpile_07d')` turns the model **name** into a **hash**. The game does not look entities up by readable string names at runtime; it looks them up by a number called a joaat hash (the name comes from Jenkins one-at-a-time, the hashing algorithm Rockstar uses). `joaat` is the FiveM helper that computes that number for you from the string. You will also see `GetHashKey('prop_boxpile_07d')` in older code. It does the exact same thing and returns the exact same number. `joaat` is the newer, shorter name; prefer it, but treat the two as interchangeable.
+
+`RequestModel(model)` asks the engine to stream that model in. It does not block and it does not finish instantly. It just files the request and returns.
+
+`while not HasModelLoaded(model) do Wait(0) end` is the part beginners skip and then wonder why their prop never appears. `RequestModel` is a request, not a guarantee. You have to wait until the model is actually in memory before you spawn from it, or `CreateObject` runs against a model that is not ready and you get nothing. `HasModelLoaded` returns `true` once the load finishes. The loop keeps yielding one frame at a time with `Wait(0)` until that happens. `Wait(0)` is what makes this safe: it hands control back to the game each frame instead of freezing it, so the engine actually gets time to do the loading you asked for. A bare `while not HasModelLoaded(model) do end` with no `Wait` would hang the client.
+
+### Creating the object
+
+```lua
+local coords = GetEntityCoords(PlayerPedId())
+local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, false, false, false)
+```
+
+`PlayerPedId()` is your character's entity handle, and `GetEntityCoords` returns its position as a vector with `.x`, `.y`, and `.z` fields. You read your own position so you can spawn the box near yourself instead of at some fixed corner of the map.
+
+The `coords.x + 2.0` is deliberate. If you spawned at exactly `coords.x, coords.y, coords.z` the box would appear inside your character, which looks broken and can shove you. Adding 2.0 to the x coordinate offsets the spawn two metres to the side so it lands in front of you where you can see it. Coordinates in GTA are in metres.
+
+`CreateObject` is the native that actually places the prop and returns its **entity handle**, the number you saw printed. Read its arguments in order:
+
+- `model` is the loaded hash from step one.
+- `coords.x + 2.0, coords.y, coords.z` is where to place it.
+- the first `false` is **isNetwork**. `false` means this prop is local to your client only; other players will not see it. Pass `true` to register it with the network so everyone sees the same object.
+- the second `false` is **netMissionEntity** (also called registerAsNetworked or the script-host flag). It only matters when the object is networked; it controls whether the object is treated as a mission entity that survives ownership changes. For a local prop it stays `false`.
+- the last `false` is **doorFlag**, a niche flag for door objects. Leave it `false` for ordinary props.
+
+The original draft passed `true, true` for the first two flags, which networks the prop to every player. For a single-player teaching proof that is overkill and makes the entity behave differently than the lesson claims, so this version keeps it local with `false, false`. The line in **When you reach for this pattern** below tells you exactly when to flip them.
+
+### Freeing the model
+
+```lua
+SetModelAsNoLongerNeeded(model)
+```
+
+Once the object exists in the world, the engine no longer needs your reserved copy of the model in memory. `SetModelAsNoLongerNeeded` tells it you are done with that asset so it can be unloaded when nothing else is using it. This does not delete the object you just spawned; the object holds its own reference. Skipping this line will not break a single spawn, but a spawner that runs hundreds of times and never frees its models slowly leaks memory. Call it every time, right after the spawn succeeds.
+
+### The registry and why it exists
+
+```lua
+objects[object] = true
+```
+
+This one line is what the lesson title is really about. `objects` is a plain Lua table declared at the top of the file. Every time you spawn, you record the new handle as a key. The value `true` is just a marker; you only care that the key exists. Now `objects` is a live list of everything this resource has created and has not yet deleted.
+
+Why bother? Because a handle is the only way to delete an entity later, and the moment `spawnbox` returns, that local `object` variable is gone. Without a registry you would have spawned a box you can never reference again, which means you can never clean it up. Tracking handles in a table is the difference between a spawner and a litter machine.
+
+```lua
+for object in pairs(objects) do
+    if DoesEntityExist(object) then DeleteEntity(object) end
+    objects[object] = nil
+    count = count + 1
+end
+```
+
+`clearboxes` walks the registry and deletes each tracked entity. Two details carry the safety:
+
+- `DoesEntityExist(object)` guards every `DeleteEntity`. An entity can already be gone for reasons outside your control: the timeout fired, another resource removed it, the area streamed out. Calling `DeleteEntity` on a handle that no longer points at anything is asking for trouble. The guard means you only delete what is genuinely still there.
+- `objects[object] = nil` removes the key from the table after handling it. If you deleted the entity but left the handle in the registry, the next clear would try to delete a dead handle, and your registry would grow forever with ghosts.
+
+### Auto-delete and restart cleanup
+
+```lua
+SetTimeout(30000, function()
+    if DoesEntityExist(object) then
+        DeleteEntity(object)
+        objects[object] = nil
+        print('[qu_spawning_entities_safely] timeout deleted object ' .. object)
+    end
+end)
+```
+
+`SetTimeout(30000, fn)` is a FiveM helper that runs `fn` once after 30000 milliseconds. It is the resource's safety net: even if you never type `clearboxes`, every box removes itself after 30 seconds. Notice the same `DoesEntityExist` guard, because by the time the timeout fires you may have already cleared that box by hand; the guard stops a double delete. This timeout branch is half the point of the lesson, which is why the expected output above shows its `timeout deleted object` line.
+
+```lua
+AddEventHandler('onResourceStop', function(name)
+    if name ~= GetCurrentResourceName() then return end
+    for object in pairs(objects) do
+        if DoesEntityExist(object) then DeleteEntity(object) end
+    end
+end)
+```
+
+`onResourceStop` fires for every resource that stops, so the first line checks the stopping resource is this one with `GetCurrentResourceName()` and bails out otherwise. When it is your resource, the handler sweeps the registry and deletes whatever is still alive. This is the line that makes the lesson "safe": without it, every time you restart the resource during development, the boxes you already spawned would be orphaned in the world with no script left tracking them, and only a full server restart would clear them. Cleaning up on stop means a restart is always a clean slate.
+
+<Checkpoint question="Why does the code track handles in the objects table instead of just deleting the prop right after CreateObject?">
+  Because spawning and deleting happen at different moments, and the handle is the only reference you have to the entity. The `spawnbox` handler finishes the instant the box appears, and its local `object` variable disappears with it. The box, however, stays in the world. `clearboxes`, the 30-second timeout, and `onResourceStop` all run later and need a way to find every box that is still out there. Storing each handle as a key in `objects` keeps a live list across those separate moments, so any of them can loop the table, guard with `DoesEntityExist`, and delete cleanly. Delete-immediately would defeat the purpose; the whole point is a prop that exists for a while and is still tracked.
+</Checkpoint>
+
+### Entity handle versus network id
+
+The number you printed is an **entity handle**: a runtime reference that is only valid on the client that created it, only while the entity exists. It is not a stable id and it is not shared. If you spawn the box as networked (the first `CreateObject` flag set to `true`), the entity also gets a **network id** that every client agrees on, which you read with `NetworkGetNetworkIdFromEntity(object)`. Other clients then turn that network id back into their own local handle. For this lesson the box is local, so there is no network id and no other player sees it. Keep the distinction straight: handles are local and per-client, network ids are the shared identity that crosses the wire.
+
+### The same shape for peds and vehicles
+
+Props are the gentlest entity to start with, but `CreateObject` is one of three siblings. Peds and vehicles load their models the exact same way and only differ in the create call:
+
+```lua
+-- A pedestrian: CreatePed(pedType, model, x, y, z, heading, isNetwork, netMissionEntity)
+local model = joaat('a_m_y_business_03')
+RequestModel(model)
+while not HasModelLoaded(model) do Wait(0) end
+local ped = CreatePed(4, model, coords.x + 2.0, coords.y, coords.z, 0.0, false, false)
+SetModelAsNoLongerNeeded(model)
+
+-- A vehicle: CreateVehicle(model, x, y, z, heading, isNetwork, netMissionEntity)
+local model = joaat('adder')
+RequestModel(model)
+while not HasModelLoaded(model) do Wait(0) end
+local veh = CreateVehicle(model, coords.x + 4.0, coords.y, coords.z, 90.0, false, false)
+SetModelAsNoLongerNeeded(model)
+```
+
+`CreatePed` takes a `pedType` as its first argument; `4` means a civilian network ped and is the safe default. `CreateVehicle` takes a `heading` in degrees so the car faces a direction. Everything else is identical: same load loop, same `SetModelAsNoLongerNeeded`, same idea of tracking the returned handle in a registry and deleting it the same way. Learn the prop and you have learned all three.
+
+### When you reach for this pattern
+
+Registry-tracked spawning is not a beginner toy you leave behind. It is the backbone of real resources:
+
+- **Placeable props.** A furniture system, a sign placer, a crime-scene markers tool. Players spawn objects, the resource tracks them, and a clear or a restart never litters the map.
+- **Job and event vehicles.** A mechanic that spawns a tow truck, a heist that spawns getaway cars. You hold the handles so you can despawn them when the job ends. For these you set the first `CreateObject`/`CreateVehicle` flag to `true` so every player sees the same entity, and you usually spawn from the server for shared ownership.
+- **NPC encounters.** A shopkeeper, a quest giver, a wave of enemies. Spawn with `CreatePed`, register the handles, and tear them down when the scene is over so peds never pile up.
+
+The discipline is always the same: load, create, register, guard, delete on stop. Once that loop is muscle memory you can spawn anything in GTA without leaking it into the world.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_spawning_entities_safely does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_spawning_entities_safely", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_spawning_entities_safely, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Resource qu_spawning_entities_safely does not exist", fix: "The folder is not inside resources, or the ensure line spells the name differently. Match the folder name exactly." },
+    { symptom: "Could not load resource qu_spawning_entities_safely", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports. The manifest must list client.lua." },
+    { symptom: "The box never appears but no error prints", fix: "You skipped the load loop, or removed the Wait(0) inside it. CreateObject ran before the model finished streaming. Keep the while not HasModelLoaded(model) do Wait(0) end line exactly as written." },
+    { symptom: "spawnbox prints nothing in F8", fix: "This is a client_script, so its print lands in the F8 client console, not txAdmin. Join the server, press F8, and run the command there." },
+    { symptom: "Boxes stay in the world after you restart the resource", fix: "The onResourceStop handler is missing or the GetCurrentResourceName check is wrong. Without it, a restart orphans every box you already spawned." },
+    { symptom: "attempt to perform arithmetic on a nil value", fix: "The concatenation print ran against a handle that is nil. Make sure object comes from CreateObject and that you print it on the same line you spawn it." },
   ]}
 />
 
@@ -138,21 +291,40 @@ F8: [qu_spawning_entities_safely] registry cleared
 
 <Recap
   items={[
-    "Make the qu_spawning_entities_safely folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for model load, CreateObject, registry, and DeleteEntity.",
-    "Add ensure qu_spawning_entities_safely to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Run the model load lifecycle: joaat the name, RequestModel, then wait in a Wait(0) loop until HasModelLoaded is true.",
+    "Call CreateObject and read all of its arguments, including what the isNetwork, netMissionEntity, and door flags do.",
+    "Explain why SetModelAsNoLongerNeeded is called after the spawn and what leaks if you skip it.",
+    "Track spawned handles in a registry table and explain why a handle you do not store is a handle you can never delete.",
+    "Guard every DeleteEntity with DoesEntityExist, and clean up on onResourceStop so a restart never orphans entities.",
+    "Translate the same pattern to CreatePed and CreateVehicle.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_spawning_entities_safely`, rerun the test, and confirm the output changed.
+  Extend the spawner so it can place a parked car as well as a box, and prove your cleanup tracks both. Add a `spawncar` command that loads the `adder` model, calls `CreateVehicle` four metres in front of you, and records the returned handle in the **same** `objects` registry:
+
+  ```lua
+  RegisterCommand('spawncar', function()
+      local model = joaat('adder')
+      RequestModel(model)
+      while not HasModelLoaded(model) do Wait(0) end
+
+      local coords = GetEntityCoords(PlayerPedId())
+      local veh = CreateVehicle(model, coords.x + 4.0, coords.y, coords.z, 90.0, false, false)
+      objects[veh] = true
+      SetModelAsNoLongerNeeded(model)
+      print('[qu_spawning_entities_safely] spawned vehicle ' .. veh)
+  end, false)
+  ```
+
+  Restart the resource, spawn one box and one car, then run `clearboxes`. Because both handles live in the same registry, the single clear loop deletes both and reports `removed 2`. That is the payoff of the pattern: one registry, one cleanup path, no matter how many entity types you add.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM CreateObject native", href: "https://docs.fivem.net/natives/?_0x509D5878EB39E842" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }

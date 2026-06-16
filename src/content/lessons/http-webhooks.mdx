@@ -2,25 +2,25 @@
   crumbs="Track 2 · Pro Path"
   title="HTTP requests &amp; webhooks: PerformHttpRequest"
   meta={[
-    { label: "You'll learn", value: "PerformHttpRequest signature, JSON encode/decode, Discord webhook posts, retry on 429, hiding the URL from clients" },
+    { label: "You'll learn", value: "PerformHttpRequest signature, why HTTP is callback-based, JSON encode for the body, retry on 429, hiding the URL from clients" },
     { label: "Time", value: "~20 minutes" },
     { label: "Prereqs", value: "P1 (oxmysql) and Lesson 14 (server events)" },
-    { label: "Outcome", value: "You can post a ban event to Discord, retry on rate-limit, and never leak a webhook URL to a client" },
+    { label: "Outcome", value: "You can post a ban event to Discord, retry once on a rate-limit, and never leak a webhook URL to a client" },
   ]}
 >
-  Talking to the outside world, Discord, your panel API, a license-check service, means HTTP. CFX gives you exactly one native: `PerformHttpRequest`. It is callback-based, will surprise you with rate limits, and JSON requires manual encode/decode. This lesson teaches the pattern that scales from a single ban-log to a 50-server fleet.
+  Talking to the outside world, Discord, your panel API, a license-check service, means HTTP. CFX gives you exactly one native for it: `PerformHttpRequest`. It is callback-based, so the response arrives later, not on the same line. It will surprise you with rate limits. And JSON bodies must be built by hand. This lesson teaches the pattern that scales from a single ban-log to a 50-server fleet.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output. This lesson is server-only, so there is no F8 client output to read."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds PerformHttpRequest Discord webhook hidden in server.cfg as a working FiveM resource named `qu_http_webhooks`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a server-only resource named `qu_http_webhooks` that POSTs a message to a Discord webhook and prints the HTTP status it gets back. The webhook URL lives in `server.cfg`, never in the script, so it never ships to a player. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line and adds the retry the hero promised.
 </Callout>
 
 ## Build it
@@ -54,31 +54,54 @@ game 'gta5'
 server_script 'server.lua'
     ```
 
-    Add these lines to server.cfg above `ensure qu_http_webhooks`:
-
-    ```text
-set qu_http_webhooks_webhook YOUR_DISCORD_WEBHOOK_URL
-    ```
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out. Notice there is no `client_script` line. Everything in this lesson runs on the server only, which is exactly what keeps the webhook URL off players' machines.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+  <Step num={4} title="Set the webhook in server.cfg" outcome="The secret URL lives in config, not in code.">
+    The webhook URL is a secret. Anyone who has it can post to your Discord channel forever. So it does not go in the script. It goes in `server.cfg` as a convar, above the `ensure qu_http_webhooks` line you will add in Step 6:
+
+    ```text
+set qu_http_webhooks_webhook "https://discord.com/api/webhooks/123456789/your-token-here"
+    ```
+
+    Create the webhook in Discord under Server Settings, then Integrations, then Webhooks. Copy the URL it gives you and paste it in place of the example above.
+  </Step>
+
+  <Step num={5} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `server.lua` and paste this. It reads the URL from the convar, builds a JSON body, POSTs it, and retries once if Discord rate-limits you:
 
     ```lua
 local webhook = GetConvar('qu_http_webhooks_webhook', '')
 
-RegisterCommand('webhooktest', function(src)
-    if webhook == '' then print('[qu_http_webhooks] missing webhook') return end
-    local name = src == 0 and 'console' or GetPlayerName(src)
-    PerformHttpRequest(webhook, function(code)
+local function postToDiscord(message, attempt)
+    attempt = attempt or 1
+    local body = json.encode({ username = 'qu_http_webhooks', content = message })
+    PerformHttpRequest(webhook, function(code, _, headers)
+        if code == 429 and attempt == 1 then
+            local retryAfter = tonumber(headers['retry-after'] or headers['Retry-After']) or 1
+            print('[qu_http_webhooks] rate-limited, retrying in ' .. retryAfter .. 's')
+            SetTimeout(retryAfter * 1000, function()
+                postToDiscord(message, 2)
+            end)
+            return
+        end
         print('[qu_http_webhooks] Discord status ' .. code)
-    end, 'POST', json.encode({ username = 'qu_http_webhooks', content = 'test from ' .. name }), { ['Content-Type'] = 'application/json' })
-end, false)
+    end, 'POST', body, { ['Content-Type'] = 'application/json' })
+end
+
+RegisterCommand('webhooktest', function(src)
+    if webhook == '' then
+        print('[qu_http_webhooks] missing webhook, set qu_http_webhooks_webhook in server.cfg')
+        return
+    end
+    local name = src == 0 and 'console' or GetPlayerName(src)
+    postToDiscord('test from ' .. name, 1)
+end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the server console.">
+    Open `server.cfg` and add this line below the `set` line from Step 4:
 
     ```text
     ensure qu_http_webhooks
@@ -90,11 +113,13 @@ end, false)
     restart qu_http_webhooks
     ```
 
-    Run this test:
+    Run this test from the txAdmin Live Console:
 
     ```text
-    /webhooktest
+    webhooktest
     ```
+
+    A message appears in your Discord channel, and the console prints:
 
     <ExpectedOutput>
       [qu_http_webhooks] Discord status 204
@@ -102,14 +127,121 @@ end, false)
   </Step>
 </StepGroup>
 
+## How it works
+
+You posted to Discord and read back a status code. Now take the code apart so the next time you call an API you are deciding, not copying. The whole lesson lives inside one native, `PerformHttpRequest`, plus the JSON you feed it and the convar that keeps the URL safe.
+
+### The five arguments of PerformHttpRequest
+
+Look at the call, ignoring the retry logic for a moment:
+
+```lua
+PerformHttpRequest(url, callback, method, body, headers)
+```
+
+That is the entire native. Five arguments, in this exact order:
+
+- **`url`** is the address you are talking to. Here it is the Discord webhook string read from the convar.
+- **`callback`** is a function FiveM runs **later**, when the response comes back. This is the part that surprises everyone. More on it in the next subsection.
+- **`method`** is the HTTP verb as a string: `'POST'` to send data, `'GET'` to fetch it, `'PUT'` and `'DELETE'` for the rest. Discord webhooks want `'POST'`.
+- **`body`** is the data you send, as a single string. For a JSON API that string has to be JSON, which is why you run `json.encode` first.
+- **`headers`** is a Lua table of extra information about the request. Here it carries `Content-Type` set to `application/json`, which tells Discord to read the body as JSON instead of plain text.
+
+Get the order wrong and the request fails silently, because nothing in Lua forces you to pass the right type in each slot. Memorize the order: url, callback, method, body, headers.
+
+### Why it is callback-based, and why you cannot store the result
+
+Here is the line beginners write and cannot understand why it breaks:
+
+```lua
+local status = PerformHttpRequest(url, ...) -- this does NOT work
+```
+
+`PerformHttpRequest` does not return the status code. It returns nothing useful. The reason is that an HTTP request travels across the internet to Discord and back, which takes time, maybe 50 milliseconds, maybe two seconds. FiveM will not freeze your whole server waiting for that. Instead it fires the request, moves on immediately, and runs your callback **whenever** the response finally arrives.
+
+So the answer does not come back on the same line. It comes back inside the function you handed as the second argument:
+
+```lua
+function(code, resultData, headers)
+    -- code     = the HTTP status number, e.g. 204
+    -- resultData = the response body as a string, often empty for webhooks
+    -- headers  = a table of response headers from Discord
+end
+```
+
+This is the same register-now, run-later idea behind command handlers and events. You hand FiveM a block of code and say, hold this, run it when the response lands. That is why the status is printed *inside* the callback, not after the call. If you tried to print it after the `PerformHttpRequest` line, it would not exist yet.
+
+<Checkpoint question="Why can't you write local status = PerformHttpRequest(...) and then print status on the next line?">
+  Because `PerformHttpRequest` is asynchronous. It sends the request and returns straight away, before Discord has answered, so there is no status to assign yet. The status arrives later, in the callback function you pass as the second argument. The response body and status code only exist inside that callback, which is why every line that needs the result has to live there. This is the same register-now, run-later pattern you saw with `RegisterCommand`: you describe what to do with the answer, and FiveM runs it when the answer is ready.
+</Checkpoint>
+
+### json.encode: turning a Lua table into the body Discord expects
+
+Discord does not understand Lua tables. It speaks JSON, a text format. So before you can send your message you translate:
+
+```lua
+local body = json.encode({ username = 'qu_http_webhooks', content = message })
+```
+
+`json.encode` is a function built into the FiveM Lua runtime. You hand it a Lua table and it returns a JSON string. The table above becomes the text `{"username":"qu_http_webhooks","content":"test from console"}`. That string is what goes in the `body` slot of `PerformHttpRequest`.
+
+Two pieces have to agree for Discord to accept it. The body must be valid JSON, which `json.encode` guarantees. And the `Content-Type` header must say `application/json`, which is the label that tells Discord to parse the body as JSON rather than treat it as raw text. Send JSON without that header and Discord will reject it. The encode and the header are a pair; you always set both.
+
+When a response comes back as JSON, the mirror function `json.decode` turns the string back into a Lua table you can read. Webhooks return an empty body on success so you do not need it here, but the moment you call an API that returns data, like a license-check service, `json.decode(resultData)` is how you read the answer.
+
+### Why reading the URL from a convar hides it from clients
+
+This is the security point of the lesson, and it rests on one fact about how FiveM ships files:
+
+```lua
+local webhook = GetConvar('qu_http_webhooks_webhook', '')
+```
+
+A file listed under `server_script` is **never sent to a player's game**. The server reads it and runs it; the client never receives a copy. A file under `client_script`, by contrast, is downloaded to every player who joins. So a secret is safe in a server script and exposed in a client script.
+
+The webhook URL is the secret. If you hardcoded it into a client file, or pulled it down to the client over an event, any player could open their FiveM cache, read the URL, and spam your Discord channel. By keeping the URL in `server.cfg` and reading it with `GetConvar` inside a server script, the URL exists only on the machine you control. The second argument to `GetConvar`, the empty string `''`, is the fallback returned when the convar is not set, which is what the missing-webhook guard in the command checks for.
+
+The rule generalizes: any secret, a database password, an API key, a webhook, lives server-side and is read with `GetConvar`. It never touches a client file.
+
+### The retry on 429
+
+Discord limits how fast you can post. Hit it too hard and it answers with HTTP status `429 Too Many Requests` instead of accepting your message. A naive script drops the message on the floor. A correct one waits and tries again:
+
+```lua
+if code == 429 and attempt == 1 then
+    local retryAfter = tonumber(headers['retry-after'] or headers['Retry-After']) or 1
+    print('[qu_http_webhooks] rate-limited, retrying in ' .. retryAfter .. 's')
+    SetTimeout(retryAfter * 1000, function()
+        postToDiscord(message, 2)
+    end)
+    return
+end
+```
+
+Read it in order. When the callback runs and the status is `429`, Discord has also told you how long to wait, in a response header called `retry-after`, measured in seconds. You read that header (checking both lower and capitalized spellings, since servers vary), default to one second if it is missing, and schedule a single retry. `SetTimeout` is the FiveM native that runs a function after a delay in milliseconds, so `retryAfter * 1000` converts seconds to milliseconds. The `attempt` counter stops an endless loop: the first call passes `attempt = 1`, the retry passes `2`, and the `attempt == 1` guard means you retry exactly once and then give up rather than hammering Discord forever.
+
+This is the smallest honest version of retry-on-rate-limit. A fleet logging thousands of bans would add a proper queue, but the shape, detect `429`, read `retry-after`, wait, re-send once, is the same.
+
+### What the status codes mean
+
+The number printed by the callback tells you what happened:
+
+- **`204 No Content`** is success. Discord accepted the post and has nothing to send back, hence an empty body. This is the expected output for this lesson.
+- **`401 Unauthorized`** means the webhook token is wrong.
+- **`404 Not Found`** means the webhook was deleted, or the URL is mistyped.
+- **`429 Too Many Requests`** is the rate limit you just handled.
+
+Printing the status is not optional polish. It is the only way you find out a webhook quietly stopped working before your ban-logs vanish for a week.
+
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_http_webhooks does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_http_webhooks", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_http_webhooks, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "missing webhook, set qu_http_webhooks_webhook in server.cfg", fix: "The convar is empty. Add the set qu_http_webhooks_webhook line to server.cfg above the ensure line, then restart qu_http_webhooks so it re-reads the value." },
+    { symptom: "Discord status 401", fix: "The webhook token in the URL is wrong. Recopy the full webhook URL from Discord, Server Settings, Integrations, Webhooks, and paste the whole thing into the set line." },
+    { symptom: "Discord status 404", fix: "The webhook was deleted in Discord, or the URL has a typo. Create a fresh webhook and replace the URL in server.cfg." },
+    { symptom: "Discord status 429 every time", fix: "You are posting faster than Discord allows. The lesson code retries once. If you still see 429, slow your test rate; webhooks allow only a handful of posts per few seconds." },
+    { symptom: "attempt to index a nil value (global 'json')", fix: "json is built into the FiveM Lua runtime, not plain Lua. This error means the script ran outside FiveM. Run it on your server, not in a standalone Lua interpreter." },
   ]}
 />
 
@@ -117,23 +249,36 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_http_webhooks folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for PerformHttpRequest Discord webhook hidden in server.cfg.",
-    "Add ensure qu_http_webhooks to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Name the five arguments of PerformHttpRequest in order: url, callback, method, body, headers.",
+    "Explain why HTTP is callback-based and why you cannot assign the status to a local variable on the calling line.",
+    "Use json.encode to build a JSON body and set the Content-Type header so the API parses it.",
+    "Keep a secret webhook URL in server.cfg and read it with GetConvar, knowing that server scripts never ship to clients.",
+    "Detect a 429, read retry-after, and re-send once with SetTimeout instead of dropping the message.",
+    "Read an HTTP status code: 204 is success, 401 and 404 mean a bad or deleted webhook, 429 is a rate limit.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_http_webhooks`, rerun the test, and confirm the output changed.
+  Turn the test command into a real ban-logger. Make the webhook post a richer message that names the banned player and the reason, and read the result body so a non-204 status is logged loudly.
+
+  ```lua
+  RegisterCommand('logban', function(src, args)
+      local target = args[1] or 'unknown'
+      local reason = table.concat(args, ' ', 2)
+      if reason == '' then reason = 'no reason given' end
+      postToDiscord('BAN: ' .. target .. ' | reason: ' .. reason, 1)
+  end, true)
+  ```
+
+  Then extend `postToDiscord` so that when the status is not 204 and not 429, it prints both the code and the `resultData` body, which is where Discord puts its error message. Restart `qu_http_webhooks`, run `logban Steve cheating with aimbot`, and confirm the formatted line lands in your channel. For a harder pass, send a Discord embed instead of plain content by encoding an `embeds` array in the JSON body, so the ban shows up as a titled card with color.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM PerformHttpRequest reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/PerformHttpRequest/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "Discord webhook execute API", href: "https://discord.com/developers/docs/resources/webhook#execute-webhook" }
   ]}
 />

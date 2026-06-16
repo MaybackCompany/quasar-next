@@ -2,50 +2,54 @@
   crumbs="Track 2 · Pro Path"
   title="Exports: sharing functions across resources"
   meta={[
-    { label: "You'll learn", value: "exports('name', fn), exports.resource:fn() call syntax, fxmanifest export vs server_export, when to choose events instead" },
+    { label: "You'll learn", value: "exports('name', fn) registration, exports.resource:fn() call syntax, why exports are synchronous and same-side, the global-namespace risk, and when to reach for an event instead" },
     { label: "Time", value: "~18 minutes" },
     { label: "Prereqs", value: "Lessons 13 & 14 (events)" },
-    { label: "Outcome", value: "You can build a money resource everyone else can read from with exports.qu_money:GetBalance(src)" },
+    { label: "Outcome", value: "You can build a money resource a second resource reads from with exports.qu_money:GetBalance(src), and explain why it is a real function call and not an event" },
   ]}
 >
-  Events fire and forget. Exports are *function calls*: synchronous, return-a-value, same-side. They are how every framework you have ever used wires resources together, `exports.ox_inventory:GetItemCount`, `exports.ESX:getPlayerFromId`. This lesson teaches you to expose them safely and consume them without surprises.
+  Events fire and forget. Exports are *function calls*: synchronous, they return a value, and they run on the same side that registered them. They are how every framework you have ever used wires resources together, `exports.ox_inventory:GetItemCount`, `exports.es_extended:getSharedObject`. This lesson teaches you to expose a function safely and, more importantly, to consume it from a second resource so you see the cross-resource call the topic is named for.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds server exports shared across resources as a working FiveM resource named `qu_exports`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds two resources: `qu_money` exposes a balance, and `qu_money_consumer` reads it back through an export. Follow the folder names, file names, code, restart commands, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why a function in one resource is callable from another.
 </Callout>
 
 ## Build it
 
 <StepGroup>
-  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
-    Inside your server's `resources` folder, create this folder:
+  <Step num={1} title="Make the two resource folders" outcome="The server has one folder per resource.">
+    Inside your server's `resources` folder, create both of these folders:
 
     ```text
-    resources/qu_exports
+    resources/qu_money
+    resources/qu_money_consumer
     ```
   </Step>
 
-  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+  <Step num={2} title="Create the files" outcome="Every file named in each manifest exists.">
     Create this exact file layout:
 
     ```text
-resources/qu_exports/
+resources/qu_money/
+  fxmanifest.lua
+  server.lua
+resources/qu_money_consumer/
   fxmanifest.lua
   server.lua
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
-    Open `fxmanifest.lua` and paste this:
+  <Step num={3} title="Write qu_money/fxmanifest.lua" outcome="FiveM knows which files to load for the provider.">
+    Open `qu_money/fxmanifest.lua` and paste this:
 
     ```lua
 fx_version 'cerulean'
@@ -55,64 +59,159 @@ server_script 'server.lua'
     ```
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+  <Step num={4} title="Write qu_money/server.lua" outcome="The provider exposes two functions as exports.">
+    Open `qu_money/server.lua` and paste this:
 
     ```lua
 local balances = {}
 
-function GetBalance(src)
+local function getBalance(src)
     balances[src] = balances[src] or 0
     return balances[src]
 end
 
-function AddBalance(src, amount)
-    balances[src] = GetBalance(src) + amount
+local function addBalance(src, amount)
+    balances[src] = getBalance(src) + amount
     return balances[src]
 end
 
-exports('GetBalance', GetBalance)
-exports('AddBalance', AddBalance)
-
-RegisterCommand('exportmoney', function(src)
-    print('[qu_exports] balance ' .. AddBalance(src, 50))
-end, false)
+exports('GetBalance', getBalance)
+exports('AddBalance', addBalance)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+  <Step num={5} title="Write qu_money_consumer/fxmanifest.lua" outcome="The consumer declares it depends on the provider.">
+    Open `qu_money_consumer/fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+dependencies {
+    'qu_money'
+}
+
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={6} title="Write qu_money_consumer/server.lua" outcome="The consumer calls the provider's export by name.">
+    Open `qu_money_consumer/server.lua` and paste this:
+
+    ```lua
+RegisterCommand('checkmoney', function(src)
+    exports.qu_money:AddBalance(src, 50)
+    local balance = exports.qu_money:GetBalance(src)
+    print('[qu_money_consumer] player ' .. src .. ' balance ' .. balance)
+end, true)
+    ```
+  </Step>
+
+  <Step num={7} title="Start and test it" outcome="The cross-resource call prints the expected proof.">
+    Open `server.cfg` and add both lines, provider first:
 
     ```text
-    ensure qu_exports
+    ensure qu_money
+    ensure qu_money_consumer
     ```
 
-    Save, then run:
+    Save, then restart both, provider first:
 
     ```text
-    restart qu_exports
+    restart qu_money
+    restart qu_money_consumer
     ```
 
-    Run this test:
+    Run this test from the txAdmin Live Console:
 
     ```text
-    /exportmoney
+    checkmoney
     ```
 
     <ExpectedOutput>
-      [qu_exports] balance 50
+      [qu_money_consumer] player 0 balance 50
     </ExpectedOutput>
+
+    The `0` is the server console's source id (the console is always player 0). The `50` is the value that came *back* across the resource boundary from `qu_money`. Run `checkmoney` again and the balance climbs to `100`, then `150`. The number persists because both calls read and write the same `balances` table living inside `qu_money`.
   </Step>
 </StepGroup>
+
+## How it works
+
+You called a function that lives in `qu_money` from a completely separate resource, `qu_money_consumer`, and it returned a number you printed. That is the whole point of an export: one resource publishes a function, another resource calls it like a normal method and gets a value back. Take the two files apart so you understand each half.
+
+### Registering the export: `exports('name', fn)`
+
+In `qu_money/server.lua` these two lines are what make the functions reachable from outside:
+
+```lua
+exports('GetBalance', getBalance)
+exports('AddBalance', addBalance)
+```
+
+`exports` here is being *called as a function*. The first argument is the public name other resources will use, a string. The second argument is the actual Lua function to run when that name is called. So `exports('GetBalance', getBalance)` says: when any resource asks me for `GetBalance`, run my local `getBalance` function and hand back whatever it returns. The public name and the local function name do not have to match, which is why you can keep your internal functions `local` and still expose a clean public surface.
+
+There is an older way to do the same thing, declared in the manifest instead of in code:
+
+```lua
+-- older manifest-declared form, shown for recognition only
+server_export 'GetBalance'
+```
+
+That form requires `GetBalance` to be a *global* function (no `local`), because the manifest can only point at a global by name. The modern `exports('name', fn)` runtime form is preferred: it lets you keep your functions `local`, register them explicitly, and rename the public surface without touching globals. You will see the old `export 'fn'` and `server_export 'fn'` lines in legacy resources, so recognize them, but write the runtime form.
+
+### Why the functions are `local`, and the trap if they are not
+
+Notice `getBalance` and `addBalance` are declared with `local function`. In the older manifest-export style you were forced to make them global, and global functions in FiveM share one namespace inside a resource's Lua VM. If two of your scripts both define a global `getBalance`, the second one silently overwrites the first, and you get a bug that is miserable to track down. Keeping them `local` and registering them through `exports('name', fn)` means the only thing the outside world can touch is the name you deliberately published. Everything else stays private. That is the safe default.
+
+### Calling the export: `exports.qu_money:GetBalance(src)`
+
+This is the line the whole lesson is named for, from `qu_money_consumer/server.lua`:
+
+```lua
+local balance = exports.qu_money:GetBalance(src)
+```
+
+Read it left to right. `exports.qu_money` selects the resource you want to call, by its folder name. The colon then calls the published function `GetBalance` on it, passing `src`. The colon matters: `exports.qu_money:GetBalance(src)` is the method-call form FiveM expects. If the resource name has a character that is not a valid Lua identifier, you use the bracket form instead, `exports['qu_money']:GetBalance(src)`. Both mean the same thing.
+
+The critical word is **synchronous**. `GetBalance` runs immediately, on the server, in the same tick, and its return value lands in `balance` right away. There is no waiting, no callback, no event round trip. This is exactly like calling a normal function, except the function happens to live in another resource's folder. Contrast that with `TriggerServerEvent`, which fires a message and returns nothing; you would have to register a second event to hear an answer back.
+
+### Same-side only, and why your dependency line matters
+
+An export is callable only from the same side it was registered on. `qu_money` registered its exports inside a `server_script`, so they are server exports, callable only from server code. A client script cannot call `exports.qu_money:GetBalance` directly, because the function does not exist in the client Lua VM. If you need data to reach a client, the server calls the export and then sends the result down with `TriggerClientEvent`.
+
+The `dependencies` block in the consumer manifest is what guarantees correctness here:
+
+```lua
+dependencies {
+    'qu_money'
+}
+```
+
+This tells FiveM to start `qu_money` before `qu_money_consumer`. If `qu_money` were not running when the consumer called `exports.qu_money:GetBalance`, the call would error because the export would not be registered yet. The canonical key is the plural `dependencies { '...' }`. You will see the singular `dependency 'x'` in some resources and FiveM tolerates it, but write the plural form. Declaring the dependency is the difference between a resource that starts reliably and one that works only when the load order happens to be lucky.
+
+<Checkpoint question="Why is exports.qu_money:GetBalance(src) able to return a value, while TriggerServerEvent cannot?">
+  Because an export is a real, synchronous function call, not a fire-and-forget message. When you write `exports.qu_money:GetBalance(src)`, FiveM runs `qu_money`'s registered function right then, in the same tick, on the same side, and the function's `return` value comes straight back into your variable. `TriggerServerEvent` only delivers a message to a handler and immediately moves on; the handler has no way to hand a value back to the caller, so to get an answer you would need a second event going the other direction. That is the core trade: exports give you a return value but only work same-side; events cross the client/server boundary but give you nothing back.
+</Checkpoint>
+
+### When to reach for an export versus an event
+
+Use this decision rule.
+
+- **Reach for an export when you need a return value and the caller is on the same side.** Reading a balance, looking up an item count, asking a framework for a player object. You want the answer in a variable on the next line. That is an export.
+- **Reach for an event when you are crossing the client/server boundary, broadcasting to many listeners, or you genuinely do not need a reply.** Telling every client the server is restarting, telling the server a player pressed a key. That is `TriggerClientEvent` or `TriggerServerEvent`.
+- **Reach for a server callback (covered in the callbacks lesson) when you need a return value but the caller and the function are on opposite sides.** That is the only case an export cannot serve, because exports are same-side only.
+
+Frameworks lean on exports constantly for exactly the first reason: `exports.ox_inventory:GetItemCount(src, 'water')` reads a number and you use it immediately. Once you internalize "exports return values, events do not," most of FiveM's resource wiring stops being mysterious.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_exports does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_exports", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_exports, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (field 'qu_money')", fix: "qu_money is not started, or it is misspelled in the call. Confirm ensure qu_money is in server.cfg and the resource is green in txAdmin before the consumer calls it." },
+    { symptom: "attempt to call a nil value (method 'GetBalance')", fix: "qu_money started but never registered the export. Check that exports('GetBalance', getBalance) is present and the published name matches exactly, including capitals." },
+    { symptom: "qu_money_consumer starts before qu_money and errors on boot", fix: "Add the dependencies { 'qu_money' } block to the consumer manifest so FiveM loads the provider first." },
+    { symptom: "checkmoney prints nothing in the console", fix: "The restricted flag is true, so run checkmoney from the txAdmin Live Console, which holds full aces. A non-admin player typing it in chat is denied." },
   ]}
 />
 
@@ -120,23 +219,47 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_exports folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for server exports shared across resources.",
-    "Add ensure qu_exports to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Register a function for other resources with exports('PublicName', localFn), keeping the implementation local.",
+    "Call another resource's function with exports.resourceName:PublicName(args) and use its return value on the next line.",
+    "Explain that exports are synchronous and same-side, while events are fire-and-forget and cross the network.",
+    "Use a dependencies { 'provider' } block so the provider always starts before any resource that calls its exports.",
+    "Recognize the legacy server_export / export manifest form and know why the runtime exports('name', fn) form is preferred.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_exports`, rerun the test, and confirm the output changed.
+  Extend the provider so a withdrawal cannot overdraw. Add a third export to `qu_money` named `RemoveBalance` that refuses to go negative and reports whether it succeeded:
+
+  ```lua
+  local function removeBalance(src, amount)
+      if getBalance(src) < amount then
+          return false, getBalance(src)
+      end
+      balances[src] = getBalance(src) - amount
+      return true, balances[src]
+  end
+
+  exports('RemoveBalance', removeBalance)
+  ```
+
+  Then add a `withdraw` command to `qu_money_consumer` that calls it and prints both returned values:
+
+  ```lua
+  RegisterCommand('withdraw', function(src)
+      local ok, balance = exports.qu_money:RemoveBalance(src, 30)
+      print('[qu_money_consumer] ok ' .. tostring(ok) .. ' balance ' .. balance)
+  end, true)
+  ```
+
+  Restart both resources (provider first), run `checkmoney` once to fund the account to `50`, then run `withdraw`. Confirm it prints `ok true balance 20`. Run `withdraw` again and confirm it prints `ok false balance 20`, because `20` is less than `30` and the export refused. You just proved that an export can return more than one value, and that the *provider* is the right place to enforce a rule, since every consumer gets the check for free.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM exports reference", href: "https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

@@ -21,8 +21,12 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ox_lib callback that returns a server-owned balance as a working FiveM resource named `qu_callbacks`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working callback as a FiveM resource named `qu_callbacks`. The client asks the server for a balance, waits for the answer, and prints it. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you know why the client gets one clean answer instead of two unrelated events.
+</Callout>
+
+<Callout variant="fivem" title="ox_lib is a community library, install it first">
+  Callbacks in this lesson use `ox_lib`, a utility library from Overextended. It is a community resource, not a built-in Cfx.re one, so it does not ship with your server. Download `ox_lib`, drop it in `resources`, and `ensure` it before `qu_callbacks`. If `ox_lib` is missing or started after your resource, the global `lib` is nil and every line below errors with `attempt to index a nil value (global 'lib')`.
 </Callout>
 
 ## Build it
@@ -47,7 +51,7 @@ resources/qu_callbacks/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and that ox_lib must load first.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -58,16 +62,20 @@ shared_script '@ox_lib/init.lua'
 client_script 'client.lua'
 server_script 'server.lua'
 
-dependency 'ox_lib'
+dependencies {
+    'ox_lib'
+}
     ```
+
+    The `dependencies { 'ox_lib' }` block tells the server not to start `qu_callbacks` until `ox_lib` is running. The singular form `dependency 'ox_lib'` is tolerated, but the plural block is the canonical one, so use it. The `shared_script '@ox_lib/init.lua'` line is what actually loads the library and gives you the global `lib` on both the client and the server.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the lesson code" outcome="The client asks a question and the server answers it.">
     Open `server.lua` and paste this:
 
     ```lua
 lib.callback.register('qu_callbacks:getBalance', function(src)
-    print('[qu_callbacks] server answered ' .. GetPlayerName(src))
+    print('[qu_callbacks] server answering ' .. GetPlayerName(src))
     return 500
 end)
     ```
@@ -83,9 +91,10 @@ end, false)
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Make sure `ox_lib` starts first. Open `server.cfg` and add both lines in this order:
 
     ```text
+    ensure ox_lib
     ensure qu_callbacks
     ```
 
@@ -95,7 +104,7 @@ end, false)
     restart qu_callbacks
     ```
 
-    Run this test:
+    Join the server, then run this test from the F8 chat box (this is a client command):
 
     ```text
     /mybalance
@@ -104,17 +113,106 @@ end, false)
     <ExpectedOutput>
       F8: [qu_callbacks] my balance is 500
     </ExpectedOutput>
+
+    You will also see `[qu_callbacks] server answering YourName` in the txAdmin Live Console, proving the request crossed the network and the server is the one that produced the number.
   </Step>
 </StepGroup>
+
+## How it works
+
+You typed one command and got back one number that the server owns. That is the whole point of a callback: the client asks a question, the request travels to the server, the server computes an answer, and that exact answer comes back to the same line of client code that asked. Now take the round trip apart so you can build your own.
+
+### The server registers an answer
+
+```lua
+lib.callback.register('qu_callbacks:getBalance', function(src)
+    print('[qu_callbacks] server answering ' .. GetPlayerName(src))
+    return 500
+end)
+```
+
+`lib.callback.register` does on the server what `RegisterCommand` did for commands: it stores a named handler now and runs it later when something asks for it. The first argument, `'qu_callbacks:getBalance'`, is the name of the question. The `resource:thing` shape is a convention, not a rule, but it keeps names from colliding when twenty resources all register callbacks.
+
+The second argument is the function that produces the answer. Two things make it different from a normal event handler:
+
+- `src` is passed in for you automatically. `ox_lib` puts the server id of the player who asked as the first parameter, so you always know who is asking without reaching for the global `source`. Here you use it to look up that specific player's name.
+- Whatever you `return` becomes the answer. A plain `TriggerClientEvent` sends a fire-and-forget message and returns nothing meaningful. A callback handler's `return` value is shipped back to the client as the result of its question. Return `500` here and the client receives `500`. In a real script you would replace `return 500` with a database read or a framework call like `return Player(src).money`.
+
+This is the server side of trust. The balance is computed on the server, where the player cannot touch it. The client never gets to decide its own balance, it only gets to ask.
+
+### The client asks and waits
+
+```lua
+RegisterCommand('mybalance', function()
+    local balance = lib.callback.await('qu_callbacks:getBalance', false)
+    print('[qu_callbacks] my balance is ' .. balance)
+end, false)
+```
+
+`lib.callback.await` is where the magic lives. Read the middle line as a single sentence: "ask the server the `qu_callbacks:getBalance` question, then pause right here until the answer comes back, and put that answer in `balance`."
+
+The function blocks. The line that prints does not run until the server's `return` has travelled all the way back across the network. This is why callbacks read like normal top-to-bottom code even though a network round trip is happening in the middle. You write it as if the answer is just sitting there, and `ox_lib` handles the waiting for you.
+
+That pause is only possible because a command handler runs inside a coroutine, a FiveM thread that is allowed to yield and resume. `await` yields the thread while it waits and resumes it when the answer arrives. If you ever call `lib.callback.await` from code that is not inside a thread, you will get a "cannot resume" style error. Inside a `RegisterCommand` handler, a `CreateThread`, or an event handler, you are safe.
+
+#### What the second argument actually does
+
+```lua
+lib.callback.await('qu_callbacks:getBalance', false)
+```
+
+That `false` is the most copied and least understood value in the whole lesson. It is the timeout, in milliseconds. It controls how long the client is willing to wait before it gives up.
+
+- Pass a number, like `5000`, and the client waits up to five seconds. If the server has not answered by then, `await` stops waiting and returns `nil` so your code is not frozen forever.
+- Pass `false` and you disable the timeout entirely. The client will wait as long as it takes. That is fine for this proof because the server answers instantly, but in production a disabled timeout means a slow or broken server handler can leave the asking thread stuck.
+
+The honest default for real code is a number. Pick a budget like `5000`, then check the result before you trust it, because a timeout hands you `nil`:
+
+```lua
+local balance = lib.callback.await('qu_callbacks:getBalance', 5000)
+if balance == nil then
+    print('[qu_callbacks] server did not answer in time')
+    return
+end
+print('[qu_callbacks] my balance is ' .. balance)
+```
+
+<Checkpoint question="Why does the print line wait for the server instead of running immediately, and what would make balance come back as nil?">
+  `lib.callback.await` blocks the handler's coroutine at that line. It yields the thread, sends the request to the server, and only resumes, letting the next line run, once the server's `return` value has arrived back. So the print cannot run with an empty `balance`, it runs with the real answer. `balance` comes back `nil` only when you pass a numeric timeout and the server fails to answer within that many milliseconds. With the timeout set to `false`, as in the build, there is no time limit, so it never returns `nil` for that reason, it just keeps waiting.
+</Checkpoint>
+
+### Why this beats two raw events
+
+You could fake a callback with the tools from the previous lessons: the client fires `TriggerServerEvent('askBalance')`, the server fires back `TriggerClientEvent('balanceAnswer', src, 500)`, and a separate `RegisterNetEvent('balanceAnswer', ...)` on the client catches it. That works, but look at what you lost.
+
+The answer arrives in a different place from where you asked. Your "what do I do with the balance" logic now lives in the event handler, far from the command that started everything. If you fire two balance requests close together, nothing tells you which answer belongs to which request, you have to hand-match them yourself with request ids. And there is no built-in timeout, so a dropped response leaves the client waiting on an event that never comes, with no way to notice.
+
+`lib.callback.await` solves all three for free. The answer comes back to the exact line that asked, so the request and its handling stay together. Each request is correlated to its own response under the hood, so two questions never cross wires. And the timeout argument gives you a clean escape hatch. That is why frameworks moved to callbacks for any client-to-server question.
+
+### The async form, when you do not want to block
+
+`await` is the blocking, synchronous form. There is a second form that does not freeze the thread. Instead of returning the value, you hand `lib.callback` a function that runs when the answer arrives:
+
+```lua
+RegisterCommand('mybalance_async', function()
+    lib.callback('qu_callbacks:getBalance', false, function(balance)
+        print('[qu_callbacks] async balance is ' .. balance)
+    end)
+    print('[qu_callbacks] this line runs before the answer arrives')
+end, false)
+```
+
+Notice the call is `lib.callback` with no `.await`, and the last argument is a function. The request fires, the handler does not pause, the second print runs immediately, and the supplied function runs later when the server answers. Reach for the async form when you have other work to do while you wait, or when blocking the thread would freeze something time sensitive like a render loop. Reach for `await` when the next line genuinely needs the answer before it can do anything, which is most of the time. Both forms hit the same registered handler on the server, the only difference is whether the client thread waits.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_callbacks does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_callbacks", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_callbacks, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (global 'lib')", fix: "ox_lib is not loaded. Confirm ensure ox_lib comes before ensure qu_callbacks in server.cfg, and that the manifest has shared_script '@ox_lib/init.lua'." },
+    { symptom: "Unable to load resource qu_callbacks (dependency ox_lib)", fix: "ox_lib is not installed or not running. Download ox_lib from Overextended, place it in resources, and ensure it. The dependencies block blocks startup until it loads." },
+    { symptom: "/mybalance does nothing and F8 stays empty", fix: "This is a client command, so join the server and run it from the F8 chat box, not the txAdmin console. Check F8 for the client print." },
+    { symptom: "balance is nil / attempt to concatenate a nil value", fix: "The server handler did not return, or a numeric timeout expired before the answer arrived. Make sure server.lua returns a value and, if you set a timeout, guard for nil before using balance." },
+    { symptom: "attempt to yield from outside a coroutine", fix: "lib.callback.await must run inside a thread. Keep it inside the RegisterCommand handler, a CreateThread, or an event handler, never at the top level of the file." },
   ]}
 />
 
@@ -122,23 +220,48 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_callbacks folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ox_lib callback that returns a server-owned balance.",
-    "Add ensure qu_callbacks to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain when to reach for a callback instead of an event: any time the client needs an answer back, not just to send a message.",
+    "Register a server-side answer with lib.callback.register and return the value the client receives, using the auto-passed src to know who asked.",
+    "Ask from the client with lib.callback.await and explain that it blocks the coroutine until the server's return arrives.",
+    "Say what the timeout argument does: a number waits that many milliseconds then returns nil, false disables the timeout and waits forever.",
+    "Explain why one callback beats two raw events: the answer returns to the asking line, requests and responses are correlated automatically, and you get a timeout escape hatch.",
+    "Choose between the blocking await form and the async lib.callback function form based on whether the next line needs the answer.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_callbacks`, rerun the test, and confirm the output changed.
+  Make the callback answer a real yes/no question instead of a fixed number, and pass an argument from the client. Change the server to take a price and decide whether the player can afford it:
+
+  ```lua
+  lib.callback.register('qu_callbacks:canAfford', function(src, price)
+      local balance = 500
+      return balance >= price
+  end)
+  ```
+
+  Change the client to send a price and branch on the boolean answer. Note that any value after the timeout is forwarded to the server handler as an extra argument:
+
+  ```lua
+  RegisterCommand('canibuy', function(_, args)
+      local price = tonumber(args[1]) or 0
+      local ok = lib.callback.await('qu_callbacks:canAfford', 5000, price)
+      if ok then
+          print('[qu_callbacks] you can afford ' .. price)
+      else
+          print('[qu_callbacks] not enough money for ' .. price)
+      end
+  end, false)
+  ```
+
+  Restart `qu_callbacks`, then run `/canibuy 300` and `/canibuy 900` from F8. Confirm the first prints that you can afford it and the second does not. You just sent data up with the request, made the server decide, and branched on the answer, which is the real shape of a "can I buy this?" check.
 </Exercise>
 
 <Refs
   items={[
+    { label: "ox_lib callback documentation (Overextended)", href: "https://overextended.dev/ox_lib/Modules/Callback/Shared" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

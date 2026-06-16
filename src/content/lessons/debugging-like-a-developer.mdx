@@ -21,8 +21,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds tagged logging, pcall, and traceback output as a working FiveM resource named `qu_debugging_like_a_developer`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds tagged logging, a `pcall` wrapper, and a stack trace as a working FiveM resource named `qu_debugging_like_a_developer`. It is a client-side resource on purpose, so the output lands in F8, the in-game console. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you can read any error you ever hit.
 </Callout>
 
 ## Build it
@@ -55,6 +55,8 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -71,8 +73,13 @@ end
 
 RegisterCommand('debugfail', function()
     local ok, result = pcall(risky)
-    log('ok=' .. tostring(ok) .. ' result=' .. tostring(result))
-    log(debug.traceback('traceback'))
+
+    if ok then
+        log('risky() succeeded, returned: ' .. tostring(result))
+    else
+        log('risky() failed, error was: ' .. tostring(result))
+        log(debug.traceback('stack at point of failure', 2))
+    end
 end, false)
     ```
   </Step>
@@ -84,32 +91,155 @@ end, false)
     ensure qu_debugging_like_a_developer
     ```
 
-    Save, then run:
+    Save, then run this in the txAdmin Live Console:
 
     ```text
     restart qu_debugging_like_a_developer
     ```
 
-    Run this test:
+    Now join the server, press F8 to open the in-game console, and run the test there:
 
     ```text
     /debugfail
     ```
 
+    Because this is a `client_script`, the print lands in F8, not in txAdmin. You will see two lines:
+
     <ExpectedOutput>
-      F8: [qu_debugging_like_a_developer] ok=false result=
+      [qu_debugging_like_a_developer] risky() failed, error was: @qu_debugging_like_a_developer/client.lua:6: planned failure
+      [qu_debugging_like_a_developer] stack at point of failure
+      stack traceback:
+        [C]: in function 'error'
+        @qu_debugging_like_a_developer/client.lua:6: in function 'risky'
+        ...
     </ExpectedOutput>
+
+    The exact line number after `client.lua:` will match wherever the `error(...)` call sits in your file. In the code above that is line 6.
   </Step>
 </StepGroup>
+
+## How it works
+
+You typed `/debugfail` and instead of your server crashing, you got two calm, tagged lines telling you exactly what broke and where. That is the whole lesson in one sentence: a developer does not avoid errors, a developer catches them, reads them, and points at the failing line. Now take the code apart so you can do that with any error, not just this one.
+
+### The tagged log helper
+
+```lua
+local function log(message)
+    print('[qu_debugging_like_a_developer] ' .. message)
+end
+```
+
+This is a tiny wrapper around `print`. It does one thing: it glues a tag, `[qu_debugging_like_a_developer]`, onto the front of every message before printing it. The `..` operator joins two strings end to end, so `'[tag] ' .. message` becomes one line.
+
+Why bother instead of calling `print` directly. On a real server, twenty resources are all printing into the same console at the same time. Raw `print('it worked')` lines are noise. You cannot tell which script said what. A tag turns the firehose into something you can filter. In F8 or txAdmin you can search for your tag and see only your own lines. Defining `log` once also means that if you later want to add a timestamp, route to a file, or silence logging in production, you change one function instead of fifty scattered prints. That is the difference between scattering `print` and having a logging habit.
+
+### Simulating a failure on purpose
+
+```lua
+local function risky()
+    error('planned failure')
+end
+```
+
+`risky` exists to break in a controlled way. The native `error('planned failure')` raises a Lua runtime error with the message you pass it. This is the same machinery that fires when your real code does something illegal, like indexing a `nil` value or calling a function that does not exist. The difference is that here you know exactly when and why it fires, so you can study the recovery without hunting a real bug first.
+
+There is a real distinction to lock in. `error('msg')` is you choosing to raise an error. A runtime error like `attempt to index a nil value` is the Lua engine raising one because your code did something it cannot do. Both produce the same kind of error object and both can be caught the same way. Learning to catch the planned one means you already know how to catch the surprise one.
+
+### pcall: the protected call
+
+```lua
+local ok, result = pcall(risky)
+```
+
+This is the heart of the lesson. `pcall` stands for *protected call*. You hand it a function, and it runs that function inside a safety net. Normally, an error inside `risky` would tear up the stack and dump a red `SCRIPT ERROR` into the console, possibly stopping whatever was running. Wrapped in `pcall`, the error is caught instead of thrown, and your script keeps running.
+
+`pcall` returns two values, and the order is a fixed contract you must memorize:
+
+- The **first** return value is a boolean, `ok`. It is `true` if the function ran clean to the end, and `false` if it raised an error.
+- The **second** return value depends on the first. If `ok` is `true`, it is whatever the function returned. If `ok` is `false`, it is the error message string.
+
+So `local ok, result = pcall(risky)` reads as: try to run `risky`, tell me whether it survived in `ok`, and put either its return value or its error message in `result`. Because `risky` always calls `error`, on this run `ok` comes back `false` and `result` holds the error string.
+
+<Callout variant="fivem" title="The single most common pcall mistake">
+  Beginners write `local result = pcall(risky)` with one variable and wonder why `result` is just `true` or `false`. That is because the *first* value is the boolean, not the result. You must capture both: `local ok, result = pcall(...)`. The success-or-failure flag always comes first.
+</Callout>
+
+### Reading the branch
+
+```lua
+if ok then
+    log('risky() succeeded, returned: ' .. tostring(result))
+else
+    log('risky() failed, error was: ' .. tostring(result))
+    log(debug.traceback('stack at point of failure', 2))
+end
+```
+
+Now you act on what `pcall` told you. If `ok` is `true`, the function succeeded and `result` is its return value. If `ok` is `false`, the function failed and `result` is the error message, so you log it and then print a stack trace. `tostring(result)` is there because `result` could be a non-string value in the general case, and `tostring` guarantees the `..` join never itself errors.
+
+This branch is the pattern you will reuse forever. Wrap the risky thing, check `ok`, and decide what to do on failure instead of letting the whole script die. In real code the `else` branch is where you show the player a friendly message, fall back to a default, or log enough detail to fix the bug later.
+
+### Reading the error message itself
+
+Look at what `result` actually contained:
+
+```text
+@qu_debugging_like_a_developer/client.lua:6: planned failure
+```
+
+Every Lua error message has the same anatomy, and once you can read this one you can read all of them. A real uncaught FiveM error looks almost identical, just with `SCRIPT ERROR:` in front:
+
+```text
+SCRIPT ERROR: @qu_debugging_like_a_developer/client.lua:6: planned failure
+```
+
+Read it left to right:
+
+- `@qu_debugging_like_a_developer` is the **resource** the error came from. When you see this in a console full of resources, this tells you which script to open.
+- `/client.lua` is the **file** inside that resource.
+- `:6` is the **line number**. This is the part that saves you. You do not guess where the bug is. The engine tells you. Open that file, go to line 6, and the failing call is right there.
+- `planned failure` is the **message**. For a real error it would say something like `attempt to index a nil value (field 'inventory')`, which tells you not just where but what went wrong.
+
+The instinct to build: when something breaks, do not panic and reread your whole file. Read the error, jump to `file:line`, and look at that exact line first. Ninety percent of bugs are sitting right where the engine points.
+
+### The stack traceback
+
+```lua
+log(debug.traceback('stack at point of failure', 2))
+```
+
+A single `file:line` tells you where the error fired. A **traceback** tells you the whole chain of calls that led there, newest at the top. `debug.traceback(message, level)` builds that chain as a string. The first argument is a label printed at the top so you know what you are looking at. The second argument, `2`, tells it how many frames to skip so the trace starts at the interesting code and not inside the traceback machinery itself.
+
+Read a traceback top to bottom as the answer to one question: how did we get here. The top frame is where the error happened. Each line below it is the function that called the one above. In a deep bug, the traceback is how you find that the bad value was not created where it exploded, it was passed in from three functions up. For a one-level failure like this lesson, the trace is short, but the skill of reading frames top down is the same at any depth.
+
+<Checkpoint question="pcall returns ok=false. Which variable holds the message 'planned failure', and why is the old expected output of an empty result= wrong?">
+  The **second** return value holds it. `pcall` returns the success boolean first and the error message second, so after `local ok, result = pcall(risky)` the variable `result` contains the string `@qu_debugging_like_a_developer/client.lua:6: planned failure`. It is never empty when the call fails, because the whole point of `error('planned failure')` is to produce that message. An expected output showing `result=` with nothing after it would be a bug in the lesson, not something you did wrong. When the call succeeds, `result` instead holds whatever the function returned.
+</Checkpoint>
+
+### F8 versus the server console, and why it matters
+
+This resource is a `client_script`, so its `print` output goes to **F8**, the in-game console you open with the F8 key while connected. A `server_script` would print to the **txAdmin Live Console** instead. This is not a detail, it is the first thing to check when output goes missing.
+
+The rule is simple. Client code prints where the player is, so look in F8. Server code prints where the server is, so look in txAdmin. If you ran `/debugfail` and saw nothing, you were almost certainly looking in the wrong console. The lesson is client-side specifically so you build the habit of pressing F8 to read client output. When you debug a real bug, your very first question is always *which side is this code on*, because that decides which console will hold the answer.
+
+### When you reach for this pattern
+
+You will reach for `pcall` and tracebacks constantly once you leave beginner territory. Three real cases:
+
+- **Calling code that might not exist.** Exports from other resources, JSON decoding of untrusted data, database calls that can time out. Wrap them in `pcall` so one flaky dependency does not take your whole script down.
+- **Turning a crash into a message.** Instead of a red `SCRIPT ERROR` and a dead feature, you catch the failure and show the player a clean "something went wrong, try again," while logging the real error for yourself.
+- **Finding a deep bug.** When an error fires far from where the bad value was born, `debug.traceback` is the map that walks you back up the call chain to the real cause.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_debugging_like_a_developer does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "Resource qu_debugging_like_a_developer does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name. Case and underscores must match." },
     { symptom: "Could not load resource qu_debugging_like_a_developer", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_debugging_like_a_developer, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Nothing appears when you run /debugfail", fix: "This is client code, so the output is in F8, not txAdmin. Join the server, press F8 in-game, and run /debugfail there." },
+    { symptom: "result= prints empty", fix: "You captured only one value from pcall. Write local ok, result = pcall(risky) with both variables, since the message is the second return value." },
+    { symptom: "attempt to call a nil value (global 'pcall')", fix: "pcall is lowercase and built into Lua. Check for a typo like Pcall or PCall. Lua is case sensitive." },
   ]}
 />
 
@@ -117,21 +247,33 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_debugging_like_a_developer folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for tagged logging, pcall, and traceback output.",
-    "Add ensure qu_debugging_like_a_developer to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Write a tagged log helper so your lines stand out in a console full of resources.",
+    "Wrap risky code in pcall and read its two return values: ok first, then the result-or-error-message.",
+    "Branch on ok to recover from a failure instead of letting the whole script crash.",
+    "Read any Lua error line as resource, file, line, message, and jump straight to the failing line.",
+    "Read a debug.traceback top to bottom to trace a deep failure back to its real cause.",
+    "Know that client print lands in F8 and server print lands in txAdmin, and check the right console first.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_debugging_like_a_developer`, rerun the test, and confirm the output changed.
+  Make `risky` fail with a *real* runtime error instead of a planned one, then prove `pcall` still catches it and that the error line still points at the right place. Replace the body of `risky` so it indexes a value that is `nil`:
+
+  ```lua
+  local function risky()
+      local player = nil
+      return player.name
+  end
+  ```
+
+  Restart `qu_debugging_like_a_developer`, join, press F8, and run `/debugfail`. Confirm `ok` is still `false` and that `result` now reads something like `attempt to index a nil value (local 'player')` with a `client.lua:` line number pointing at the `player.name` line. You just proved the exact same catch-and-read workflow handles a surprise crash, not only an `error()` you wrote on purpose. That is the whole point: the skill transfers to every bug you will ever hit.
 </Exercise>
 
 <Refs
   items={[
+    { label: "Lua pcall and error reference", href: "https://www.lua.org/manual/5.4/manual.html#pdf-pcall" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }

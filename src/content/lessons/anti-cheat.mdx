@@ -5,22 +5,22 @@
     { label: "You'll learn", value: "Server-authoritative events, rate limit per source, sanity checks, audit logs to Discord" },
     { label: "Time", value: "~22 minutes" },
     { label: "Prereqs", value: "Lesson 14 (server vs client), P1 (DB), P2 (webhooks)" },
-    { label: "Outcome", value: "Your money events refuse cheats, log violations, and notify you in Discord within 1 second" },
+    { label: "Outcome", value: "Your reward events refuse cheats, log violations, and notify you in Discord within 1 second" },
   ]}
 >
-  No client-side check is real security. Every "give me money" event a cheater finds is one your server should have rejected. This lesson covers the four patterns that stop 95 percent of attacks: server authority, rate limiting, sanity checks, and audit logging.
+  No client-side check is real security. Every "give me money" event a cheater finds is one your server should have rejected. This lesson covers the four patterns that stop most attacks: server authority, rate limiting, sanity checks, and audit logging. The key idea is one sentence long. The server trusts who sent an event, but never what they sent.
 </LessonHero>
 
 <Prereq
   items={[
-    "I can edit server.lua inside a resource.",
+    "I can edit server.lua and client.lua inside a resource.",
     "I have a Discord webhook URL stored privately in server.cfg.",
-    "I can run a command from the server console."
+    "I can connect to my own server and open the F8 console."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  Build a server-side reward event that rejects bad amounts, rate limits repeated calls, and logs suspicious attempts to Discord without exposing the webhook to clients.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a server-authoritative reward event. The client sends an intent, the server decides the amount, rejects abuse, and logs it to Discord without ever exposing the webhook to players. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you understand why a real cheater cannot beat it.
 </Callout>
 
 ## Build it
@@ -37,15 +37,14 @@
   </Step>
 
   <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
-    Create this exact file layout:
+    Create this exact file layout. This resource has a client file and a server file, because the proof has to cross the network to be real:
 
     ```text
 resources/qu_anticheat/
   fxmanifest.lua
+  client.lua
   server.lua
     ```
-
-    If a subfolder does not exist yet, create it before you create the file inside it.
   </Step>
 
   <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
@@ -55,97 +54,201 @@ resources/qu_anticheat/
 fx_version 'cerulean'
 game 'gta5'
 
+client_script 'client.lua'
 server_script 'server.lua'
     ```
 
-    Add these lines near your other config values:
+    There is no `lua54 'yes'` line here. As of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only Lua runtime.
+
+    Now open `server.cfg` and add this line near your other config values:
 
     ```text
-set qu_ac_webhook YOUR_DISCORD_WEBHOOK_URL
+    set qu_ac_webhook YOUR_DISCORD_WEBHOOK_URL
+    ```
+
+    Use plain `set`, not `setr`. The difference matters here and we explain it below.
+  </Step>
+
+  <Step num={4} title="Write client.lua" outcome="The client can send a reward intent to the server.">
+    Open `client.lua` and paste this. Notice the client sends no amount. It only sends the intent to claim:
+
+    ```lua
+RegisterCommand('claimreward', function()
+    TriggerServerEvent('qu_anticheat:claimDailyReward')
+end, false)
+
+RegisterNetEvent('qu_anticheat:rewardResult', function(ok, message)
+    print(('[qu_anticheat] %s: %s'):format(ok and 'approved' or 'denied', message))
+end)
     ```
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The resource contains working FiveM code for this topic.">
+  <Step num={5} title="Write server.lua" outcome="The server owns every decision: amount, rate, and logging.">
     Open `server.lua` and paste this:
 
     ```lua
-local lastUse = {}
+local DAILY_REWARD = 250
+local COOLDOWN_SECONDS = 10
+
+local lastClaim = {}
 local webhook = GetConvar('qu_ac_webhook', '')
 
 local function logViolation(src, reason)
     local name = GetPlayerName(src) or 'unknown'
-    print(('[qu_anticheat] blocked %s: %s'):format(name, reason))
+    print(('[qu_anticheat] blocked %s (id %d): %s'):format(name, src, reason))
 
     if webhook ~= '' then
         PerformHttpRequest(webhook, function() end, 'POST', json.encode({
             username = 'qu_anticheat',
-            content = ('Blocked %s: %s'):format(name, reason)
+            content = ('Blocked %s (id %d): %s'):format(name, src, reason)
         }), { ['Content-Type'] = 'application/json' })
     end
 end
 
-RegisterNetEvent('qu_anticheat:claimReward', function(amount)
+RegisterNetEvent('qu_anticheat:claimDailyReward', function()
     local src = source
     local now = os.time()
 
-    if lastUse[src] and now - lastUse[src] < 10 then
+    if lastClaim[src] and now - lastClaim[src] < COOLDOWN_SECONDS then
         logViolation(src, 'reward spam')
+        TriggerClientEvent('qu_anticheat:rewardResult', src, false, 'on cooldown')
         return
     end
 
-    if type(amount) ~= 'number' or amount < 1 or amount > 500 then
-        logViolation(src, 'bad amount ' .. tostring(amount))
-        return
-    end
-
-    lastUse[src] = now
-    print(('[qu_anticheat] reward approved for %s: %d'):format(GetPlayerName(src), amount))
+    lastClaim[src] = now
+    local amount = DAILY_REWARD
+    print(('[qu_anticheat] reward approved for %s (id %d): %d'):format(GetPlayerName(src), src, amount))
+    TriggerClientEvent('qu_anticheat:rewardResult', src, true, ('paid %d'):format(amount))
 end)
 
-RegisterCommand('actest', function(src)
-    if src == 0 then
-        print('[qu_anticheat] use /actest in game')
-        return
-    end
-
-    TriggerEvent('qu_anticheat:claimReward', 250)
-end, false)
+AddEventHandler('playerDropped', function()
+    lastClaim[source] = nil
+end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="You see the proof line in the correct console.">
-    Open `server.cfg` and add this line near your other local resources:
+  <Step num={6} title="Start and test it" outcome="You see the proof line in both consoles.">
+    Save `server.cfg` and add this line near your other local resources:
 
     ```text
     ensure qu_anticheat
     ```
 
-    Save the file. In txAdmin Live Console or the server console, run:
+    In txAdmin Live Console or the server console, run:
 
     ```text
     restart qu_anticheat
     ```
 
-    Now run this test:
+    Now connect to your own server, open the F8 console, and run:
 
     ```text
-    /actest
+    claimreward
     ```
 
+    In the server console you see the approval. In your own F8 console you see the result the server sent back:
+
     <ExpectedOutput>
-      [qu_anticheat] reward approved for yourName: 250
+      [qu_anticheat] reward approved for yourName (id 1): 250
+      [qu_anticheat] approved: paid 250
     </ExpectedOutput>
+
+    Run `claimreward` a second time within ten seconds. The server prints a blocked line, fires your Discord webhook, and your F8 console prints `denied: on cooldown`.
   </Step>
 </StepGroup>
+
+## How it works
+
+You just proved server authority for real. The command lives on the client, the decision lives on the server, and the only thing that crossed the network was the word "I claim." The server picked the amount. A cheater editing your client cannot change that, and the reason is the single most important idea in this lesson.
+
+### Why `source` is trustworthy but the payload is not
+
+Look at the first two lines of the event handler:
+
+```lua
+RegisterNetEvent('qu_anticheat:claimDailyReward', function()
+    local src = source
+```
+
+`RegisterNetEvent` registers a **networked** event, meaning a client is allowed to trigger it across the wire with `TriggerServerEvent`. When that happens, FiveM sets the server-side global `source` to the server ID of the player who fired it. You did not compute that value and the client did not send it. The platform stamps it from the actual network connection, so `source` is trustworthy. A player cannot pretend to be a different `source`.
+
+The payload is the opposite. Anything the client passes as an argument is just data the client chose to send, and a cheater rewrites their own client freely. That is why this resource sends **no amount at all**. The old, broken version of this lesson had the client send `amount` and the server merely range-checked it. That is not authority, that is a suggestion. Here the client sends only the intent `qu_anticheat:claimDailyReward`, and the server reads `DAILY_REWARD` from its own constant. There is no amount field for a cheater to inflate, because the amount never left the server.
+
+Lock this in as a rule. Trust the sender, never the message. The client may say "I want to claim my daily reward." It may never say "and the reward is 999999."
+
+<Checkpoint question="A teammate sends amount from the client and clamps it to 1..500 on the server. Why is that still cheatable, and what is the fix?">
+  Because the client controls the payload, the cheater simply sends the maximum the clamp allows, every single time, as fast as the rate limit permits. The range check only bounds the damage per call. It does not establish who decides the value. The fix is the one in this lesson: the client sends an intent with no amount, and the server derives the amount itself from server-side state (a constant here, a database row in production). When there is no amount field on the wire, there is nothing to forge.
+</Checkpoint>
+
+### The rate limit, line by line
+
+```lua
+local lastClaim = {}
+local COOLDOWN_SECONDS = 10
+```
+
+`lastClaim` is a table that maps a player's server ID to the last time they successfully claimed. It starts empty. Inside the handler:
+
+```lua
+local now = os.time()
+
+if lastClaim[src] and now - lastClaim[src] < COOLDOWN_SECONDS then
+    logViolation(src, 'reward spam')
+    TriggerClientEvent('qu_anticheat:rewardResult', src, false, 'on cooldown')
+    return
+end
+```
+
+`lastClaim[src]` is `nil` on a player's first claim, so the `and` short-circuits and the guard is skipped. On a repeat claim, `now - lastClaim[src]` is the number of seconds since the last success. If that is under ten, the call is spam: log it, tell the client no, and `return` before any reward logic runs. Only when the guard passes do we record the new timestamp with `lastClaim[src] = now`.
+
+A note on the clock. `os.time()` returns whole seconds, so its resolution is one second. For a ten-second cooldown that is fine. If you needed a sub-second window, for example "no more than one shot fired per 200 milliseconds," `os.time()` is too coarse and you would reach for `GetGameTimer()`, which returns milliseconds since the server started. Pick the clock that matches the window you are guarding.
+
+### Clearing state on disconnect
+
+```lua
+AddEventHandler('playerDropped', function()
+    lastClaim[source] = nil
+end)
+```
+
+This is the line the old lesson was missing, and leaving it out is a real bug. Server IDs are **reused**. When a player disconnects, their ID goes back into the pool and the next player who connects can be handed it. If you never clear `lastClaim`, two things go wrong. First the table grows forever, because every player who ever connected leaves a stale entry behind, a slow memory leak on a long-running server. Second, a reconnecting player can inherit a cooldown they never earned, or skip one they should have, because the slot still holds the previous occupant's timestamp. `playerDropped` fires on the server the moment a player disconnects, and it is the correct hook to release per-player state. Whenever you key a table by `source`, clear that key on `playerDropped`.
+
+### Why the webhook must never be replicated
+
+```lua
+local webhook = GetConvar('qu_ac_webhook', '')
+```
+
+This reads the convar you set with `set qu_ac_webhook ...`. The second argument is the fallback when the convar is unset, so an empty webhook simply skips the Discord post instead of crashing. The security point is the word `set`. A plain `set` convar lives only on the server and is never sent to clients. If you had written `setr` (the replicated variant), FiveM would push that value to every connected client, and any player could read your webhook URL straight out of their own game and spam your Discord channel with garbage. An audit webhook is a secret. It belongs in a plain `set` convar, or better still an environment variable, and never in a `setr` convar, a `client_script`, or a `shared_script`.
+
+### The audit log
+
+```lua
+local function logViolation(src, reason)
+    local name = GetPlayerName(src) or 'unknown'
+    print(('[qu_anticheat] blocked %s (id %d): %s'):format(name, src, reason))
+
+    if webhook ~= '' then
+        PerformHttpRequest(webhook, function() end, 'POST', json.encode(...))
+    end
+end
+```
+
+Every rejection records who and why. The `print` gives you a local trail in the server console. `PerformHttpRequest` posts the same line to Discord so you see attacks in near real time without watching the console. The empty callback `function() end` is deliberate: you are firing and forgetting, you do not need Discord's response. `GetPlayerName(src) or 'unknown'` guards the rare case where the player has already dropped by the time you log, so the format string never breaks on a `nil` name.
+
+### When you reach for these four patterns
+
+You combine these four on every event where a player gains something: money, items, XP, a vehicle, a level. Server authority decides the value, the sanity check rejects impossible inputs on events that still take a payload, the rate limit caps how fast an action can repeat, and the audit log tells you when someone tried. In production the `DAILY_REWARD` constant becomes a database read of the player's actual entitlement, and the cooldown becomes a stored "last claimed at" timestamp so it survives a restart. The shape stays exactly what you built here.
 
 ## If something went wrong
 
 <FailureList
   items={[
     { symptom: "Resource qu_anticheat does not exist", fix: "The folder name and the ensure line do not match, or the folder is not inside resources." },
-    { symptom: "Could not load resource qu_anticheat", fix: "Open fxmanifest.lua and check quotes, commas, braces, and file names." },
-    { symptom: "The command prints nothing", fix: "Run restart qu_anticheat, then run the exact command from the lesson in the correct console." },
-    { symptom: "Client output is missing", fix: "Client prints appear in F8 only after you are connected to the server." },
+    { symptom: "Could not load resource qu_anticheat", fix: "Open fxmanifest.lua and check quotes, commas, braces, and the client_script and server_script file names." },
+    { symptom: "claimreward does nothing in F8", fix: "You must be connected to the server, not just have it running. The command lives in client.lua, so it only exists once your client has loaded the resource. Run restart qu_anticheat, then reconnect." },
+    { symptom: "Server approves but no Discord message on the blocked call", fix: "The webhook is empty or wrong. Confirm set qu_ac_webhook is in server.cfg with a valid Discord webhook URL, and that you used set and not setr." },
+    { symptom: "Cooldown never triggers", fix: "You are waiting more than ten seconds between claims, or you edited COOLDOWN_SECONDS. Fire claimreward twice quickly to see the blocked path." },
   ]}
 />
 
@@ -153,23 +256,29 @@ end, false)
 
 <Recap
   items={[
-    "Build and restart qu_anticheat from a clean folder.",
-    "Point fxmanifest.lua at the exact files this lesson needs.",
-    "Run the test command and know which console should show the proof.",
-    "Change one line and restart only qu_anticheat to verify the change."
+    "Explain why source inside a RegisterNetEvent handler is trustworthy while the event payload never is.",
+    "Design the event so the client sends an intent and the server derives the amount, leaving nothing on the wire to forge.",
+    "Rate limit per player with a table keyed by source, and choose os.time versus GetGameTimer by the window you guard.",
+    "Clear per-source state on playerDropped to avoid leaks and stale cooldowns from reused server IDs.",
+    "Keep an audit secret like a Discord webhook in a plain set convar, never a replicated setr convar a client could read.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change the allowed maximum from 500 to 300, restart, then send 350 and confirm the server prints a blocked line.
+  Make the daily reward a real once-per-day claim that survives a restart. Right now the cooldown is ten seconds and lives only in memory, so a server restart wipes it. Replace the in-memory `lastClaim` with a stored timestamp.
+
+  Add a `claims` table (player identifier and a `last_claimed_at` value) in your database, or use the key-value store with `GetResourceKvpInt` and `SetResourceKvpInt` keyed by the player's license identifier. On a claim, read the stored time, reject if it is the same calendar day, and write the new time only on success. Keep the intent-only client and the server-derived amount exactly as they are. When you finish, a player who claims, gets paid, and rejoins after a restart should still be told `denied` until the next day.
+
+  Hint: get the player's license with `GetPlayerIdentifierByType(src, 'license')` so the key is stable across reconnects, instead of the reusable server ID.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM RegisterNetEvent reference", href: "https://docs.fivem.net/docs/scripting-reference/events/list/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM convars (set vs setr)", href: "https://docs.fivem.net/docs/scripting-reference/convars/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

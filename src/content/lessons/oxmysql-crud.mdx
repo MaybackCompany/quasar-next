@@ -2,25 +2,26 @@
   crumbs="Track 2 · Pro Path"
   title="Database with oxmysql: CRUD without the footguns"
   meta={[
-    { label: "You'll learn", value: "query, scalar, insert, update, single, prepare, parameter placeholders, pool sizing" },
+    { label: "You'll build", value: "A working resource named qu_oxmysql_crud that inserts a row, reads it back, and updates it, all from one command." },
     { label: "Time", value: "~25 minutes" },
-    { label: "Prereqs", value: "Lesson 14 (server events), Bonus 13c (cancel patterns)" },
-    { label: "Outcome", value: "You can build a server-authoritative ban system, save player money on disconnect, and never concatenate SQL again" },
+    { label: "You need", value: "A running MariaDB database wired to oxmysql, your resources folder open, and txAdmin Live Console ready." },
+    { label: "You'll learn", value: "The four oxmysql helpers, what the question mark placeholders do, why await blocks the right way, and when to reach for a database at all." },
   ]}
 >
-  Almost every server you build will save state. Bans, money, garages, jobs, all of it lives in MySQL. `oxmysql` is the modern, async-friendly driver everyone uses. This lesson teaches the four query helpers, why prepared statements stop attackers cold, and how to size the connection pool so you do not deadlock at 32 players.
+  Almost every server you build will save state. Bans, money, garages, jobs, all of it lives in a database. `oxmysql` is the modern async driver the FiveM community has standardised on, and it ships from Overextended, the same group behind `ox_lib` and `ox_inventory`. This lesson builds insert, read, and update as a working resource, then walks the code line by line so you understand the mental model instead of copying it.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I have oxmysql installed and its connection string set in server.cfg.",
+    "I can run SQL against my database (HeidiSQL, DBeaver, or the txAdmin database tab)."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds oxmysql insert, select, update, and delete as a working FiveM resource named `qu_oxmysql_crud`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then read why">
+  This lesson builds oxmysql insert, read, and update as a working FiveM resource named `qu_oxmysql_crud`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the "How it works" section explains every line.
 </Callout>
 
 ## Build it
@@ -44,7 +45,7 @@ resources/qu_oxmysql_crud/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and that oxmysql must load first.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -57,7 +58,7 @@ server_script 'server.lua'
 dependency 'oxmysql'
     ```
 
-    Run this SQL before starting the resource:
+    Then run this SQL against your database before starting the resource:
 
     ```sql
 CREATE TABLE IF NOT EXISTS qu_oxmysql_crud_rows (
@@ -68,7 +69,7 @@ CREATE TABLE IF NOT EXISTS qu_oxmysql_crud_rows (
     ```
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the lesson code" outcome="Insert, read, and update are now runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
@@ -82,20 +83,20 @@ end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_oxmysql_crud
     ```
 
-    Save, then run:
+    Save, then run this in the server console (txAdmin Live Console):
 
     ```text
     restart qu_oxmysql_crud
     ```
 
-    Run this test:
+    Now run the test command in the same console:
 
     ```text
     dbtest
@@ -103,19 +104,115 @@ end, true)
 
     <ExpectedOutput>
       [qu_oxmysql_crud] selected lesson 100
-[qu_oxmysql_crud] updated rowId
+[qu_oxmysql_crud] updated 1
     </ExpectedOutput>
+
+    The number after `updated` is the new row id, so it climbs by one each time you run `dbtest`. The first run prints `1`, the next prints `2`, and so on. The `selected lesson 100` line stays the same because every run inserts the same name and amount before reading it back.
   </Step>
 </StepGroup>
+
+## How it works
+
+You just ran three database operations in a row, in order, from one command. Now let's take it apart so you can write your own queries instead of pasting this one. We will go through the manifest, the SQL, then `server.lua` line by line.
+
+### The manifest tells FiveM to borrow oxmysql's code
+
+```lua
+server_script '@oxmysql/lib/MySQL.lua'
+```
+
+The `@` prefix means "load this file from another resource". You are not copying oxmysql into your folder. You are telling FiveM to run oxmysql's `MySQL.lua` inside your resource's environment first. That file is what defines the global `MySQL` table you call later. Without this line, `MySQL` is `nil` and your first query throws `attempt to index a nil value`.
+
+```lua
+dependency 'oxmysql'
+```
+
+This is a guarantee about load order. It tells the server "do not start `qu_oxmysql_crud` until `oxmysql` has started". If oxmysql is still booting when your resource runs, the connection pool is not ready and queries fail. The `dependency` line removes that race.
+
+### The table is the shape of your data
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_oxmysql_crud_rows (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  amount INT NOT NULL DEFAULT 0
+);
+```
+
+A database table is a spreadsheet with strict rules. `id INT AUTO_INCREMENT PRIMARY KEY` means the database hands out a unique whole number for every new row, automatically, and that number is how you find the row again. You never set `id` yourself, which is exactly why your insert can ask the database "what id did you just create?" and get a real answer back. `name VARCHAR(80) NOT NULL` is text up to 80 characters that must be present. `amount INT NOT NULL DEFAULT 0` is a whole number that defaults to zero if you do not provide one. `IF NOT EXISTS` means running this twice is safe, it will not error if the table is already there.
+
+### server.lua, line by line
+
+```lua
+RegisterCommand('dbtest', function(src)
+```
+
+This registers a server console command named `dbtest`. Everything inside the function runs when you type `dbtest`. The `true` at the very end (you will see it below) restricts the command to admins and the console, which is what you want for a database test that should never be player-triggered.
+
+```lua
+local id = MySQL.insert.await('INSERT INTO qu_oxmysql_crud_rows (name, amount) VALUES (?, ?)', { 'lesson', 100 })
+```
+
+This is the create in CRUD. `MySQL.insert.await` runs an `INSERT` and returns the new row's auto-increment id. Read the two pieces:
+
+- The SQL string has two `?` placeholders. Those are parameter slots, not real values yet.
+- The Lua table `{ 'lesson', 100 }` fills the slots in order: the first `?` becomes `'lesson'`, the second `?` becomes `100`.
+
+You never glue the values into the string yourself. The driver sends the query and the values to the database separately, and the database treats the values as pure data, never as commands. That is what stops SQL injection. If a player's name were `'); DROP TABLE players; --`, a placeholder query would store that text harmlessly as a name. A string-concatenated query would run it as SQL and delete your table.
+
+```lua
+local row = MySQL.single.await('SELECT * FROM qu_oxmysql_crud_rows WHERE id = ?', { id })
+```
+
+This is the read. `MySQL.single` returns one row as a Lua table, or `nil` if nothing matched. You pass the `id` you just got back from the insert into the `?` slot, so you are reading back the exact row you wrote. `row.name` is `'lesson'` and `row.amount` is `100`, the values you inserted. If you used `MySQL.query` instead, you would get a list of rows (a table of tables) even when there is only one, so you would have to write `row[1].name`. `MySQL.single` saves you that step when you know you want exactly one row.
+
+```lua
+print('[qu_oxmysql_crud] selected ' .. row.name .. ' ' .. row.amount)
+```
+
+Standard Lua. The `..` operator joins strings. This is why the expected output reads `selected lesson 100`: it is the prefix, then `row.name`, then `row.amount`.
+
+```lua
+MySQL.update.await('UPDATE qu_oxmysql_crud_rows SET amount = ? WHERE id = ?', { 150, id })
+```
+
+This is the update. `MySQL.update.await` returns how many rows it changed (here, `1`). Note the two placeholders again: the first `?` is the new amount `150`, the second `?` is the `id` of the row to change. The `WHERE id = ?` clause is not optional thinking, it is critical. An `UPDATE` with no `WHERE` clause changes every row in the table. The update and delete statements are the two places where a missing `WHERE` turns a one-row change into a whole-table disaster.
+
+```lua
+end, true)
+```
+
+The `true` is the `restricted` flag on `RegisterCommand`. When `true`, the command is admin-and-console only. A database write command must never be runnable by any player who guesses the name, so this flag matters even in a teaching example.
+
+### The mental model: .await means "wait here for the answer"
+
+Every helper above ends in `.await`. Databases live on disk and answer in milliseconds, not instantly. `.await` tells the resource to pause that one function until the database replies, then continue with the result in hand. That is why `local id = MySQL.insert.await(...)` can hand you a real id on the very next line, and why the read can use it.
+
+This pause is cooperative, not a freeze. FiveM keeps serving every other player while your function waits. You are not blocking the server, you are suspending one task and resuming it when the answer arrives. The same four helpers exist without `.await` (they take a callback function instead), but `.await` reads top to bottom like normal code, which is why it is the default style today.
+
+<Callout variant="tip" title="The helpers at a glance">
+  `MySQL.insert` returns the new id. `MySQL.update` returns the number of changed rows. `MySQL.single` returns one row or nil. `MySQL.query` returns a list of rows. There is also `MySQL.scalar` for a single value (one column of one row), handy for reads like a money balance.
+</Callout>
+
+### When you reach for this pattern
+
+Reach for the database any time state must survive a restart or be the same for everyone. Player money, owned vehicles, bans, job ranks, inventory: all of it belongs in MariaDB because it must be true after a crash and identical across the whole server. The insert, read, update flow you just built is the spine of every one of those systems. A ban is an insert. A balance check is a single or scalar read. Paying a player is an update.
+
+Do not reach for the database for throwaway, per-session, or high-frequency data. A player's current on-screen marker, a temporary cooldown, a UI open or closed flag: keep those in memory or in a state bag. Hitting the database every frame, or for data nobody needs after disconnect, is how servers start lagging at 32 players.
+
+<Checkpoint question="Why does this lesson use ? placeholders instead of building the SQL string with the player's input directly?">
+  Because the database treats anything in a `?` slot as pure data, never as a command. The driver sends the query text and the values on separate channels, so a malicious value like `'); DROP TABLE players; --` gets stored as harmless text instead of being executed as SQL. Concatenating user input straight into the query string is the classic SQL injection hole, and it is the single most common way community servers get their databases wiped. Placeholders close that hole for free, and as a bonus the database can cache and reuse the query plan.
+</Checkpoint>
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_oxmysql_crud does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_oxmysql_crud", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_oxmysql_crud, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing or misspelled in fxmanifest.lua, or oxmysql is not started. Add the line, add dependency 'oxmysql', and ensure oxmysql loads before this resource." },
+    { symptom: "oxmysql could not connect / no connection string", fix: "oxmysql has no database to talk to. Set mysql_connection_string in server.cfg pointing at your MariaDB, and confirm the database is running." },
+    { symptom: "Unknown column or Table doesn't exist", fix: "You skipped the CREATE TABLE step or ran it against the wrong database. Run the SQL from step 3 against the same database in your connection string." },
+    { symptom: "attempt to index a nil value (local 'row')", fix: "MySQL.single returned nil because no row matched. Confirm the insert ran first and that you are passing the returned id into the WHERE id = ? slot." },
+    { symptom: "Parameter count mismatch / bind error", fix: "The number of ? placeholders does not match the values in the table. Count them: two question marks need exactly two values, in order." },
   ]}
 />
 
@@ -123,23 +220,33 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_oxmysql_crud folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for oxmysql insert, select, update, and delete.",
-    "Add ensure qu_oxmysql_crud to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Wire a resource to oxmysql with @oxmysql/lib/MySQL.lua and dependency 'oxmysql'.",
+    "Run insert, read, and update with MySQL.insert.await, MySQL.single.await, and MySQL.update.await.",
+    "Use ? placeholders so user input can never be executed as SQL.",
+    "Capture the new row id from an insert and use it to read and update the same row.",
+    "Decide what belongs in the database (persistent, shared state) and what does not (per-session, high-frequency data).",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_oxmysql_crud`, rerun the test, and confirm the output changed.
+  Add a delete to complete the full CRUD cycle. After the update line, read the row back once more with `MySQL.single`, then delete it and confirm it is gone:
+
+  ```lua
+  MySQL.update.await('DELETE FROM qu_oxmysql_crud_rows WHERE id = ?', { id })
+  local gone = MySQL.single.await('SELECT * FROM qu_oxmysql_crud_rows WHERE id = ?', { id })
+  print('[qu_oxmysql_crud] after delete, row is ' .. tostring(gone))
+  ```
+
+  Restart `qu_oxmysql_crud`, run `dbtest`, and confirm the last line prints `after delete, row is nil`. You just proved the read returns `nil` when no row matches, and you used the same `WHERE id = ?` discipline on a delete that would otherwise wipe the whole table. Note that `oxmysql` runs `DELETE` through `MySQL.update.await`, which returns the number of rows removed.
 </Exercise>
 
 <Refs
   items={[
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "MariaDB SQL statements reference", href: "https://mariadb.com/kb/en/sql-statements/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

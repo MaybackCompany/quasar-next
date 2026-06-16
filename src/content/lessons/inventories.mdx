@@ -5,22 +5,23 @@
     { label: "You'll learn", value: "Slot vs weight model, stacking rules, item metadata, ox_inventory exports" },
     { label: "Time", value: "~22 minutes" },
     { label: "Prereqs", value: "P1 (oxmysql), P9 (persistence)" },
-    { label: "Outcome", value: "You can give a player 5 burgers, check if they have 50 kg free, and store crafting metadata on each unique item" },
+    { label: "Outcome", value: "You can give a player 5 burgers, read the true count back from the inventory, and store unique metadata on an item so it stops stacking" },
   ]}
 >
-  An inventory is a backpack with limited pockets and a scale. There are two dominant models in FiveM: slot-based (each item lives in a numbered pocket) and weight-based (only kg cap matters). Each has trade-offs. This lesson covers both, the stacking rules, item metadata, and how to integrate with `ox_inventory` without re-implementing it.
+  An inventory is a backpack with limited pockets and a scale. There are two dominant models in FiveM: slot-based, where each item lives in a numbered pocket, and weight-based, where only the total kilograms matter. Most modern systems use both at once. This lesson covers the two models and their trade-off, the stacking rules, item metadata, and how to integrate with `ox_inventory` without re-implementing it.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output.",
+    "I have ox_inventory installed and started, with a 'burger' item defined."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ox_inventory AddItem and Search on the server as a working FiveM resource named `qu_inventories`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds an `ox_inventory` integration on the server as a working FiveM resource named `qu_inventories`. It adds items, then reads the true count back from the inventory instead of trusting a return value. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
 </Callout>
 
 ## Build it
@@ -44,7 +45,7 @@ resources/qu_inventories/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and what must load first.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -53,25 +54,37 @@ game 'gta5'
 
 server_script 'server.lua'
 
-dependency 'ox_inventory'
+dependencies {
+    'ox_inventory'
+}
     ```
+
+    `ox_inventory` is a community resource from the Overextended team, not a built-in Cfx.re resource, so it must already be installed and started on your server for this lesson to work. The `dependencies { }` block is the canonical FiveM form. You will see the singular `dependency 'ox_inventory'` in older code; it still works, but prefer the plural block because it scales to a list without rewriting the line.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
-RegisterCommand('burger', function(src)
-    local ok = exports.ox_inventory:AddItem(src, 'burger', 5)
-    if not ok then print('[qu_inventories] add failed') return end
+RegisterCommand('burger', function(source)
+    local src = source
+
+    -- Add 5 burgers. AddItem returns success + a response string.
+    local success, response = exports.ox_inventory:AddItem(src, 'burger', 5)
+    if not success then
+        print('[qu_inventories] add failed: ' .. tostring(response))
+        return
+    end
+
+    -- Read the TRUE count back from the inventory, do not trust the count we asked for.
     local count = exports.ox_inventory:Search(src, 'count', 'burger')
     print('[qu_inventories] burger count ' .. count)
-end, false)
+end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
+    Open `server.cfg` and add this line below your `ensure ox_inventory` line:
 
     ```text
     ensure qu_inventories
@@ -83,26 +96,85 @@ end, false)
     restart qu_inventories
     ```
 
-    Run this test:
+    Join the server so you have a player and an inventory, then run this from the txAdmin Live Console, passing your own server id (the example uses `1`):
 
     ```text
-    /burger
+    burger 1
     ```
 
     <ExpectedOutput>
       [qu_inventories] burger count 5
     </ExpectedOutput>
+
+    The command is server-side and restricted, so it runs from the console. The console is source zero and has no inventory of its own, which is why you target a connected player id. We will unpack why in the next section.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the count appeared. The reason the count is the proof, and not the return value of `AddItem`, is the whole point of this lesson. Take it apart so that next time you reach for an inventory you are deciding, not copying.
+
+### The two models, and why the count is the truth
+
+Before the code, the mental model. There are two ways to limit what a player can carry.
+
+- **Slot-based.** The inventory is a fixed grid of numbered pockets, say 50 slots. Each kind of item occupies a slot, and a slot holds up to a stack limit of that item. Run out of free slots and you cannot carry more, even if each item is feather-light.
+- **Weight-based.** The inventory has a single kilogram cap, say 60 kg. Nothing else is counted. Carry one heavy item or a thousand light ones, the only question is the total weight.
+
+`ox_inventory` enforces **both at once**: every player has a slot count and a weight cap, and an add can fail because either limit is hit. That is exactly why you cannot trust the number you asked for. You requested 5 burgers, but if the player had room for only 3 by weight or slots, the inventory holds 3, not 5. So the lesson reads the real number back instead of assuming the request was honored in full.
+
+### Adding the item
+
+```lua
+local success, response = exports.ox_inventory:AddItem(src, 'burger', 5)
+```
+
+`exports.ox_inventory:AddItem` is how one resource calls a function another resource has published. `ox_inventory` exports `AddItem`; you call it with `exports.ox_inventory:` followed by the function name. The arguments here are the inventory to add to (`src`, the player's server id), the item name (`'burger'`), and the count (`5`).
+
+It returns two values: `success`, a boolean, and `response`, a string. On a clean success, `success` is `true`. On a hard failure, such as a completely full inventory, `success` is `false` and `response` is a reason like `inventory_full`. That is why the code captures both and prints `response` when the add fails, instead of printing a bare "add failed" that tells you nothing.
+
+Here is the trap the old version of this lesson fell into. `success` is not a clean "all five landed" flag. It tells you the add was accepted, not how many units actually fit once weight and slot caps were applied. Gating only on the boolean and assuming you got all five is how phantom items and desync bugs are born. The honest move is the next line.
+
+### Reading the truth back
+
+```lua
+local count = exports.ox_inventory:Search(src, 'count', 'burger')
+```
+
+`Search` asks the inventory what it actually holds. The second argument is the **mode**, and the mode decides what you get back:
+
+- `'count'` returns a single number: the total quantity of that item across every slot it occupies. That is what we print, because a number is the cleanest proof that the item is really there.
+- `'slots'` returns an array of tables, one per slot the item lives in, each with its `slot` number, its `count`, and its `metadata`. You reach for `'slots'` when you need to know *where* the item sits or inspect per-stack metadata, not just the grand total.
+
+So the flow is: ask the inventory to add, then ask the inventory what it now holds. The printed `5` is not the `5` you passed to `AddItem`. It is the inventory's own answer, read fresh. If a weight cap had clipped the add to 3, this line would print `3`, and you would see the truth instead of a lie.
+
+### Stacking and metadata
+
+```lua
+exports.ox_inventory:Search(src, 'slots', 'burger')
+```
+
+Why did five burgers print as one count and not clutter five slots? Because identical items **stack**. Two units of an item are identical when they share the same name and the same metadata, so they merge into one slot and the slot's count goes up. That is what keeps a slot-based inventory usable: 64 ammo is one slot, not 64.
+
+Metadata is the per-item data attached to a single stack: durability, a weapon serial, a registered owner, a crafting quality. The rule that follows is the one to memorize. Items only stack when their metadata matches. Give two burgers different metadata and they can no longer share a slot, because they are no longer identical, so they occupy two slots with a count of 1 each. This is exactly how unique items work. A serialized pistol cannot stack with another pistol, because each carries a different serial in its metadata. You attach metadata as a fourth argument: `AddItem(src, 'burger', 1, { quality = 100 })`. Switch to `'slots'` mode and you will watch a plain burger and a metadata burger split into two separate slots.
+
+<Checkpoint question="You call AddItem(src, 'burger', 5) and it returns success = true, but Search(src, 'count', 'burger') returns 3. What happened, and why is the lesson right to print the Search result instead of 5?">
+  The player only had room for 3 burgers before hitting a slot or weight cap, so ox_inventory added 3 and stopped. `success = true` means the add was accepted, not that all five units fit, which is the trap. `Search` with `'count'` mode reads the real total back from the inventory, so it returns the honest `3`. Printing the value you passed to `AddItem` would claim five items that do not exist, and any code that trusted that number would drift out of sync with reality. Always confirm against what the inventory actually holds.
+</Checkpoint>
+
+### Why integrate with ox_inventory instead of rolling your own
+
+You could store items in a plain Lua table and a database column. People do, and then they spend months rebuilding what already exists. A real inventory has to enforce weight and slot limits, stack identical items, keep unique items unstacked by metadata, sync state to the client UI, survive a server restart, and prevent duplication exploits when two actions touch the same stack at once. `ox_inventory` solves all of that and is battle-tested across thousands of servers. Your job is to call `AddItem`, `RemoveItem`, and `Search`, and to trust the inventory as the single source of truth. Reach for it any time a player needs to carry, drop, trade, or store items. Hand-roll an item table only for a throwaway prototype, never for anything players will exploit.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_inventories does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_inventories", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_inventories, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Failed to load resource ox_inventory / dependency not started", fix: "ox_inventory is a community resource that must be installed and started before qu_inventories. Add ensure ox_inventory above ensure qu_inventories in server.cfg." },
+    { symptom: "attempt to index a nil value (field 'ox_inventory')", fix: "ox_inventory is not running, so the export does not exist. Confirm it appears in the status list and is spelled exactly ox_inventory." },
+    { symptom: "add failed: invalid_item", fix: "The 'burger' item is not defined in ox_inventory's items data. Add a burger item to its item list, or test with an item that already exists." },
+    { symptom: "add failed: inventory_full", fix: "The target player has no free slots or weight. This is the lesson working: the cap was hit. Target a player with room, or remove items first." },
+    { symptom: "burger count is 0 or the command errors on source", fix: "You ran it against the console (source 0), which has no inventory. Join the server and pass a real connected player id, like burger 1." },
   ]}
 />
 
@@ -110,23 +182,41 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_inventories folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ox_inventory AddItem and Search on the server.",
-    "Add ensure qu_inventories to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain the slot-based and weight-based models and why ox_inventory enforces both at once.",
+    "Call exports.ox_inventory:AddItem and read its success and response return values instead of guessing.",
+    "Know that success means the add was accepted, not that the full count fit, and confirm the real total with Search.",
+    "Use Search 'count' mode for a total and 'slots' mode for per-stack slot and metadata detail.",
+    "Explain stacking: identical name plus identical metadata merges into one slot, and differing metadata forces separate slots.",
+    "Say why you integrate with ox_inventory rather than hand-rolling an item table.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_inventories`, rerun the test, and confirm the output changed.
+  Prove the metadata stacking rule with your own eyes. Extend the command so it adds one plain burger and one burger with metadata, then prints the slot layout instead of just the count:
+
+  ```lua
+  RegisterCommand('burger', function(source)
+      local src = source
+      exports.ox_inventory:AddItem(src, 'burger', 1)
+      exports.ox_inventory:AddItem(src, 'burger', 1, { quality = 100 })
+
+      local slots = exports.ox_inventory:Search(src, 'slots', 'burger')
+      print('[qu_inventories] burger occupies ' .. #slots .. ' slot(s)')
+      for _, item in ipairs(slots) do
+          print('[qu_inventories] slot ' .. item.slot .. ' count ' .. item.count)
+      end
+  end, true)
+  ```
+
+  Restart `qu_inventories`, join the server, and run `burger 1`. Confirm the plain burger and the metadata burger refuse to stack: the print reports two slots, each with a count of 1, because their metadata differs. Now change the second add to plain `AddItem(src, 'burger', 1)` with no metadata, restart, and confirm they merge back into one slot with a count of 2. You just watched the stacking rule decide the slot layout, which is the core mechanic every inventory in FiveM is built on.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "ox_inventory server functions (AddItem, Search)", href: "https://overextended.dev/ox_inventory/Functions/Server" },
+    { label: "ox_inventory item metadata guide", href: "https://overextended.dev/ox_inventory/Guides/metadata" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

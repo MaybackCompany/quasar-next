@@ -8,21 +8,23 @@
   ]}
 >
   This is one of the first big FiveM ideas that confuses beginners. Your resource
-  folder looks like one thing, but it actually runs as **two separate programs** ,
+  folder looks like one thing, but it actually runs as **two separate programs**:
   one on the server, one on each player's PC. They do not share variables, and they
-  do not secretly sync.
+  do not secretly sync. By the end you will be able to point at any line in a resource
+  and say which world it runs in, and how the two worlds talk to each other.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console and F8 output.",
+    "I have joined my own server at least once so a player ped exists."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds one resource proving server and client run as separate programs as a working FiveM resource named `qu_two_worlds`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds one resource that forces the server and the client to print on two different machines, as a working FiveM resource named `qu_two_worlds`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart so you can see the split for yourself.
 </Callout>
 
 ## Build it
@@ -48,17 +50,19 @@ resources/qu_two_worlds/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load, and on which side.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
 fx_version 'cerulean'
 game 'gta5'
 
-client_script 'client.lua'
-server_script 'server.lua'
 shared_script 'config.lua'
+server_script 'server.lua'
+client_script 'client.lua'
     ```
+
+    Notice the three different keys. `server_script` and `client_script` send each file to a different world. `shared_script` is the odd one out, and the next section explains why. Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored, because Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -72,59 +76,137 @@ Config.Label = 'qu_two_worlds shared config'
     Open `server.lua` and paste this:
 
     ```lua
-print('[qu_two_worlds] server loaded ' .. Config.Label)
+print('[qu_two_worlds] server loaded, Config.Label = ' .. Config.Label)
+
+ServerOnlySecret = 'only the server knows this'
 
 RegisterCommand('splitproof', function(src)
+    print('[qu_two_worlds] server handled splitproof, ServerOnlySecret = ' .. ServerOnlySecret)
     TriggerClientEvent('qu_two_worlds:clientProof', src)
-    print('[qu_two_worlds] server handled splitproof')
-end, false)
+end, true)
     ```
 
     Open `client.lua` and paste this:
 
     ```lua
-print('[qu_two_worlds] client loaded ' .. Config.Label)
+print('[qu_two_worlds] client loaded, Config.Label = ' .. Config.Label)
 
 RegisterNetEvent('qu_two_worlds:clientProof', function()
-    print('[qu_two_worlds] client ped ' .. PlayerPedId())
+    local ped = PlayerPedId()
+    print('[qu_two_worlds] client got the event, my ped handle = ' .. ped)
+    print('[qu_two_worlds] client sees ServerOnlySecret as ' .. tostring(ServerOnlySecret))
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears across two consoles.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_two_worlds
     ```
 
-    Save, then run:
+    Save, then run this in the txAdmin Live Console:
 
     ```text
     restart qu_two_worlds
     ```
 
-    Run this test:
+    Join your server, then open the chat box and run:
 
     ```text
     /splitproof
     ```
 
     <ExpectedOutput>
-      Server: [qu_two_worlds] server handled splitproof
-F8: [qu_two_worlds] client ped playerPedId
+Server (txAdmin Live Console):
+[qu_two_worlds] server loaded, Config.Label = qu_two_worlds shared config
+[qu_two_worlds] server handled splitproof, ServerOnlySecret = only the server knows this
+
+Client (F8 console):
+[qu_two_worlds] client loaded, Config.Label = qu_two_worlds shared config
+[qu_two_worlds] client got the event, my ped handle = 132
+[qu_two_worlds] client sees ServerOnlySecret as nil
     </ExpectedOutput>
+
+    Your ped handle will be some integer, not 132 exactly. The number does not matter. What matters is that it is a number, that it shows up in F8 and not in the server console, and that the client reports `ServerOnlySecret` as `nil`. That last line is the whole lesson in one word.
   </Step>
 </StepGroup>
+
+## How it works
+
+You just made one resource print on two different machines, and you watched a variable that exists on the server come back as `nil` on the client. Nothing synced it across, because nothing ever does on its own. That is the two-worlds model. Now take it apart line by line so you can predict this instead of being surprised by it.
+
+### Why one folder runs as two programs
+
+The folder `qu_two_worlds` is not a program. It is a bundle of files plus a manifest that tells FiveM what to do with each file. When the resource starts, FiveM splits that bundle in two and ships each half to a different runtime:
+
+- `server_script 'server.lua'` runs **once**, on the server box, inside the server runtime. There is exactly one copy, no matter how many players are online.
+- `client_script 'client.lua'` runs on **every connected player's PC**, inside that player's game. Ten players means ten independent copies of `client.lua`, each in its own little world, each with its own variables.
+
+So when `server.lua` sets `ServerOnlySecret = 'only the server knows this'`, that global lives in the server runtime only. The client runtime is a different process on a different machine. It never received that file, never executed that line, and has no such global. That is why the client print shows `nil`. There is no error and no sync. The client simply asked for a variable that does not exist in its world and got back `nil`, the Lua value for nothing here.
+
+The mental model to lock in: a global in `server.lua` is invisible to `client.lua`, and the reverse is just as true. They are not two halves of one memory space. They are two programs that happen to ship in the same folder.
+
+### Why shared_script is the exception
+
+If server globals and client globals never cross, how does `Config.Label` print correctly on both sides? Look at the manifest again. `config.lua` is declared with `shared_script`, not `server_script` or `client_script`. A `shared_script` is loaded into **both** runtimes. The server runtime reads `config.lua` and gets a `Config` table. Each client runtime also reads its own copy of `config.lua` and gets its own `Config` table.
+
+Read that carefully, because the wording matters. `shared_script` does not mean one table shared across the network. It means the same file is run separately in each world, so each world ends up with its own identical copy. The server's `Config` and a client's `Config` are two different tables that happen to hold the same values, because they were built from the same source file. Change `Config.Label` at runtime on the server and the clients will not see the change. They only matched at startup because they read the same script.
+
+This is exactly why `Config.Label` resolves on both sides while `ServerOnlySecret` does not. `config.lua` was shipped to both runtimes. `server.lua` was shipped to one. The manifest key you choose decides which worlds a file reaches, and that is the single most useful thing to understand about a manifest.
+
+<Checkpoint question="If a shared_script is loaded into both runtimes, why is editing Config.Label on the server at runtime not enough to change it on the client?">
+  Because `shared_script` does not create one shared table across the network. It runs the same file separately in each runtime, so the server has its own `Config` table and each client has its own. They start equal only because they were built from the same source at load time. After that they are independent objects in independent processes. Changing the server's copy at runtime touches the server's memory and nothing else. To push a new value to clients you have to send it deliberately, with an event or a state bag, the same way you would send any other value across the gap.
+</Checkpoint>
+
+### The event bridge is the proof
+
+If the two worlds never share memory, then the command itself is the demonstration. Follow the path of `/splitproof`.
+
+A command typed in the chat box arrives on the **server**, because `RegisterCommand` with the restricted flag set to `true` registers a server command. The handler runs in `server.lua`, prints its line to the server console, and then hits this:
+
+```lua
+TriggerClientEvent('qu_two_worlds:clientProof', src)
+```
+
+`TriggerClientEvent` is the bridge. It is the only way server code can make something happen on a specific player's client. The first argument is the event name. The second argument, `src`, is the server ID of the player who ran the command, so the event is sent to that one player and no one else. Send it to `-1` instead and it goes to every connected client. There is no other path. The server cannot reach into the client's memory and set a variable. It can only fire an event and let the client decide what to do with it.
+
+On the other side, the client is listening:
+
+```lua
+RegisterNetEvent('qu_two_worlds:clientProof', function()
+    local ped = PlayerPedId()
+    -- ...
+end)
+```
+
+`RegisterNetEvent` declares that this event is allowed to arrive from across the network, then registers the handler that runs when it does. When the server's `TriggerClientEvent` lands, this handler fires inside the player's game. The print appears in F8, not in the server console, because F8 is the client's console and this code is running on the client.
+
+That round trip, server prints, server fires an event, client receives it and prints in a different console, is the literal proof that the two sides do not share memory. If they shared memory, you would not need the event at all. You would just read the variable. The fact that an event hop is mandatory is the fact that there are two worlds.
+
+### What PlayerPedId returns, and why only the client can call it
+
+Inside the client handler you call `PlayerPedId()`. It returns an **integer entity handle**: a runtime reference to your character ped that the game engine hands out, something like `132`. That handle is not your name and not a network ID. It is a local pointer into the running game, and it only means anything inside the game that issued it.
+
+This is why the call lives on the client and could never live on the server. The server has no game world running. It has no peds, no camera, no screen. There is no character there to get a handle for. `PlayerPedId` is a client-only native for exactly this reason, and trying to call it in `server.lua` would fail because the server runtime does not expose it. When you need something about a player's body, the server has to ask the client for it, with an event, because only the client is standing in the world.
+
+### When you reach for this pattern
+
+You will use the two-worlds split on every resource you ever write, so the goal is to make the decision automatically. Three rules that cover most cases:
+
+- **Anything visual or input-driven lives on the client.** Drawing markers, reading key presses, getting the player's ped or coordinates, showing UI. The client is the only world that has a screen and a body.
+- **Anything authoritative lives on the server.** Money, inventory, bans, the database, deciding whether an action is allowed. The server is the single copy that every client must go through, so it is the only place a cheating client cannot fake.
+- **Crossing the gap is always deliberate.** Client to server is `TriggerServerEvent`. Server to client is `TriggerClientEvent`. Values that should match everywhere at startup, like config, go in a `shared_script`. There is no fourth option where a variable just appears on the other side.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_two_worlds does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_two_worlds", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_two_worlds, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to concatenate a nil value (global 'Config')", fix: "config.lua is not declared as shared_script, so one side never loaded it. Check the manifest line reads shared_script 'config.lua' exactly, then restart qu_two_worlds." },
+    { symptom: "The server line prints but nothing appears in F8", fix: "You ran /splitproof before joining the server, so there is no client to receive the event. Join your own server, then run the command from the chat box." },
+    { symptom: "The command does nothing at all", fix: "RegisterCommand uses the restricted flag true, so it is a server command fired from chat. Make sure you typed /splitproof in the in-game chat box, and that restart qu_two_worlds ran without a manifest error." },
+    { symptom: "client got the event, my ped handle = 0", fix: "Your ped does not exist yet because you have not spawned in. Wait until you are loaded into the world, then run /splitproof again. A handle of 0 means there is no valid ped." },
   ]}
 />
 
@@ -132,23 +214,40 @@ F8: [qu_two_worlds] client ped playerPedId
 
 <Recap
   items={[
-    "Make the qu_two_worlds folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for one resource proving server and client run as separate programs.",
-    "Add ensure qu_two_worlds to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain why one resource folder runs as two programs: server_script once on the server, client_script on every player's PC.",
+    "Predict that a global set in server.lua reads as nil on the client, because the two runtimes do not share memory.",
+    "Explain why a shared_script like config.lua resolves on both sides: it is run separately in each runtime, giving each world its own copy.",
+    "Trace the event bridge: TriggerClientEvent on the server reaches a specific client, and RegisterNetEvent on the client receives it.",
+    "Say which console each print lands in, and why PlayerPedId is a client-only native that returns an integer entity handle.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_two_worlds`, rerun the test, and confirm the output changed.
+  Make the proof go the other way. Right now the server pushes a value to the client. Reverse it: have the client read its ped handle and send it back to the server, so the server prints a value it could never compute on its own.
+
+  Add a `TriggerServerEvent` from the client and a matching server listener:
+
+  ```lua
+  -- in client.lua, inside the existing event handler
+  TriggerServerEvent('qu_two_worlds:reportPed', PlayerPedId())
+
+  -- in server.lua, at the top level
+  RegisterNetEvent('qu_two_worlds:reportPed', function(pedHandle)
+      local src = source
+      print('[qu_two_worlds] player ' .. src .. ' reported ped handle ' .. pedHandle)
+  end)
+  ```
+
+  Restart `qu_two_worlds`, join, and run `/splitproof`. Confirm the new line appears in the server console, carrying a ped handle the server never had access to until the client sent it. Notice that on the server `source` inside the handler is the player who fired the event, which is how the server knows who reported. You have now sent a value in both directions and watched each one require its own event hop.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "TriggerClientEvent native", href: "https://docs.fivem.net/natives/?_0x2F7A49E6" },
+    { label: "RegisterNetEvent reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

@@ -2,13 +2,13 @@
   crumbs="Module 04 · Bonus"
   title="Latent events: TriggerLatentServerEvent &amp; TriggerLatentClientEvent"
   meta={[
-    { label: "You'll learn", value: "When to swap TriggerServerEvent for TriggerLatentServerEvent, the bps parameter, and the gotchas with broadcasting to all players" },
-    { label: "Time", value: "~12 minutes" },
+    { label: "You'll learn", value: "When to swap TriggerServerEvent for TriggerLatentServerEvent, what the bps parameter actually does, how to size it, and why broadcasting latent events to all players is a trap" },
+    { label: "Time", value: "~14 minutes" },
     { label: "Prereqs", value: "Lesson 14 (TriggerServerEvent / TriggerClientEvent)" },
-    { label: "Outcome", value: "You know the rule of thumb (small = regular, big = latent) and you can size bps for your payload" },
+    { label: "Outcome", value: "You know the rule of thumb (small = regular, big = latent), you can size bps for any payload, and you can send latent events in both directions safely" },
   ]}
 >
-  A regular `TriggerServerEvent` blocks the network channel until the whole payload arrives. For small messages that is fine. For big tables, image buffers, or character export blobs, blocking the channel can time the player out. Latent events stream the payload at a controlled rate so the channel stays open.
+  A regular `TriggerServerEvent` hands the whole payload to the network layer in one shot. For small messages that is fine. For big tables, image buffers, or character export blobs, that single burst can stall a player's connection long enough to time them out. Latent events stream the same payload at a controlled rate, in bytes per second, so the connection keeps breathing while the data trickles across.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds TriggerLatentServerEvent large payload upload as a working FiveM resource named `qu_latent_events`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a round trip as a working FiveM resource named `qu_latent_events`. The client streams a large payload up with `TriggerLatentServerEvent`, the server measures it and streams an acknowledgement back down with `TriggerLatentClientEvent`. You see both natives, both directions, and the bps parameter that controls them. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
 </Callout>
 
 ## Build it
@@ -55,15 +55,21 @@ game 'gta5'
 client_script 'client.lua'
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the lesson code" outcome="Both latent natives now run, one per direction.">
     Open `server.lua` and paste this:
 
     ```lua
 RegisterNetEvent('qu_latent_events:upload', function(payload)
-    print('[qu_latent_events] received ' .. #payload .. ' bytes')
-    TriggerClientEvent('qu_latent_events:done', source, #payload)
+    local src = source
+    local size = #payload
+    print('[qu_latent_events] server received ' .. size .. ' bytes from player ' .. src)
+
+    -- Acknowledge back down to the client, also as a latent stream.
+    TriggerLatentClientEvent('qu_latent_events:ack', src, 25000, size)
 end)
     ```
 
@@ -71,17 +77,20 @@ end)
 
     ```lua
 RegisterCommand('latenttest', function()
-    TriggerLatentServerEvent('qu_latent_events:upload', 25000, string.rep('A', 20000))
-    print('[qu_latent_events] upload started')
+    local payload = string.rep('A', 20000) -- 20,000 bytes of filler
+
+    -- 25000 = stream this payload at 25,000 bytes per second.
+    TriggerLatentServerEvent('qu_latent_events:upload', 25000, payload)
+    print('[qu_latent_events] upload started (' .. #payload .. ' bytes at 25000 bps)')
 end, false)
 
-RegisterNetEvent('qu_latent_events:done', function(size)
-    print('[qu_latent_events] server received ' .. size)
+RegisterNetEvent('qu_latent_events:ack', function(size)
+    print('[qu_latent_events] client got ack: server saw ' .. size .. ' bytes')
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct consoles.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -94,27 +103,109 @@ end)
     restart qu_latent_events
     ```
 
-    Run this test:
+    Join the server, then run this in the F8 chat box:
 
     ```text
     /latenttest
     ```
 
     <ExpectedOutput>
-      F8: [qu_latent_events] upload started
-Server: [qu_latent_events] received 20000 bytes
+      F8 (client): [qu_latent_events] upload started (20000 bytes at 25000 bps)
+Server (txAdmin): [qu_latent_events] server received 20000 bytes from player 1
+F8 (client): [qu_latent_events] client got ack: server saw 20000 bytes
     </ExpectedOutput>
+
+    The client line prints first. About one second later (20,000 bytes at 25,000 bps), the server line lands in txAdmin Live Console. The ack then streams back down and the second F8 line appears. Three lines, two consoles, one full round trip.
   </Step>
 </StepGroup>
+
+## How it works
+
+The proof worked, but the point of this lesson is one number: `25000`. Everything else is plumbing you have seen before. So we take it apart in the order the data actually travels: out of the client, across the wire, into the server, and back.
+
+### Why a regular event can time a player out
+
+When you call `TriggerServerEvent('x', bigTable)`, FiveM serializes the whole payload and pushes it onto the player's reliable network channel as one unit. The channel will not move on to anything else until that whole unit is delivered. For a 200-byte table you never notice. For a multi-megabyte blob, that one event hogs the channel, every other packet for that player queues up behind it, and on a slow or lossy connection the client can stall past its timeout window and get dropped. The player did nothing wrong. Your event ate their connection.
+
+Latent events fix this by chunking. Instead of one big push, FiveM breaks the payload into pieces and feeds them onto the channel at a rate you choose, leaving gaps for everything else. The payload still arrives whole, in order, and triggers the same handler. It just arrives as a polite trickle instead of a flood.
+
+### The bps argument, the one number that matters
+
+Compare the two calls. A regular event takes the name and the data:
+
+```lua
+TriggerServerEvent('qu_latent_events:upload', payload)
+```
+
+The latent version inserts one extra argument between them:
+
+```lua
+TriggerLatentServerEvent('qu_latent_events:upload', 25000, payload)
+```
+
+That `25000` is the **bytes-per-second stream rate**. It is not a size, not a timeout, not a chunk count. It is a speed limit. It tells FiveM: never push this payload onto the channel faster than 25,000 bytes every second. The data is metered out at that ceiling until it is all delivered.
+
+Every latent native takes the rate in the same slot, right after the target arguments:
+
+- `TriggerLatentServerEvent(eventName, bps, ...)` — client to server.
+- `TriggerLatentClientEvent(eventName, target, bps, ...)` — server to client, where `target` is the player server id.
+
+In our code the client streams up at `25000` and the server streams the ack back down at `25000`. Same number, same meaning, opposite directions.
+
+### How to size bps for a payload
+
+Once you know the rate is a speed limit, sizing it is just division. Transfer time is payload size divided by rate:
+
+```text
+transfer time (seconds) = payload size (bytes) / bps
+```
+
+Our 20,000-byte payload at 25,000 bps takes 20000 / 25000 = 0.8 seconds. That is why the server line lands about a second after the client line, not instantly.
+
+Now you can reason about real numbers. A 5 MB character export (roughly 5,000,000 bytes) at 25,000 bps would take 200 seconds. That is almost certainly too slow, so you raise the rate. At 500,000 bps the same export finishes in 10 seconds. The trade is simple: a higher rate finishes faster but uses more of the channel, which is the exact congestion you were trying to avoid. A lower rate is gentler but slower. Pick the largest rate that still leaves headroom for normal gameplay traffic, and bias lower when the payload is huge or the players are far away. There is no single correct value. The number depends on your payload size and how much delay your feature can tolerate.
+
+<Checkpoint question="A teammate sets bps to 20000 and expects a 20,000-byte payload to arrive instantly. Why does it take a full second, and what single change makes it arrive in a tenth of a second?">
+  The bps argument is a speed limit, not a size, so a 20,000-byte payload at 20,000 bps is metered out over 20000 / 20000 = 1 second by design. The data is correct, it is just deliberately slow. To finish in roughly a tenth of a second, raise the rate to 200000 bps (20000 / 200000 = 0.1 seconds). Nothing else changes. The payload is identical and the handler is identical. The only knob is the rate, and a higher rate trades channel headroom for speed.
+</Checkpoint>
+
+### The broadcast trap
+
+This is the gotcha that bites people in production. With a regular client event you broadcast to everyone by passing `-1` as the target:
+
+```lua
+TriggerClientEvent('announcement', -1, 'Server restarting')
+```
+
+`TriggerLatentClientEvent` accepts `-1` too, and it looks harmless:
+
+```lua
+-- Dangerous on a full server with a big payload
+TriggerLatentClientEvent('qu_latent_events:ack', -1, 25000, hugePayload)
+```
+
+But latent broadcasting does not share one 25,000 bps stream across the server. It opens a separate metered stream to every connected player, each at the full rate you named. On a 64-slot server that is 64 simultaneous streams at 25,000 bps, which is 1.6 MB per second leaving your server's uplink the moment you fire it. Send a large payload to `-1` and you can saturate the very channel latent events exist to protect, hitting every player at once.
+
+The rule: latent broadcasts are for one target, or a small known list of targets. If you genuinely must push a big payload to everyone, stream it to one player at a time in a loop with a delay between sends, or rethink whether every player actually needs the data. Most of the time they do not. That is why our ack streams back to a single `src`, never to `-1`.
+
+### When you reach for this pattern
+
+Reach for a latent event the moment a payload is big enough that a single burst could stall a connection. Three honest cases:
+
+- **Character or inventory exports.** A full character blob with appearance, inventory, and metadata can be hundreds of kilobytes. Stream it instead of bursting it.
+- **Image or buffer uploads from NUI.** Screenshots, signatures, or generated images are large binary strings. Latent keeps the upload from freezing the player mid-send.
+- **Server-to-client data sync on join.** Pushing a large config or world-state table to a freshly connected player is exactly when their connection is most fragile. Latent gives it time to land.
+
+For everything small, a chat line, a notification, a single number, stay with the regular `TriggerServerEvent` and `TriggerClientEvent`. The rule of thumb holds: small is regular, big is latent.
 
 ## If something went wrong
 
 <FailureList
   items={[
     { symptom: "Resource qu_latent_events does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_latent_events", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_latent_events, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The /latenttest command does nothing in chat", fix: "The command is registered on the client, so it must be run from the F8 chat box after you join the server, not from the txAdmin console. Confirm client.lua is listed in fxmanifest.lua and run restart qu_latent_events." },
+    { symptom: "Client prints upload started but no server line ever appears", fix: "The server is not receiving the event. Confirm the event name matches exactly on both sides (qu_latent_events:upload) and that server.lua loaded without a manifest error." },
+    { symptom: "Server line appears but no ack reaches the client", fix: "The ack is sent to src, so source must be captured at the top of the handler. Make sure you wrote local src = source before any Wait or other call, since source is only valid synchronously inside the handler." },
+    { symptom: "Sending the payload lags or drops other players", fix: "Your bps is too high for your uplink, or you broadcast a large latent payload to -1. Lower the rate, or send to one target at a time instead of every player at once." },
   ]}
 />
 
@@ -122,23 +213,46 @@ Server: [qu_latent_events] received 20000 bytes
 
 <Recap
   items={[
-    "Make the qu_latent_events folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for TriggerLatentServerEvent large payload upload.",
-    "Add ensure qu_latent_events to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain why a regular TriggerServerEvent can time a player out on a large payload, and how latent events avoid it by metering the stream.",
+    "Read the bps argument as a bytes-per-second speed limit, not a size or a timeout, and find it in the right slot of both latent natives.",
+    "Size bps for any payload using transfer time = payload size / bps, and reason about the speed-versus-headroom trade.",
+    "Send latent events in both directions: TriggerLatentServerEvent up, TriggerLatentClientEvent down.",
+    "Avoid the broadcast trap by never streaming a large latent payload to -1, since that opens one full-rate stream per player.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_latent_events`, rerun the test, and confirm the output changed.
+  Make the bps cost visible. Right now you cannot feel the difference between a fast rate and a slow one because the payload is tiny. Time a real transfer.
+
+  Capture the start time on the client, then have the server stamp arrival and the ack carry the duration back:
+
+  ```lua
+  -- client.lua
+  local uploadStartedAt = 0
+
+  RegisterCommand('latenttest', function()
+      local payload = string.rep('A', 500000) -- 500 KB now, not 20 KB
+      uploadStartedAt = GetGameTimer()
+      TriggerLatentServerEvent('qu_latent_events:upload', 25000, payload)
+      print('[qu_latent_events] upload started (' .. #payload .. ' bytes at 25000 bps)')
+  end, false)
+
+  RegisterNetEvent('qu_latent_events:ack', function(size)
+      local elapsed = GetGameTimer() - uploadStartedAt
+      print('[qu_latent_events] round trip for ' .. size .. ' bytes took ' .. elapsed .. ' ms')
+  end)
+  ```
+
+  Run `/latenttest` and read the elapsed time. A 500 KB upload at 25,000 bps should take roughly 20 seconds up, plus the ack stream back down. Now change only the bps number on the `TriggerLatentServerEvent` line to `250000` and run it again. The same payload should land in roughly a tenth of the time. You just measured the one parameter this lesson is about, instead of trusting the math on paper. Then ask yourself: at which rate did other gameplay traffic start to feel choppy? That is your real ceiling.
 </Exercise>
 
 <Refs
   items={[
+    { label: "TriggerLatentClientEvent reference", href: "https://docs.fivem.net/natives/?_0x70B35890" },
+    { label: "TriggerLatentServerEvent reference", href: "https://docs.fivem.net/natives/?_0x128737EA" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

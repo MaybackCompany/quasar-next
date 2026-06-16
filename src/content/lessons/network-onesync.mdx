@@ -2,25 +2,30 @@
   crumbs="Track 2 · Pro Path"
   title="OneSync &amp; routing buckets"
   meta={[
-    { label: "You'll learn", value: "OneSync infinity, server entities, NetworkGetEntityOwner, SetPlayerRoutingBucket, population modes" },
+    { label: "You'll learn", value: "What OneSync gives you, what a routing bucket actually is, SetPlayerRoutingBucket, SetRoutingBucketPopulationEnabled, SetRoutingBucketEntityLockdownMode, and server entity ownership" },
     { label: "Time", value: "~22 minutes" },
     { label: "Prereqs", value: "Lesson 14 (server vs client), P3 (exports)" },
-    { label: "Outcome", value: "You build a 4-player heist instance that is invisible to other players on the server" },
+    { label: "Outcome", value: "You build a 4-player heist instance that is invisible to other players on the server, and you prove the invisibility with two test players" },
   ]}
 >
-  OneSync is the system that lets a server hold authority over entities across many clients. Routing buckets are the partition system that lets two players stand on the same coordinates without seeing each other. Together they unlock interiors, instances, and minigame arenas without trickery.
+  OneSync is the system that lets the server hold authority over entities across many clients. Routing buckets are the partition system that lets two players stand on the exact same coordinates without seeing each other. Together they unlock interiors, instances, and minigame arenas without trickery. This lesson builds a real instance and then verifies that players in different buckets cannot see one another.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output.",
+    "My server has OneSync enabled (onesync_enabled true)."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds OneSync routing bucket commands as a working FiveM resource named `qu_network_onesync`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a routing bucket instance manager as a working FiveM resource named `qu_network_onesync`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why each native is there. This is a server-only resource. Everything prints to the txAdmin Live Console, not the F8 client console.
+</Callout>
+
+<Callout variant="fivem" title="OneSync must be on or none of this works">
+  Routing buckets are a OneSync feature. On a server without OneSync, every native below is inert: the calls return nothing and players are never partitioned. Before you start, open `server.cfg` and confirm you have `onesync_enabled true` (OneSync Infinity). If you used a txAdmin recipe, this is almost always already set. No OneSync, no buckets.
 </Callout>
 
 ## Build it
@@ -53,25 +58,43 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the lesson code" outcome="A real instance manager that partitions players exists.">
     Open `server.lua` and paste this:
 
     ```lua
-RegisterCommand('bucket', function(src, args)
-    local bucket = tonumber(args[1]) or 0
+-- Move yourself into a heist instance (its own routing bucket).
+RegisterCommand('heist', function(src)
+    local bucket = 10
+
+    -- 1. Make this bucket a clean, locked-down instance.
+    SetRoutingBucketPopulationEnabled(bucket, false)
+    SetRoutingBucketEntityLockdownMode(bucket, 'strict')
+
+    -- 2. Move the player into it. They now share a world only with
+    --    other players in bucket 10.
     SetPlayerRoutingBucket(src, bucket)
-    print(('[qu_network_onesync] moved %s to bucket %d'):format(GetPlayerName(src), bucket))
+
+    print(('[qu_network_onesync] moved %s (id %s) into heist bucket %d'):format(GetPlayerName(src), src, bucket))
 end, false)
 
+-- Send yourself back to the shared world (bucket 0).
+RegisterCommand('leaveheist', function(src)
+    SetPlayerRoutingBucket(src, 0)
+    print(('[qu_network_onesync] returned %s (id %s) to bucket 0'):format(GetPlayerName(src), src))
+end, false)
+
+-- Read which bucket a player is currently in.
 RegisterCommand('mybucket', function(src)
-    print('[qu_network_onesync] bucket ' .. GetPlayerRoutingBucket(src))
+    print(('[qu_network_onesync] %s is in bucket %d'):format(GetPlayerName(src), GetPlayerRoutingBucket(src)))
 end, false)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the txAdmin Live Console.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -84,27 +107,100 @@ end, false)
     restart qu_network_onesync
     ```
 
-    Run this test:
+    Join the server, then run this in the F8 chat box or console:
 
     ```text
-    /bucket 10 then /mybucket
+    /heist then /mybucket
     ```
 
     <ExpectedOutput>
-      [qu_network_onesync] moved yourName to bucket 10
-[qu_network_onesync] bucket 10
+      [qu_network_onesync] moved Alex (id 3) into heist bucket 10
+[qu_network_onesync] Alex is in bucket 10
     </ExpectedOutput>
   </Step>
+
+  <Step num={6} title="Prove the invisibility" outcome="Two players confirm a routing bucket really partitions the world.">
+    A bucket number printing is not proof of anything. The whole point of this feature is that players in different buckets cannot see each other. So test that directly.
+
+    Get two players on the server (a friend, or a second FiveM client on another machine). Have both stand next to each other so you can see each other's character. Then on player one only, run:
+
+    ```text
+    /heist
+    ```
+
+    Player one is now in bucket 10. Player two is still in bucket 0. Watch what happens: player one's character vanishes from player two's screen, and player two vanishes from player one's. You are standing on identical coordinates and you cannot see each other. Run `/leaveheist` on player one and you reappear to each other instantly. That disappearance is the routing bucket doing its only job.
+  </Step>
 </StepGroup>
+
+## How it works
+
+You moved a player into a private slice of the world and proved no one outside it could see them. Now take the code apart so the next time you build an instance, an interior, or a minigame arena, you are choosing each native on purpose rather than copying. There are three natives doing the real work, and one prerequisite that has to be true for any of them to fire.
+
+### The mental model: a bucket is a parallel world
+
+A routing bucket is a server-managed dimension. Picture the server holding several stacked copies of Los Santos. Bucket 0 is the default, shared world where everyone spawns. Bucket 10 is a separate copy sitting on top of it at the same coordinates. The rule that makes buckets useful is simple: a player in bucket A receives network traffic only for players and entities that are also in bucket A. Bucket 10 and bucket 0 share the same map geometry, but they do not share each other's players, vehicles, or spawned objects. Two players at coordinate (0, 0, 72), one in bucket 0 and one in bucket 10, are invisible to each other because the server never tells either client the other exists.
+
+This is why buckets, not teleporting players far away, are the correct tool for heist rooms, jail cells, racing lobbies, and apartment interiors. Distance tricks fall apart the moment two instances need the same physical building. Buckets let every instance reuse the same coordinates with zero interference.
+
+### `SetPlayerRoutingBucket`: the one line that moves a player
+
+```lua
+SetPlayerRoutingBucket(src, bucket)
+```
+
+This is the native that actually relocates a player between worlds. `src` is the server ID of the player (the same value `source` gives you inside a command or net event), and `bucket` is the integer dimension you want them in. The instant this runs, the server stops sending that player updates about bucket 0 and starts sending them updates about bucket 10 instead. To everyone left in bucket 0, the player simply disappears. `GetPlayerRoutingBucket(src)` is the read-only counterpart that returns the player's current bucket, which is what `/mybucket` uses.
+
+On its own, this native is enough to hide players from each other. But an empty bucket is not yet a usable instance, which is what the other two natives fix.
+
+### `SetRoutingBucketPopulationEnabled`: kill the ambient world
+
+```lua
+SetRoutingBucketPopulationEnabled(bucket, false)
+```
+
+By default a fresh bucket still grows GTA's ambient population: pedestrians on the sidewalk, traffic on the roads, parked cars. For a heist room or a clean minigame arena that is noise you do not want. Passing `false` tells the engine to stop spawning ambient peds and vehicles inside that bucket. Now the instance is empty except for the players and entities you deliberately put there. Leave it `true` (the default) when you want an instance that still feels like a living city, for example a parallel free-roam lobby.
+
+### `SetRoutingBucketEntityLockdownMode`: decide who may spawn things
+
+```lua
+SetRoutingBucketEntityLockdownMode(bucket, 'strict')
+```
+
+This native controls who is allowed to create networked entities inside the bucket. It takes one of three string modes:
+
+- `'inactive'` is the default. Any client may spawn networked entities, which is normal free-roam behavior.
+- `'relaxed'` lets clients create entity types the server expects, but blocks unexpected ones.
+- `'strict'` blocks all client-side entity creation. Only the server may spawn entities into the bucket.
+
+For a heist instance you want `'strict'`. It means a player cannot quietly spawn a tank or a wall of vehicles inside your locked room. The server stays the sole authority over what exists in that world, which is exactly the guarantee OneSync was built to give you. This is the first place the "server entities" idea from the lesson outcome becomes concrete: in a strict bucket, every networked entity has the server as its owner because the server is the only thing allowed to create them.
+
+### Where OneSync and entity ownership tie in
+
+Every one of these natives depends on OneSync being enabled, because OneSync is what moves entity authority from the clients to the server. On a legacy non-OneSync server there is no server-side dimension to assign players to, so the calls do nothing. That is why the prereq and the second callout insist on `onesync_enabled true` before you write a line.
+
+Once OneSync is on, the server owns the networked world. You can ask who currently owns a given entity with `NetworkGetEntityOwner(entity)`, which returns the player index currently responsible for simulating it (or -1 when the server itself owns it, as happens for server-created entities). You will not call it in this lesson's three commands, but it is the read side of the same authority model: routing buckets decide which world an entity lives in, lockdown mode decides who may create entities there, and `NetworkGetEntityOwner` tells you who is simulating one right now.
+
+<Checkpoint question="Two players stand at the same coordinates. One runs /heist, the other does nothing. Why does each player vanish from the other's screen?">
+  Because `/heist` calls `SetPlayerRoutingBucket(src, 10)`, which moves that player into bucket 10 while the other stays in bucket 0. A routing bucket is a server-managed dimension, and the server only sends a client network updates for players and entities in the same bucket. With the two players now in different buckets, the server stops telling either client that the other exists, so each disappears even though their world coordinates are identical. Run `/leaveheist` to call `SetPlayerRoutingBucket(src, 0)` and they share bucket 0 again, so they reappear. None of this would work without OneSync enabled, because OneSync is what gives the server the authority to partition the world in the first place.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Routing buckets are the answer almost every time a server needs more than one copy of the same place. Three concrete cases:
+
+- **Instanced missions and heists.** Four players enter a vault. They should share a world with each other and no one else. Put the four of them in the same bucket, set it strict, disable population, and the vault is theirs alone.
+- **Interiors and apartments.** Ten different players each own apartment 7 in the same building. Give each owner their own bucket and they all walk into the identical interior without ever colliding.
+- **Lobbies and arenas.** Race grids, deathmatch rooms, and waiting lobbies each get a bucket so countdowns, spawns, and props in one match never leak into another.
 
 ## If something went wrong
 
 <FailureList
   items={[
+    { symptom: "Players still see each other after /heist", fix: "OneSync is off. Open server.cfg, set onesync_enabled true, and fully restart the server (not just the resource). Routing bucket natives do nothing without OneSync." },
     { symptom: "Resource qu_network_onesync does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
     { symptom: "Could not load resource qu_network_onesync", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_network_onesync, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to call a nil value (global 'SetRoutingBucketEntityLockdownMode')", fix: "Your server artifact is too old to expose this native. Update to a recent FiveM server build, then restart qu_network_onesync." },
+    { symptom: "The command does not print", fix: "Run restart qu_network_onesync, join the server, then run /heist while connected. These commands read source, so they need a real player, not the bare server console." },
   ]}
 />
 
@@ -112,23 +208,50 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_network_onesync folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for OneSync routing bucket commands.",
-    "Add ensure qu_network_onesync to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain what a routing bucket is: a server-managed dimension where players in different buckets cannot see each other even at identical coordinates.",
+    "Move a player between worlds with SetPlayerRoutingBucket and read their bucket with GetPlayerRoutingBucket.",
+    "Turn a raw bucket into a real instance with SetRoutingBucketPopulationEnabled (kill ambient traffic) and SetRoutingBucketEntityLockdownMode (control who may spawn entities).",
+    "State why OneSync must be enabled for any of these natives to function, and how server entity ownership and NetworkGetEntityOwner fit the same authority model.",
+    "Prove invisibility with two real players instead of trusting a printed bucket number.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_network_onesync`, rerun the test, and confirm the output changed.
+  Turn the single hard-coded heist bucket into a small party system that puts a group of players into one shared instance. Add a `/heistwith` command that takes a target player ID, picks a fresh bucket number, and moves both the caller and the target into it:
+
+  ```lua
+  local nextBucket = 100
+
+  RegisterCommand('heistwith', function(src, args)
+      local target = tonumber(args[1])
+      if not target then
+          print('[qu_network_onesync] usage: /heistwith <playerId>')
+          return
+      end
+
+      local bucket = nextBucket
+      nextBucket = nextBucket + 1
+
+      SetRoutingBucketPopulationEnabled(bucket, false)
+      SetRoutingBucketEntityLockdownMode(bucket, 'strict')
+
+      SetPlayerRoutingBucket(src, bucket)
+      SetPlayerRoutingBucket(target, bucket)
+
+      print(('[qu_network_onesync] put %s and %s into shared bucket %d'):format(src, target, bucket))
+  end, false)
+  ```
+
+  Restart `qu_network_onesync`, then with three players connected run `/heistwith <id of player two>` as player one. Confirm players one and two can see each other but player three (still in bucket 0) sees neither of them. The `&lt;` and `&gt;` in the usage text are placeholders for a real player ID. You have just built the core of every instanced mission system: pick a free bucket, lock it down, and drop your party in together.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "SetPlayerRoutingBucket native", href: "https://docs.fivem.net/natives/?_0x6504EB38" },
+    { label: "SetRoutingBucketEntityLockdownMode native", href: "https://docs.fivem.net/natives/?_0xA0F2201F" },
+    { label: "OneSync overview", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

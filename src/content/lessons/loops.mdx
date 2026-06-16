@@ -2,13 +2,13 @@
   crumbs="Module 01 · Lesson 04"
   title="Loops: for, while, and when to stop"
   meta={[
-    { label: "You'll build", value: "A qu_countdown resource that counts down from 5 to 1, then prints \"Launch!\"." },
-    { label: "Time", value: "~18 minutes" },
+    { label: "You'll build", value: "A qu_loops resource with three commands: a numeric for countdown, a while countdown, and a safe ticking thread that uses Citizen.Wait." },
+    { label: "Time", value: "~22 minutes" },
     { label: "You need", value: "Lessons 01–03 done. A working FiveM server you can restart." },
-    { label: "You'll learn", value: "Numeric for -> step values -> while loops -> break -> off-by-one errors -> the FiveM Wait rule" },
+    { label: "You'll learn", value: "Numeric for -> step values -> while loops -> break -> off-by-one errors -> the FiveM Wait rule that stops your first server freeze" },
   ]}
 >
-  If you copy-paste the same line over and over, you probably need a loop. A loop runs a block of code again and again until you stop it. In FiveM, *knowing when to stop* matters a lot, because a bad loop can hang a server. By the end you will know `for` loops, `while` loops, and the safety habit that prevents your first crash.
+  If you copy-paste the same line over and over, you probably need a loop. A loop runs a block of code again and again until you stop it. In FiveM, *knowing when to stop* matters more than anywhere else you have coded, because a loop that never yields does not just slow down, it freezes the entire server thread. By the end you will know `for` loops, `while` loops, `break`, and the one habit, `Citizen.Wait`, that prevents your first crash.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds for loop and while loop countdowns as a working FiveM resource named `qu_loops`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds three loop commands as a working FiveM resource named `qu_loops`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line, including the loop that would have frozen your server if you had written it wrong.
 </Callout>
 
 ## Build it
@@ -53,23 +53,44 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
+-- 1. Numeric for: counts 5, 4, 3, 2, 1 then launches.
 RegisterCommand('countdown', function()
-    for i = 5, 1, -1 do print('[qu_loops] ' .. i) end
+    for i = 5, 1, -1 do
+        print('[qu_loops] ' .. i)
+    end
     print('[qu_loops] Launch!')
 end, true)
 
+-- 2. while + break: stops early the first time it hits 3.
 RegisterCommand('whilecount', function()
-    local i = 3
+    local i = 5
     while i > 0 do
+        if i == 3 then
+            print('[qu_loops] hit 3, stopping early')
+            break
+        end
         print('[qu_loops] while ' .. i)
         i = i - 1
     end
+end, true)
+
+-- 3. A ticking thread that YIELDS. Citizen.Wait stops it freezing the server.
+RegisterCommand('tick', function()
+    Citizen.CreateThread(function()
+        for tick = 1, 3 do
+            print('[qu_loops] tick ' .. tick)
+            Citizen.Wait(1000) -- yield 1 second between ticks
+        end
+        print('[qu_loops] thread done')
+    end)
 end, true)
     ```
   </Step>
@@ -87,7 +108,7 @@ end, true)
     restart qu_loops
     ```
 
-    Run this test:
+    Run this test in the txAdmin Live Console:
 
     ```text
     countdown
@@ -101,17 +122,117 @@ end, true)
 [qu_loops] 1
 [qu_loops] Launch!
     </ExpectedOutput>
+
+    Then run `whilecount` and `tick` to see the other two loops. The `tick` output appears one line per second, not all at once, because the thread yields between each print.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the numbers fell. Now take the loops apart so the next time you write one you are deciding, not copying. Three commands, three loop shapes, and one rule that is unique to FiveM and will eventually save your server.
+
+### The numeric for header: start, stop, step
+
+```lua
+for i = 5, 1, -1 do
+    print('[qu_loops] ' .. i)
+end
+```
+
+A numeric `for` is the loop you reach for when you know exactly how many times to run. The header has three numbers separated by commas, and reading them in order is the whole trick:
+
+- `5` is the **start**. The counter variable `i` begins at 5.
+- `1` is the **stop**. The loop keeps running as long as `i` has not passed 1. Lua includes the stop value, so 1 itself does run. This is an *inclusive* range, which is why you see five lines, not four.
+- `-1` is the **step**. After each pass, Lua adds the step to `i`. A negative step counts down, so `i` goes 5, 4, 3, 2, 1. Leave the step out, like `for i = 1, 5 do`, and Lua assumes `+1`, counting up.
+
+The variable `i` only exists inside the loop. You do not declare it with `local` and you do not change it by hand. Lua owns the counter and moves it for you. That is the difference between a `for` and a `while`: a `for` manages its own counter, a `while` does not. After the five numbers print, the loop is finished and control falls through to the `print('[qu_loops] Launch!')` line, which sits outside the loop body and runs exactly once.
+
+### The while loop: you own the counter, you own the off-by-one
+
+```lua
+local i = 5
+while i > 0 do
+    print('[qu_loops] while ' .. i)
+    i = i - 1
+end
+```
+
+A `while` loop runs as long as its condition is true. Here the condition is `i > 0`. Before each pass Lua checks it. While it holds, the body runs. The moment it is false, the loop stops and the program moves on.
+
+Nothing moves the counter for you here. You set `i = 5` yourself, and the line `i = i - 1` is what makes the loop end. Delete that line and `i` stays 5 forever, the condition `i > 0` is always true, and you have an infinite loop. On the client that stutters the game. On the server, as you will see in a moment, it freezes everything.
+
+This is also where **off-by-one** errors live. The condition `i > 0` means the loop runs for 5, 4, 3, 2, 1 and stops before printing 0. If you had written `i >= 0` it would also print 0, one extra pass you did not want. If you decremented before printing instead of after, you would skip 5 and start at 4. The fix is always the same: read the condition out loud and count the first and last value by hand. A `while` gives you full control, and full control means the bug is yours to make.
+
+### break: stopping a loop early
+
+```lua
+while i > 0 do
+    if i == 3 then
+        print('[qu_loops] hit 3, stopping early')
+        break
+    end
+    print('[qu_loops] while ' .. i)
+    i = i - 1
+end
+```
+
+Sometimes you want out before the condition naturally goes false. `break` does exactly that: it stops the nearest loop immediately and jumps to the first line after it. In the `whilecount` command, the loop is built to run from 5 down to 1, but the `if i == 3` check fires `break` on the third pass, so you only ever see `while 5`, `while 4`, then the stop message. The numbers 2 and 1 never print. `break` works the same inside a `for` loop. It is how you write loops that scan for something and quit the instant they find it, instead of grinding through every remaining item.
+
+### The FiveM Wait rule: the loop that freezes your server
+
+This is the part of the lesson nothing else teaches you. A loop that never pauses is fine in plain Lua. In FiveM it is a weapon pointed at your own server.
+
+FiveM runs your script on a shared thread. When your code is running, nothing else on that side gets a turn: not other resources, not player connections, not the next frame. A normal loop like the countdown finishes in microseconds and hands the thread back, so you never notice. But a loop that runs forever never hands it back. This is the broken version, do not paste it into a live server:
+
+```lua
+-- BROKEN: never yields. Freezes the entire server thread.
+Citizen.CreateThread(function()
+    while true do
+        print('[qu_loops] spinning')
+    end
+end)
+```
+
+`while true` is always true, so this loop never ends on its own, and there is no `break`. It prints as fast as the CPU allows and never gives the thread back. On the server that means every player times out and the whole server appears to hang. The fix is one line, the `tick` command you already built:
+
+```lua
+Citizen.CreateThread(function()
+    for tick = 1, 3 do
+        print('[qu_loops] tick ' .. tick)
+        Citizen.Wait(1000) -- hand the thread back for 1 second
+    end
+end)
+```
+
+`Citizen.Wait(ms)` is the yield. It pauses your loop for the given milliseconds and, crucially, hands the thread back to FiveM so everything else can run. After the wait, your loop picks up where it left off. The rule is absolute: **any loop that could run forever must call `Citizen.Wait` somewhere inside it.** `Citizen.CreateThread` is what lets a loop keep living after the command handler returns, which is exactly why an unyielded one is so dangerous, it would spin forever with no command to stop it.
+
+### Why server loops and client loops are not the same
+
+On the client, the loop you write most often is a per-frame loop with `Citizen.Wait(0)`, which yields for the shortest possible time and resumes next frame. That is how you draw a marker or watch for a key press sixty times a second. The cost is paid on one player's machine.
+
+On the server there are no frames and there is no per-player machine. A server loop runs once for everyone, so a server-side `Citizen.Wait(0)` is far more expensive than it looks: it wakes up constantly on the one thread the whole server shares. Server loops should yield generously, `Citizen.Wait(1000)` or more, and most server logic should not poll in a loop at all. It should react to events, which is the next module. Use a `for` to process a known list, use a `while` with a real exit condition, and reach for an always-running thread only when you genuinely need a heartbeat.
+
+### What the restricted flag actually does
+
+```lua
+RegisterCommand('countdown', function() ... end, true)
+```
+
+That trailing `true` is the **restricted** flag, the same one from Lesson 01, and it is worth naming clearly here because it is a silent gotcha. With `true`, the command requires an ace permission to run. The server console has full rights, so `countdown` works the instant you type it there. But a connected player typing `/countdown` in their chat box has no such permission by default, so for them the command does nothing and gives no error. That silence is the trap: the command is not broken, it is gated. If you wanted any player to run it, you would pass `false` instead, and to grant a specific admin the right while keeping `true`, you would add an ace rule in `server.cfg`. For a server-side proof you do not want random players firing, `true` is the safe default.
+
+<Checkpoint question="You write a Citizen.CreateThread with while true inside and no Citizen.Wait, then restart the resource. What happens, and what is the one-line fix?">
+  The loop never yields, so it holds the shared server thread forever. Other resources stop responding, player connections time out, and the server appears frozen, it does not crash with a clean error, it just hangs. The fix is to add a `Citizen.Wait(ms)` call inside the loop so it hands the thread back on every pass. Any loop that can run forever, especially a `while true`, must yield with `Citizen.Wait`. A finite loop like the `for` countdown does not need a Wait because it ends on its own in microseconds.
+</Checkpoint>
 
 ## If something went wrong
 
 <FailureList
   items={[
     { symptom: "Resource qu_loops does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_loops", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_loops, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The server hangs or all players time out after restart", fix: "A loop is missing its Citizen.Wait. Find any while true or unbounded while and add Citizen.Wait(ms) inside it, then restart qu_loops." },
+    { symptom: "The loop prints one too many or one too few lines", fix: "Off-by-one. Read the for range or the while condition and count the first and last value by hand. Remember a for stop value is inclusive and the default step is +1." },
+    { symptom: "whilecount prints forever and never stops", fix: "The counter is not changing. Make sure i = i - 1 is inside the while body so the condition eventually goes false." },
+    { symptom: "A player typing /countdown in chat sees nothing happen", fix: "The restricted flag is true, so only the server console and aces may run it. Run countdown from the txAdmin Live Console, or pass false to RegisterCommand to open it to players." },
   ]}
 />
 
@@ -119,31 +240,56 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_loops folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for for loop and while loop countdowns.",
-    "Add ensure qu_loops to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Read a numeric for header as start, stop, step, and know the stop value is inclusive and the default step is +1.",
+    "Write a while loop, move its counter yourself, and spot an off-by-one by counting the first and last pass.",
+    "Use break to leave a loop the instant a condition is met instead of running every pass.",
+    "State the FiveM Wait rule: any loop that can run forever must call Citizen.Wait, or it freezes the whole server thread.",
+    "Explain why a server-side Citizen.Wait(0) is far costlier than the client per-frame version, and why the restricted flag silently blocks players.",
   ]}
 />
 
 ## Run it live
 
-No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4.
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. This is the same countdown from the `countdown` command, the `for i = 5, 1, -1` you just dissected. The sandbox has no FiveM around it, so `Citizen.Wait`, `Citizen.CreateThread`, and `RegisterCommand` are not available here. The plain `for` loop, `print`, and string joining run exactly as they would on your server.
 
-<Sandbox initial={`for i = 1, 3 do
-  print("tick " .. i)
-end`} />
+<Sandbox initial={`for i = 5, 1, -1 do
+  print("[qu_loops] " .. i)
+end
+print("[qu_loops] Launch!")`} />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_loops`, rerun the test, and confirm the output changed.
+  Turn the `tick` command into a real heartbeat that you can stop. Make it print the tick number every second and keep going until it reaches 10, then stop on its own, but also make it stop early if a global flag is set so you could shut it down from another command later:
+
+  ```lua
+  local stopTicking = false
+
+  RegisterCommand('heartbeat', function()
+      Citizen.CreateThread(function()
+          local tick = 0
+          while not stopTicking do
+              tick = tick + 1
+              print('[qu_loops] heartbeat ' .. tick)
+              if tick >= 10 then break end
+              Citizen.Wait(1000)
+          end
+          print('[qu_loops] heartbeat stopped at ' .. tick)
+      end)
+  end, true)
+
+  RegisterCommand('stopbeat', function()
+      stopTicking = true
+  end, true)
+  ```
+
+  Restart `qu_loops`, run `heartbeat`, watch it count one per second, and run `stopbeat` before it reaches 10 to break the loop early. Confirm two things: the prints arrive one second apart because of `Citizen.Wait(1000)`, and the loop never hangs the server because it always yields. You have now written a long-running server loop that is both bounded by a counter and interruptible by a flag, the two ways a real loop ends safely.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM Citizen.Wait / scheduling", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Wait/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

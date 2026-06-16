@@ -8,7 +8,7 @@
     { label: "You'll learn", value: "The four commands -> reading the server console -> the dev loop -> server.cfg -> common error patterns" },
   ]}
 >
-  FiveM development is mostly one small loop: edit, save, `ensure`, read the console, test. Beginners often think they need more tricks than that. They do not. This lesson is about making that loop feel normal and easy.
+  FiveM development is mostly one small loop: edit, save, `ensure`, read the console, test. Beginners often think they need more tricks than that. They do not. This lesson makes that loop feel normal, and teaches the four server commands that drive it so you always know which one to reach for.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds edit, save, restart one resource, and verify one proof line as a working FiveM resource named `qu_dev_loop`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds one server-only resource named `qu_dev_loop` that prints a counter every time you restart it. That counter is the proof that your dev loop actually reloaded the code. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section explains the four commands and the console so you know which one to reach for.
 </Callout>
 
 ## Build it
@@ -53,51 +53,148 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
+print('[qu_dev_loop] resource started')
+
 RegisterCommand('dev_loop', function()
-    print('[qu_dev_loop] proof line')
-end, true)
+    print('[qu_dev_loop] command fired')
+end, false)
     ```
+
+    There are two prints on purpose. The first one is at the top level of the file, so it runs the moment the resource starts. That is what proves your restart actually reloaded the code. The second one lives inside a command handler, so it only runs when you type the command.
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_dev_loop
     ```
 
-    Save, then run:
+    Save the file, then in the txAdmin Live Console (the server console) run:
 
     ```text
     restart qu_dev_loop
     ```
 
-    Run this test:
+    You should see the start line print immediately. Now run the command, also from the server console:
 
     ```text
     dev_loop
     ```
 
     <ExpectedOutput>
-      [qu_dev_loop] proof line
+      [qu_dev_loop] resource started
+      [qu_dev_loop] command fired
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You restarted the resource and saw the start line. You typed the command and saw the second line. That is the entire dev loop in two prints. Now take it apart so you stop guessing which server command to run and start choosing on purpose.
+
+### The two prints, and why one fires on restart
+
+```lua
+print('[qu_dev_loop] resource started')
+
+RegisterCommand('dev_loop', function()
+    print('[qu_dev_loop] command fired')
+end, false)
+```
+
+When you run `restart qu_dev_loop`, FiveM reloads the resource and reads `server.lua` from the top, once. The first `print` is at the top level of the file, so it runs right then. That single line is your loop confirmation: if you see it, the new code is live. If you change the file, save, restart, and the start line does not change, the server is still running the old code and your edit never reached it.
+
+The second `print` is inside the `RegisterCommand` handler, so reading the file does not run it. FiveM only stores the handler and waits. When you type `dev_loop`, the handler runs and the second line prints. Registering and running are two separate moments. That gap is why you need both a restart step (reload the code) and a test step (fire the code) in every loop.
+
+### The four commands, and when each one is used
+
+A FiveM server controls resources with a small set of console commands. The whole dev loop is choosing the right one. Here is what each does and when you reach for it.
+
+<Cheatsheet
+  title="Resource control commands"
+  rows={[
+    { cmd: "ensure <res>", desc: "Start the resource if it is stopped, or restart it if it is already running. The safe default. This is the line you put in server.cfg." },
+    { cmd: "start <res>", desc: "Start a stopped resource. Errors if it is already running. Used once, by hand, when you have not added it to server.cfg yet." },
+    { cmd: "restart <res>", desc: "Stop then start a resource that is already running. This is what you type after each edit to reload your changed code." },
+    { cmd: "stop <res>", desc: "Stop a running resource. Used to take a script offline without removing it from server.cfg." },
+    { cmd: "refresh", desc: "Rescan the resources folder for new or changed manifests. Run it once after you create a brand new resource folder, so the server knows the resource exists." },
+  ]}
+/>
+
+The trap beginners fall into is creating a new folder and immediately typing `start qu_dev_loop`, getting `Resource qu_dev_loop does not exist`, and assuming their code is broken. It is not. The server has not scanned the folder yet. The fix is `refresh` first, then `ensure`. Once the resource is known and listed in `server.cfg`, your day-to-day loop never touches `refresh` again. You just edit, save, and `restart`.
+
+### Why ensure is the one you put in server.cfg
+
+`ensure` is the safe default because it does the right thing no matter what state the resource is in. If the resource is stopped, `ensure` starts it. If it is already running, `ensure` restarts it. `start` cannot do that. `start` on an already-running resource is an error, and your server boot would halt on the first resource that was somehow already up. That is why every line in `server.cfg` uses `ensure`, not `start`. You write the resource list once, with `ensure`, and the server brings them all up cleanly on every boot regardless of order or prior state.
+
+`restart` versus `refresh` is the other distinction worth locking in. `restart qu_dev_loop` reloads the code of one resource that already exists. `refresh` does not restart anything. It only rescans the folder so the server learns about new resources and manifest changes. New folder: `refresh`, then `ensure`. Changed code in an existing resource: just `restart`.
+
+### The restricted flag on RegisterCommand
+
+```lua
+RegisterCommand('dev_loop', function()
+    print('[qu_dev_loop] command fired')
+end, false)
+```
+
+The third argument is the restricted flag, and it is the reason your command either works or silently does nothing.
+
+- With `false`, the command is open. Anyone can run it, including you from the server console and any connected player from their F8 chat box. For a teaching command you want to fire freely while testing, `false` is correct. That is what this lesson uses.
+- With `true`, the command is restricted. It requires an ace permission, which is a rule in the server config that grants a specific identifier the right to run it. The server console always has every ace, so a restricted command still works from the console. But a beginner who sets `true`, then tries to run the command from anywhere without an ace, sees nothing print and assumes the code is broken.
+
+The old version of this lesson used `true` and never explained aces, so the proof line could silently fail to appear. You use `false` here on purpose: the command runs cleanly whether you type it in the server console or test it later in chat, and there is no hidden permission gate to debug. You will meet aces and restricted commands properly when you build admin actions, where keeping players out is the entire point.
+
+<Checkpoint question="You created a brand new resource folder, added `ensure my_thing` to server.cfg, and typed `start my_thing` in the console. It says the resource does not exist. What is wrong, and what two commands fix it?">
+  The server has not scanned the new folder, so it does not know the resource exists yet. Creating a folder on disk is not enough. Run `refresh` to make the server rescan the resources directory and pick up the new manifest, then run `ensure my_thing` to start it. After that first scan, your normal loop is just edit, save, `restart my_thing`. The `start` command also failed for a second reason worth noting: `start` is for stopped resources, while `ensure` is the version that works in any state, which is why `ensure` is what you keep in server.cfg.
+</Checkpoint>
+
+### Reading the server console
+
+The last step of the loop is read the console, and that only helps if you can tell a good line from a bad one. After `ensure qu_dev_loop` or `restart qu_dev_loop`, the server prints a status line. A clean start looks like this:
+
+```text
+Started resource qu_dev_loop
+[qu_dev_loop] resource started
+```
+
+The first line is the server telling you it brought the resource up. The second is your own top-level `print` confirming your code ran. Seeing both is the signal that the loop closed: new code is live.
+
+A failed start looks different. The server prints an error instead of `Started resource`, and your own start line never appears:
+
+```text
+Error parsing script @qu_dev_loop/server.lua in resource qu_dev_loop: server.lua:4: '<eof>' expected near 'end'
+Failed to load script server.lua.
+```
+
+When you see that, do not retype commands hoping it fixes itself. Read the line. It names the file, the line number, and what the parser expected. Open that file, go to that line, fix the syntax, save, and `restart` again. The console is not noise to scroll past. It is the feedback half of your loop, and learning to read it is the whole skill.
+
+This is also why `qu_dev_loop` is a server-only resource. There is no `client_script`, so nothing runs on a player's game and there is no F8 client output to check. Every line for this lesson lands in the server console. When a resource does have client code, the split matters: server `print` goes to the server console, client `print` goes to F8 in the game.
+
+### When you reach for this loop
+
+This is not a beginner ritual you outgrow. It is the loop you run thousands of times.
+
+- **After every code change.** Edit, save, `restart qu_dev_loop`, read the console, test. The tighter you make this loop, the faster you build.
+- **When a resource misbehaves on a live server.** `restart` it to reload it clean, watch the console for the start line and any errors, then reproduce the problem.
+- **When you add a new resource to a running server.** `refresh` once so the server sees it, then `ensure` it, then add the `ensure` line to server.cfg so it survives the next reboot.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_dev_loop does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_dev_loop", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_dev_loop, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Resource qu_dev_loop does not exist", fix: "You created the folder but the server has not scanned it. Run refresh first, then ensure qu_dev_loop. Check the folder is directly inside resources and the name matches exactly." },
+    { symptom: "Error parsing script ... '&lt;eof&gt;' expected near 'end'", fix: "A quote, comma, paren, or end is missing in server.lua. The error names the line number. Open that line, fix the syntax, save, and restart qu_dev_loop." },
+    { symptom: "The start line prints but never changes after I edit", fix: "The server is still running the old code. You edited the file but did not restart, or you restarted a different resource. Save, then run restart qu_dev_loop and watch the start line." },
+    { symptom: "dev_loop prints nothing", fix: "Confirm the resource started (you saw the start line) and that you typed dev_loop, not the resource name. With the restricted flag set to false the command runs from the server console with no permission setup." },
   ]}
 />
 
@@ -105,23 +202,36 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_dev_loop folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for edit, save, restart one resource, and verify one proof line.",
-    "Add ensure qu_dev_loop to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Run the full loop: edit server.lua, save, restart qu_dev_loop, read the console, then run the command.",
+    "Choose the right command on purpose: ensure to bring a resource up in any state, start for a stopped one, restart to reload changed code, stop to take one offline, refresh to make the server see a brand new folder.",
+    "Explain why ensure is what goes in server.cfg and why start would break boot.",
+    "Tell a clean Started resource line apart from an Error parsing script line, and act on the line number instead of retyping commands.",
+    "Say what the RegisterCommand restricted flag does and why a teaching command uses false.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_dev_loop`, rerun the test, and confirm the output changed.
+  Turn the proof into a restart counter that survives restarts, so the start line itself shows your loop working. FiveM gives every resource a tiny key-value store on disk. Read a number, add one, save it back, and print it on start:
+
+  ```lua
+  local count = GetResourceKvpInt('restart_count') + 1
+  SetResourceKvpInt('restart_count', count)
+  print('[qu_dev_loop] restart number ' .. count)
+
+  RegisterCommand('dev_loop', function()
+      print('[qu_dev_loop] command fired')
+  end, false)
+  ```
+
+  Save, then run `restart qu_dev_loop` three times in the server console. Confirm the printed number climbs to 1, then 2, then 3. Each climb is undeniable proof the new code reloaded, because the old code could not have known the new count. The `..` operator joins the text and the number into one string. You just built a loop you can trust at a glance instead of squinting at whether anything changed.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM server commands reference", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "FiveM RegisterCommand reference", href: "https://docs.fivem.net/natives/?_0x5FA79B0F" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

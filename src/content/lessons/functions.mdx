@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds named functions, returns, and early failure values as a working FiveM resource named `qu_functions`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds three named functions, returns, and a safe failure value as a working FiveM resource named `qu_functions`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes every line apart so you know why it works.
 </Callout>
 
 ## Build it
@@ -53,15 +53,31 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+    Open `server.lua` and paste this. Each function is written on its own lines on purpose, so you can read it. Cramming a function onto one line is legal Lua but it hides the shape of what you are learning.
 
     ```lua
-local function greet(name) return 'hello ' .. name end
-local function classify(level) if level >= 10 then return 'admin' end return 'player' end
-local function divide(a, b) if b == 0 then return nil, 'division by zero' end return a / b end
+local function greet(name)
+    return 'hello ' .. name
+end
+
+local function classify(level)
+    if level >= 10 then
+        return 'admin'
+    end
+    return 'player'
+end
+
+local function divide(a, b)
+    if b == 0 then
+        return nil, 'division by zero'
+    end
+    return a / b
+end
 
 RegisterCommand('functiontest', function()
     local value, err = divide(10, 2)
@@ -94,19 +110,144 @@ end, true)
     <ExpectedOutput>
       [qu_functions] hello Lua
 [qu_functions] rank admin
-[qu_functions] divide 5 err nil
+[qu_functions] divide 5.0 err nil
     </ExpectedOutput>
+
+    Note the `5.0`, not `5`. Lua 5.4 splits numbers into integers and floats, and the `/` operator always produces a float. `tostring(10 / 2)` is therefore `5.0`. That single decimal point is your proof that `divide` returned a real division result and not the failure value.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and three lines appeared. Now take the code apart so the next time you need a helper you are deciding, not copying. A function is the first real tool of programming: you take a chunk of work, give it a name, and from then on you call the name instead of rewriting the chunk. Everything below is one idea seen from five angles.
+
+### Why name a piece of code at all
+
+Before any syntax, the reason. You name a piece of code so you can write it once and use it many times, and so there is a single place to fix it when it is wrong. That is the whole payoff. Imagine the greeting logic was scattered as `'hello ' .. name` in forty places. Change the greeting and you hunt down forty edits, miss two, and ship a bug. Wrap it in `greet` and there is one line to change and forty call sites that all update for free. A function is a single source of truth for a piece of behaviour. The name is also documentation: `classify(12)` reads like a sentence, while the raw `if` block does not.
+
+### Parameters versus arguments
+
+```lua
+local function greet(name)
+    return 'hello ' .. name
+end
+```
+
+Look at the word `name` in the parentheses of the definition. That is a **parameter**: a named slot the function declares it will accept. It does not have a value yet. It is a label waiting to be filled, the way a form has a blank line that says "Name".
+
+Now look at the call site down in the command:
+
+```lua
+greet('Lua')
+```
+
+The string `'Lua'` is the **argument**: the actual value you hand over when you call. When `greet('Lua')` runs, Lua copies `'Lua'` into the `name` slot, and for the length of that one call `name` is `'Lua'`. The function then returns `'hello ' .. name`, which is `'hello Lua'`. The `..` operator joins two strings end to end.
+
+So the rule in one sentence: parameters live in the definition and are empty; arguments live at the call site and are the real values that fill them. People mix the two words constantly, and it rarely matters in casual talk, but holding the distinction is what lets you read an error like "bad argument #1 to greet" and know it is talking about the value you passed, not the slot.
+
+### Return versus print
+
+This is the distinction that separates a beginner from someone who can build. `greet` does not print anything. It hands a string back to whoever called it. That handing-back is what `return` does.
+
+```lua
+return 'hello ' .. name
+```
+
+`return` ends the function and sends a value out to the caller, where it can be stored, joined, or passed onward. Contrast that with `print`, which writes to the console and gives nothing back you can use. `print` is a side effect: it changes the world (text on screen) and the function moves on. `return` is a result: it produces a value you can capture.
+
+Watch how the command uses both:
+
+```lua
+print('[qu_functions] ' .. greet('Lua'))
+```
+
+`greet('Lua')` runs first and returns `'hello Lua'`. That returned value is then joined with the tag and handed to `print`, which does the side effect of writing it. If `greet` had used `print` internally instead of `return`, you could never have joined it to the tag, because there would be no value to join. Functions that return values compose. Functions that only print are dead ends. Reach for `return` by default.
+
+### Early return: the guard
+
+```lua
+local function classify(level)
+    if level >= 10 then
+        return 'admin'
+    end
+    return 'player'
+end
+```
+
+There are two `return` statements here, and only one of them runs on any given call. That is the point of an **early return**. When Lua hits a `return`, the function stops right there and nothing below it runs. So if `level` is `12`, the condition `level >= 10` is true, the function returns `'admin'`, and the line `return 'player'` is never reached. If `level` is `3`, the condition is false, the `if` block is skipped entirely, control falls through to the last line, and the function returns `'player'`.
+
+Read it as a guard: the first `return` is a door that only opens for high levels, and everyone who does not go through it lands on the default below. This shape, check a condition and bail out early, then handle the normal case at the bottom, keeps functions flat and readable. The alternative with a big `if`/`else` works too, but early returns are how most FiveM code is written, so train your eye on them now.
+
+### Multiple return values and the result-or-error idiom
+
+This is the most interesting idea in the lesson and the one the old version handed you with no explanation. Lua functions can return more than one value at once.
+
+```lua
+local function divide(a, b)
+    if b == 0 then
+        return nil, 'division by zero'
+    end
+    return a / b
+end
+```
+
+Most languages let a function return exactly one thing. Lua lets you list several after `return`, separated by commas. Here `divide` returns either two values on failure or one on success:
+
+- If `b` is `0`, dividing is impossible, so it returns `nil` for the result and a string explaining what went wrong. `nil` is Lua's word for "no value, nothing here".
+- Otherwise it returns `a / b`, a single number. The second value is simply absent, which on the receiving end reads as `nil`.
+
+You receive multiple values by listing multiple names on the left of the `=`:
+
+```lua
+local value, err = divide(10, 2)
+```
+
+`value` catches the first returned value and `err` catches the second. With `divide(10, 2)`, `b` is not zero, so `value` is `5.0` and `err` is `nil`. Call `divide(10, 0)` instead and `value` would be `nil` and `err` would be `'division by zero'`.
+
+This `local result, err = doThing(...)` shape is everywhere in real Lua, especially around databases, files, and HTTP. The convention is: a real result and a `nil` error means success, a `nil` result and a non-`nil` error means failure. The caller checks `if err then` to decide what to do. You just wrote your first version of the single most common error-handling pattern in the language.
+
+<Checkpoint question="After local value, err = divide(8, 0), what are value and err, and which line of divide produced them?">
+  `value` is `nil` and `err` is `'division by zero'`. Because `b` is `0`, the guard `if b == 0 then` is true, so the function runs `return nil, 'division by zero'` and stops there. The final line `return a / b` never executes, so no division is attempted. On the receiving side, the first returned value (`nil`) lands in `value` and the second (`'division by zero'`) lands in `err`. A caller would test `if err then` and skip using `value`.
+</Checkpoint>
+
+### Why local function, not a global
+
+Every helper here is declared with `local function`, not just `function`. The `local` keyword limits the name to this file. Without it, `greet`, `classify`, and `divide` would become global names visible to every resource on the server at once.
+
+That matters more than it sounds. FiveM runs every resource in a shared Lua space for globals. If your resource defines a global `greet` and another resource also defines a global `greet`, one silently overwrites the other and you get a bug with no error message, the worst kind to chase. Marking helpers `local` keeps them private to the file that owns them, so names cannot collide across resources. The habit is simple: default to `local function` for everything, and only go global when you have a deliberate reason to expose a name. Lesson on exports covers the deliberate way to share code between resources.
+
+### The anonymous function you already wrote
+
+Your "You'll learn" list promised anonymous functions, and you have been staring at one the whole time:
+
+```lua
+RegisterCommand('functiontest', function()
+    ...
+end, true)
+```
+
+`greet`, `classify`, and `divide` are **named** functions: `local function greet` binds the code to the name `greet`. The second argument to `RegisterCommand` is different. It is a `function() ... end` with no name between `function` and the parenthesis. That is an **anonymous function**: a function value created right where it is needed and handed straight to `RegisterCommand` as an argument, without ever being given a name of its own.
+
+This is the deep idea: in Lua a function is a value, just like a string or a number. You can store it in a variable (that is what `local function greet` quietly does), and you can pass it as an argument to another function. `RegisterCommand` takes a command name, a function to run when that command fires, and the restricted flag. You do not need to name that function because nothing else ever calls it; only FiveM does, later, when someone types the command. So you define it inline and hand it over anonymously.
+
+The `true` at the end is the restricted flag. With `true`, the command requires an ace permission, which the server console has, so `functiontest` runs cleanly from txAdmin Live Console. Set it to `false` and any connected player could fire it from their chat box. For a server-side proof you do not want players triggering, `true` is the safe default.
+
+### When you reach for functions
+
+You reach for a named function the moment you notice you are about to write the same logic twice, or the moment a block of code earns a name that explains it better than the code does. Three concrete cases in FiveM:
+
+- **A calculation you repeat.** Distance checks, price math, level thresholds. Wrap it once, call it everywhere, fix it in one place.
+- **A result-or-error operation.** Anything that can fail, a database read, a parse, a permission check, returns the result-and-error pair you just learned, so callers can branch on success cleanly.
+- **A handler you hand to the platform.** Command callbacks, event handlers, timers. These are almost always anonymous functions passed as arguments, exactly like the `RegisterCommand` callback above.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_functions does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_functions", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_functions, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to concatenate a nil value", fix: "You called greet or classify with no argument, so the parameter is nil and .. fails. Pass a value at the call site, like greet('Lua'), not greet()." },
+    { symptom: "rank player when you expected admin", fix: "classify uses level >= 10. You passed a number below 10, or passed the level as a string like '12', which never satisfies the numeric comparison. Pass a number: classify(12)." },
+    { symptom: "divide prints 5 instead of 5.0", fix: "That is correct, not a bug. Lua 5.4 makes the / operator return a float, so 10 / 2 is 5.0. The decimal proves the success path ran, not the nil failure value." },
+    { symptom: "functiontest does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run it. Run functiontest from txAdmin Live Console, not the F8 chat box." },
   ]}
 />
 
@@ -114,26 +255,56 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_functions folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for named functions, returns, and early failure values.",
-    "Add ensure qu_functions to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Define a named helper with local function and explain why local keeps the name private to the file.",
+    "Tell a parameter (the empty slot in the definition) apart from an argument (the value passed at the call site).",
+    "Use return to hand a value back to the caller, and say why that composes where print does not.",
+    "Read an early return as a guard that stops the function the instant it runs.",
+    "Capture two values with local value, err = divide(...) and branch on the result-or-error pattern.",
+    "Recognise the RegisterCommand callback as an anonymous function passed as an argument.",
   ]}
 />
 
 ## Run it live
 
-No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4.
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. Try calling `divide(10, 0)` and printing both returned values to watch the failure path fire.
 
-<Sandbox initial={`local function greet(who)
-  return "hello, " .. who
+<Sandbox initial={`local function divide(a, b)
+  if b == 0 then
+    return nil, "division by zero"
+  end
+  return a / b
 end
-print(greet("Los Santos"))`} />
+
+local value, err = divide(10, 2)
+print("value:", value, "err:", err)
+
+local value2, err2 = divide(10, 0)
+print("value:", value2, "err:", err2)`} />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_functions`, rerun the test, and confirm the output changed.
+  Add a fourth helper, `apply_discount(price, percent)`, that returns the discounted price, but guards against a bad percent the way `divide` guards against zero. Return `nil, 'percent out of range'` when `percent` is below `0` or above `100`, otherwise return `price - (price * percent / 100)`.
+
+  ```lua
+  local function apply_discount(price, percent)
+      if percent < 0 or percent > 100 then
+          return nil, 'percent out of range'
+      end
+      return price - (price * percent / 100)
+  end
+  ```
+
+  Call it twice from the command, once with a valid percent and once with `150`, and print the result-and-error pair for each:
+
+  ```lua
+  local ok, _ = apply_discount(200, 25)
+  local bad, reason = apply_discount(200, 150)
+  print('[qu_functions] discounted ' .. tostring(ok))
+  print('[qu_functions] bad ' .. tostring(bad) .. ' reason ' .. tostring(reason))
+  ```
+
+  Restart `qu_functions`, run `functiontest`, and confirm the first line shows `150.0` and the second shows `bad nil reason percent out of range`. You just reused the early-return guard and the result-or-error idiom in a new helper, which is the real point of naming code: the pattern travels.
 </Exercise>
 
 <Refs

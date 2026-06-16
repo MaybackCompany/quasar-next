@@ -13,14 +13,14 @@
 
 <Prereq
   items={[
-    "I can find my server resources folder.",
+    "I built qu_first_line_of_lua in Lesson 01 and saw it print.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds numbers, strings, concatenation, and type as a working FiveM resource named `qu_variables_numbers_strings`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds three variables, two types, and string concatenation as a working FiveM resource named `qu_variables_numbers_strings`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it prints, the next section takes every line apart so you know why each one behaves the way it does.
 </Callout>
 
 ## Build it
@@ -48,60 +48,131 @@ resources/qu_variables_numbers_strings/
     Open `fxmanifest.lua` and paste this:
 
     ```lua
-fx_version 'cerulean'
-game 'gta5'
+    fx_version 'cerulean'
+    game 'gta5'
 
-server_script 'server.lua'
+    server_script 'server.lua'
     ```
+
+    Same manifest shape as Lesson 01. There is no `lua54 'yes'` line: that setting was deprecated in June 2025 and is now ignored, because Lua 5.4 is the only Lua runtime FiveM ships. Leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+    Open `server.lua` and paste this exactly, comments included:
 
     ```lua
-local serverName = 'Quasar Practice'
-local slots = 48
-local version = 1.0
-print('[qu_variables_numbers_strings] ' .. serverName .. ' slots=' .. slots .. ' version=' .. version)
-print('[qu_variables_numbers_strings] slots type ' .. type(slots))
-print('[qu_variables_numbers_strings] name type ' .. type(serverName))
+    -- Three variables holding three different kinds of value
+    local serverName = 'Quasar Practice'  -- a string (text)
+    local slots = 48                       -- a number (integer)
+    local version = 1.0                    -- a number (float)
+
+    -- Join everything into one tagged line with the .. operator
+    print('[qu_variables_numbers_strings] ' .. serverName .. ' slots=' .. slots .. ' version=' .. version)
+
+    -- Ask Lua what type each value actually is
+    print('[qu_variables_numbers_strings] slots type ' .. type(slots))
+    print('[qu_variables_numbers_strings] name type ' .. type(serverName))
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start it and read the proof" outcome="The expected proof appears in the txAdmin Live Console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_variables_numbers_strings
     ```
 
-    Save, then run:
+    Save, then run this in the txAdmin Live Console:
 
     ```text
     restart qu_variables_numbers_strings
     ```
 
-    Run this test:
-
-    ```text
-    restart qu_variables_numbers_strings
-    ```
+    Unlike Lesson 01, there is no command to type. These three prints sit at the top level of `server.lua`, so they fire the instant the resource starts. The restart **is** the test. Read the three lines it prints:
 
     <ExpectedOutput>
       [qu_variables_numbers_strings] Quasar Practice slots=48 version=1.0
 [qu_variables_numbers_strings] slots type number
+[qu_variables_numbers_strings] name type string
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+Three lines printed and you got back a sentence plus two type readings. None of that is magic. Walk through the file top to bottom and you will understand every character, including the one detail that quietly trips up every beginner: why a number prints fine inside a line of text without you ever converting it.
+
+### Variables hold values, and values have a type
+
+```lua
+local serverName = 'Quasar Practice'
+local slots = 48
+local version = 1.0
+```
+
+Each line is a variable: a name you pick that points at a value. `local` means the variable lives only inside this file, which is the habit you want by default so your names do not collide with other resources. The interesting part is what is on the right of each `=`.
+
+`'Quasar Practice'` is a **string**, a run of text fenced by quotes, exactly like Lesson 01. `48` is a **number**. `1.0` is also a number. Lua has one number type for both whole numbers and decimals, which is why you do not declare `int` or `float` the way you would in C#. You just write the value and Lua sorts out the rest.
+
+The quotes are the whole tell. `slots = 48` is a number you can add and subtract. `slots = '48'` would be a string that happens to look like a number, and you could not do arithmetic on it without converting first. The presence or absence of quotes is the single most important decision you make every time you assign a value, and getting it wrong is behind a huge share of beginner bugs.
+
+### The .. operator joins values into one string
+
+```lua
+print('[qu_variables_numbers_strings] ' .. serverName .. ' slots=' .. slots .. ' version=' .. version)
+```
+
+`..` is the **concatenation operator**. It glues two values together end to end and hands back one string. You met it briefly in the Lesson 01 exercise; here it is doing real work. Read the line left to right: start with the tag string, glue on `serverName`, glue on the literal text `' slots='`, glue on `slots`, and so on. The result is one long string, which is the single argument `print` writes to the console.
+
+Now the part the old version of this lesson skipped. Look at `.. slots ..` and `.. version`. Those are **numbers**, not strings, yet `..` swallowed them without complaint. That is **coercion**: when `..` meets a number, Lua automatically converts that number to its text form for the join. `48` becomes the characters `48`, and `1.0` becomes the characters `1.0`. You did not call any convert function, and you did not need `tostring()`, because `..` does that step for you for plain numbers. This is why the printed line reads `slots=48 version=1.0` and not an error.
+
+Lock in the rule: inside a simple `print` join, you can drop numbers straight into `..` and they come out as text. You reach for `tostring()` only when you need the text form somewhere `..` is not doing the conversion for you, such as building a table key or comparing against a string. For a console line like this, `..` alone is enough.
+
+### Why version prints as 1.0, and why type() says number for both
+
+```lua
+print('[qu_variables_numbers_strings] slots type ' .. type(slots))
+print('[qu_variables_numbers_strings] name type ' .. type(serverName))
+```
+
+`type()` is a built-in function that takes any value and returns a string naming its type. Hand it `slots` and it returns `'number'`. Hand it `serverName` and it returns `'string'`. That is the proof, in the console, that quotes really do change what a value is. It is the fastest way to settle a what is this value argument with yourself while debugging: print its `type()` and stop guessing.
+
+Notice the first proof line printed `version=1.0`, not `version=1`. You wrote `1.0`, so Lua stored it as a **float**, a number with a decimal part, and its text form keeps the `.0`. Had you written `version = 1`, the line would read `version=1`. Lua 5.4 tracks this integer-versus-float distinction under the hood. But here is the catch worth remembering: `type()` reports `'number'` for both. It does not distinguish a float from an integer; both are simply numbers as far as `type()` is concerned. So `48` and `1.0` look like two different things in the printout, yet `type()` would call them both `number`. The decimal in the printout is a display detail of a float, not a separate type.
+
+<Checkpoint question="The proof line shows slots=48 version=1.0. You never called tostring() on either value, so how did the numbers end up as text inside the string?">
+  The `..` operator coerced them. When `..` joins a value and one side is a number, Lua automatically converts that number to its text form for the join. `48` becomes the characters `48` and the float `1.0` becomes the characters `1.0`. That is why the line prints correctly without any `tostring()` call. The `.0` survives because `1.0` is stored as a float, and a float's text form keeps its decimal part. Had you written `version = 1`, the same line would print `version=1`.
+</Checkpoint>
+
+### Comments and re-assignment
+
+Two more things are in the file that the hero promised. First, **comments**. Every line beginning with `--` is a comment: Lua reads `--` and ignores the rest of that line. Comments never run and never print. They are notes to the next human, which is usually you in three weeks wondering what past-you meant. The `-- a string (text)` notes in your `server.lua` did nothing to the output, and that is the point: they are for reading, not running.
+
+Second, **re-assignment**. A variable is not locked to its first value. You can point it at a new one later, which is exactly what variable means. Add these two lines to the bottom of `server.lua` and restart:
+
+```lua
+-- Point serverName at a new value, then print it again
+serverName = 'Quasar Live'
+print('[qu_variables_numbers_strings] renamed to ' .. serverName)
+```
+
+Note there is no `local` the second time. You declare a local once with `local`; after that you just assign to the name to change what it holds. The console now shows `renamed to Quasar Live`. The original `'Quasar Practice'` is gone, replaced. That is mutability: the box keeps its label, you swap what is inside it.
+
+### When you reach for this
+
+Concatenating variables into one tagged line is the workhorse log you will write thousands of times. Three concrete cases:
+
+- **Structured startup logs.** A resource that prints its name, version, and key config on start, exactly like this lesson, so a glance at the console confirms the right build loaded.
+- **Debug readouts.** `print('money=' .. money .. ' job=' .. job)` in one line beats three separate prints, because you read one row instead of hunting three.
+- **Type checks under pressure.** When a value misbehaves, `print(type(thatValue))` tells you in one second whether you are holding a number, a string, or something you did not expect, before you waste ten minutes assuming.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_variables_numbers_strings does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_variables_numbers_strings", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_variables_numbers_strings, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Resource qu_variables_numbers_strings does not exist", fix: "The folder name or the ensure line do not match. Check the folder sits directly inside resources and the ensure line spells the name identically." },
+    { symptom: "attempt to concatenate a nil value", fix: "A variable in the .. chain was never assigned, usually a typo like serverNme. Lua treats an unknown name as nil, and you cannot concatenate nil. Check every name in the print line matches a local above it." },
+    { symptom: "attempt to perform arithmetic on a string value", fix: "You put quotes around a number, like slots = '48', then tried to do math on it. Remove the quotes so it is a real number, or convert with tonumber() first." },
+    { symptom: "The line prints version=1 but you expected 1.0", fix: "You wrote version = 1, an integer, not version = 1.0, a float. Add the .0 to store it as a float so the decimal shows in the text form." },
   ]}
 />
 
@@ -109,25 +180,37 @@ print('[qu_variables_numbers_strings] name type ' .. type(serverName))
 
 <Recap
   items={[
-    "Make the qu_variables_numbers_strings folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for numbers, strings, concatenation, and type.",
-    "Add ensure qu_variables_numbers_strings to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Tell a string from a number by the quotes, and prove it with type() in the console.",
+    "Join strings and numbers into one line with the .. operator without calling tostring().",
+    "Explain coercion: why a bare number drops straight into a .. join and comes out as text.",
+    "Say why 1.0 prints with its decimal while type() still calls it a number, same as 48.",
+    "Write -- comments that document code without running, and re-assign a variable to a new value.",
   ]}
 />
 
 ## Run it live
 
-No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4.
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. Change a value, swap a number for a quoted string, or add a `type()` print and watch the output shift.
 
 <Sandbox initial={`local name = "Quasar"
 local players = 3
-print(name .. " has " .. players .. " players online")`} />
+local version = 2.5
+print(name .. " has " .. players .. " players online, build " .. version)
+print("players is a " .. type(players) .. ", name is a " .. type(name))`} />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_variables_numbers_strings`, rerun the test, and confirm the output changed.
+  Add a fourth variable and make the math real. Declare two numbers, the slots in use and the slots free, then print the total by adding them:
+
+  ```lua
+  local slotsUsed = 30
+  local slotsFree = 18
+  local slotsTotal = slotsUsed + slotsFree
+  print('[qu_variables_numbers_strings] ' .. slotsUsed .. ' used + ' .. slotsFree .. ' free = ' .. slotsTotal)
+  ```
+
+  Restart `qu_variables_numbers_strings` and confirm the line reads `30 used + 18 free = 48`. The point: `+` does arithmetic on real numbers, while `..` joins their text into the line. Now put quotes around one number, like `slotsUsed = '30'`, restart, and read the error Lua throws. That error is the lesson: quotes turned a number into a string, and you cannot add a string.
 </Exercise>
 
 <Refs

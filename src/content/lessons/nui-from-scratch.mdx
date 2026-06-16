@@ -2,13 +2,13 @@
   crumbs="Module 09 · Bonus"
   title="NUI from scratch: ui_page, messages, callbacks"
   meta={[
-    { label: "You'll learn", value: "The cfx-nui-<resource>/ protocol scope, the Lua ↔ JS message and callback APIs, focus capture, and how to attach Chrome devtools to a live NUI page." },
-    { label: "You'll ship", value: "A minimal NUI menu: F5 opens a Chromium overlay with one button, the button sends data back to Lua, and a Lua-triggered chat message confirms the round-trip." },
+    { label: "You'll learn", value: "The cfx-nui-<resource>/ callback scope, the Lua to JS message and callback APIs, focus capture, and how to attach Chrome devtools to a live NUI page." },
+    { label: "You'll ship", value: "A minimal NUI menu: a command opens a Chromium overlay with one button, the button sends data back to Lua, and a Lua-triggered chat message confirms the round-trip." },
     { label: "Time", value: "~25 minutes" },
     { label: "Why now", value: "You finished the vehicle handling lesson. Knowing how NUI works under the hood lets you debug any UI bug for the rest of the course." },
   ]}
 >
-  **NUI** is FiveM's name for the in-game browser layer, a real Chromium tab the client renders on top of GTA. Every menu, hud, scoreboard, F-pause UI you have ever seen in a server is NUI. So far you have used `ox_lib` and other framework UIs that wrap NUI for you. This bonus shows the layer underneath: how to declare a page in `fxmanifest.lua`, how to push state from Lua with `SendNUIMessage`, how to receive clicks with `RegisterNUICallback`, and how to capture the cursor with `SetNuiFocus`. Once you understand these four pieces, you can read any NUI resource and build your own without a framework.
+  **NUI** is FiveM's name for the in-game browser layer, a real Chromium tab the client renders on top of GTA. Every menu, hud, scoreboard, and pause UI you have ever seen in a server is NUI. So far you have used `ox_lib` and other framework UIs that wrap NUI for you. (`ox_lib` is a community library from the Overextended team, not a Cfx.re built-in, but it is everywhere.) This bonus shows the layer underneath: how to declare a page in `fxmanifest.lua`, how to push state from Lua with `SendNUIMessage`, how to receive clicks with `RegisterNUICallback`, and how to capture the cursor with `SetNuiFocus`. Once you understand these four pieces, you can read any NUI resource and build your own without a framework.
 </LessonHero>
 
 <LessonVideo loomId="ceda9248fb754825bc52c788d3b53528" title="Lockpicking skill-check NUI" caption="Build a lockpicking skill-check NUI, end to end." />
@@ -17,12 +17,12 @@
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can join the server and read F8 client output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ui_page, files list, SendNUIMessage, and RegisterNUICallback as a working FiveM resource named `qu_nui_from_scratch`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds `ui_page`, the `files` list, `SendNUIMessage`, and `RegisterNUICallback` as a working FiveM resource named `qu_nui_from_scratch`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you know why it works. NUI is a client feature, so the proof appears in F8, not the server console.
 </Callout>
 
 ## Build it
@@ -57,13 +57,17 @@ fx_version 'cerulean'
 game 'gta5'
 
 client_script 'client.lua'
+
 ui_page 'web/index.html'
+
 files {
     'web/index.html',
     'web/app.js',
     'web/style.css'
 }
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -72,38 +76,78 @@ files {
     ```lua
 RegisterCommand('openui', function()
     SetNuiFocus(true, true)
-    SendNUIMessage({ show = true })
-    print('[qu_nui_from_scratch] opened')
+    SendNUIMessage({ action = 'open', title = 'NUI from scratch' })
+    print('[qu_nui_from_scratch] opened, focus captured')
 end, false)
 
-RegisterNUICallback('close', function(_, cb)
+RegisterNUICallback('buttonClicked', function(data, cb)
     SetNuiFocus(false, false)
-    print('[qu_nui_from_scratch] closed')
+
+    local label = data.label or 'unknown'
+    print('[qu_nui_from_scratch] callback received, label = ' .. label)
+
+    TriggerEvent('chat:addMessage', {
+        color = { 0, 200, 120 },
+        args = { 'NUI', 'Round-trip complete. JS sent: ' .. label }
+    })
+
     cb({ ok = true })
 end)
     ```
 
     Open `web/index.html` and paste this:
 
-    ```text
+    ```html
 <!doctype html>
-<html><body><button id="close">Close</button><script src="app.js"></script></body></html>
+<html>
+  <head><link rel="stylesheet" href="style.css" /></head>
+  <body>
+    <div id="menu" class="hidden">
+      <h1 id="title">menu</h1>
+      <button id="action">Send to Lua and close</button>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
     ```
 
     Open `web/app.js` and paste this:
 
-    ```text
-document.getElementById('close').addEventListener('click', () => { fetch('https://qu_nui_from_scratch/close', { method: 'POST', body: '{}' }) })
+    ```js
+const menu = document.getElementById('menu');
+const title = document.getElementById('title');
+const button = document.getElementById('action');
+
+// Lua to JS: reveal the menu only when Lua pushes the open message.
+window.addEventListener('message', (event) => {
+    if (event.data.action === 'open') {
+        title.textContent = event.data.title;
+        menu.classList.remove('hidden');
+    }
+});
+
+// JS to Lua: send a real payload back, then hide on the callback's reply.
+button.addEventListener('click', () => {
+    fetch('https://cfx-nui-qu_nui_from_scratch/buttonClicked', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'Send to Lua and close' })
+    }).then(() => {
+        menu.classList.add('hidden');
+    });
+});
     ```
 
     Open `web/style.css` and paste this:
 
-    ```text
-body { display: grid; place-items: center; min-height: 100vh; }
+    ```css
+body { margin: 0; display: grid; place-items: center; min-height: 100vh; font-family: sans-serif; }
+#menu { background: #14161a; color: #fff; padding: 28px; border-radius: 10px; text-align: center; }
+.hidden { display: none; }
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in F8 and in chat.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -116,27 +160,137 @@ body { display: grid; place-items: center; min-height: 100vh; }
     restart qu_nui_from_scratch
     ```
 
-    Run this test:
+    Join the server, then run this test:
 
     ```text
-    /openui, then click Close
+    /openui, then click "Send to Lua and close"
     ```
 
     <ExpectedOutput>
-      F8: [qu_nui_from_scratch] opened
-F8: [qu_nui_from_scratch] closed
+      [qu_nui_from_scratch] opened, focus captured
+[qu_nui_from_scratch] callback received, label = Send to Lua and close
     </ExpectedOutput>
+
+    And in the chat box you see one line: `NUI: Round-trip complete. JS sent: Send to Lua and close`. That chat line is the proof the data made it from the browser back into Lua, not just an empty request.
   </Step>
 </StepGroup>
+
+## How it works
+
+You typed a command, a panel appeared, you clicked once, and a chat line came back carrying text the button sent. Four moving parts made that happen, and the order they fire in is the whole mental model. Take them in the order the data flows: declare the page, capture focus, push state Lua to JS, then send a payload JS to Lua.
+
+### The manifest: ui_page and files
+
+```lua
+ui_page 'web/index.html'
+
+files {
+    'web/index.html',
+    'web/app.js',
+    'web/style.css'
+}
+```
+
+`ui_page` does one job: it names the single HTML file FiveM mounts as this resource's NUI layer. That page renders fullscreen on top of the game, transparent where you do not draw anything. There is exactly one `ui_page` per resource.
+
+`files` is a separate, mandatory list. NUI runs inside a sandboxed browser, and that browser may only load assets you explicitly whitelist here. The HTML page itself is loaded because it is the `ui_page`, but every asset the page then asks for, the stylesheet, the script, an image, a font, must also appear in `files`. Leave `app.js` out of the `files` block and the browser's request for it returns a 404, the script never runs, and your button does nothing, with no Lua error to explain why. That silent 404 is the single most common reason a NUI page looks dead. When a NUI feature half-works, check `files` first.
+
+Note the dependency-style detail while you are here. If this resource needed another resource loaded first, the canonical key is the plural block:
+
+```lua
+dependencies {
+    'some_resource'
+}
+```
+
+The singular `dependency 'some_resource'` is tolerated but the plural block is the form to learn. We do not need it for this lesson, since NUI is built into the client runtime.
+
+### SetNuiFocus: who is the keyboard and mouse talking to
+
+```lua
+SetNuiFocus(true, true)
+```
+
+By default the game owns your mouse and keyboard, and the NUI layer is click-through: input passes straight to GTA. `SetNuiFocus` is how you hand input to the browser instead. It takes two booleans, and they are independent.
+
+- The first boolean is **mouse focus**. `true` shows a cursor and lets the browser receive clicks. Without it, your button is visible but unclickable, because every click is still going to the game underneath.
+- The second boolean is **keyboard focus**. `true` routes key presses into the page, which is what you want for a text input or a search box.
+
+The rule that saves you hours: whatever you capture, you must release. When the menu closes you call `SetNuiFocus(false, false)`. Forget it and the player is stuck staring at a cursor, unable to move, walk, or open the chat, with the game apparently frozen. It is not frozen. Focus never went back to the game. In this lesson the release happens on the first line of the callback, the moment the click comes in, so focus returns before anything else runs.
+
+### SendNUIMessage: pushing state from Lua to JS
+
+```lua
+SendNUIMessage({ action = 'open', title = 'NUI from scratch' })
+```
+
+```js
+window.addEventListener('message', (event) => {
+    if (event.data.action === 'open') {
+        title.textContent = event.data.title;
+        menu.classList.remove('hidden');
+    }
+});
+```
+
+`SendNUIMessage` is the one-way channel from Lua into the page. You hand it a Lua table; FiveM serializes that table to JSON and dispatches it to the browser as a DOM `message` event. On the JS side you listen with `window.addEventListener('message', ...)` and read the payload off `event.data`. The keys you set in Lua are the keys you read in JS: `action` and `title` here.
+
+This is the piece the old version of this lesson was missing, and it is why the page now starts hidden. The menu carries the `hidden` class until a message with `action` equal to `open` arrives, and only then does it reveal itself and stamp in the title Lua sent. So the UI is not just sitting there waiting; Lua is driving it. That is the real pattern: you almost never want a NUI page that shows itself. You want Lua to decide when, and to ship the data the page should display in the same message. An `action` field is the convention for telling the page which of its many states to switch into.
+
+`SendNUIMessage` is fire-and-forget. It does not return a value and the page cannot reply through it. For a reply you need the other direction.
+
+### RegisterNUICallback: sending a payload from JS back to Lua
+
+```js
+fetch('https://cfx-nui-qu_nui_from_scratch/buttonClicked', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label: 'Send to Lua and close' })
+});
+```
+
+```lua
+RegisterNUICallback('buttonClicked', function(data, cb)
+    SetNuiFocus(false, false)
+    local label = data.label or 'unknown'
+    -- ...
+    cb({ ok = true })
+end)
+```
+
+The page talks back to Lua by making an HTTP request, and the URL scope is the part to memorize. It is always `https://cfx-nui-&lt;resource&gt;/&lt;endpoint&gt;`. Here the resource is `qu_nui_from_scratch` and the endpoint is `buttonClicked`, giving `https://cfx-nui-qu_nui_from_scratch/buttonClicked`. That `cfx-nui-` prefix is not optional decoration; it is the scheme FiveM intercepts to route the request to your Lua instead of out to the real internet. Drop the prefix, or use the bare resource name, and the request leaves the NUI sandbox and fails. The endpoint after the slash is the string you register on the Lua side. They must match exactly.
+
+On the Lua side, `RegisterNUICallback('buttonClicked', function(data, cb) ... end)` is the listener for that endpoint. The handler is handed two arguments:
+
+- `data` is the request body, already parsed from JSON into a Lua table. The `{ label: '...' }` object the `fetch` sent arrives as `data.label`. That is how you read the value the button carried. Defaulting with `data.label or 'unknown'` guards against a malformed body.
+- `cb` is the response function. The browser's `fetch` is a promise waiting on a reply, and `cb({ ok = true })` is that reply. Until you call `cb`, the `fetch` promise never resolves, so the `.then` that hides the menu never runs. You must call `cb` exactly once in every callback, even if you only send `cb({})`. A callback that forgets `cb` leaves the page hanging on every click.
+
+The chat line is the visible proof the data crossed: `TriggerEvent('chat:addMessage', ...)` fires the built-in `chat` resource's message event on the client and prints the `label` the JS sent. If that text shows up in chat, the round-trip is real. An empty request body that the callback ignored, which is what the old lesson shipped, could never produce it.
+
+### Attaching Chrome devtools to a live NUI page
+
+NUI is a real Chromium instance, so it has the same devtools you use in a browser. With the game running, open `http://localhost:13172` in Chrome on the same machine. You get the standard inspector pointed at every live NUI page: the Console tab shows your JS errors and `console.log` output, the Network tab shows each `cfx-nui-` fetch and its response, and Elements lets you tweak CSS live. The moment a NUI feature misbehaves, this is the first place to look, because a JS error that the game would otherwise swallow shows up here in red.
+
+<Checkpoint question="The button click fires the fetch, but the menu never closes and the chat line never appears, with no error in F8. Where do you look first, and what is the most likely cause?">
+  Open the NUI devtools at `http://localhost:13172` and check the Network tab. The most likely cause is a mismatch between the `fetch` URL and the registered callback: either the endpoint string after the slash does not match the name in `RegisterNUICallback` (`buttonClicked` in both places), or the `cfx-nui-` prefix or resource name is wrong, so the request never reaches Lua. A failed or pending request in the Network tab confirms it. If the request succeeds but the menu still does not close, the Lua callback ran but never called `cb`, so the `fetch` promise that hides the menu in `.then` never resolves. Both failures are silent in F8, which is exactly why devtools is the first stop.
+</Checkpoint>
+
+### When you reach for this pattern
+
+These four pieces are the entire foundation of every NUI resource, framework or not. You reach for them whenever a feature needs a screen the player interacts with, rather than a simple key prompt. Three real cases:
+
+- **An interaction menu.** Lua detects the player is near an NPC, calls `SetNuiFocus` and `SendNUIMessage` with the menu options, and each click comes back through a callback. Garages, shops, and job menus are all this shape.
+- **A minigame.** A lockpick, a hacking puzzle, a skill-check. Lua starts it with a message carrying the difficulty, the page runs the game loop in JS, and a single callback reports success or failure back. The video at the top of this lesson is exactly this.
+- **A hud.** Here you usually skip `SetNuiFocus` entirely, because a hud should never steal the cursor. Lua just streams state with `SendNUIMessage` on a timer and the page redraws. Same message channel, no focus, no callback.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_nui_from_scratch does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_nui_from_scratch", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_nui_from_scratch, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The menu never appears after /openui", fix: "The page starts hidden on purpose and only reveals on the open message. Open the NUI devtools at http://localhost:13172, check the Console for a JS error, and confirm app.js is listed in the files block so the browser can load it." },
+    { symptom: "Mouse and movement are frozen after closing", fix: "Focus was captured but never released. Make sure SetNuiFocus(false, false) runs in the callback. The game is not frozen, input is still being routed to the browser." },
+    { symptom: "Clicking the button does nothing, no callback prints", fix: "The fetch URL or endpoint is wrong. It must be exactly https://cfx-nui-qu_nui_from_scratch/buttonClicked and the RegisterNUICallback name must be buttonClicked. Confirm the request in the devtools Network tab." },
+    { symptom: "The button works but the menu stays open", fix: "The Lua callback never called cb. Every RegisterNUICallback must call cb exactly once, even cb({}), or the fetch promise never resolves and the .then that hides the menu never runs." },
   ]}
 />
 
@@ -144,23 +298,39 @@ F8: [qu_nui_from_scratch] closed
 
 <Recap
   items={[
-    "Make the qu_nui_from_scratch folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ui_page, files list, SendNUIMessage, and RegisterNUICallback.",
-    "Add ensure qu_nui_from_scratch to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Declare a NUI page with ui_page and whitelist every asset it loads in the files block, and explain why a missing file 404s silently.",
+    "Capture and release input with SetNuiFocus, knowing the first boolean is the mouse and the second is the keyboard.",
+    "Push state from Lua to JS with SendNUIMessage and read it off event.data in a window message listener.",
+    "Send a payload from JS back to Lua over the cfx-nui-<resource>/<endpoint> scope and read it as the data argument of RegisterNUICallback.",
+    "Call cb exactly once to resolve the fetch, and prove the round-trip with a chat line carrying the data the page sent.",
+    "Open the NUI devtools at http://localhost:13172 to inspect the Console and Network tabs of a live page.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_nui_from_scratch`, rerun the test, and confirm the output changed.
+  Turn the one button into a two-button menu that tells Lua which one was pressed. Add a second button to `index.html` and send the button's own label in the `fetch` body:
+
+  ```js
+  document.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+          fetch('https://cfx-nui-qu_nui_from_scratch/buttonClicked', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ label: btn.textContent })
+          }).then(() => menu.classList.add('hidden'));
+      });
+  });
+  ```
+
+  The Lua callback already reads `data.label`, so it needs no change. Restart `qu_nui_from_scratch`, open the menu, and click each button. Confirm the chat line names the exact button you pressed. You just used one callback to handle many UI actions by letting the page say which one fired, which is how real menus route every option through a single endpoint instead of one callback per button.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM NUI development guide", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

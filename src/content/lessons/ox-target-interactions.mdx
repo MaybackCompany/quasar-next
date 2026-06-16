@@ -4,23 +4,24 @@
   meta={[
     { label: "You'll learn", value: "addModel for peds and props -> addGlobalPlayer for other players -> addBoxZone for world regions -> canInteract -> the shared option schema" },
     { label: "Time", value: "~25 minutes" },
-    { label: "Prereqs", value: "Lesson 16 (ox_lib) and Lesson 17 (Qbox). ox_target installed." },
-    { label: "Outcome", value: "A merchant ped, an ATM zone, and a \"give cash\" option on other players, all using the same target system." },
+    { label: "Prereqs", value: "Lesson 16 (ox_lib) and Lesson 17 (Qbox). ox_target installed and started after ox_lib." },
+    { label: "Outcome", value: "A merchant ped, an ATM zone, and a give cash option on other players, all using the same target system." },
   ]}
 >
-  Most FiveM servers have things players can interact with: NPCs, doors, trunks, registers, ATMs. Before `ox_target`, building those interactions meant lots of repeated distance checks and prompt code. With `ox_target`, most of that becomes one small options table. This lesson teaches that pattern slowly.
+  Most FiveM servers have things players can interact with: NPCs, doors, trunks, registers, ATMs. Before `ox_target`, building those interactions meant lots of repeated distance checks and prompt code. With `ox_target`, most of that becomes one small options table. `ox_target` is an Overextended community resource, the successor to qtarget and bt-target, not an official Cfx.re resource. This lesson teaches its one core pattern slowly, then uses it three different ways.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console and F8 output.",
+    "I have ox_lib and ox_target installed, with ox_lib starting before ox_target."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ox_target box zone with canInteract and onSelect as a working FiveM resource named `qu_ox_target_interactions`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds three interactions in one working FiveM resource named `qu_ox_target_interactions`: a box zone, a merchant ped, and a give cash option on every other player. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the options table apart field by field so you know why it works.
 </Callout>
 
 ## Build it
@@ -35,16 +36,17 @@
   </Step>
 
   <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
-    Create this exact file layout:
+    Create this exact file layout. This lesson has a client file (the interactions live where the player is) and a server file (giving cash is a server decision):
 
     ```text
 resources/qu_ox_target_interactions/
   fxmanifest.lua
   client.lua
+  server.lua
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and what to wait for.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -52,29 +54,85 @@ fx_version 'cerulean'
 game 'gta5'
 
 client_script 'client.lua'
+server_script 'server.lua'
 
-dependency 'ox_target'
+dependencies {
+    'ox_lib',
+    'ox_target'
+}
     ```
+
+    The canonical manifest key is the plural `dependencies { ... }` with a table. The singular `dependency 'ox_target'` is tolerated by FiveM, but the plural form is the form you should write and the form you will see in real resources. We list both `ox_lib` and `ox_target` because `ox_target` itself depends on `ox_lib` being running first. Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored, since Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the client code" outcome="Three interactions register the moment the resource starts.">
     Open `client.lua` and paste this:
 
     ```lua
-CreateThread(function()
-    exports.ox_target:addBoxZone({
-        coords = vec3(215.76, -810.12, 30.73),
-        size = vec3(2.0, 2.0, 2.0),
-        rotation = 0.0,
-        debug = true,
-        options = { { name = 'qu_ox_target_interactions_use', icon = 'fa-solid fa-hand', label = 'Use target', canInteract = function(entity, distance) return distance <= 2.0 end, onSelect = function() print('[qu_ox_target_interactions] selected') end } }
-    })
+-- 1. A box zone over the ATM spot at Legion Square.
+exports.ox_target:addBoxZone({
+    coords = vec3(215.76, -810.12, 30.73),
+    size = vec3(2.0, 2.0, 2.0),
+    rotation = 0.0,
+    debug = true,
+    options = {
+        {
+            name = 'qu_atm_use',
+            icon = 'fa-solid fa-money-bill',
+            label = 'Use ATM',
+            distance = 2.0,
+            canInteract = function(entity, distance)
+                return distance <= 2.0
+            end,
+            onSelect = function()
+                print('[qu_ox_target_interactions] ATM used')
+            end
+        }
+    }
+})
+
+-- 2. A merchant ped: any ped using this model gets a Talk option.
+exports.ox_target:addModel('a_m_y_business_03', {
+    {
+        name = 'qu_merchant_talk',
+        icon = 'fa-solid fa-comment',
+        label = 'Talk to merchant',
+        distance = 2.5,
+        onSelect = function()
+            print('[qu_ox_target_interactions] merchant talked to')
+        end
+    }
+})
+
+-- 3. A give cash option on every OTHER player ped.
+exports.ox_target:addGlobalPlayer({
+    {
+        name = 'qu_give_cash',
+        icon = 'fa-solid fa-hand-holding-dollar',
+        label = 'Give $100',
+        distance = 2.0,
+        onSelect = function(data)
+            local serverId = GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity))
+            TriggerServerEvent('qu_ox_target_interactions:giveCash', serverId, 100)
+        end
+    }
+})
+    ```
+  </Step>
+
+  <Step num={5} title="Write the server code" outcome="The give cash action is decided on the server, where it belongs.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu_ox_target_interactions:giveCash', function(targetId, amount)
+    local fromId = source
+    print(('[qu_ox_target_interactions] %s -> %s gave $%s'):format(fromId, targetId, amount))
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the correct consoles.">
+    Open `server.cfg` and add this line. It must come after the lines that ensure `ox_lib` and `ox_target`:
 
     ```text
     ensure qu_ox_target_interactions
@@ -86,26 +144,107 @@ end)
     restart qu_ox_target_interactions
     ```
 
-    Run this test:
-
-    ```text
-    Select Use target at the debug box
-    ```
+    Join the server. You will see a translucent debug box floating at the ATM spot. Walk into it, aim at it, and select Use ATM. Then aim at any other player nearby and select Give $100.
 
     <ExpectedOutput>
-      F8: [qu_ox_target_interactions] selected
+      F8: [qu_ox_target_interactions] ATM used
+      txAdmin: [qu_ox_target_interactions] 1 -> 2 gave $100
     </ExpectedOutput>
+
+    The ATM line prints in F8 because `onSelect` runs on the client. The give cash line prints in txAdmin Live Console because that work was sent to the server. The numbers `1` and `2` are server ids, so they will match whoever is actually connected.
   </Step>
 </StepGroup>
+
+## How it works
+
+You selected an option and the right line appeared in the right console. Now take the code apart so the next time you wire an interaction you are deciding, not copying. The whole system rests on one idea: every `add*` function takes the same shape of option, and the option describes what the player sees and what happens when they pick it.
+
+### The shared option schema
+
+This is the table you will write hundreds of times. Every entry inside `options` supports the same fields, no matter which `add*` function you handed it to:
+
+- `name` is a unique id string for this option. It must be unique across your whole server, which is why we prefix ours with the resource name (`qu_atm_use`, not `use`). If two resources register the same `name`, the second one silently overwrites the first and you lose an interaction with no error.
+- `icon` is a Font Awesome class string, like `fa-solid fa-money-bill`. ox_target ships Font Awesome, so you pick from their free icon set. A wrong or misspelled class shows a blank square instead of an icon, which is the number one reason a new option looks broken.
+- `label` is the text the player reads in the eye menu, like `Use ATM`. This is the prompt, the human-facing half of the option.
+- `distance` is the maximum range in metres at which the option can be selected. ox_target uses it as a first cheap filter before it ever calls your `canInteract`.
+- `canInteract(entity, distance)` is an optional function that returns a boolean. ox_target calls it to decide whether to show the option at all. Return `true` to show it, `false` to hide it. `entity` is the thing being aimed at and `distance` is how far the player is from it. This is where gating lives: only show Open till if the player is a cashier, only show Lockpick if the door is locked.
+- `onSelect` is the function that runs when the player actually clicks the option. For a model or a player option it receives a `data` table whose `data.entity` is the entity that was targeted. This is the payload half of the option.
+
+<Checkpoint question="The same options table works for a box zone, a model, and every other player. What is the one field that behaves differently depending on which add* function you used?">
+  `onSelect` (and `canInteract`). For `addBoxZone` there is no specific entity, so `data.entity` is not meaningful and you usually ignore the argument. For `addModel` and `addGlobalPlayer` the player is aiming at a real entity, so ox_target hands you a `data` table and `data.entity` is the ped or prop they targeted. That entity is how you know which player to give cash to in option three. The fields are the same shape everywhere, but what the entity means depends on what you attached the option to.
+</Checkpoint>
+
+### addBoxZone: an interaction tied to a place
+
+```lua
+exports.ox_target:addBoxZone({
+    coords = vec3(215.76, -810.12, 30.73),
+    size = vec3(2.0, 2.0, 2.0),
+    rotation = 0.0,
+    debug = true,
+    options = { ... }
+})
+```
+
+A box zone is an invisible 3D box sitting in the world. When the player aims inside it, the options appear. The box is defined by three things:
+
+- `coords` is the centre point of the box, a `vec3` of world coordinates `(x, y, z)`. `vec3` is the ox_lib short form; FiveM also exposes the same value as `vector3`. They are interchangeable here, and `vec3` is what Overextended resources use.
+- `size` is a `vec3` of the box dimensions in metres along each axis: width, depth, height. `vec3(2.0, 2.0, 2.0)` is a two metre cube. A flat counter would be wide and shallow, like `vec3(2.0, 0.6, 1.2)`.
+- `rotation` spins the box around its vertical axis in degrees. `0.0` leaves it aligned to the world. You set this when the thing you are wrapping, a counter or a desk, sits at an angle.
+
+The field that makes placement possible is `debug = true`. With debug on, ox_target draws the box as a translucent shape you can see in game, so you can stand at the spot, read whether the box actually covers the ATM, and nudge the coords. Once it lines up, you set `debug = false` (or delete the line) for production, and the box becomes invisible while still working. Shipping with debug on is a common mistake that leaves coloured boxes all over a live server.
+
+### addModel: an interaction tied to a kind of thing
+
+```lua
+exports.ox_target:addModel('a_m_y_business_03', {
+    { name = 'qu_merchant_talk', ... }
+})
+```
+
+`addModel` attaches options to a model rather than a place. Every entity that uses model `a_m_y_business_03`, anywhere on the map, gets the Talk to merchant option. This is how you make a merchant ped: spawn that ped model somewhere, and because it shares the model, it inherits the interaction automatically. Note the argument order is different from `addBoxZone`: the model name comes first, then the options table comes second as its own argument, not wrapped inside a single options key. You can pass one model string or a table of model names to cover several at once.
+
+### addGlobalPlayer: an interaction tied to every other player
+
+```lua
+exports.ox_target:addGlobalPlayer({
+    {
+        name = 'qu_give_cash',
+        onSelect = function(data)
+            local serverId = GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity))
+            TriggerServerEvent('qu_ox_target_interactions:giveCash', serverId, 100)
+        end
+    }
+})
+```
+
+`addGlobalPlayer` attaches options to the ped of every other player, with no entity or model to name. This is the line that delivers the give cash outcome. The interesting work is in `onSelect`, and it is where the lesson becomes correct rather than convenient.
+
+When you aim at a player, `data.entity` is their ped, which is a local game handle that means nothing to the server. The server thinks in server ids, not ped handles. So you translate: `NetworkGetPlayerIndexFromPed` turns the ped into a local player index, and `GetPlayerServerId` turns that index into the stable server id the server understands. Then comes the rule that the original version of this lesson got wrong. Giving someone cash is a server decision. If you mutate money on the client, every player can edit their own wallet and the server never agrees. So the client does not give cash. It calls `TriggerServerEvent` to cross the network and ask the server to do it, passing the target's server id and the amount.
+
+On the server, `RegisterNetEvent` receives that request. The `source` global inside a net event handler is the player who sent it, captured here as `fromId`. In a real server you would now check the sender actually has the money and call your framework to move it. For this proof we print the transfer so you can see the event crossed the network and arrived with the right ids. The point is the boundary: the client decides what the player wants, the server decides what is allowed and what actually happens.
+
+<Checkpoint question="Why does the give cash logic run on the server instead of finishing inside the client onSelect?">
+  Because money is authoritative state, and the client cannot be trusted with authoritative state. A client `onSelect` runs on the player's own machine, which a cheater controls. If the wallet changed there, anyone could grant themselves unlimited cash and the server would have no say. By calling `TriggerServerEvent` and doing the work in a `RegisterNetEvent` handler, the decision moves to the one machine no player can edit. The client's job is to capture intent (who, how much) and send it; the server's job is to validate it and apply it. This client-asks, server-decides split is the spine of every safe FiveM economy interaction.
+</Checkpoint>
+
+### When you reach for this pattern
+
+ox_target is the default answer any time a player should walk up to something and act on it. Three real cases:
+
+- **A fixed station.** Registers, ATMs, clothing stores, garage spawn points. These live at known coordinates, so `addBoxZone` is the tool, and `debug = true` is how you place the box exactly over the counter.
+- **A class of object or NPC.** Every shop clerk, every dumpster, every harvestable plant. Attach the option once with `addModel` and every entity of that model inherits it, however many you spawn.
+- **Player to player actions.** Give cash, show id, cuff, revive, search. These hang off `addGlobalPlayer`, and they almost always end in a `TriggerServerEvent`, because the interesting outcome is a change to shared state the server must own.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_ox_target_interactions does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_ox_target_interactions", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_ox_target_interactions, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "No debug box appears at the ATM and aiming shows nothing", fix: "Either debug is false or the coords are wrong. Set debug = true and restart. If the box still does not show, your coords are not where you are standing. Stand at the spot and use a coords command to read your real position, then paste it into vec3." },
+    { symptom: "The option shows a blank square where the icon should be", fix: "The icon Font Awesome class is wrong. Use the full free class string like fa-solid fa-money-bill, not just money-bill. Check the spelling against the Font Awesome free icon list." },
+    { symptom: "The option never appears even though the box is visible", fix: "canInteract is returning false. Add a print inside it to see the distance value, or remove canInteract entirely to confirm the option itself is registered. A canInteract that always returns false silently hides the option with no error." },
+    { symptom: "Could not load resource qu_ox_target_interactions, or ox_target is nil", fix: "ox_lib or ox_target is not started before this resource. Put ensure ox_lib and ensure ox_target above ensure qu_ox_target_interactions in server.cfg, because ox_target depends on ox_lib." },
+    { symptom: "Give $100 prints nothing in txAdmin", fix: "The server event name in TriggerServerEvent must exactly match the name in RegisterNetEvent. Confirm both read qu_ox_target_interactions:giveCash, and that server.lua is listed as server_script in the manifest." },
   ]}
 />
 
@@ -113,23 +252,56 @@ end)
 
 <Recap
   items={[
-    "Make the qu_ox_target_interactions folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ox_target box zone with canInteract and onSelect.",
-    "Add ensure qu_ox_target_interactions to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Write the shared ox_target option schema from memory: name, icon, label, distance, canInteract, and onSelect, and say what each field does.",
+    "Place an interaction at a fixed spot with addBoxZone, using debug = true to line the box up over the target.",
+    "Attach an interaction to a kind of entity with addModel so every ped or prop of that model inherits it.",
+    "Attach an interaction to every other player with addGlobalPlayer, and turn data.entity into a server id.",
+    "Explain why a give cash action must cross the network with TriggerServerEvent and finish on the server, not in the client onSelect.",
+    "List ox_lib then ox_target as dependencies so ox_target loads with what it needs.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_ox_target_interactions`, rerun the test, and confirm the output changed.
+  Make the merchant interaction conditional and two-way. Right now any player can Talk to the merchant. Change it so the Talk option only appears when the player is on foot, and add a second option, Rob register, that only appears when the player is crouched. Use `canInteract` to gate each one:
+
+  ```lua
+  exports.ox_target:addModel('a_m_y_business_03', {
+      {
+          name = 'qu_merchant_talk',
+          icon = 'fa-solid fa-comment',
+          label = 'Talk to merchant',
+          distance = 2.5,
+          canInteract = function()
+              return not IsPedInAnyVehicle(PlayerPedId(), false)
+          end,
+          onSelect = function()
+              print('[qu_ox_target_interactions] merchant talked to')
+          end
+      },
+      {
+          name = 'qu_merchant_rob',
+          icon = 'fa-solid fa-mask',
+          label = 'Rob register',
+          distance = 2.5,
+          canInteract = function()
+              return IsPedDuckingOrCrouching(PlayerPedId())
+          end,
+          onSelect = function()
+              TriggerServerEvent('qu_ox_target_interactions:rob')
+          end
+      }
+  })
+  ```
+
+  Add a matching `RegisterNetEvent('qu_ox_target_interactions:rob', ...)` on the server that prints the robber's source. Restart, then confirm Talk shows while standing and Rob register shows only while crouched. You just used `canInteract` to drive which options a single entity exposes based on player state, the exact mechanism real jobs use to show the right actions to the right people.
 </Exercise>
 
 <Refs
   items={[
+    { label: "ox_target documentation (Overextended)", href: "https://overextended.dev/ox_target" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

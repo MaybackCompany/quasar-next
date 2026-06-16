@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds TriggerEvent and AddEventHandler on the same client side as a working FiveM resource named `qu_trigger_event`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds `TriggerEvent` and `AddEventHandler` on the same client side as a working FiveM resource named `qu_trigger_event`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you know why two lines print from one command.
 </Callout>
 
 ## Build it
@@ -53,15 +53,25 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored. Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `client.lua` and paste this:
+    Open `client.lua` and paste this. Two handlers listen for the same event name, and one command fires that event:
 
     ```lua
-AddEventHandler('qu_trigger_event:shout', function(message) print('[qu_trigger_event] handler one ' .. message) end)
-AddEventHandler('qu_trigger_event:shout', function(message) print('[qu_trigger_event] handler two ' .. message) end)
-RegisterCommand('shout', function(_, args) TriggerEvent('qu_trigger_event:shout', table.concat(args, ' ')) end, false)
+AddEventHandler('qu_trigger_event:shout', function(message)
+    print('[qu_trigger_event] handler one ' .. message)
+end)
+
+AddEventHandler('qu_trigger_event:shout', function(message)
+    print('[qu_trigger_event] handler two ' .. message)
+end)
+
+RegisterCommand('shout', function(_, args)
+    TriggerEvent('qu_trigger_event:shout', table.concat(args, ' '))
+end, false)
     ```
   </Step>
 
@@ -78,27 +88,101 @@ RegisterCommand('shout', function(_, args) TriggerEvent('qu_trigger_event:shout'
     restart qu_trigger_event
     ```
 
-    Run this test:
+    This is a `client_script`, so the command runs from inside the game. Join the server, open the F8 console, and type:
 
     ```text
     /shout hello
     ```
 
     <ExpectedOutput>
-      F8: [qu_trigger_event] handler one hello
-F8: [qu_trigger_event] handler two hello
+      [qu_trigger_event] handler one hello
+[qu_trigger_event] handler two hello
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+One command, two printed lines. That is the whole lesson in one observation. You fired a single event and two separate handlers reacted to it. Now take the code apart so you understand the rule behind it, because this exact mechanism is how every resource on your server reacts to things without ever touching each other's variables.
+
+### An event is a named message
+
+Look at the string `'qu_trigger_event:shout'`. That is an event name. It is not a function, not a variable, not a file. It is just a label that two sides agree on. One side fires the label with `TriggerEvent`, and any side that called `AddEventHandler` with the matching label runs its code. The colon in the middle is not special to FiveM. It is a naming convention: `resourceName:action`. Namespacing your event names this way stops a clash the day another resource also wants an event called `shout`.
+
+The reason events exist at all is the rule from the intro: resources do not share variables. Your `qu_trigger_event` resource cannot reach into another resource and read its tables, and it should not be able to. Each resource is its own sandbox. Events are the seam between those sandboxes. One resource announces that something happened, and any resource that cares has registered a handler to react. That decoupling is the point. The firing side does not know or care who is listening, and the listening side does not know or care who fired.
+
+### Two handlers, one event, both run
+
+Here are the two listeners:
+
+```lua
+AddEventHandler('qu_trigger_event:shout', function(message)
+    print('[qu_trigger_event] handler one ' .. message)
+end)
+
+AddEventHandler('qu_trigger_event:shout', function(message)
+    print('[qu_trigger_event] handler two ' .. message)
+end)
+```
+
+`AddEventHandler` says: when the event named in the first argument fires, run this function. The function you hand it is the handler. Notice that both calls use the **same** event name. FiveM does not throw away the first one when you register the second. It keeps a list. When `qu_trigger_event:shout` fires, FiveM walks that list and runs every handler on it, in the order they were registered. That is why you got two lines and why handler one printed before handler two. Registration order is run order.
+
+This is the part the old version of this lesson never said out loud, and it is the entire reason the demo prints twice. One event can have many listeners. That is not a bug to design around, it is the feature. A `playerDied` event in a real server might be heard by the medical resource, the scoreboard resource, and the anticheat resource all at once, none of them aware of the others.
+
+### Firing the event
+
+```lua
+RegisterCommand('shout', function(_, args)
+    TriggerEvent('qu_trigger_event:shout', table.concat(args, ' '))
+end, false)
+```
+
+`TriggerEvent` is the line that fires the message. It takes the event name, then any values you want to pass to the handlers. Here you pass one value, the reconstructed message string, and both handlers receive it as their `message` parameter.
+
+Two properties of `TriggerEvent` matter and you should burn them in now. First, it is **synchronous**. When you call `TriggerEvent`, FiveM runs every matching handler right then, in order, before the next line of your code runs. It does not queue the event for later. By the time `TriggerEvent` returns, both prints have already happened. Second, it is **same-side only**. `TriggerEvent` fires on the side it was called from and nowhere else. This code is a `client_script`, so the event fires on the client, and only client-side handlers hear it. It never crosses the network to the server. That is exactly what we want for a local conversation between two handlers in the same process.
+
+### Why args is a table, and what table.concat does
+
+The command handler signature is `function(_, args)`. FiveM hands a command handler three values: the source (who ran it), an `args` table, and the raw text. The first underscore is a throwaway name for the source, which we do not use here. The second, `args`, is the interesting one.
+
+FiveM splits whatever you typed after the command on spaces and gives you the pieces as a **table** (a list). Type `/shout hello world` and `args` is not the string `"hello world"`, it is a two-element list: `args[1]` is `"hello"` and `args[2]` is `"world"`. FiveM cannot know whether you meant one phrase or two separate arguments, so it always hands you the split pieces and lets you decide.
+
+That is why `table.concat(args, ' ')` is there. `table.concat` glues the elements of a table back into one string, putting the separator you pass (here a single space) between each piece. So the list `{ "hello", "world" }` becomes the string `"hello world"`. Without it, you would only ever pass `args[1]` and `/shout hello world` would shout just `hello`. Concatenating with a space rebuilds the full sentence the player typed.
+
+### The distinction that protects your server: AddEventHandler vs RegisterNetEvent
+
+This is the most important paragraph in the lesson. There are two ways to register a handler in FiveM, and choosing the wrong one is either a silent failure or a security hole.
+
+- `AddEventHandler` registers a handler for **local, same-side events only**. The event must be fired on the same side, by `TriggerEvent`. That is what you used here.
+- `RegisterNetEvent` registers a handler that is allowed to receive an event **from across the network**, fired by `TriggerServerEvent` (client to server) or `TriggerClientEvent` (server to client). That is the next lesson.
+
+Here is why mixing them up bites you. If you register a networked event with plain `AddEventHandler` and a client tries to trigger it across the network, FiveM blocks it and your handler silently never runs. You will swear the code is correct and lose an hour. Conversely, if you use `RegisterNetEvent` for everything out of habit, you have just told FiveM that any connected player is allowed to fire that event with any arguments they invent. A networked handler that trusts its inputs is the single most common way FiveM servers get exploited. A player can fire your `giveMoney` event from a cheat menu with `amount = 999999999` if you registered it as net and never checked the values.
+
+The rule to carry forward: use `AddEventHandler` when the event stays on one side, and reach for `RegisterNetEvent` only when an event genuinely needs to cross the network, and then validate every argument as if a cheater sent it, because one might have.
+
+<Checkpoint question="Why did one /shout print two lines, and what would happen if you changed both AddEventHandler calls to RegisterNetEvent?">
+  Two lines printed because both `AddEventHandler` calls registered a handler for the same event name, `qu_trigger_event:shout`, and `TriggerEvent` runs every registered handler in order. The event being local and same-side does not limit how many handlers can listen, only where it can be fired from.
+
+  Switching both to `RegisterNetEvent` would still print two lines here, because `TriggerEvent` fires locally and `RegisterNetEvent` handlers also catch local triggers. But it would be the wrong choice: you would have flagged a purely local event as network-capable, which means any client could now fire `qu_trigger_event:shout` across the wire with arguments you never sanitized. Nothing in this demo needs that, so `AddEventHandler` is correct and safer.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Same-side events are how you keep one resource's parts loosely joined so you can change one without breaking the others. Three real cases:
+
+- **Fan-out within a resource.** One thing happens (a job ends, a round finishes) and several independent systems need to react. Fire one event, let each system register its own handler. You can add a fourth reaction later without touching the firing code.
+- **A clean seam for testing.** Wrap the real trigger condition behind an event, then fire that event by hand from a command while building. You exercise the reaction without setting up the real situation.
+- **Built-in FiveM events.** The platform fires events like `onResourceStart` and `playerSpawned` on your side for free. You listen for them with `AddEventHandler`, exactly like you listened for your own `shout`. You did not fire those, FiveM did, but the listening half is identical.
 
 ## If something went wrong
 
 <FailureList
   items={[
+    { symptom: "Only one line prints, not two", fix: "The two AddEventHandler calls use different event names, or you deleted one. Both must register the exact same string, qu_trigger_event:shout, for both to fire from one TriggerEvent." },
+    { symptom: "Nothing prints at all when you run /shout", fix: "The name in TriggerEvent does not match the name in AddEventHandler. A single typo, a missing colon, or a capital letter difference means the fired event matches no handler and nothing runs. Compare the strings character by character." },
+    { symptom: "attempt to concatenate a nil value", fix: "A handler used message but the value never arrived, usually because TriggerEvent passed nothing. Confirm table.concat(args, ' ') is the second argument to TriggerEvent so a string is always sent." },
+    { symptom: "/shout works but only shows the first word", fix: "You passed args[1] instead of table.concat(args, ' '). args is a table split on spaces; concat rebuilds the full message." },
     { symptom: "Resource qu_trigger_event does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_trigger_event", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_trigger_event, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
   ]}
 />
 
@@ -106,23 +190,37 @@ F8: [qu_trigger_event] handler two hello
 
 <Recap
   items={[
-    "Make the qu_trigger_event folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for TriggerEvent and AddEventHandler on the same client side.",
-    "Add ensure qu_trigger_event to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain that an event is a named message, and that resources use events because they cannot share variables directly.",
+    "Register two handlers for one event name with AddEventHandler and predict that both run, in registration order.",
+    "Fire a local event with TriggerEvent and state that it is synchronous and same-side only.",
+    "Explain why a command's args arrives as a table and what table.concat(args, ' ') rebuilds.",
+    "State the rule: AddEventHandler for same-side events, RegisterNetEvent only for events that cross the network, and why mixing them up is a silent failure or a security hole.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_trigger_event`, rerun the test, and confirm the output changed.
+  Make the two handlers do different work so you can prove that each handler runs independently. Right now both just print. Change handler two so it reacts to the content of the message instead of echoing it:
+
+  ```lua
+  AddEventHandler('qu_trigger_event:shout', function(message)
+      print('[qu_trigger_event] handler one ' .. message)
+  end)
+
+  AddEventHandler('qu_trigger_event:shout', function(message)
+      print('[qu_trigger_event] handler two heard ' .. #message .. ' characters')
+  end)
+  ```
+
+  Restart `qu_trigger_event`, then run `/shout hello world` in F8. Handler one should echo `hello world`, and handler two should report `11 characters`. The `#` operator on a string returns its length. You just proved the two handlers are fully independent: they receive the same value but do different things with it, which is the entire reason one event can have many listeners.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM AddEventHandler reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/AddEventHandler/" },
+    { label: "FiveM TriggerEvent reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/TriggerEvent/" },
+    { label: "FiveM events introduction", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/listening-for-events/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

@@ -2,25 +2,25 @@
   crumbs="Track 2 · Pro Path"
   title="Promises &amp; async: turning callbacks into linear code"
   meta={[
-    { label: "You'll learn", value: "promise.new(), :resolve(), :reject(), Citizen.Await, the callback-to-promise wrapping pattern" },
+    { label: "You'll learn", value: "promise.new(), :resolve(), :reject(), Citizen.Await, and the callback-to-promise wrapping pattern" },
     { label: "Time", value: "~22 minutes" },
     { label: "Prereqs", value: "P1 (oxmysql), P2 (HTTP)" },
-    { label: "Outcome", value: "You can wrap any callback API as a promise and chain three async calls without nesting" },
+    { label: "Outcome", value: "You can wrap any callback API as a promise and read three async calls top to bottom instead of nesting them" },
   ]}
 >
-  FiveM is full of callback APIs: `PerformHttpRequest`, the older `MySQL-Async`, NUI callbacks. Three of them in a row and your code looks like a pyramid. Promises flatten the pyramid. Combined with `Citizen.Await`, you get top-to-bottom code that *feels* synchronous while staying non-blocking.
+  FiveM is full of callback APIs: `PerformHttpRequest`, the older async MySQL libraries, NUI callbacks. Stack three of them and your code turns into a pyramid, each result trapped one level deeper than the last. Promises flatten the pyramid. Combined with `Citizen.Await`, you get top-to-bottom code that *feels* synchronous while the server stays free to do other work. This lesson builds the real thing: you wrap `PerformHttpRequest` in a promise, await it, handle failure with `:reject()`, and chain three calls in a straight line.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds promise.new, resolve, and Citizen.Await as a working FiveM resource named `qu_promises`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working FiveM resource named `qu_promises` that wraps `PerformHttpRequest` as a promise, awaits it inside a thread, and chains three HTTP calls top to bottom. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you know why it works.
 </Callout>
 
 ## Build it
@@ -53,26 +53,56 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
-local function afterOneSecond(label)
+-- Wrap the callback API PerformHttpRequest into a promise.
+-- It returns the promise immediately; the promise settles later,
+-- when FiveM fires the callback with the HTTP result.
+local function httpGet(url)
     local p = promise.new()
-    SetTimeout(1000, function() p:resolve(label .. ' done') end)
-    return Citizen.Await(p)
+
+    PerformHttpRequest(url, function(status, body, headers)
+        if status == 200 then
+            p:resolve(body)
+        else
+            p:reject('HTTP ' .. status .. ' for ' .. url)
+        end
+    end, 'GET')
+
+    return p
 end
 
 RegisterCommand('promisetest', function()
-    print('[qu_promises] start')
-    print('[qu_promises] ' .. afterOneSecond('job'))
+    -- Await must run inside a thread, never bare in the handler.
+    Citizen.CreateThread(function()
+        print('[qu_promises] start')
+
+        -- Three async calls, read top to bottom. No nesting.
+        local a = Citizen.Await(httpGet('https://httpbin.org/uuid'))
+        local b = Citizen.Await(httpGet('https://httpbin.org/uuid'))
+        local c = Citizen.Await(httpGet('https://httpbin.org/uuid'))
+
+        print('[qu_promises] got 3 responses, total bytes: ' .. (#a + #b + #c))
+
+        -- Now prove :reject() surfaces as a Lua error you can catch.
+        local ok, err = pcall(function()
+            return Citizen.Await(httpGet('https://httpbin.org/status/500'))
+        end)
+        print('[qu_promises] reject path: ok=' .. tostring(ok) .. ' err=' .. tostring(err))
+
+        print('[qu_promises] done')
+    end)
 end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -93,19 +123,133 @@ end, true)
 
     <ExpectedOutput>
       [qu_promises] start
-[qu_promises] job done
+[qu_promises] got 3 responses, total bytes: 162
+[qu_promises] reject path: ok=false err=HTTP 500 for https://httpbin.org/status/500
+[qu_promises] done
     </ExpectedOutput>
+
+    The byte count depends on the response bodies, so `162` is the realistic value for three `httpbin.org/uuid` JSON responses (each is a 54-byte `{"uuid": "..."}` object). If the number differs slightly because the endpoint changed its format, that is fine. What matters is that one number prints after all three awaits finished, and that the reject line reports `ok=false`.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and four lines appeared in order, even though every HTTP call took real network time. Between `start` and the byte count, the server did not freeze. That is the whole point of this lesson, and now you will see exactly how three pieces make it happen: `promise.new()`, `:resolve()` / `:reject()`, and `Citizen.Await`.
+
+### What a promise actually is
+
+A promise is a small object that stands in for a value you do not have yet. Think of it as a claim ticket. When you call an async API like `PerformHttpRequest`, the answer is not ready: the request has to leave your server, travel the network, and come back. You cannot return the answer, because it does not exist. So instead you hand back a ticket that says "the answer will land here later." That ticket is the promise.
+
+```lua
+local p = promise.new()
+```
+
+`promise.new()` creates one fresh, unsettled promise. Right now it holds nothing. It is in the pending state. A promise has exactly three states and it only ever moves once: pending to **resolved** (it got a value), or pending to **rejected** (it got an error). After it settles, it is frozen. You cannot resolve a rejected promise or change a resolved one.
+
+### `:resolve()` and `:reject()` fill the ticket
+
+```lua
+PerformHttpRequest(url, function(status, body, headers)
+    if status == 200 then
+        p:resolve(body)
+    else
+        p:reject('HTTP ' .. status .. ' for ' .. url)
+    end
+end, 'GET')
+```
+
+`PerformHttpRequest` is the classic callback API. You hand it a function, and FiveM calls that function later, when the response arrives. Inside that callback you make a decision and settle the promise:
+
+- `p:resolve(body)` means the answer arrived and here it is. Whatever value you pass becomes the resolved value of the promise.
+- `p:reject(message)` means it failed. The value you pass becomes the error.
+
+This callback runs at some unknown future moment, not when `httpGet` returns. That is the gap a promise bridges. The function `httpGet` returns the pending promise *immediately*, on the same line. The `resolve` or `reject` happens seconds later, inside the callback, when the network replies.
+
+<Checkpoint question="The httpGet function has a return p at the bottom and a p:resolve inside the callback. Which one runs first, and why does that order matter?">
+  `return p` runs first, the instant you call `httpGet`. The promise is still pending at that moment because the HTTP request has not come back yet. `p:resolve(body)` runs later, when FiveM fires the callback. This is the heart of the pattern: you can hand back the ticket before the answer exists, and someone fills it in later. If you tried to return `body` directly instead of a promise, you could not, because `body` does not exist yet when `httpGet` returns.
+</Checkpoint>
+
+### `Citizen.Await` collects the value
+
+```lua
+local a = Citizen.Await(httpGet('https://httpbin.org/uuid'))
+```
+
+`Citizen.Await(p)` does one job: it pauses the current thread until the promise `p` settles, then it gives you the result. If the promise resolves, `Await` returns the resolved value, so `a` becomes the response body. If the promise rejects, `Await` raises a Lua error carrying the reject message.
+
+The word that matters is **pauses**, not **blocks**. A blocking call would freeze the entire server: no other resource could run, no player could move, until the network replied. `Await` does not do that. It yields the current coroutine back to the FiveM scheduler. The scheduler is then free to run every other thread on the server while your thread sits parked, waiting for its promise. When the promise settles, the scheduler wakes your thread back up exactly where it left off and hands you the value. That is why the line "feels synchronous while staying non-blocking": you read it top to bottom like normal code, but under the hood your thread stepped aside and let the server keep working.
+
+### Why Await must live inside a thread
+
+Look at where the awaits sit:
+
+```lua
+RegisterCommand('promisetest', function()
+    Citizen.CreateThread(function()
+        local a = Citizen.Await(httpGet('https://httpbin.org/uuid'))
+        -- ...
+    end)
+end, true)
+```
+
+The awaiting work is wrapped in `Citizen.CreateThread(function() ... end)`. This is not decoration. `Citizen.Await` yields a coroutine, and yielding only works inside a coroutine that the FiveM scheduler owns. A command handler is invoked across a native C boundary, so awaiting *directly* in the handler body can fail with the error `attempt to yield across a C-call boundary`. The fix is the one shown here: the handler does nothing but spin up a thread, and all the awaiting happens inside that thread, which the scheduler does own. Whenever you await, ask yourself one question first: am I inside a `CreateThread`, an event handler the scheduler started, or a `lib.callback`? If the answer is no, wrap it.
+
+### Flattening the pyramid
+
+Here is the payoff. Without promises, three dependent HTTP calls nest, each result trapped inside the previous callback:
+
+```lua
+PerformHttpRequest(url1, function(s1, b1)
+    PerformHttpRequest(url2, function(s2, b2)
+        PerformHttpRequest(url3, function(s3, b3)
+            -- only here can you see b1, b2, and b3 together
+        end, 'GET')
+    end, 'GET')
+end, 'GET')
+```
+
+That is the pyramid: indentation marching to the right, error handling duplicated at every level, the actual logic buried three deep. With promises and `Await`, the same three calls read as a straight list:
+
+```lua
+local a = Citizen.Await(httpGet(url1))
+local b = Citizen.Await(httpGet(url2))
+local c = Citizen.Await(httpGet(url3))
+-- a, b, and c are all in scope, side by side
+```
+
+Each line waits for its call, returns the value into a normal local variable, and moves on. There is no nesting, the variables share one flat scope, and you handle errors in one place instead of three. The shape of the code now matches the shape of the task: do this, then this, then this.
+
+### Handling failure with reject
+
+A rejected promise turns into a raised error when you await it, so you catch it the standard Lua way, with `pcall`:
+
+```lua
+local ok, err = pcall(function()
+    return Citizen.Await(httpGet('https://httpbin.org/status/500'))
+end)
+```
+
+`httpbin.org/status/500` always returns HTTP 500, so the callback hits the `else` branch and calls `p:reject(...)`. When you `Await` that rejected promise, it raises. `pcall` runs the function in protected mode: it returns `false` plus the error message instead of crashing your thread. That is why the output shows `ok=false` and the reject message. If you await a promise that can reject and you do not wrap it in `pcall`, the raised error stops the rest of your thread, which is one of the ways a promise-based script "dies silently" mid-task.
+
+### When you reach for this pattern
+
+You wrap a callback API in a promise whenever you have async work whose result you need before the next step can run. The three you will hit constantly in FiveM:
+
+- **HTTP requests.** `PerformHttpRequest`, exactly as built here. Calling an external API, a webhook, a license check.
+- **Database queries.** Modern libraries like oxmysql already return promises, so you can `Await` them directly. Older callback-style MySQL wrappers you wrap yourself, the same way you wrapped `PerformHttpRequest`.
+- **NUI callbacks and any "do this, get a result later" native.** If it hands you a callback instead of a return value, it is a candidate for promise-wrapping.
+
+The rule of thumb: if two async steps depend on each other, promises plus `Await` will keep them readable. If they are independent, you may not even need to wait between them.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_promises does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_promises", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_promises, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to yield across a C-call boundary", fix: "You called Citizen.Await directly in the command handler instead of inside Citizen.CreateThread. Wrap the awaiting work in a thread, as Step 4 does." },
+    { symptom: "The command prints start and then nothing, forever", fix: "A promise was never settled. Every path through your callback must call p:resolve or p:reject. If PerformHttpRequest never fires its callback (bad URL, host unreachable), the promise stays pending and Await waits forever. Add a reject on the failure branch." },
+    { symptom: "attempt to call a nil value (global 'promise')", fix: "promise.new is provided by the FiveM runtime, not a require. Confirm this is a real FiveM server resource started with ensure, not the in-browser Lua sandbox, which has no FiveM globals." },
+    { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run it. Run promisetest from the txAdmin Live Console, not the F8 chat box." },
+    { symptom: "An error stops the thread after a 500 response", fix: "You awaited a promise that rejected without wrapping it in pcall. Either wrap the await in pcall as Step 4 does, or make sure the endpoint cannot reject on the happy path." },
   ]}
 />
 
@@ -113,23 +257,43 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_promises folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for promise.new, resolve, and Citizen.Await.",
-    "Add ensure qu_promises to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain that a promise is a claim ticket for a value that does not exist yet, and name its three states: pending, resolved, rejected.",
+    "Wrap a callback API like PerformHttpRequest in promise.new, resolving on success and rejecting on failure.",
+    "Use Citizen.Await to pause a thread until a promise settles and read the value back into a local, without blocking the server.",
+    "Say why Await must run inside Citizen.CreateThread and recognise the attempt to yield across a C-call boundary error.",
+    "Chain three dependent async calls top to bottom instead of nesting them, and catch a rejected promise with pcall.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_promises`, rerun the test, and confirm the output changed.
+  Right now the three HTTP calls run one after another, each waiting for the last to finish, even though none of them depends on the others. That is wasteful: three sequential one-second calls take three seconds. Refactor so the three requests fire at once and you await all of them together.
+
+  ```lua
+  Citizen.CreateThread(function()
+      -- Start all three immediately. httpGet returns a pending promise,
+      -- so the requests are now in flight in parallel.
+      local p1 = httpGet('https://httpbin.org/uuid')
+      local p2 = httpGet('https://httpbin.org/uuid')
+      local p3 = httpGet('https://httpbin.org/uuid')
+
+      -- Now collect the results.
+      local a = Citizen.Await(p1)
+      local b = Citizen.Await(p2)
+      local c = Citizen.Await(p3)
+
+      print('[qu_promises] parallel bytes: ' .. (#a + #b + #c))
+  end)
+  ```
+
+  Notice the difference from Step 4: there you called `Citizen.Await(httpGet(...))` on one line, which started a request and immediately waited for it before starting the next. Here you start all three first, then await. The total time drops to roughly the slowest single call instead of the sum of all three. Add a `restricted` second command named `paralleltest` for this version, restart `qu_promises`, run both, and watch which one finishes faster in the console. You have now controlled not just *whether* code waits, but *what it waits on*.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM PerformHttpRequest reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/PerformHttpRequest/" },
+    { label: "FiveM Citizen.Await reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Await/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

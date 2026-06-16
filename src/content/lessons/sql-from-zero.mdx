@@ -2,13 +2,13 @@
   crumbs="Module 07 · Lesson 21"
   title="SQL from zero: oxmysql"
   meta={[
-    { label: "You'll ship", value: "A working resource that creates a table, inserts rows with safe parameterized queries, and reads them back." },
+    { label: "You'll ship", value: "A working resource that creates a table, inserts a row with a safe parameterized query, reads it back, and updates it." },
     { label: "Time", value: "~35 minutes" },
-    { label: "You'll learn", value: "What a database is -> install oxmysql -> connection string -> CREATE TABLE -> INSERT with ? placeholders -> SELECT rows" },
-    { label: "Prereqs", value: "Modules 01-06 complete. A running FiveM server with MariaDB or MySQL installed." },
+    { label: "You'll learn", value: "What a database is -> install oxmysql -> CREATE TABLE -> INSERT with ? placeholders -> read one row -> UPDATE, and what .await actually does" },
+    { label: "Prereqs", value: "Modules 01-06 complete. A running FiveM server with MariaDB or MySQL installed, and the oxmysql resource downloaded." },
   ]}
 >
-  Every script you have built so far forgets everything on restart. Cooldowns, bank balances, notes -- all gone. A database is the fix. It is a program that stores rows of data on disk and gives them back when you ask. This lesson teaches you just enough SQL to make your FiveM scripts remember things forever, using oxmysql as the bridge between Lua and the database.
+  Every script you have built so far forgets everything on restart. Cooldowns, bank balances, notes -- all gone. A database is the fix. It is a separate program that stores rows of data on disk and gives them back when you ask. This lesson teaches you just enough SQL to make your FiveM scripts remember things forever, using oxmysql as the bridge between your Lua and the database.
 </LessonHero>
 
 <YouTube id="wFlXFoQV50U" title="SQL, JS, Lua, and Git masterclass" caption="Alphi: SQL, JS, Lua, and Git masterclass." />
@@ -17,12 +17,14 @@
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output.",
+    "I have a MariaDB or MySQL database the server can reach.",
+    "I have the oxmysql resource downloaded into resources."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds first oxmysql table, INSERT, and SELECT as a working FiveM resource named `qu_sql_from_zero`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds your first oxmysql table, INSERT, SELECT, and UPDATE as a working FiveM resource named `qu_sql_from_zero`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why it works.
 </Callout>
 
 ## Build it
@@ -46,7 +48,17 @@ resources/qu_sql_from_zero/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Point oxmysql at your database" outcome="oxmysql knows how to reach MariaDB.">
+    oxmysql does not guess your database. You give it a connection string once, in `server.cfg`, before any resource that uses it loads. Add this line near the top of `server.cfg` and fill in your own values:
+
+    ```text
+    set mysql_connection_string "mysql://user:password@127.0.0.1:3306/database_name"
+    ```
+
+    That single string carries the username, the password, the host and port the database listens on (MariaDB and MySQL default to `3306`), and the name of the database to use. If oxmysql cannot connect, every query in this lesson fails before it runs, so get this line right first.
+  </Step>
+
+  <Step num={4} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and in what order.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -56,10 +68,14 @@ game 'gta5'
 server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
-dependency 'oxmysql'
+dependencies { 'oxmysql' }
     ```
 
-    Run this SQL before starting the resource:
+    The `@oxmysql/lib/MySQL.lua` line pulls oxmysql's `MySQL` API into your resource so the names `MySQL.insert`, `MySQL.single`, and `MySQL.update` exist. The `dependencies` line tells FiveM that oxmysql must be running before this resource starts.
+  </Step>
+
+  <Step num={5} title="Create the table" outcome="The database has a place to store rows.">
+    A table is the shape your data lives in. Run this SQL once against your database (in HeidiSQL, phpMyAdmin, the `mysql` command line, or txAdmin's database tool) before you start the resource:
 
     ```sql
 CREATE TABLE IF NOT EXISTS qu_sql_from_zero_rows (
@@ -70,22 +86,34 @@ CREATE TABLE IF NOT EXISTS qu_sql_from_zero_rows (
     ```
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={6} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
-RegisterCommand('dbtest', function(src)
-    local id = MySQL.insert.await('INSERT INTO qu_sql_from_zero_rows (name, amount) VALUES (?, ?)', { 'lesson', 100 })
-    local row = MySQL.single.await('SELECT * FROM qu_sql_from_zero_rows WHERE id = ?', { id })
+RegisterCommand('dbtest', function()
+    local id = MySQL.insert.await(
+        'INSERT INTO qu_sql_from_zero_rows (name, amount) VALUES (?, ?)',
+        { 'lesson', 100 }
+    )
+    print('[qu_sql_from_zero] inserted row id ' .. id)
+
+    local row = MySQL.single.await(
+        'SELECT * FROM qu_sql_from_zero_rows WHERE id = ?',
+        { id }
+    )
     print('[qu_sql_from_zero] selected ' .. row.name .. ' ' .. row.amount)
-    MySQL.update.await('UPDATE qu_sql_from_zero_rows SET amount = ? WHERE id = ?', { 150, id })
-    print('[qu_sql_from_zero] updated ' .. id)
+
+    local affected = MySQL.update.await(
+        'UPDATE qu_sql_from_zero_rows SET amount = ? WHERE id = ?',
+        { 150, id }
+    )
+    print('[qu_sql_from_zero] updated ' .. affected .. ' row(s)')
 end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+  <Step num={7} title="Start and test it" outcome="The expected proof appears in the txAdmin Live Console.">
+    Open `server.cfg` and add this line below your other resources:
 
     ```text
     ensure qu_sql_from_zero
@@ -97,27 +125,123 @@ end, true)
     restart qu_sql_from_zero
     ```
 
-    Run this test:
+    Run this test in the console:
 
     ```text
     dbtest
     ```
 
     <ExpectedOutput>
-      [qu_sql_from_zero] selected lesson 100
-[qu_sql_from_zero] updated rowId
+      [qu_sql_from_zero] inserted row id 1
+[qu_sql_from_zero] selected lesson 100
+[qu_sql_from_zero] updated 1 row(s)
     </ExpectedOutput>
+
+    The first id is `1` on a fresh table. Run `dbtest` again and the id climbs to `2`, then `3`. That is `AUTO_INCREMENT` at work, and you will see why in the next section.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and three lines appeared, each one a real round trip to the database and back. Now take the code apart so the next time you store data you are deciding, not copying. There are four ideas here: the table you created, the three oxmysql calls, what `.await` does, and why the `?` is the most important character on the page.
+
+### The table you created
+
+Before any Lua runs, the data needs a shape to live in. That shape is the table, and you defined it with `CREATE TABLE`. Read it column by column:
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_sql_from_zero_rows (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(80) NOT NULL,
+  amount INT NOT NULL DEFAULT 0
+);
+```
+
+- `IF NOT EXISTS` means run this once and never error if the table is already there. Safe to leave in.
+- `id INT AUTO_INCREMENT PRIMARY KEY` is the row's identity. `INT` is a whole number. `AUTO_INCREMENT` tells the database to fill this in for you, counting up by one with every insert, so the first row is `1`, the next `2`, and you never hand it a value yourself. `PRIMARY KEY` means this column uniquely identifies a row, and no two rows can share an id. This is why your INSERT can hand the new id straight back to you.
+- `name VARCHAR(80) NOT NULL` is text up to 80 characters. `VARCHAR(80)` reserves only as much space as the text actually uses, up to that cap. `NOT NULL` means every row must have a name. Try to insert a row without one and the database refuses.
+- `amount INT NOT NULL DEFAULT 0` is a whole number that must be present, but `DEFAULT 0` means if you do not supply it, the database stores `0` instead of erroring. Defaults are how you give a column a sensible starting value.
+
+### The three oxmysql calls
+
+oxmysql gives you a `MySQL` object with one method per kind of query. You used three:
+
+```lua
+local id = MySQL.insert.await(
+    'INSERT INTO qu_sql_from_zero_rows (name, amount) VALUES (?, ?)',
+    { 'lesson', 100 }
+)
+```
+
+`MySQL.insert.await` runs an `INSERT` and returns the `AUTO_INCREMENT` id of the row it just created. That is why `id` holds `1` on the first run. You did not type `1` anywhere; the database generated it and oxmysql handed it back. That returned id is the thread that ties the rest of the command together.
+
+```lua
+local row = MySQL.single.await(
+    'SELECT * FROM qu_sql_from_zero_rows WHERE id = ?',
+    { id }
+)
+```
+
+`MySQL.single.await` runs a `SELECT` and returns exactly one row as a Lua table, or `nil` if nothing matched. Each column becomes a key, so `row.name` is the string `lesson` and `row.amount` is the number `100`. Use `single` when you expect at most one row, like a lookup by id. If you wanted many rows you would reach for `MySQL.query.await`, which returns an array of tables instead.
+
+```lua
+local affected = MySQL.update.await(
+    'UPDATE qu_sql_from_zero_rows SET amount = ? WHERE id = ?',
+    { 150, id }
+)
+```
+
+`MySQL.update.await` runs an `UPDATE` and returns the number of rows it changed. Here it changes one row, so `affected` is `1`. That number is your proof the write actually landed. If your `WHERE` matched nothing, this would be `0`, which is a fast way to catch an UPDATE that silently did nothing.
+
+### What .await actually does
+
+Look at the `.await` on the end of every call. Without it, oxmysql gives you the result through a callback, a separate function that fires whenever the database replies, which scatters your logic across nested functions. `.await` flips that. It pauses the current fiber, lets the database do its work, and resumes your code on the very next line with the result already in hand. Your three queries read top to bottom like plain steps because `.await` is quietly waiting at each one.
+
+This works because your code is running inside a command handler, which FiveM runs in a fiber that is allowed to yield. You do not have to wrap anything in `Citizen.CreateThread` here; `RegisterCommand` already gives you a context where `.await` is legal. The payoff is code you can read in order instead of a callback pyramid.
+
+<Checkpoint question="The INSERT query has VALUES (?, ?) but no actual values in the SQL string. Where do 'lesson' and 100 come from, and why are they kept out of the query text?">
+  They come from the second argument, the Lua table `{ 'lesson', 100 }`. oxmysql fills the first `?` with `'lesson'` and the second `?` with `100`, in order. They are kept out of the SQL string on purpose. The database receives the query shape and the values down two separate channels, so a value can never be read as SQL. That is a parameterized query, and it is what stops SQL injection. The moment you build a query by gluing user input into the string with `..`, you have opened the door to injection. Always pass values through the params table.
+</Checkpoint>
+
+### Why the ? is the most important character here
+
+The `?` placeholders are the entire point of doing SQL the right way. You never paste a value into the query string. You write a `?` where the value goes, then pass the real values as a table in the same order:
+
+```lua
+'INSERT INTO qu_sql_from_zero_rows (name, amount) VALUES (?, ?)',
+{ 'lesson', 100 }
+```
+
+The first `?` becomes `'lesson'`, the second `?` becomes `100`. The database treats the params as data, never as commands, even if a value contains a quote, a semicolon, or a chunk of SQL. Compare that to the dangerous version, where you build the string yourself:
+
+```lua
+-- Never do this. The player's name becomes runnable SQL.
+MySQL.insert.await("INSERT INTO users (name) VALUES ('" .. playerName .. "')")
+```
+
+If `playerName` is something like `'); DROP TABLE users; --`, that string turns into a second command that deletes your table. With `?` placeholders that attack is impossible, because the value is delivered separately from the query. This is the same boundary rule you follow everywhere: validate and parameterize at the edge, never trust raw input inside a query. Make `?` a reflex now and you will never write an injectable query.
+
+### MariaDB, MySQL, and oxmysql in 2026
+
+A note on the pieces. MariaDB and MySQL are two compatible database engines that both speak SQL; in 2026 MariaDB is the one most FiveM servers run and the one txAdmin installs for you, so prefer it. oxmysql is the Lua library that connects your resource to that engine. It is a community resource from Overextended, the same group behind ox_lib and ox_inventory, not an official Cfx.re resource, so you download and `ensure` it like any other resource. It has replaced the older mysql-async and ghmattimysql wrappers as the standard, which is why every modern script you read uses the `MySQL.x.await` style you just wrote.
+
+### When you reach for this pattern
+
+INSERT, read back, UPDATE is the backbone of nearly every persistent feature in FiveM. Three real cases:
+
+- **Player money or stats.** On connect you read the player's row; on a transaction you UPDATE it. The data survives restarts because it lives in the database, not in a Lua table that dies on reload.
+- **Logs and records.** A purchase, a ban, a kill feed. Each event is an INSERT, and the returned id gives you a handle to that exact record if you need to amend it later.
+- **Config and ownership.** Owned vehicles, houses, gang turf. A SELECT on join hydrates the player's world; an UPDATE saves their changes back. Every one of these is the loop you just built.
 
 ## If something went wrong
 
 <FailureList
   items={[
     { symptom: "Resource qu_sql_from_zero does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_sql_from_zero", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_sql_from_zero, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Failed to execute query ... no connection / ECONNREFUSED", fix: "oxmysql cannot reach the database. Fix the mysql_connection_string in server.cfg: check the user, password, host, port, and that the database name exists and MariaDB is running." },
+    { symptom: "Table 'qu_sql_from_zero_rows' doesn't exist", fix: "You skipped Step 5. Run the CREATE TABLE statement against the same database your connection string points at, then rerun dbtest." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing or oxmysql is not started. Confirm both server_script lines exist and that oxmysql is ensured before this resource." },
+    { symptom: "attempt to index a nil value (local 'row')", fix: "The SELECT matched no row, so MySQL.single returned nil. This usually means the INSERT failed silently. Read the inserted row id print to confirm the insert ran first." },
   ]}
 />
 
@@ -125,23 +249,42 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_sql_from_zero folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for first oxmysql table, INSERT, and SELECT.",
-    "Add ensure qu_sql_from_zero to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Point oxmysql at MariaDB with a mysql_connection_string in server.cfg.",
+    "Wire @oxmysql/lib/MySQL.lua and the dependencies line so the MySQL API exists and loads after oxmysql.",
+    "Read a CREATE TABLE statement and explain AUTO_INCREMENT PRIMARY KEY, VARCHAR, NOT NULL, and DEFAULT.",
+    "Use MySQL.insert.await to write a row and capture the new id it returns.",
+    "Use MySQL.single.await to read one row back as a Lua table, and MySQL.update.await to change it and confirm the affected count.",
+    "Explain why ? placeholders plus a params table stop SQL injection, and why .await lets the three calls read top to bottom."
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_sql_from_zero`, rerun the test, and confirm the output changed.
+  Right now `dbtest` always inserts the same hard coded row. Make it store a real value you pass in. FiveM hands your command handler a table of arguments, so read the first one and insert it as the name, falling back to a default when none is given:
+
+  ```lua
+  RegisterCommand('dbtest', function(source, args)
+      local name = args[1] or 'lesson'
+      local id = MySQL.insert.await(
+          'INSERT INTO qu_sql_from_zero_rows (name, amount) VALUES (?, ?)',
+          { name, 100 }
+      )
+      local row = MySQL.single.await(
+          'SELECT * FROM qu_sql_from_zero_rows WHERE id = ?',
+          { id }
+      )
+      print('[qu_sql_from_zero] stored ' .. row.name .. ' as id ' .. id)
+  end, true)
+  ```
+
+  Restart `qu_sql_from_zero`, then run `dbtest banker` in the console. Confirm the print reads `stored banker as id N`. Notice the user supplied `banker` still travels through the `?` placeholder and the params table, never glued into the SQL string. You just took untrusted input and stored it the safe way, which is exactly how a real feature reads a player's input and persists it.
 </Exercise>
 
 <Refs
   items={[
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "MariaDB SQL statements reference", href: "https://mariadb.com/kb/en/sql-statements/" }
   ]}
 />

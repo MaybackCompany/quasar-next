@@ -21,15 +21,15 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds ESX, QBCore, Qbox, and ox_lib framework detection as a working FiveM resource named `qu_frameworks`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working FiveM resource named `qu_frameworks` that detects which framework is running and prints it through an `ox_lib` call. Follow the folder names, file names, code, restart command, and expected output exactly. Then the next section turns the detection into the real prize: a side-by-side translation guide for the player object, money, and jobs across all three frameworks.
 </Callout>
 
 ## The frameworks at a glance
 
-Each framework has its own docs and its own way of spelling the same ideas. Bookmark the ones you run. For a new 2026 server, start on **ESX Legacy** or **Qbox**; QBCore still works but its development has largely stalled. `ox_lib` is the shared library all three lean on.
+Each framework has its own docs and its own way of spelling the same ideas. Bookmark the ones you run. For a new 2026 server, start on **ESX Legacy** or **Qbox**; QBCore still works and has a huge catalog, but its core development has largely stalled, so Qbox is the actively maintained successor. `ox_lib` is the shared library all three lean on. Note that `ox_lib`, `oxmysql`, `ox_target`, and `ox_inventory` are made by the Overextended community, not by Cfx.re; they are the de facto 2026 standard, not an official platform feature.
 
-<TechLinks ids={["esx", "qbox", "qbcore", "ox"]} />
+<TechLinks ids={["esx", "qbox", "qbcore", "ox_lib"]} />
 
 ## Build it
 
@@ -62,30 +62,34 @@ game 'gta5'
 shared_script '@ox_lib/init.lua'
 server_script 'server.lua'
 
-dependency 'ox_lib'
+dependencies {
+    'ox_lib'
+}
     ```
+
+    The canonical manifest key is the plural `dependencies { 'ox_lib' }`. The singular `dependency 'ox_lib'` is still tolerated, but show the plural so it reads the same as every modern resource. Older tutorials add a `lua54 'yes'` line; as of June 2025 that is deprecated and ignored, because Lua 5.4 is now the only Lua runtime. Leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
-local function framework()
+local function detectFramework()
     if GetResourceState('qbx_core') == 'started' then return 'qbox' end
     if GetResourceState('qb-core') == 'started' then return 'qbcore' end
     if GetResourceState('es_extended') == 'started' then return 'esx' end
     return 'none'
 end
 
-RegisterCommand('fwprobe', function(src)
-    print('[qu_frameworks] detected ' .. framework())
-    if src > 0 then print('[qu_frameworks] player ' .. GetPlayerName(src)) end
-end, false)
+RegisterCommand('fwprobe', function()
+    local fw = detectFramework()
+    lib.print.info(('[qu_frameworks] detected framework: %s'):format(fw))
+end, true)
     ```
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Open `server.cfg` and add this line, after the line that ensures `ox_lib`:
 
     ```text
     ensure qu_frameworks
@@ -97,26 +101,141 @@ end, false)
     restart qu_frameworks
     ```
 
-    Run this test:
+    Run this test from the txAdmin Live Console:
 
     ```text
-    /fwprobe
+    fwprobe
     ```
 
     <ExpectedOutput>
-      [qu_frameworks] detected qbox, qbcore, esx, or none
+      [qu_frameworks] detected framework: none
     </ExpectedOutput>
+
+    On a bare practice server with no framework installed, the answer is `none`, and that is the correct, passing result. It means your detection works and simply found nothing running. Install ESX, QBCore, or Qbox and ensure it before `qu_frameworks`, restart, and the same command prints `esx`, `qbcore`, or `qbox` instead. You will see why below.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and a line appeared. The detection is the easy half. The valuable half is what the framework name unlocks: once you know which one is running, you know how to ask it who the player is, how much money they have, and what job they are on. That is the translation guide this whole lesson exists for. Take the code apart first, then learn the three idioms you will read every day.
+
+### What GetResourceState actually returns
+
+```lua
+if GetResourceState('es_extended') == 'started' then return 'esx' end
+```
+
+`GetResourceState` is a FiveM native. You hand it a resource name as a string and it tells you the lifecycle state of that resource: `missing`, `stopped`, `starting`, `started`, or `uninitialized`. The only state that means *this framework is live and its exports are callable* is `started`. So the probe is really asking, in order, is `qbx_core` started, then `qb-core`, then `es_extended`, and it returns the first match. The order matters: it checks Qbox first, then QBCore, then ESX, and returns the moment it finds one. On a server with none of them, every check fails and the function falls through to `return 'none'`. That is why a bare practice server prints `none`. Nothing is wrong; there is simply no framework resource in the `started` state to find.
+
+The resource names are the real folder names each framework ships under, and they are easy to mix up:
+
+- **ESX Legacy** runs under `es_extended`.
+- **QBCore** runs under `qb-core` (with a hyphen).
+- **Qbox** runs under `qbx_core` (with an underscore and an x).
+
+If you check the wrong string, detection silently returns `none` even though the framework is running. Match the folder name exactly.
+
+### Why the ox_lib dependency earns its place
+
+In the old version of this lesson, `ox_lib` was declared as a dependency but never called, which is dead weight. Here the print goes through it on purpose:
+
+```lua
+lib.print.info(('[qu_frameworks] detected framework: %s'):format(fw))
+```
+
+`lib` is the global that `@ox_lib/init.lua` injects into your resource. The `shared_script '@ox_lib/init.lua'` line in the manifest is what loads it, and the `dependencies { 'ox_lib' }` line is what guarantees `ox_lib` starts first so `lib` exists by the time your code runs. `lib.print.info` is `ox_lib`'s leveled logger: it prints with an `[info]` tag and respects a per-resource log-level convar, so you can silence debug noise in production without deleting print lines. The `('...'):format(fw)` part is Lua string formatting, where `%s` is replaced by the value of `fw`. That is the same as writing `'... ' .. fw`, just cleaner when you have several values.
+
+That single call is your first real `ox_lib` usage. The library also gives you the things you will reach for constantly: `lib.notify` for on-screen toasts, `lib.callback` for clean client to server request and response, `lib.registerContext` and `lib.showContext` for menus, `lib.progressBar` for timed actions, and `lib.callback.register` on the server. Every modern framework script you read leans on these instead of reinventing them.
+
+### The translation guide: player, money, job
+
+This is the part the title promised. The framework name you just detected tells you which dialect to speak. Here is the same job, getting a player and reading their money, in each one.
+
+**ESX Legacy.** You grab the shared object, then ask it for a player by server id. The player object is usually called `xPlayer`.
+
+```lua
+local ESX = exports['es_extended']:getSharedObject()
+
+RegisterNetEvent('myscript:giveCash', function()
+    local src = source
+    local xPlayer = ESX.GetPlayerFromId(src)
+    local cash = xPlayer.getMoney()          -- cash on hand
+    xPlayer.addMoney(500)                     -- add 500 cash
+    local job = xPlayer.job.name              -- e.g. 'police'
+    print(('%s has $%d, job %s'):format(GetPlayerName(src), cash, job))
+end)
+```
+
+**QBCore.** You grab the core object, get the player, then read a `PlayerData` table. Money lives in `PlayerData.money`, a table keyed by account.
+
+```lua
+local QBCore = exports['qb-core']:GetCoreObject()
+
+RegisterNetEvent('myscript:giveCash', function()
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    local cash = Player.PlayerData.money.cash   -- cash account
+    Player.Functions.AddMoney('cash', 500)
+    local job = Player.PlayerData.job.name       -- e.g. 'police'
+    print(('%s has $%d, job %s'):format(GetPlayerName(src), cash, job))
+end)
+```
+
+**Qbox.** Qbox is the QBCore successor, so the shape is nearly identical to QBCore on purpose. The modern entry point is the `exports.qbx_core` getter, and the same `PlayerData` layout applies.
+
+```lua
+local QBox = exports.qbx_core:GetCoreObject()
+
+RegisterNetEvent('myscript:giveCash', function()
+    local src = source
+    local player = QBox.Functions.GetPlayer(src)
+    local cash = player.PlayerData.money.cash
+    player.Functions.AddMoney('cash', 500)
+    local job = player.PlayerData.job.name
+    print(('%s has $%d, job %s'):format(GetPlayerName(src), cash, job))
+end)
+```
+
+Read those three side by side and the pattern is clear. Every framework gives you a way to turn a server id into a player object, a way to read and change money, and a `job` field. The verbs differ (`getMoney` vs `PlayerData.money.cash`), but the questions are the same four every time: who, how much money, what job, what inventory. Once you internalize the questions, learning a new framework is just looking up its spelling.
+
+### Load events: why you wait
+
+There is a trap here that bites every beginner. The player object does not exist the instant a player connects. The framework has to pull their character from the database, build the object, and hand it to the client. If your client code asks for the player object too early, it gets `nil`. So each framework fires a load event the moment the player is ready, and you do your setup inside it.
+
+- **ESX Legacy:** the client event `esx:playerLoaded` (it hands you the `xPlayer` data), plus the server-side `esx:playerLoaded`.
+- **QBCore:** the client event `QBCore:Client:OnPlayerLoaded`, and server-side `QBCore:Server:OnPlayerLoaded`.
+- **Qbox:** mirrors QBCore with `QBox:Client:OnPlayerLoaded` and reuses much of the same event surface; it also exposes ox-style state for player data.
+
+```lua
+-- ESX client: only safe to read the player after this fires
+RegisterNetEvent('esx:playerLoaded', function(xPlayer)
+    print('Player is ready, job is ' .. xPlayer.job.name)
+end)
+```
+
+The mental model: connecting and being loaded are two different moments, exactly like registering a command and running it are two different moments. You register a handler for the load event up front, and the framework runs it later, once the character is actually in the world. Reading money or job before that event is the number one cause of `attempt to index a nil value` in framework scripts.
+
+<Checkpoint question="A teammate says their ESX script keeps erroring with 'attempt to index a nil value (local xPlayer)' right when a player joins. What is almost certainly wrong, and what is the fix?">
+  They are calling `ESX.GetPlayerFromId(src)` (or reading `xPlayer` on the client) before the framework has built the player object, so it returns `nil` and indexing it throws. The fix is to move the code inside the load event. On the client, wrap it in `RegisterNetEvent('esx:playerLoaded', function(xPlayer) ... end)` and use the `xPlayer` the event hands you. On the server, only call `ESX.GetPlayerFromId(src)` after the player is loaded (inside the server `esx:playerLoaded`, or in response to an event the client only triggers after it is loaded). Connecting is not the same moment as being loaded; you must wait for the load event before the player object exists.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Framework detection plus the translation idioms is the foundation under almost every script you will write or read on a real server:
+
+- **Writing a framework-agnostic script.** You detect the framework once at startup, then branch your money and job calls so the same resource runs on ESX, QBCore, and Qbox. This is how published scripts support every framework from one download.
+- **Reading someone else's resource.** When you open a script and see `exports['qb-core']:GetCoreObject()` you instantly know it is QBCore and you know where money and job live. The translation guide is a reading skill as much as a writing one.
+- **Debugging on a live server.** A quick `fwprobe`-style command tells you what framework an unfamiliar server is actually running before you start guessing.
 
 ## If something went wrong
 
 <FailureList
   items={[
+    { symptom: "attempt to index a nil value (global 'lib')", fix: "The @ox_lib/init.lua shared_script line is missing or ox_lib is not started. Add the shared_script line and ensure ox_lib before qu_frameworks in server.cfg." },
     { symptom: "Resource qu_frameworks does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_frameworks", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_frameworks, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Could not load resource qu_frameworks", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports. Confirm the dependencies block uses curly braces." },
+    { symptom: "fwprobe always prints none even though a framework is running", fix: "Check the resource name string matches the real folder: es_extended for ESX, qb-core for QBCore, qbx_core for Qbox. A typo silently falls through to none." },
+    { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console may run it. Run fwprobe from the txAdmin Live Console, not the F8 chat box." },
   ]}
 />
 
@@ -124,23 +243,52 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_frameworks folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for ESX, QBCore, Qbox, and ox_lib framework detection.",
-    "Add ensure qu_frameworks to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain what a framework gives you: a player object, money, job, and inventory behind one shared object.",
+    "Detect the active framework with GetResourceState, and explain why started is the state that matters and why a bare server prints none.",
+    "Read and write the player + money + job idiom in ESX (ESX.GetPlayerFromId, getMoney), QBCore (GetCoreObject, PlayerData.money), and Qbox (qbx_core getter).",
+    "Wait for the correct load event (esx:playerLoaded, QBCore:Client:OnPlayerLoaded) before touching the player object, and recognize the nil-index error you get when you do not.",
+    "Use a real ox_lib call (lib.print.info) and name the everyday ox_lib tools: lib.notify, lib.callback, lib.progressBar, lib.registerContext.",
+    "Choose ESX Legacy or Qbox for a new 2026 server, and explain why QBCore's stalled development pushes new builds toward Qbox.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_frameworks`, rerun the test, and confirm the output changed.
+  Turn the probe into a real framework-agnostic money reader. Add a `mymoney` command that detects the framework, gets the player who ran it, reads their cash, and prints it. Branch on the detected framework so the same command works on ESX and QBCore or Qbox:
+
+  ```lua
+  RegisterCommand('mymoney', function(src)
+      if src == 0 then
+          lib.print.warn('[qu_frameworks] run this in-game, not from the console')
+          return
+      end
+      local fw = detectFramework()
+      local cash
+      if fw == 'esx' then
+          local ESX = exports['es_extended']:getSharedObject()
+          cash = ESX.GetPlayerFromId(src).getMoney()
+      elseif fw == 'qbcore' then
+          cash = exports['qb-core']:GetCoreObject().Functions.GetPlayer(src).PlayerData.money.cash
+      elseif fw == 'qbox' then
+          cash = exports.qbx_core:GetCoreObject().Functions.GetPlayer(src).PlayerData.money.cash
+      else
+          lib.print.warn('[qu_frameworks] no framework detected')
+          return
+      end
+      lib.print.info(('[qu_frameworks] %s has $%d'):format(GetPlayerName(src), cash))
+  end, false)
+  ```
+
+  Restart `qu_frameworks`, join the server, and run `mymoney` from the F8 chat box (this one is unrestricted because a real player triggers it). Confirm it prints your name and your cash on hand. You just wrote one command that speaks all three dialects, which is exactly how published scripts stay framework-agnostic.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "ESX Legacy documentation", href: "https://docs.esx-framework.org/" },
+    { label: "Qbox documentation", href: "https://docs.qbox.re/" },
+    { label: "ox_lib documentation", href: "https://overextended.dev/ox_lib" },
+    { label: "FiveM GetResourceState native", href: "https://docs.fivem.net/natives/?_0x4039B485" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

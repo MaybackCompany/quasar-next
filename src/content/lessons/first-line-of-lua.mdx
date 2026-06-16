@@ -2,13 +2,13 @@
   crumbs="Module 01 · Lesson 01"
   title="Your first line of Lua"
   meta={[
-    { label: "You'll build", value: "A tiny resource that prints a message to the server console when it starts." },
+    { label: "You'll build", value: "A tiny resource that prints a message to the server console when you run a command." },
     { label: "Time", value: "~12 minutes" },
     { label: "You need", value: "A local FiveM practice setup you can restart, and a text editor (VS Code is free). If you do not have that yet, do the 7-day browser starter first, then come back here." },
-    { label: "You'll learn", value: "Lua syntax basics -> strings -> variables -> the print function -> how to use the console as feedback" },
+    { label: "You'll learn", value: "Lua strings, the print function, what a command handler is, and how to read the console as your feedback loop" },
   ]}
 >
-  Every coder starts the same way: one line, one message, one visible result. In this lesson that result is *Hello, Los Santos* in your FiveM server console. By the end you will understand a **string**, a **variable**, and the `print` function.
+  Every coder starts the same way: one line, one message, one visible result. In this lesson that result is a line you control, printed in your FiveM server console on demand. By the end you will understand a **string**, the `print` function, and how `RegisterCommand` turns a typed word into running code.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds one server print from one Lua file as a working FiveM resource named `qu_first_line_of_lua`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds one server print from one Lua file as a working FiveM resource named `qu_first_line_of_lua`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why it works.
 </Callout>
 
 ## Build it
@@ -92,14 +92,68 @@ end, true)
   </Step>
 </StepGroup>
 
+## How it works
+
+You ran it and the line appeared. Now take the code apart so the next time you write Lua you are deciding, not copying. There are really only two lines that matter, and one piece of punctuation that trips up everyone at the start.
+
+### The string you printed
+
+Look at the text inside the parentheses on the print line:
+
+```lua
+'[qu_first_line_of_lua] proof line'
+```
+
+That is a **string**: a run of text that Lua treats as a single value. The single quotes are not part of the text. They are fences that mark where the text starts and ends. Lua also accepts double quotes, so `"proof line"` means the same thing as `'proof line'`. Pick one style and stay consistent. The `[qu_first_line_of_lua]` part at the front is just text you typed on purpose. It is a tag, so that when twenty resources are all printing at once, you can scan the console and find your own lines. That habit pays off the moment your server has more than one script running.
+
+### The print function
+
+```lua
+print('[qu_first_line_of_lua] proof line')
+```
+
+`print` is a **function**: a named action you can call. You call it by writing its name, then a pair of parentheses, and inside the parentheses you put what you want it to act on. Here you hand it one string. The value you hand a function is called an **argument**. So in plain words this line says, take this string and write it to the console. That is the entire job of `print`. It does not pop up on a player's screen and it does not appear in chat. It writes to the console, which on the server is the txAdmin Live Console.
+
+The mental model to lock in: `print` is your eyes inside running code. Code that is working silently tells you nothing. A well-placed `print` is how you ask the program what it is actually doing, instead of guessing. Every debugging session you will ever run starts with the same move, dropping a `print` somewhere to see whether the code even reached that point.
+
+### The command that runs it
+
+```lua
+RegisterCommand('first_line_of_lua', function()
+    print('[qu_first_line_of_lua] proof line')
+end, true)
+```
+
+This is the line that decides *when* your print runs. `RegisterCommand` is a FiveM native: a function the platform gives you for free. It wires a typed command to a block of code. Read it as three arguments separated by commas:
+
+- `'first_line_of_lua'` is the command name, a string. This is the word you type in the console to fire it. It does not have to match the resource name. It just happens to here.
+- `function() ... end` is the code to run when the command fires. Everything between `function()` and `end` is the body. Right now the body is one print, but it could be a hundred lines. This is called the **handler** or **callback**: code you hand to FiveM and say, hold onto this and run it later, when the command is typed.
+- `true` is the restricted flag. With `true`, the command requires an ace permission, which is why it runs cleanly from the server console. The server console has full rights. Set it to `false` and any connected player could run the command from their own chat box. For a server-side proof line you do not want players triggering, `true` is the safe default.
+
+The `end` keyword closes the function body. Lua does not use curly braces to mark where a block stops the way JavaScript or C# do. It uses the word `end`. A missing `end` is the single most common Lua error a beginner hits, so train your eye to pair every `function` with its `end` now.
+
+Here is the flow in order. The server starts the resource and reads `server.lua` top to bottom. It hits `RegisterCommand` and registers the command, but it does **not** run the print yet. The print is sitting inside the handler, waiting. Later, when you type `first_line_of_lua` in the console, FiveM finds the matching command, runs the handler, and the print fires. Registering and running are two separate moments. That gap is the whole idea behind event-driven code, and almost everything you build in FiveM works this way: you register handlers up front, and they run later when something happens.
+
+<Checkpoint question="Why does nothing print the instant the resource restarts, only when you type the command?">
+  Because the `print` lives inside the command handler, not at the top level of the file. On restart, FiveM runs `server.lua` once and reaches `RegisterCommand`, which only registers the command and stores the handler for later. The handler body, including the print, runs only when the command name is actually typed. If you wanted a line to appear the moment the resource starts, you would put the `print` outside the handler, at the top level of the file, the way the Anatomy of a resource lesson does it.
+</Checkpoint>
+
+### When you reach for this pattern
+
+A command plus a print is the smallest useful tool in FiveM, and you will use it constantly even after you are far past beginner. Three real cases:
+
+- **A manual trigger while building.** You are writing a feature and you want to fire one part of it on demand without waiting for the real game condition. A command is the fastest way to poke your code by hand.
+- **A debug probe.** You suspect a value is wrong. Register a throwaway command that prints the value, type it whenever you want a reading, then delete it when you are done.
+- **An admin action.** Heal, give an item, teleport. These are commands at heart, gated with the restricted flag so only staff can run them. You just built the skeleton every one of those shares.
+
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_first_line_of_lua does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_first_line_of_lua", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_first_line_of_lua, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to call a nil value (global 'RegisterCommand')", fix: "The native name is misspelled. It is RegisterCommand with a capital R and a capital C. Lua is case sensitive, so registercommand will not resolve." },
+    { symptom: "')' expected near 'end'", fix: "A quote, comma, or paren is missing on the RegisterCommand line. Count the parentheses and make sure both the print string and the command name are wrapped in matching quotes." },
+    { symptom: "'end' expected (near &lt;eof&gt;)", fix: "The function has no closing end, or the final end and the closing paren of RegisterCommand got deleted. The block must finish with end, then the closing paren and the true flag." },
+    { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console (and aces) may run it. Run first_line_of_lua from the txAdmin Live Console, not the F8 chat box." },
   ]}
 />
 
@@ -107,16 +161,17 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_first_line_of_lua folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for one server print from one Lua file.",
-    "Add ensure qu_first_line_of_lua to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Read a Lua string and explain why the quotes are fences, not text.",
+    "Use print to write a tagged line to the server console as a feedback probe.",
+    "Explain that RegisterCommand registers a handler now and runs it later when the command is typed.",
+    "Say what each of the three RegisterCommand arguments does, including why the restricted flag is true.",
+    "Pair every function with its end and spot the error when one is missing.",
   ]}
 />
 
 ## Run it live
 
-No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. Change the message, add a second `print`, and watch the output.
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. Change the message, add a second `print`, and watch the output. The sandbox has no FiveM around it, so `RegisterCommand` and other natives are not available here. Plain Lua like `print` and strings run exactly as they would on your server.
 
 <Sandbox initial={`print("Hello, Los Santos")
 print("My first line of Lua")`} />
@@ -124,13 +179,22 @@ print("My first line of Lua")`} />
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_first_line_of_lua`, rerun the test, and confirm the output changed.
+  Make the command report *who* triggered it and *what they typed*. FiveM passes three values into the handler: the player source, a table of arguments, and the raw command text. Capture the first two and print them:
+
+  ```lua
+  RegisterCommand('first_line_of_lua', function(source, args)
+      print('[qu_first_line_of_lua] triggered by source ' .. source)
+      print('[qu_first_line_of_lua] first argument: ' .. (args[1] or 'none'))
+  end, true)
+  ```
+
+  Restart `qu_first_line_of_lua`, then run `first_line_of_lua hello world` in the console. Confirm the source prints as `0` (the console is source zero) and the first argument prints as `hello`. The `..` operator joins strings end to end, and `args[1] or 'none'` falls back to the word `none` when you pass no arguments. You just read values FiveM handed your handler instead of hard coding them.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM RegisterCommand reference", href: "https://docs.fivem.net/natives/?_0x5FA79B0F" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

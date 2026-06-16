@@ -2,12 +2,12 @@
   crumbs="/"
   title="Jobs framework: clock-in, grades, paychecks"
   meta={[
-    { label: "You will learn", value: "Job table, duty toggle, grade gating, payroll loop, audit log." },
+    { label: "You will learn", value: "Duty state machine, framework detection, reading job and grade, a payroll loop, and an audit print." },
     { label: "Time", value: "~35 min" },
-    { label: "Project", value: "qu_jobs" },
+    { label: "Project", value: "qu_jobs_framework" },
   ]}
 >
-  A job is a tiny state machine: *off-duty*, *on-duty*, optional grade, optional shift timer. Permissions unlock actions; payouts hit the bank on a clock. We build the spine without depending on a specific framework.
+  A job is a tiny state machine: *off-duty* or *on-duty*, plus a grade that decides what the player may do, plus a paycheck that lands on a clock while they are on duty. This lesson builds that spine as a server-side resource that detects whichever framework you run, reads the player's job and grade, toggles duty, gates a high-grade action, and pays on a timer. It does not depend on any one framework's UI.
 </LessonHero>
 
 <YouTube id="OZCpgsSWQe4" title="FiveM job center script from zero" caption="Cruze: building a job center script from zero." />
@@ -16,12 +16,13 @@
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console and F8 output.",
+    "I have one framework running: Qbox (qbx_core), QBCore (qb-core), or ESX (es_extended)."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds Qbox or QBCore clock-in and job read as a working FiveM resource named `qu_jobs_framework`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working server-side resource named `qu_jobs_framework` that reads your job and grade, toggles duty, gates a grade-locked action, and pays you on a clock. Follow the folder names, file names, code, restart command, and expected output exactly. Then the next section takes the code apart line by line so you can swap in your own job logic.
 </Callout>
 
 ## Build it
@@ -54,32 +55,97 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
-local duty = {}
+-- qu_jobs_framework: a framework-agnostic job spine.
+-- Reads job + grade from whichever framework is running, toggles duty,
+-- gates one grade-locked action, and pays players on a clock.
 
-RegisterCommand('clockin', function(src)
-    local job = 'unknown'
+local duty = {}                 -- duty[src] = true|false, keyed by server id
+local PAY_INTERVAL_MS = 60000   -- pay every 60 seconds while on duty
+local BOSS_GRADE = 2            -- minimum grade.level allowed to run /jobaudit
+
+-- Return a normalised { name, grade, label } for the player on src,
+-- regardless of which framework is installed. nil if no player is found.
+local function getJob(src)
     if GetResourceState('qbx_core') == 'started' then
         local player = exports.qbx_core:GetPlayer(src)
-        job = player and player.PlayerData.job.name or 'unknown'
+        if not player then return nil end
+        local job = player.PlayerData.job
+        return { name = job.name, grade = job.grade.level, label = job.grade.name }
     elseif GetResourceState('qb-core') == 'started' then
         local QBCore = exports['qb-core']:GetCoreObject()
         local player = QBCore.Functions.GetPlayer(src)
-        job = player and player.PlayerData.job.name or 'unknown'
+        if not player then return nil end
+        local job = player.PlayerData.job
+        return { name = job.name, grade = job.grade.level, label = job.grade.name }
+    elseif GetResourceState('es_extended') == 'started' then
+        local ESX = exports.es_extended:getSharedObject()
+        local player = ESX.GetPlayerFromId(src)
+        if not player then return nil end
+        local job = player.getJob()
+        return { name = job.name, grade = job.grade, label = job.grade_label }
     end
+    return nil
+end
+
+RegisterCommand('clockin', function(src)
+    local job = getJob(src)
+    if not job then
+        print(('[qu_jobs_framework] %s has no framework player (are you a loaded character?)'):format(GetPlayerName(src)))
+        return
+    end
+
     duty[src] = not duty[src]
-    print(('[qu_jobs_framework] %s job %s duty %s'):format(GetPlayerName(src), job, tostring(duty[src])))
+    print(('[qu_jobs_framework] %s job %s grade %d (%s) duty %s'):format(
+        GetPlayerName(src), job.name, job.grade, job.label, tostring(duty[src])
+    ))
 end, false)
+
+-- Grade-gated action: only a player at BOSS_GRADE or higher may run it.
+RegisterCommand('jobaudit', function(src)
+    local job = getJob(src)
+    if not job then return end
+    if job.grade < BOSS_GRADE then
+        print(('[qu_jobs_framework] %s denied /jobaudit (grade %d < %d)'):format(GetPlayerName(src), job.grade, BOSS_GRADE))
+        return
+    end
+    print(('[qu_jobs_framework] %s ran /jobaudit as %s grade %d'):format(GetPlayerName(src), job.name, job.grade))
+end, false)
+
+-- Payroll loop: every interval, pay everyone currently on duty.
+CreateThread(function()
+    while true do
+        Wait(PAY_INTERVAL_MS)
+        for src, onDuty in pairs(duty) do
+            if onDuty then
+                local job = getJob(src)
+                if job then
+                    local pay = 50 + (job.grade * 25)   -- base + grade bonus
+                    print(('[qu_jobs_framework] payroll: %s (%s grade %d) earned $%d'):format(
+                        GetPlayerName(src), job.name, job.grade, pay
+                    ))
+                end
+            end
+        end
+    end
+end)
+
+-- Clear duty state when a player leaves, or the table leaks server ids forever.
+AddEventHandler('playerDropped', function()
+    duty[source] = nil
+end)
     ```
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Open `server.cfg` and add this line below your framework's `ensure` line so the framework loads first:
 
     ```text
     ensure qu_jobs_framework
@@ -91,26 +157,126 @@ end, false)
     restart qu_jobs_framework
     ```
 
-    Run this test:
+    Join the server with a loaded character, then run this from the F8 client console (these commands are server commands; the player's input is relayed to the server):
 
     ```text
-    /clockin
+    clockin
     ```
 
+    Read the result in txAdmin Live Console. A brand new character on Qbox, QBCore, or ESX starts unemployed, so the proof line looks like this:
+
     <ExpectedOutput>
-      [qu_jobs_framework] yourName job police duty true
+      [qu_jobs_framework] yourName job unemployed grade 0 (Freelancer) duty true
+    </ExpectedOutput>
+
+    Leave the duty toggle on and wait one minute. The payroll loop fires and prints:
+
+    <ExpectedOutput>
+      [qu_jobs_framework] payroll: yourName (unemployed grade 0) earned $50
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and three things happened: duty flipped, a grade-gated command answered, and a paycheck printed on a timer. That is the full job spine in miniature. Now take it apart so the next time you build a job you are deciding, not pasting. The whole file is built around one idea: read the player's job from whatever framework is installed, then make small decisions from the job name and the grade number.
+
+### Detecting the framework at runtime
+
+```lua
+if GetResourceState('qbx_core') == 'started' then
+```
+
+`GetResourceState` is a FiveM native that asks the server, what is the status of the resource with this name? It returns a string such as `started`, `stopped`, `missing`, or `starting`. You are not loading the framework here. You are asking whether it is already running so you know which API to call. This is why the resource works on three different stacks without you editing it: it checks `qbx_core` first, then `qb-core`, then `es_extended`, and uses the first one that is `started`.
+
+The order is deliberate. **Qbox (`qbx_core`) is checked first because it is the active successor to QBCore.** QBCore development stalled, and Qbox is the community fork that picked it up and kept moving. For a new server in 2026 the two recommended bases are Qbox and ESX Legacy (`es_extended`), so this resource supports both, plus legacy `qb-core` for servers that have not migrated yet. Whichever one your server runs, the same `/clockin` command works.
+
+<Checkpoint question="Your server runs Qbox, but the resource keeps printing 'no framework player'. What is the first thing to check?">
+  Check that `qbx_core` actually started before `qu_jobs_framework`, and that you joined with a fully loaded character. `GetResourceState('qbx_core')` only returns `started` once Qbox has finished loading, and `exports.qbx_core:GetPlayer(src)` only returns a player object after that character is selected and loaded in. If you call `/clockin` from the bare server console (source 0) or before your character loads, there is no framework player for that source and `getJob` correctly returns `nil`. Put `ensure qu_jobs_framework` below the framework's `ensure` line in `server.cfg`.
+</Checkpoint>
+
+### Reading job and grade out of each framework
+
+The three branches all do the same job: hand back a small table shaped `{ name, grade, label }`. They just speak to different APIs.
+
+```lua
+local player = exports.qbx_core:GetPlayer(src)
+local job = player.PlayerData.job
+return { name = job.name, grade = job.grade.level, label = job.grade.name }
+```
+
+On Qbox and QBCore, `GetPlayer(src)` returns the server-side player object for that server id. Everything about that character hangs off `player.PlayerData`, and the part you want is `PlayerData.job`, a table that looks roughly like `{ name = 'police', label = 'Police', grade = { level = 2, name = 'Sergeant' } }`. So `job.name` is the machine name you branch on in code, `job.grade.level` is the number you compare for permissions, and `job.grade.name` is the human label you show. QBCore exposes the same shape through `exports['qb-core']:GetCoreObject()` first, then `QBCore.Functions.GetPlayer(src)`.
+
+```lua
+local ESX = exports.es_extended:getSharedObject()
+local player = ESX.GetPlayerFromId(src)
+local job = player.getJob()
+return { name = job.name, grade = job.grade, label = job.grade_label }
+```
+
+ESX stores the same facts under different names. `ESX.GetPlayerFromId(src)` returns the player, `player.getJob()` returns the job table, and there the grade number is just `job.grade` with the label at `job.grade_label`. By normalising all three into one `{ name, grade, label }` table inside `getJob`, the rest of the file never has to care which framework is underneath. That is the real lesson: **wrap the framework behind one small function, and your job logic stops being framework-specific.**
+
+### The duty state machine
+
+```lua
+duty[src] = not duty[src]
+```
+
+`duty` is a plain Lua table used as a set, keyed by server id. A job has two states, off-duty and on-duty, and this one line is the entire transition: `not duty[src]` flips whatever was there. If `duty[src]` was `nil` or `false`, it becomes `true`; if it was `true`, it becomes `false`. The first time a player runs `/clockin`, the key did not exist, `not nil` is `true`, and they go on duty. That is a state machine with two states and one toggle. Anything fancier, like a shift timer or a max-on-duty cap, is just more bookkeeping hung off this same table.
+
+### Where grade gating actually hooks in
+
+```lua
+if job.grade < BOSS_GRADE then
+    print(('[qu_jobs_framework] %s denied /jobaudit ...'))
+    return
+end
+```
+
+This is the whole point of reading the grade number. `/jobaudit` is a stand-in for any boss-only action: setting wages, hiring, opening the safe. The gate is a single comparison against `BOSS_GRADE`. A regular employee at grade 0 or 1 is turned away with a printed reason; a grade 2 or higher passes. Notice the gate lives at the top of the handler and `return`s early on failure. That early-return shape is how you keep a permission check from drowning in nested `if` blocks: check, bounce, and only the allowed path continues. Swap the printed line for the real action and you have a working permission system.
+
+### The payroll loop
+
+```lua
+CreateThread(function()
+    while true do
+        Wait(PAY_INTERVAL_MS)
+        for src, onDuty in pairs(duty) do
+            ...
+        end
+    end
+end)
+```
+
+A paycheck on a clock is a loop that sleeps, then acts, forever. `CreateThread` starts a coroutine that FiveM manages for you, and `Wait(PAY_INTERVAL_MS)` yields it for 60 seconds before each pass. `Wait` only works inside a thread like this, which is exactly why the payroll lives in its own `CreateThread` and not at the top level of the file. Each pass walks the `duty` table with `pairs`, and for every player still on duty it re-reads their current job (their grade may have changed mid-shift) and pays base plus a grade bonus. The pay landing in a console print here would, in a real job, be a call into the framework's money API, for example `player.Functions.AddMoney('bank', pay, 'salary')` on Qbox. The structure is identical: a timed loop over who is on duty.
+
+### The leak you must close
+
+```lua
+AddEventHandler('playerDropped', function()
+    duty[source] = nil
+end)
+```
+
+Here is the bug the naive version of this lesson left in. `duty` is keyed by server id, and server ids are reused as players come and go. If you never clear a player's entry when they disconnect, the table grows forever, and worse, a new player can be handed a server id that still carries the old player's duty state. `playerDropped` is a server event that fires when a player leaves, and inside it `source` is that player's server id. Setting `duty[source] = nil` removes the key. Any table you key by server id needs a matching cleanup on `playerDropped`. Forgetting it is one of the most common slow leaks in FiveM server scripts.
+
+<Checkpoint question="Why is the payroll loop wrapped in CreateThread instead of just calling Wait at the top of the file?">
+  Because `Wait` yields a coroutine, and only code running inside a thread can yield. The top level of `server.lua` runs once when the resource starts and is not a thread you may pause, so calling `Wait` there does nothing useful. `CreateThread` hands FiveM a function to run as its own managed coroutine; inside it, `Wait(60000)` pauses that coroutine for sixty seconds without blocking the rest of the server. That is the standard shape for any repeating timed task in FiveM: a `CreateThread` wrapping a `while true do ... Wait(n) end` loop.
+</Checkpoint>
+
+### When you reach for this pattern
+
+You reach for the framework-detection wrapper any time you write a resource you want to ship to more than one server. A script that hard-codes `QBCore.Functions.GetPlayer` only runs on QBCore; the same script behind a `getJob` wrapper runs everywhere. You reach for the duty table and the grade gate the moment a feature should behave differently for on-duty staff or for high grades: a mechanic menu that only opens on duty, a `/cuff` that only police may use, a stash only the boss can empty. And you reach for the `CreateThread` plus `Wait` payroll loop for anything that repeats on a clock, not just salaries: hunger and thirst ticks, rent collection, decaying buffs. This one small file is the skeleton under all of them.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_jobs_framework does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_jobs_framework", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_jobs_framework, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "has no framework player", fix: "You ran the command before your character loaded, from source 0 (the bare console), or the framework started after this resource. Join with a loaded character and put ensure qu_jobs_framework below your framework's ensure line in server.cfg." },
+    { symptom: "attempt to index a nil value (field 'PlayerData')", fix: "GetPlayer returned nil because the character is not loaded yet. The getJob nil-check guards this, so confirm you pasted the if not player then return nil end lines in every branch." },
+    { symptom: "attempt to call a nil value (field 'GetPlayer')", fix: "The framework export name is wrong for your stack. Qbox uses exports.qbx_core:GetPlayer, QBCore uses GetCoreObject then QBCore.Functions.GetPlayer, ESX uses ESX.GetPlayerFromId. Match the branch to the framework you actually run." },
+    { symptom: "No payroll line ever prints", fix: "You must stay on duty and wait the full 60 seconds. Confirm duty true printed first, and that PAY_INTERVAL_MS is 60000, not a typo. The loop reads the duty table once per minute." },
+    { symptom: "Grade gate lets everyone through", fix: "Your test character is grade 2 or higher, or the framework reports grade as a string. Print job.grade and confirm it is the number you expect before comparing it to BOSS_GRADE." },
   ]}
 />
 
@@ -118,23 +284,38 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_jobs_framework folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for Qbox or QBCore clock-in and job read.",
-    "Add ensure qu_jobs_framework to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Detect which framework is running with GetResourceState and call the right API for Qbox, QBCore, or ESX.",
+    "Normalise job and grade from any framework into one { name, grade, label } table behind a single getJob function.",
+    "Toggle a two-state duty machine with a table keyed by server id.",
+    "Gate an action by grade with an early-return permission check.",
+    "Pay on-duty players on a clock with a CreateThread and Wait loop.",
+    "Clear duty[source] on playerDropped so the table does not leak server ids."
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_jobs_framework`, rerun the test, and confirm the output changed.
+  Add a shift timer so the payroll loop pays for time actually worked, not a flat amount. When a player clocks in, record the time with `os.time()` into a `clockedInAt[src]` table. When they clock out, or on each payroll pass, compute the minutes elapsed and pay proportionally. Then add a hard cap: after 8 hours of continuous duty, auto clock the player out and print a notice.
+
+  ```lua
+  local clockedInAt = {}
+
+  -- inside the clockin handler, when duty becomes true:
+  clockedInAt[src] = os.time()
+
+  -- inside the payroll pass, for an on-duty player:
+  local minutes = math.floor((os.time() - clockedInAt[src]) / 60)
+  ```
+
+  Remember to clear `clockedInAt[source]` in the `playerDropped` handler too, the same way you clear `duty`. Confirm a player clocked in for two minutes is paid for two minutes, and that the 8-hour cap forces them off duty. You have turned a flat paycheck into a real shift system.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM GetResourceState reference", href: "https://docs.fivem.net/natives/?_0x4039B485" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "Qbox documentation", href: "https://docs.qbox.re/" },
+    { label: "ESX Legacy documentation", href: "https://documentation.esx-framework.org/" }
   ]}
 />

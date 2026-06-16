@@ -4,11 +4,11 @@
   meta={[
     { label: "You'll ship", value: "Cleanup handlers for resource stop, player drop, and timed auto-delete." },
     { label: "Time", value: "~25 minutes" },
-    { label: "You'll learn", value: "Signs of entity leaks, cleanup on resource stop, cleanup on player drop, timeout auto-delete, and the interaction-then-cleanup pattern." },
+    { label: "You'll learn", value: "Signs of entity leaks, cleanup on resource stop, cleanup on player drop, timeout auto-delete, and why the drop path has to live on the server." },
     { label: "Prereqs", value: "Lesson 24 (spawning entities, the registry pattern)." },
   ]}
 >
-  Spawning is easy. Cleaning up is the part that separates scripts that work from scripts that destroy servers. If you spawn entities and never delete them, the world fills up with ghost objects, entity counts climb, and eventually the server lags or crashes. This lesson teaches you when, where, and how to clean up.
+  Spawning is easy. Cleaning up is the part that separates scripts that work from scripts that destroy servers. If you spawn entities and never delete them, the world fills with ghost objects, entity counts climb, and the server lags or crashes. This lesson teaches the three moments cleanup has to happen, and why one of them cannot be done from the client at all.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds spawned object registry with manual, timeout, and stop cleanup as a working FiveM resource named `qu_cleanup_discipline`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a networked box spawner with three cleanup paths as a working FiveM resource named `qu_cleanup_discipline`. It has a `client.lua` and a `server.lua`, because the player-drop path can only run on the server. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
 </Callout>
 
 ## Build it
@@ -35,12 +35,13 @@
   </Step>
 
   <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
-    Create this exact file layout:
+    Create this exact file layout. Note the new `server.lua` compared to Lesson 24:
 
     ```text
 resources/qu_cleanup_discipline/
   fxmanifest.lua
   client.lua
+  server.lua
     ```
   </Step>
 
@@ -52,10 +53,13 @@ fx_version 'cerulean'
 game 'gta5'
 
 client_script 'client.lua'
+server_script 'server.lua'
     ```
+
+    There is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Write the client code" outcome="The client spawns a networked box and reports it to the server.">
     Open `client.lua` and paste this:
 
     ```lua
@@ -70,13 +74,17 @@ RegisterCommand('spawnbox', function()
     local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, true, true, false)
     objects[object] = true
     SetModelAsNoLongerNeeded(model)
-    print('[qu_cleanup_discipline] spawned object ' .. object)
+
+    local netId = NetworkGetNetworkIdFromEntity(object)
+    TriggerServerEvent('qu_cleanup:registerBox', netId)
+    print('[qu_cleanup_discipline] spawned object ' .. object .. ' netId ' .. netId)
 
     SetTimeout(30000, function()
         if DoesEntityExist(object) then
             DeleteEntity(object)
             objects[object] = nil
-            print('[qu_cleanup_discipline] timeout deleted object')
+            TriggerServerEvent('qu_cleanup:unregisterBox', netId)
+            print('[qu_cleanup_discipline] timeout deleted object ' .. object)
         end
     end)
 end, false)
@@ -86,18 +94,65 @@ RegisterCommand('clearboxes', function()
         if DoesEntityExist(object) then DeleteEntity(object) end
         objects[object] = nil
     end
+    TriggerServerEvent('qu_cleanup:clearMine')
     print('[qu_cleanup_discipline] registry cleared')
 end, false)
 
 AddEventHandler('onResourceStop', function(name)
     if name == GetCurrentResourceName() then
-        ExecuteCommand('clearboxes')
+        for object in pairs(objects) do
+            if DoesEntityExist(object) then DeleteEntity(object) end
+        end
     end
 end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Write the server code" outcome="The server tracks each player's boxes and deletes them on drop.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local boxesByPlayer = {}
+
+RegisterNetEvent('qu_cleanup:registerBox', function(netId)
+    local src = source
+    boxesByPlayer[src] = boxesByPlayer[src] or {}
+    boxesByPlayer[src][netId] = true
+    print('[qu_cleanup_discipline] tracking netId ' .. netId .. ' for player ' .. src)
+end)
+
+RegisterNetEvent('qu_cleanup:unregisterBox', function(netId)
+    local src = source
+    if boxesByPlayer[src] then
+        boxesByPlayer[src][netId] = nil
+    end
+end)
+
+RegisterNetEvent('qu_cleanup:clearMine', function()
+    local src = source
+    boxesByPlayer[src] = nil
+end)
+
+AddEventHandler('playerDropped', function()
+    local src = source
+    local owned = boxesByPlayer[src]
+    if not owned then return end
+
+    local deleted = 0
+    for netId in pairs(owned) do
+        local entity = NetworkGetEntityFromNetworkId(netId)
+        if entity ~= 0 and DoesEntityExist(entity) then
+            DeleteEntity(entity)
+            deleted = deleted + 1
+        end
+    end
+    boxesByPlayer[src] = nil
+    print('[qu_cleanup_discipline] player ' .. src .. ' dropped, deleted ' .. deleted .. ' boxes')
+end)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the correct console.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -110,27 +165,133 @@ end)
     restart qu_cleanup_discipline
     ```
 
-    Run this test:
+    Run this test fast, before the 30 second timeout fires:
 
     ```text
     /spawnbox then /clearboxes
     ```
 
+    The spawn print and the tracking print share one handle and net id pair, so your real numbers will differ from the sample below. The point is the shape: a spawn line, a server tracking line, and a cleared line, with no timeout line because you cleared first.
+
     <ExpectedOutput>
-      F8: [qu_cleanup_discipline] spawned object
+      F8: [qu_cleanup_discipline] spawned object 524292 netId 8
+Console: [qu_cleanup_discipline] tracking netId 8 for player 1
 F8: [qu_cleanup_discipline] registry cleared
     </ExpectedOutput>
   </Step>
 </StepGroup>
 
+## How it works
+
+You spawned a box and cleared it, and a third path is waiting on a timer. Now take the code apart so cleanup becomes a habit you reach for without thinking. The whole lesson is one idea: every entity you create is a debt, and you pay it back in three places. Miss any one of them and the debt piles up as ghost objects.
+
+### Why a leak is dangerous, and how to see it
+
+An entity leak is not abstract. Every box you spawn adds one to the server's live entity pool. Run `/spawnbox` two hundred times with no cleanup and you have two hundred boxes the engine has to network to every connected player, forever, even after you walk away. The symptom owners report is the server slowly getting heavier: rising frame times, rubber banding, and eventually a crash when the pool fills.
+
+You can watch this happen. In the server console, `entities` lists the networked entities the server is tracking. Spawn a few boxes, run it, spawn a few more, run it again, and the count climbs. A leaking script is one where that number only ever goes up. A disciplined script is one where it returns to baseline once the boxes are cleaned. That rising-then-not-falling number is the exact thing this lesson exists to prevent.
+
+### The registry is the only memory you have
+
+```lua
+local objects = {}
+-- ...
+objects[object] = true
+```
+
+You cannot delete what you cannot name. `CreateObject` hands you back one number, the entity handle, and that number is the only way to refer to the box later. The registry is a table whose keys are those handles. Storing `objects[object] = true` means the value does not matter, only the key, so the table behaves like a set of handles. When it is time to clean up you walk the table with `pairs` and you have every box you ever made in one place. Without this table, the moment the spawn function returns and the handle goes out of scope, the box is unreachable. It still exists in the world. You just lost the receipt.
+
+### DoesEntityExist guards every delete
+
+```lua
+if DoesEntityExist(object) then DeleteEntity(object) end
+```
+
+A handle in your registry is a claim that a box existed at spawn time, not a promise it still exists now. Another resource could have deleted it. A streaming hiccup could have culled it. The timeout could have fired already. `DoesEntityExist` asks the engine whether this handle still points at a real entity before you act on it. Calling `DeleteEntity` on a stale or already-deleted handle is calling a native on garbage, and depending on the build that is a console error or a hard crash. The guard costs one cheap check and removes a whole class of crash. Make it reflex: never delete a handle you have not just verified.
+
+### Path one: cleanup on resource stop
+
+```lua
+AddEventHandler('onResourceStop', function(name)
+    if name == GetCurrentResourceName() then
+        for object in pairs(objects) do
+            if DoesEntityExist(object) then DeleteEntity(object) end
+        end
+    end
+end)
+```
+
+`onResourceStop` fires for every resource that stops anywhere on the server, not just yours. That is why the `name` argument and the `GetCurrentResourceName()` comparison are not optional. Without that filter, your handler would run its cleanup loop every time any unrelated resource on the box restarts, which is constant on a live server. The guard narrows it to the one moment you care about: your own resource shutting down. When you `restart qu_cleanup_discipline`, the stop half fires first, this handler runs, and every box you spawned is deleted before the new copy loads. That is what stops ghost objects surviving a restart, the single most common cleanup failure in the wild.
+
+### Path two: timed auto-delete
+
+```lua
+SetTimeout(30000, function()
+    if DoesEntityExist(object) then
+        DeleteEntity(object)
+        objects[object] = nil
+        TriggerServerEvent('qu_cleanup:unregisterBox', netId)
+        print('[qu_cleanup_discipline] timeout deleted object ' .. object)
+    end
+end)
+```
+
+`SetTimeout` schedules a function to run once, after the delay in milliseconds, so `30000` is thirty seconds. This is the self-healing path: even if the player never runs `/clearboxes`, the box removes itself. Notice the `DoesEntityExist` guard here too, and why it matters. If you already ran `/clearboxes`, the box is gone and its handle is stale, so the timeout must check before deleting or it acts on garbage. After deleting, it clears its own registry key and tells the server to forget the net id, so the two registries stay in sync. This is the interaction-then-cleanup pattern in miniature: the thing you spawned for a temporary purpose cleans itself up on a timer so a forgotten box never becomes a permanent leak.
+
+### Path three: cleanup on player drop, and why it lives on the server
+
+This is the path the client physically cannot do, and the reason this lesson has a `server.lua` at all. Think it through. The cleanup handlers above all live in `client.lua`. They run inside the player's own game. If that player crashes to desktop, loses internet, or force-quits, their game stops executing instantly. No `onResourceStop`, no timeout callback, nothing client-side runs, because the thing that would run it is dead. The boxes they spawned are networked, so they stay alive on the server with no owner to clean them. That is a guaranteed leak that grows every time someone rage-quits.
+
+The server is the one party still alive when a client disappears, so the drop cleanup has to live there. The client reports each box upward as it spawns:
+
+```lua
+local netId = NetworkGetNetworkIdFromEntity(object)
+TriggerServerEvent('qu_cleanup:registerBox', netId)
+```
+
+`NetworkGetNetworkIdFromEntity` converts the local entity handle into a network id, a stable identifier that means the same box on every machine. A raw entity handle is local to one game and useless on the server, so you must send the net id, not the handle. `TriggerServerEvent` is the call that actually crosses the network from client to server. On the server, `RegisterNetEvent` plus the matching handler is what is allowed to receive a client-triggered event, and inside it `source` is the player who sent it:
+
+```lua
+RegisterNetEvent('qu_cleanup:registerBox', function(netId)
+    local src = source
+    boxesByPlayer[src] = boxesByPlayer[src] or {}
+    boxesByPlayer[src][netId] = true
+end)
+```
+
+`boxesByPlayer` is a registry of registries: one inner table of net ids per player server id. `boxesByPlayer[src] = boxesByPlayer[src] or {}` is the create-if-missing idiom, so the first box a player spawns also creates their bucket. Then when the engine fires `playerDropped`, the server already knows exactly which boxes belonged to the player who just left:
+
+```lua
+for netId in pairs(owned) do
+    local entity = NetworkGetEntityFromNetworkId(netId)
+    if entity ~= 0 and DoesEntityExist(entity) then
+        DeleteEntity(entity)
+    end
+end
+```
+
+`NetworkGetEntityFromNetworkId` is the reverse of what the client did: it turns the net id back into a server-side entity handle. It returns `0` when no entity matches, for example because the box was already cleaned by the timeout, so you check `entity ~= 0` before the existence guard. Delete each one, drop the player's whole bucket, and the server returns to baseline. A crashed player no longer leaks.
+
+<Checkpoint question="Why can the player-drop cleanup not just live in client.lua next to the other two handlers?">
+  Because the client-side handlers only run while that client's game is running. A player drop very often happens because the game stopped, a crash, a hard disconnect, a force quit. The moment the game dies, no client code executes, so an `onResourceStop` or `SetTimeout` callback sitting in `client.lua` never fires for that player. Their networked boxes survive on the server with nothing to remove them. The server is the only party still alive after the client vanishes, so it has to own the drop path. The client's only job is to report each box's net id upward as it spawns, so the server has a list to act on when `playerDropped` arrives.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Any time a resource spawns world entities, all three paths apply, and you wire them once at the start rather than bolting them on after the first leak report:
+
+- **Resource stop** is non-negotiable for anything you develop iteratively. You restart the resource dozens of times a day; without it every restart leaves a fresh pile of ghosts.
+- **A timeout or interaction end** fits anything temporary: a dropped item that should despawn, a job prop that vanishes when the job ends, an effect entity tied to an animation.
+- **Player drop** is the one beginners forget and the one that hurts most on a busy server, because disconnects are constant. If your entities are networked and tied to a player, the server must clean them on drop, full stop.
+
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_cleanup_discipline does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_cleanup_discipline", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_cleanup_discipline, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Boxes survive after restart qu_cleanup_discipline", fix: "The onResourceStop handler is missing the GetCurrentResourceName() filter or the loop never runs. Confirm the handler is in client.lua and that it walks the objects table." },
+    { symptom: "No tracking netId line in the server console", fix: "TriggerServerEvent did not reach a RegisterNetEvent. Check both event names match exactly across client.lua and server.lua, and that server_script 'server.lua' is in fxmanifest.lua." },
+    { symptom: "Boxes from a crashed player stay in the world", fix: "The playerDropped handler did not delete them. Confirm the client sent the net id (not the raw handle) and that the server stored it under source before the drop." },
+    { symptom: "attempt to call a nil value (NetworkGetEntityFromNetworkId)", fix: "That native is server-side here. Make sure the playerDropped block is in server.lua, not client.lua, since the two runtimes expose different natives." },
   ]}
 />
 
@@ -138,23 +299,33 @@ F8: [qu_cleanup_discipline] registry cleared
 
 <Recap
   items={[
-    "Make the qu_cleanup_discipline folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for spawned object registry with manual, timeout, and stop cleanup.",
-    "Add ensure qu_cleanup_discipline to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain why an unfreed entity is a debt, and read the rising entity count that proves a leak.",
+    "Use a registry table of handles as the only reliable way to find and delete what you spawned.",
+    "Guard every DeleteEntity with DoesEntityExist so a stale handle never crashes the resource.",
+    "Wire the three cleanup paths: onResourceStop filtered to your own resource, a SetTimeout auto-delete, and a server-side playerDropped handler.",
+    "Say why the player-drop path must live on the server and report entities by net id, not by local handle.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_cleanup_discipline`, rerun the test, and confirm the output changed.
+  Prove the resource-stop path deletes everything, not just the last box. Spawn three boxes back to back, then stop the resource and confirm all three vanish.
+
+  ```lua
+  RegisterCommand('spawn3', function()
+      for i = 1, 3 do ExecuteCommand('spawnbox') end
+      print('[qu_cleanup_discipline] spawned 3 boxes')
+  end, false)
+  ```
+
+  Restart `qu_cleanup_discipline`, run `spawn3`, and watch three spawn lines appear with three different handles. Now run `stop qu_cleanup_discipline` and look at the world: every box is gone in one shot, because `onResourceStop` walks the whole registry, not a single handle. As a stretch, add a `print` inside the stop loop that counts how many boxes it deleted, the same way the server counts on player drop, and confirm it reports 3.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "playerDropped server event", href: "https://docs.fivem.net/docs/scripting-reference/events/server-events/#playerdropped" },
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

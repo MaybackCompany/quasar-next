@@ -5,10 +5,10 @@
     { label: "You'll learn", value: "resmon, Citizen.CreateThread vs CreateThreadNow, Wait tuning, GetGameTimer for hot loops" },
     { label: "Time", value: "~24 minutes" },
     { label: "Prereqs", value: "Lessons 13 (threads) and 14 (server vs client)" },
-    { label: "Outcome", value: "You drop a script's resmon cost from 6 ms to under 0.05 ms without breaking it" },
+    { label: "Outcome", value: "You drop a client script's resmon cost from about 6 ms to under 0.05 ms without breaking what it draws" },
   ]}
 >
-  A FiveM server has a 16.6 ms tick budget at 60 Hz. If your script eats 6 ms of it because of a runaway `while true do Wait(0)`, the whole server stutters. This lesson teaches you to read `resmon`, pick the right thread API, and tune `Wait` values like a sound engineer tunes a mixer.
+  Every client frame has a budget. At 60 frames per second the game gets about 16.6 ms to do everything, and your script's threads run inside that window. If one script eats 6 ms because of a runaway `while true do Wait(0)`, the player's frame rate drops and the world stutters. This lesson teaches you to read `resmon`, pick the right thread API, and tune `Wait` values like a sound engineer tunes a mixer.
 </LessonHero>
 
 <YouTube id="UspWGEbsY20" title="High-performance Lua code" caption="RED: writing high-performance Lua for FiveM." />
@@ -21,8 +21,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds resmon test with Wait tuning as a working FiveM resource named `qu_performance_resmon`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a resmon test with Wait tuning as a working FiveM resource named `qu_performance_resmon`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you can read resmon and tune any loop yourself.
 </Callout>
 
 ## Build it
@@ -55,21 +55,40 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    There is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `client.lua` and paste this:
+    Open `client.lua` and paste this. It draws a marker under you, but only when the marker is `on`, and even then it sleeps when no one is near the spot. This is the difference between a 6 ms script and a 0.05 ms script.
 
     ```lua
-local fast = false
-RegisterCommand('resmontoggle', function() fast = not fast print('[qu_performance_resmon] fast ' .. tostring(fast)) end, false)
+local markerOn = false
+local markerCoords = vector3(-269.0, -955.0, 31.2) -- near Legion Square
+
+RegisterCommand('resmontoggle', function()
+    markerOn = not markerOn
+    print('[qu_performance_resmon] marker on: ' .. tostring(markerOn))
+end, false)
+
 CreateThread(function()
     while true do
-        Wait(fast and 0 or 500)
-        if fast then
-            local c = GetEntityCoords(PlayerPedId())
-            DrawMarker(1, c.x, c.y, c.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.3, 0, 180, 255, 120, false, false, 2, false, nil, nil, false)
+        local sleep = 1000 -- far away or off: sleep a full second
+
+        if markerOn then
+            local ped = PlayerPedId()
+            local coords = GetEntityCoords(ped)
+            local dist = #(coords - markerCoords)
+
+            if dist < 20.0 then
+                sleep = 0 -- close enough to see it: run every frame
+                DrawMarker(1, markerCoords.x, markerCoords.y, markerCoords.z - 1.0,
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.3,
+                    0, 180, 255, 120, false, false, 2, false, nil, nil, false)
+            end
         end
+
+        Wait(sleep)
     end
 end)
     ```
@@ -88,26 +107,136 @@ end)
     restart qu_performance_resmon
     ```
 
-    Run this test:
+    Join the server, open the developer console with F8, and turn on the client resource monitor:
 
     ```text
-    F8: resmon 1, then /resmontoggle
+    resmon 1
     ```
 
+    Find `qu_performance_resmon` in the list. With the marker off, its cost sits near 0.00 ms. Now run the command from the F8 console:
+
+    ```text
+    resmontoggle
+    ```
+
+    You will see the print confirming the toggle. Teleport or walk to Legion Square (around -269, -955) and watch the cost climb while the marker is on screen, then fall back toward zero the moment you walk away.
+
     <ExpectedOutput>
-      F8: [qu_performance_resmon] fast true
+      [qu_performance_resmon] marker on: true
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it, toggled the marker, and watched a number move in resmon. Now take the loop apart so you can tune any thread on your server, not just this one. The whole lesson lives in one idea: a thread costs CPU only during the frames it is actually awake, and `Wait` is the dial that controls how often it wakes up.
+
+### Reading resmon
+
+`resmon` is the client-side resource monitor. You opened it with `resmon 1` in the F8 console, and it draws a live table: one row per running resource, sorted by cost. The column you care about is the millisecond cost, the average time that resource's threads spend running per frame.
+
+FiveM colours that number so you can triage at a glance:
+
+- **Green** is healthy. Roughly under 0.5 ms. The resource is awake rarely or doing very little when it is.
+- **Yellow** is a warning, roughly 0.5 ms to a few ms. Worth a look, especially if the resource should be idle.
+- **Red** is a problem, multiple milliseconds and up. A single red resource can eat a meaningful slice of the 16.6 ms frame budget by itself, and the player feels it as stutter.
+
+The critical mental model: resmon measures the **client** frame, because `DrawMarker` is a client native that runs on each player's machine. This is not the server tick. The server has its own budget and its own profiler. When you read resmon you are watching what your code costs the player's game, frame by frame, which is exactly where a runaway `Wait(0)` loop does its damage.
+
+To watch a single resource closely, type its name into the resmon filter, or just read its row. With the marker off you will see `qu_performance_resmon` resting in green near 0.00 ms, because the thread sleeps a full second between wakeups and does nothing in between.
+
+### Why Wait(0) is expensive and Wait(500) is nearly free
+
+Look at the two values `sleep` can take:
+
+```lua
+local sleep = 1000
+-- ...
+sleep = 0
+```
+
+A FiveM thread is a loop that yields control back to the engine every time it hits `Wait`. The number you pass is how long the engine is allowed to leave the thread asleep before waking it again.
+
+- `Wait(0)` means "wake me next frame." At 60 fps that is about 60 wakeups per second. Every wakeup runs the body of your loop, so `while true do Wait(0)` executes its body roughly 60 times a second forever. If the body is `DrawMarker` plus a coords lookup, that work lands on every single frame, and that is where your 6 ms comes from.
+- `Wait(1000)` means "leave me asleep for a second." The body runs about once per second. A thread that is asleep costs essentially nothing, which is why an idle resource shows 0.00 ms in resmon.
+
+So the cost of a thread is not about how much code it contains. It is about how often that code is allowed to run. `Wait(0)` is not wrong. Drawing a marker smoothly genuinely needs every frame. The mistake is running `Wait(0)` when nothing on screen needs updating that often.
+
+### The distance-check pattern
+
+This is the real fix, and it is the heart of the loop:
+
+```lua
+local sleep = 1000
+
+if markerOn then
+    local coords = GetEntityCoords(PlayerPedId())
+    local dist = #(coords - markerCoords)
+
+    if dist < 20.0 then
+        sleep = 0
+        DrawMarker(...)
+    end
+end
+
+Wait(sleep)
+```
+
+Read it as a decision the loop makes on every wakeup. It starts each pass assuming the cheapest answer: `sleep = 1000`. Only if the marker is on **and** the player is within 20 metres does it switch to `sleep = 0` and actually draw. The `#(coords - markerCoords)` expression is a vector length: it measures the straight-line distance between two points, so `dist < 20.0` is "within 20 metres."
+
+The payoff is the cost curve you watched in resmon. Far away, the loop wakes once a second, does one cheap distance check, finds you are out of range, and goes back to sleep. Near zero cost. Walk inside 20 metres and it flips to `Wait(0)`, drawing the marker every frame at full smoothness. Walk away and it drops back to the one-second idle. The marker looks identical to the naive version that drew every frame from anywhere on the map, but it only pays the per-frame price in the few seconds you can actually see it. That is the 6 ms to 0.05 ms drop the outcome promised.
+
+<Checkpoint question="The marker is on, but you are standing 200 metres away. How many times per second does the loop run DrawMarker, and what does resmon show?">
+  Zero times per second. Each wakeup the loop computes `dist`, finds it is far larger than 20.0, never enters the inner `if`, and leaves `sleep` at 1000. So the thread wakes about once per second, runs one subtraction and one comparison, and sleeps again. `DrawMarker` is never reached. resmon shows the resource resting in green near 0.00 ms, even though the marker is logically "on." The cost only appears once you are inside the 20 metre radius and the loop flips to `Wait(0)`.
+</Checkpoint>
+
+### CreateThread vs CreateThreadNow
+
+You started the loop with `CreateThread`. There is a second native, `CreateThreadNow`, and the difference matters once you have startup code that must run before anything else.
+
+- `CreateThread(fn)` schedules the function to begin on the **next** game tick. The line returns immediately and the rest of your file keeps loading; the thread starts a frame later. This is the right default for a background loop like ours, because nothing depends on it running this instant.
+- `CreateThreadNow(fn)` runs the function **immediately and synchronously**, right where you call it. It does not return until the function either finishes or hits its first `Wait`. You reach for this when later code in the same file depends on setup the thread performs, and you cannot afford to lose a frame waiting for the scheduler.
+
+For a marker loop, `CreateThread` is correct. If you ever find yourself adding artificial delays to make one thread "win the race" against another at resource start, that is the signal that the must-run-first one should be `CreateThreadNow` instead.
+
+### Throttling inside a Wait(0) loop with GetGameTimer
+
+Sometimes you genuinely need `Wait(0)` because part of the loop must run every frame, but another part inside it is expensive and does not need to. Sleeping the whole thread with a longer `Wait` is too blunt; it would slow down the frame-critical part too. The tool for that is `GetGameTimer`, which returns the number of milliseconds since the game started as an ever-increasing integer.
+
+The pattern is to remember the last time you did the expensive work and only repeat it once enough time has passed:
+
+```lua
+local lastHeavy = 0
+
+CreateThread(function()
+    while true do
+        Wait(0) -- this part must be smooth every frame
+
+        local now = GetGameTimer()
+        if now - lastHeavy > 500 then
+            lastHeavy = now
+            -- expensive work, at most twice a second
+        end
+    end
+end)
+```
+
+The outer loop still wakes every frame, so anything frame-critical stays smooth. But the block guarded by `GetGameTimer` runs at most about twice a second, because `now - lastHeavy > 500` is only true once 500 ms have elapsed since the last run. You get per-frame responsiveness for the cheap part and a throttle on the expensive part, inside one thread. In our marker script we did not need this, because the whole loop can sleep when you are far away. You reach for `GetGameTimer` when the loop cannot sleep but one chunk of it should still be rate-limited.
+
+### When you reach for each tool
+
+- **Distance-check / Wait tuning** is your default for any world-drawing or proximity loop: markers, blips, zone checks, target prompts. Sleep far, `Wait(0)` only when close.
+- **CreateThreadNow** is for resource-start setup that other code reads immediately.
+- **GetGameTimer throttling** is for the rare loop that must stay on `Wait(0)` for one job while rate-limiting a heavier job beside it.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_performance_resmon does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_performance_resmon", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_performance_resmon, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "resmon shows nothing for qu_performance_resmon", fix: "You are reading the wrong row or the resource did not start. Confirm it appears in the resmon list, then check the F8 console for a load error after restart qu_performance_resmon." },
+    { symptom: "Cost stays high after you walk away from the marker", fix: "The thread is still hitting Wait(0). Check that sleep is reset to 1000 at the top of every loop pass and that the dist < 20.0 guard, not just markerOn, is what flips it to 0." },
+    { symptom: "The toggle prints but no marker ever appears", fix: "You are outside the 20 metre radius, so the inner DrawMarker never runs. Walk to the markerCoords spot near Legion Square, or lower the markerCoords to your own location." },
+    { symptom: "attempt to perform arithmetic on a nil value (markerCoords)", fix: "vector3 needs three numbers. Make sure markerCoords is defined with vector3(x, y, z) and that none of the values are missing." },
   ]}
 />
 
@@ -115,17 +244,33 @@ end)
 
 <Recap
   items={[
-    "Make the qu_performance_resmon folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for resmon test with Wait tuning.",
-    "Add ensure qu_performance_resmon to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Open the client resource monitor with resmon 1 and read a resource's ms cost, including what green, yellow, and red mean.",
+    "Explain that resmon measures the client frame budget (about 16.6 ms at 60 fps), not the server tick, because DrawMarker is a client native.",
+    "Say why while true do Wait(0) runs about 60 times a second while Wait(1000) runs once, and why an idle thread costs near zero.",
+    "Apply the distance-check pattern: start each loop pass asleep and only switch to Wait(0) when the player is in range.",
+    "Choose between CreateThread (deferred to next tick) and CreateThreadNow (immediate, synchronous), and throttle expensive work inside a Wait(0) loop with GetGameTimer.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_performance_resmon`, rerun the test, and confirm the output changed.
+  Extend the loop with a two-stage distance check so it scales work to how close you are. Add an outer radius that wakes the thread more often but still does not draw, and the existing inner radius that draws every frame:
+
+  ```lua
+  local dist = #(coords - markerCoords)
+
+  if dist < 20.0 then
+      sleep = 0
+      DrawMarker(1, markerCoords.x, markerCoords.y, markerCoords.z - 1.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.3,
+          0, 180, 255, 120, false, false, 2, false, nil, nil, false)
+  elseif dist < 60.0 then
+      sleep = 250 -- getting close: poll faster so the marker pops in smoothly
+  end
+  ```
+
+  Restart `qu_performance_resmon`, turn the marker on, and watch resmon as you approach: the cost should rise in two steps, near zero far away, a small bump inside 60 metres, then full per-frame cost inside 20 metres. Then add a `GetGameTimer` block to the inner branch that prints your distance at most once per second, and confirm in F8 that it does not spam every frame even though the loop is on `Wait(0)`.
 </Exercise>
 
 <Refs

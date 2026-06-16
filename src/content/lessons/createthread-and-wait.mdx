@@ -5,7 +5,7 @@
     { label: "You'll learn", value: "What CreateThread actually creates, why Wait is mandatory inside loops, and how to pick the right wait time per use case" },
     { label: "Time", value: "~15 minutes" },
     { label: "Prereqs", value: "Lesson 04 (loops), Lesson 11 (natives), Lesson 15 (callbacks)" },
-    { label: "Outcome", value: "You can split work across draw threads, state threads, and polling threads: and you stop your resource from eating the server frame" },
+    { label: "Outcome", value: "You can split work across draw threads, state threads, and polling threads, and you stop your resource from eating the server frame" },
   ]}
 >
   Every FiveM script runs inside one Lua VM per resource. The VM has a strict per-tick budget. `CreateThread` spawns a coroutine; `Wait(ms)` yields it back to the engine. Forget the Wait and you freeze the game. Use the wrong Wait value and your script either hogs the frame or feels laggy. This bonus is the deep dive that turns "I copied the boilerplate" into "I know exactly why it's there."
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds two CreateThread loops with safe Wait values as a working FiveM resource named `qu_createthread_and_wait`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds two CreateThread loops with safe Wait values as a working client resource named `qu_createthread_and_wait`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes both threads apart and explains why each one picks the Wait value it does.
 </Callout>
 
 ## Build it
@@ -53,6 +53,8 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -66,13 +68,17 @@ RegisterCommand('threadtoggle', function()
     print('[qu_createthread_and_wait] enabled ' .. tostring(enabled))
 end, false)
 
+-- Slow tick: a heartbeat that only needs to fire occasionally.
 CreateThread(function()
     while true do
         Wait(5000)
-        if enabled then print('[qu_createthread_and_wait] slow tick') end
+        if enabled then
+            print('[qu_createthread_and_wait] slow tick')
+        end
     end
 end)
 
+-- Fast poll: must run every frame to catch the exact frame E is pressed.
 CreateThread(function()
     while true do
         Wait(0)
@@ -84,40 +90,125 @@ end)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the F8 console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_createthread_and_wait
     ```
 
-    Save, then run:
+    Save, then run this in the txAdmin Live Console:
 
     ```text
     restart qu_createthread_and_wait
     ```
 
-    Run this test:
+    Now join the server, open F8, and run this test. Type the command, wait a few seconds for the slow tick, then press E:
 
     ```text
-    /threadtoggle then press E
+    /threadtoggle, wait ~5s, then press E
     ```
 
     <ExpectedOutput>
-      F8: [qu_createthread_and_wait] enabled true
-F8: [qu_createthread_and_wait] E pressed
+      [qu_createthread_and_wait] enabled true
+[qu_createthread_and_wait] slow tick
+[qu_createthread_and_wait] E pressed
     </ExpectedOutput>
+
+    The order of the last two lines depends on your timing. The point is that both threads are alive at once: one fires roughly every five seconds on its own, the other fires the instant you tap E. Two loops, two different Wait values, one resource.
   </Step>
 </StepGroup>
+
+## How it works
+
+You have two `while true` loops running side by side and neither one freezes the game. That is the whole trick of this lesson, and it rests on three ideas: what `CreateThread` actually creates, why `Wait` is not optional, and how to pick the Wait value on purpose instead of copying it.
+
+### What CreateThread actually creates
+
+The name lies a little. `CreateThread` does not start an operating-system thread. It starts a **Lua coroutine**, and every resource on your server gets exactly one Lua VM to run all of its coroutines in. A coroutine is a function that can pause itself partway through, hand control back, and then be resumed later from the exact line where it paused.
+
+FiveM runs a **scheduler**. Once per frame the engine walks the list of coroutines that are due to run, resumes each one, lets it work until it yields, then moves to the next. When your resource has two `CreateThread` blocks, you have handed the scheduler two coroutines. It resumes them one after another inside that single VM. They are not truly parallel. They take turns, fast enough that to a player they look simultaneous.
+
+This is why a heavy loop in one resource can lag every other script: they may all be sharing a frame. The scheduler cannot move on to the next coroutine until the current one gives control back. Which is the entire reason the next idea exists.
+
+### Why Wait is mandatory
+
+Look at the shape of either loop with the `Wait` removed:
+
+```lua
+CreateThread(function()
+    while true do
+        -- no Wait here
+        if enabled then print('tick') end
+    end
+end)
+```
+
+`while true` never ends on its own. There is no condition that turns false. Without a `Wait` inside it, this coroutine spins forever and never yields. The scheduler resumed it, and it never gave control back. The engine cannot draw the next frame, cannot resume any other coroutine, cannot read input. The game **hard freezes**. Not slows down, freezes, until the runtime kills the resource with a script timeout.
+
+`Wait(ms)` is the yield. When your coroutine calls `Wait`, it pauses itself, tells the scheduler "do not resume me for at least this many milliseconds," and hands control back. The engine is free to draw frames and run everything else. After the time is up, the scheduler resumes your coroutine on the next available frame, right after the `Wait` call, and the loop goes around again. So the real job of `Wait` is not "pause for a bit." Its job is to give the frame back. The pause is just how long you give it back for.
+
+<Checkpoint question="Why does a while-true loop with no Wait freeze the entire game and not just the one resource?">
+  Because all of a resource's coroutines share one Lua VM, and the engine resumes coroutines one at a time on the main thread. A `while true` loop with no `Wait` never yields, so the scheduler that resumed it never gets control back. It cannot advance to the next coroutine, cannot draw the next frame, and cannot read input. The single stuck loop blocks the whole main thread, so the symptom is a total freeze, not a slow resource. The `Wait` is what hands the frame back and lets everything else run.
+</Checkpoint>
+
+### What the Wait value actually means
+
+`Wait(0)` and `Wait(5000)` both yield. The number is just how long until the scheduler is allowed to resume you.
+
+- `Wait(0)` means "resume me on the very next frame." At 60 fps that loop runs about 60 times every second. It is the most expensive thing you can do, because the body runs every single frame.
+- `Wait(5000)` means "do not resume me for 5000 milliseconds." That loop runs once every five seconds. Between runs it costs nothing. The coroutine is asleep and the scheduler skips right over it.
+
+That is the contrast the two loops in this lesson are built to show. The slow tick uses `Wait(5000)` because a heartbeat that prints "slow tick" has no reason to run more than once every few seconds. Running it every frame would do the same job and burn 300 times the work. The keypress poll uses `Wait(0)` because it has no choice, which is the next idea.
+
+### Why the keypress poll needs Wait(0)
+
+`IsControlJustPressed` returns `true` on exactly one frame: the frame the button goes down. On the very next frame, even if you are still holding E, it returns `false`. "Just pressed" means the transition, not the held state.
+
+That single-frame window is why this check has to live in a `Wait(0)` loop. If you polled it inside `Wait(5000)`, you would only look at the control once every five seconds. The odds that your single glance lands on the exact frame the key went down are almost zero, so nearly every press would be missed. To catch a one-frame event reliably, you have to look every frame, which means `Wait(0)`. The cost of `Wait(0)` is the price of never missing the press.
+
+### The tick budget and resmon
+
+Every `Wait(0)` loop you add has a cost, and the tool that shows it is **resmon**. Open the in-game console with F8 and run:
+
+```text
+resmon
+```
+
+You get a live table of every running resource and a column showing how many **milliseconds per frame** each one is spending. That number is the resource's slice of the frame. The frame as a whole has a budget: at 60 fps a frame is about 16.6 ms total, shared across every resource plus the game itself. A script sitting at 0.01 ms is invisible. A script sitting at 2 or 3 ms on its own is eating a real chunk of everyone's frame, and resmon will color it to warn you. That is what "over budget" looks like in practice: one resource's ms creeping up until the sum of all resources cannot fit inside the frame, and the server's frame time starts to climb.
+
+Your two-loop resource here will sit near zero, because the only thing the `Wait(0)` loop does each frame is one cheap boolean check. The cost problem shows up when people put expensive work, native calls, drawing, distance math, inside a `Wait(0)` loop that did not need to run every frame. Which is exactly what the next pattern fixes.
+
+### The pattern you are building toward: adaptive Wait
+
+Most real polling loops do not need a fixed Wait at all. They need a long Wait most of the time and a short Wait only in the moment that matters. The standard FiveM shape for this is the **adaptive wait** (the distance-check optimization):
+
+```lua
+CreateThread(function()
+    local target = vector3(200.0, -900.0, 30.0)
+    while true do
+        local wait = 1000 -- default: sleep a full second
+        local coords = GetEntityCoords(PlayerPedId())
+        if #(coords - target) < 20.0 then
+            wait = 0 -- close enough to matter: run every frame
+            -- draw a marker, check for E, do the per-frame work here
+        end
+        Wait(wait)
+    end
+end)
+```
+
+The loop starts each pass assuming it can sleep a full second. Only when the player is within 20 metres does it drop `wait` to `0` and do the expensive per-frame work. Standing across the map, the loop costs almost nothing because it runs once a second. Standing on the marker, it runs every frame, exactly when that is worth paying for. One loop, two speeds, chosen by a cheap distance check. This is the takeaway the whole lesson points at: `Wait(0)` is not the default, it is a tool you reach for only on the frames that need it.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_createthread_and_wait does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_createthread_and_wait", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_createthread_and_wait, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The game hard freezes the moment the resource starts", fix: "A while-true loop is missing its Wait, so the coroutine never yields. Add Wait(0) (or a larger value) inside every while true loop before any other change." },
+    { symptom: "Warning: script timeout / thread hitch warning in console", fix: "A loop is running too long without yielding. Make sure the Wait is inside the loop body, not after the loop, and that no expensive work blocks the path to it." },
+    { symptom: "Pressing E never prints", fix: "Run /threadtoggle first so enabled is true, then press E. IsControlJustPressed also only fires for the in-game E control (38), so make sure the game window has focus when you press it." },
+    { symptom: "The slow tick never prints", fix: "It only prints while enabled is true and only once every five seconds. Run /threadtoggle, then wait the full five seconds before deciding it failed." },
+    { symptom: "FPS drops while the resource runs", fix: "Open F8, run resmon, and read this resource's ms per frame. If it is high, move per-frame work out of the Wait(0) loop and behind an adaptive wait." },
   ]}
 />
 
@@ -125,23 +216,45 @@ F8: [qu_createthread_and_wait] E pressed
 
 <Recap
   items={[
-    "Make the qu_createthread_and_wait folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for two CreateThread loops with safe Wait values.",
-    "Add ensure qu_createthread_and_wait to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain that CreateThread starts a Lua coroutine in the resource's single VM, not an OS thread, and that the scheduler resumes coroutines one at a time per frame.",
+    "Say why Wait is mandatory: without a yield a while-true loop never hands the frame back and the whole game freezes.",
+    "Read Wait(0) as resume next frame (about 60 runs per second) and Wait(5000) as sleep five seconds, and pick the value on purpose.",
+    "Explain why a one-frame event like IsControlJustPressed must be polled inside a Wait(0) loop.",
+    "Open resmon and read a resource's ms per frame to judge whether it is within the tick budget.",
+    "Apply the adaptive wait pattern so a polling loop sleeps when idle and only drops to Wait(0) when it matters.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_createthread_and_wait`, rerun the test, and confirm the output changed.
+  Turn the fixed keypress poll into an adaptive one and prove the cost difference on resmon.
+
+  Replace the `Wait(0)` poll with a loop that defaults to `Wait(500)` and only drops to `Wait(0)` while `enabled` is true:
+
+  ```lua
+  CreateThread(function()
+      while true do
+          local wait = 500
+          if enabled then
+              wait = 0
+              if IsControlJustPressed(0, 38) then
+                  print('[qu_createthread_and_wait] E pressed')
+              end
+          end
+          Wait(wait)
+      end
+  end)
+  ```
+
+  Restart `qu_createthread_and_wait`. Open F8, run `resmon`, and watch this resource's ms column. With `enabled` false the loop runs twice a second and the ms reads near zero. Run `/threadtoggle` to flip `enabled` true and watch the same loop jump to running every frame. You have just felt the difference between a loop that sleeps and a loop that polls, on the same code, measured in real numbers instead of guessed at.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM CreateThread reference", href: "https://docs.fivem.net/natives/?_0xB88A73B1D377DABC" },
+    { label: "FiveM Wait reference", href: "https://docs.fivem.net/natives/?_0x4EDE34FBADD967A6" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

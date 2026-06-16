@@ -5,22 +5,23 @@
     { label: "You'll learn", value: "In-memory cache, dirty flags, periodic flush, playerDropped save, txAdmin graceful shutdown" },
     { label: "Time", value: "~24 minutes" },
     { label: "Prereqs", value: "P1 (oxmysql), P4 (promises)" },
-    { label: "Outcome", value: "A wallet that updates 1000 times per minute in-memory and writes to DB at most once every 30 seconds: without losing data on crashes" },
+    { label: "Outcome", value: "A wallet that updates 1000 times per minute in-memory and writes to the database at most once every 30 seconds, without losing data on disconnect or restart" },
   ]}
 >
-  Reading from MySQL on every action is slow. Writing on every action floods your DB and locks tables. The fix is the cache + write-back pattern: keep player state in RAM, mark it dirty when it changes, flush on a timer and on disconnect. This is how every well-built FiveM economy survives 64-player nights.
+  Reading from the database on every action is slow. Writing on every action floods your database and locks tables. The fix is the cache plus write-back pattern: keep player state in RAM, mark it dirty when it changes, flush on a timer, and flush again on disconnect and on shutdown so a restart never costs you the last few seconds. This is how every well-built FiveM economy survives a 64-player night.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I have oxmysql installed and a database connection string set.",
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds cache, dirty flag, timed flush, and playerDropped save as a working FiveM resource named `qu_persistence`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds the cache, the dirty flag, the timed flush, the playerDropped save, and the onResourceStop save as a working FiveM resource named `qu_persistence`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why every piece is there.
 </Callout>
 
 ## Build it
@@ -54,18 +55,25 @@ game 'gta5'
 server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
-dependency 'oxmysql'
+dependencies {
+    'oxmysql'
+}
     ```
 
-    Run this SQL before starting the resource:
+    `oxmysql` is the database library this lesson talks to. It is an Overextended (community) resource, not something Cfx.re ships in the box, so you install and start it yourself. The `dependencies { 'oxmysql' }` block tells FiveM to load oxmysql before this resource, so the `MySQL` global exists by the time your `server.lua` runs. You will see the singular `dependency 'oxmysql'` in older tutorials. It still works, but the plural block is the canonical form and the one to learn.
+
+    Now create the table. This lesson assumes MariaDB, which is the 2026-preferred database for FiveM servers. oxmysql speaks to MariaDB and MySQL identically, so the SQL below is the same either way. Run it once in your database tool before you start the resource:
 
     ```sql
 CREATE TABLE IF NOT EXISTS qu_persistence_rows (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(80) NOT NULL,
-  amount INT NOT NULL DEFAULT 0
+  amount INT NOT NULL DEFAULT 0,
+  UNIQUE KEY uniq_name (name)
 );
     ```
+
+    The `UNIQUE KEY uniq_name (name)` line is load-bearing and the next section explains why. Without it, the write-back silently breaks.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -73,8 +81,38 @@ CREATE TABLE IF NOT EXISTS qu_persistence_rows (
 
     ```lua
 local cache = { cash = 0, dirty = false }
-RegisterCommand('cashadd', function(_, args) cache.cash = cache.cash + (tonumber(args[1]) or 1) cache.dirty = true print('[qu_persistence] cached ' .. cache.cash) end, true)
-CreateThread(function() while true do Wait(30000) if cache.dirty then MySQL.insert.await('INSERT INTO qu_persistence_rows (name, amount) VALUES (?, ?) ON DUPLICATE KEY UPDATE amount = ?', { 'wallet', cache.cash, cache.cash }) cache.dirty = false print('[qu_persistence] flushed') end end end)
+
+local function flush()
+    if not cache.dirty then return end
+    MySQL.query.await(
+        'INSERT INTO qu_persistence_rows (name, amount) VALUES (?, ?) ON DUPLICATE KEY UPDATE amount = VALUES(amount)',
+        { 'wallet', cache.cash }
+    )
+    cache.dirty = false
+    print('[qu_persistence] flushed ' .. cache.cash)
+end
+
+RegisterCommand('cashadd', function(_, args)
+    cache.cash = cache.cash + (tonumber(args[1]) or 1)
+    cache.dirty = true
+    print('[qu_persistence] cached ' .. cache.cash)
+end, true)
+
+CreateThread(function()
+    while true do
+        Wait(30000)
+        flush()
+    end
+end)
+
+AddEventHandler('playerDropped', function()
+    flush()
+end)
+
+AddEventHandler('onResourceStop', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+    flush()
+end)
     ```
   </Step>
 
@@ -99,19 +137,110 @@ CreateThread(function() while true do Wait(30000) if cache.dirty then MySQL.inse
 
     <ExpectedOutput>
       [qu_persistence] cached 25
-[qu_persistence] flushed
+[qu_persistence] flushed 25
     </ExpectedOutput>
+
+    Now run `restart qu_persistence` again. Watch the console: because the cache was already flushed, the row in the database still reads `25`. Run `SELECT amount FROM qu_persistence_rows WHERE name = 'wallet'` in your database tool and confirm there is exactly one row, not a new one for every flush.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the wallet flushed once, into one row. Now take the code apart so you can build a real economy on top of it instead of copying a snippet. There are four moving parts: the cache, the dirty flag, the flush function, and the three things that call it.
+
+### The cache and the dirty flag
+
+```lua
+local cache = { cash = 0, dirty = false }
+```
+
+This single table is the entire reason the pattern is fast. `cache.cash` is the live wallet value, held in RAM. Every time a player earns, spends, or transfers money, you change this number and nothing else. A RAM write is effectively free, so the wallet can update a thousand times a minute and your database never feels it.
+
+`cache.dirty` is a boolean that answers one question: has anything changed since the last time we saved? It starts `false` because a freshly loaded cache already matches the database. The instant you mutate `cache.cash`, you set `cache.dirty = true`. That flag is what lets the flush skip work: if nothing changed, there is nothing to write, so a flush on an idle server costs zero database queries.
+
+```lua
+RegisterCommand('cashadd', function(_, args)
+    cache.cash = cache.cash + (tonumber(args[1]) or 1)
+    cache.dirty = true
+    print('[qu_persistence] cached ' .. cache.cash)
+end, true)
+```
+
+`cashadd` stands in for any real action that changes money. It does the two things every mutation must do: change the value, then set the dirty flag. `tonumber(args[1]) or 1` reads the number you typed and falls back to `1` if you typed nothing. The `true` at the end is the restricted flag, so only the server console (which holds all aces) can run this. That keeps a test command out of players' hands. Notice the command never touches the database. That separation is the whole point: writes happen on a schedule, not on every keystroke.
+
+### The flush function
+
+```lua
+local function flush()
+    if not cache.dirty then return end
+    MySQL.query.await(
+        'INSERT INTO qu_persistence_rows (name, amount) VALUES (?, ?) ON DUPLICATE KEY UPDATE amount = VALUES(amount)',
+        { 'wallet', cache.cash }
+    )
+    cache.dirty = false
+    print('[qu_persistence] flushed ' .. cache.cash)
+end
+```
+
+Pulling the write into its own function matters, because three different events all need to save and you do not want three copies of the query drifting apart. Read it top to bottom:
+
+- `if not cache.dirty then return end` is the early exit. If nothing changed, the function returns before it ever queries the database. On a quiet server this guard means the 30-second timer fires harmlessly forever and writes nothing.
+- `MySQL.query.await(...)` runs the SQL and blocks this coroutine until the database answers. We use `MySQL.query`, not `MySQL.insert`. `MySQL.insert` is built to return the new row's `insertId`, which is meaningful only when you are actually inserting. Our statement updates an existing row most of the time, so that id would be meaningless and would only reinforce the duplicate-row bug. `MySQL.query` is the right helper for an upsert.
+- The `?` placeholders are parameterized query slots. The values come from the second argument, the table `{ 'wallet', cache.cash }`, in order. Never build SQL by concatenating strings. Parameterized values are how you stay safe from injection, and they are the only correct way to pass data into a query.
+- `ON DUPLICATE KEY UPDATE amount = VALUES(amount)` is the upsert. It tells the database: try to insert this row, but if a row with the same unique key already exists, update its `amount` instead. `VALUES(amount)` means use the amount I just tried to insert.
+
+Here is the trap the original version of this lesson fell into. `ON DUPLICATE KEY UPDATE` only fires when the insert collides with a `PRIMARY` or `UNIQUE` key. The first schema had only `id INT AUTO_INCREMENT PRIMARY KEY` and a plain, non-unique `name` column. Nothing ever collided, so every single flush inserted a brand new row and the update branch never ran. You would end up with hundreds of `wallet` rows and a wallet that never actually saved. Adding `UNIQUE KEY uniq_name (name)` to the table is what makes the collision happen, which is what makes the update happen, which is what makes write-back work at all. The unique key is not decoration. It is the mechanism.
+
+After the write succeeds, `cache.dirty = false` records that RAM and the database now agree, so the next idle flush exits early.
+
+<Checkpoint question="Why does the wallet end up as a single row that updates, instead of a new row every 30 seconds?">
+  Because the table has a `UNIQUE KEY` on `name` and the query uses `ON DUPLICATE KEY UPDATE`. The first flush inserts the `wallet` row. Every flush after that tries to insert a second `wallet` row, collides with the unique key, and the database runs the `UPDATE amount = VALUES(amount)` branch instead, overwriting the existing row in place. Remove the `UNIQUE KEY` and the collision never happens, so the database falls back to a plain insert every time and you get a fresh duplicate row on every flush. The unique constraint is the thing that turns INSERT into upsert.
+</Checkpoint>
+
+### The three things that call flush
+
+A timer alone is not persistence. A 30-second timer means that at any moment you are holding up to 30 seconds of changes that exist only in RAM. If the server stops or a player leaves in that window, those changes vanish. That is the data-loss window, and you close it with two extra save points.
+
+```lua
+CreateThread(function()
+    while true do
+        Wait(30000)
+        flush()
+    end
+end)
+```
+
+This is the periodic flush. A thread loops forever, sleeps 30 seconds with `Wait(30000)`, then calls `flush`. This is the steady-state save that keeps the database roughly current while the server runs. The 30-second number is a deliberate tradeoff: longer means fewer writes but a bigger loss window, shorter means more writes but a smaller window. You tune it to how much state you can afford to lose.
+
+```lua
+AddEventHandler('playerDropped', function()
+    flush()
+end)
+```
+
+`playerDropped` is a server event that fires the moment a player disconnects. This is the per-player save: catch the player on the way out and write their state immediately, instead of waiting up to 30 seconds for the timer and possibly losing their last actions. In a real economy you would flush only that one player's data here, keyed by their identifier, rather than a single global wallet.
+
+```lua
+AddEventHandler('onResourceStop', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+    flush()
+end)
+```
+
+`onResourceStop` fires when any resource stops, so the first thing you do is check the name against `GetCurrentResourceName()` and return early if it is not yours. Without that guard you would run your flush every time any unrelated resource restarted. When it is your resource stopping, you flush one last time. This is the hook that makes a `restart qu_persistence`, a txAdmin graceful shutdown, or a scheduled restart safe: the resource saves its final state on the way down, so the next start reads back exactly what it had. The timer keeps the database fresh during play; these two handlers guarantee the moments most likely to lose data, a disconnect and a shutdown, never do.
+
+### When you reach for this pattern
+
+Reach for cache plus write-back any time a value changes far more often than you can afford to write it. Money, inventory weight, XP, and position are the classic cases. The rule of thumb: if a piece of state mutates many times per second but only needs to survive a crash, hold it in RAM, flag it dirty, and flush on a timer plus on `playerDropped` and `onResourceStop`. If a value changes rarely and must never be lost for even one second, such as a purchase receipt or a ban, skip the cache and write it straight through. The pattern buys you speed in exchange for a small, bounded loss window, so you only use it where that trade makes sense.
 
 ## If something went wrong
 
 <FailureList
   items={[
     { symptom: "Resource qu_persistence does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_persistence", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_persistence, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "oxmysql is not started, or it starts after this resource. Ensure oxmysql in server.cfg before qu_persistence, and confirm the dependencies block names it." },
+    { symptom: "The database fills with a new wallet row every 30 seconds", fix: "The table is missing the UNIQUE KEY on name, so ON DUPLICATE KEY UPDATE never collides. Add UNIQUE KEY uniq_name (name) and the upsert will update in place." },
+    { symptom: "Wallet resets to 0 after a restart", fix: "The onResourceStop flush did not run, or the cache was never marked dirty. Confirm the onResourceStop handler checks GetCurrentResourceName and that cashadd sets cache.dirty = true." },
   ]}
 />
 
@@ -119,23 +248,28 @@ CreateThread(function() while true do Wait(30000) if cache.dirty then MySQL.inse
 
 <Recap
   items={[
-    "Make the qu_persistence folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for cache, dirty flag, timed flush, and playerDropped save.",
-    "Add ensure qu_persistence to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Hold fast-changing state in an in-memory cache and mutate it without touching the database.",
+    "Use a dirty flag so a flush writes only when something actually changed.",
+    "Write a correct upsert: a UNIQUE key on the table plus ON DUPLICATE KEY UPDATE, run through MySQL.query.await.",
+    "Flush on a timer for steady-state saves, and explain the data-loss window a timer alone leaves open.",
+    "Close that window with a playerDropped save on disconnect and an onResourceStop save on shutdown, guarded by GetCurrentResourceName.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_persistence`, rerun the test, and confirm the output changed.
+  Turn the single global wallet into a per-player wallet. Right now `cache` holds one number and the database has one `wallet` row. Make the cache a table keyed by player source, so `cache[src] = { cash = 0, dirty = false }`, and store each player's `name` in the database as their server identifier instead of the literal `'wallet'`.
+
+  Then make the save points per-player. In the `playerDropped` handler, read `local src = source` and flush only that player's entry, then drop it from the cache so the table does not grow forever. In the timer and in `onResourceStop`, loop over every cached player and flush each dirty one.
+
+  When you finish, run `cashadd` for two different identifiers, disconnect one, and confirm the database holds two distinct rows that each update in place rather than duplicating. This is the exact shape a real framework wallet uses.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
+    { label: "playerDropped server event", href: "https://docs.fivem.net/docs/scripting-reference/events/list/playerDropped/" }
   ]}
 />

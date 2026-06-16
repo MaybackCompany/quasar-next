@@ -2,25 +2,25 @@
   crumbs="Module 08 · Lesson 26"
   title="Vehicles: spawn, modify, clean up"
   meta={[
-    { label: "You'll ship", value: "A /testvehicle command that spawns a car, sets a custom plate, warps the player in, and auto-deletes after 60 seconds." },
+    { label: "You'll ship", value: "A /testvehicle command that spawns a car, sets a custom plate and color, warps the player into the driver seat, and auto-deletes the car after 60 seconds." },
     { label: "Time", value: "~30 minutes" },
-    { label: "You'll learn", value: "CreateVehicle, TaskWarpPedIntoVehicle, vehicle customization natives, network ownership basics, and timeout cleanup." },
+    { label: "You'll learn", value: "The model request-and-poll pattern, joaat hashes, CreateVehicle and its network ownership flags, TaskWarpPedIntoVehicle seat indexes, the vehicle color table, and SetTimeout closure cleanup." },
     { label: "Prereqs", value: "Lesson 24 (spawning entities) and Lesson 25 (cleanup discipline)." },
   ]}
 >
-  Vehicles are the most common entity you will work with in FiveM. Garage scripts, dealerships, police cruisers, test commands -- they all start with spawning a car and putting the player in it. This lesson covers the full cycle: spawn, customize, put the player inside, and clean up when done.
+  Vehicles are the most common entity you will work with in FiveM. Garage scripts, dealerships, police cruisers, test commands -- they all start with spawning a car and putting the player in it. This lesson covers the full cycle: stream the model in, spawn the car, customize it, put the player inside, and delete it cleanly when the timer runs out.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can join my server and read the F8 client console."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds CreateVehicle, plate, colors, warp, and auto-delete as a working FiveM resource named `qu_vehicles_spawn_modify_store`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds CreateVehicle, plate, color, warp, and auto-delete as a working client-side FiveM resource named `qu_vehicles_spawn_modify_store`. Follow the folder names, file names, code, restart command, and expected output exactly. Once the car spawns, the next section takes the code apart line by line so you know why every argument is there.
 </Callout>
 
 ## Build it
@@ -53,48 +53,69 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    Spawning a car and warping the player both happen on the client, so this resource has a `client_script` and no `server_script`. Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `client.lua` and paste this:
+    Open `client.lua` and paste this. The lines are spread out on purpose so the next section can walk through them one at a time:
 
     ```lua
 local testVehicle
+
 RegisterCommand('testvehicle', function()
-    if testVehicle and DoesEntityExist(testVehicle) then DeleteEntity(testVehicle) end
+    if testVehicle and DoesEntityExist(testVehicle) then
+        DeleteEntity(testVehicle)
+    end
+
     local model = joaat('sultan')
-    RequestModel(model) while not HasModelLoaded(model) do Wait(0) end
+    RequestModel(model)
+    while not HasModelLoaded(model) do
+        Wait(0)
+    end
+
     local ped = PlayerPedId()
     local c = GetEntityCoords(ped)
     testVehicle = CreateVehicle(model, c.x + 3.0, c.y, c.z, GetEntityHeading(ped), true, false)
+
     SetVehicleNumberPlateText(testVehicle, 'QUCAR')
     SetVehicleColours(testVehicle, 12, 12)
     TaskWarpPedIntoVehicle(ped, testVehicle, -1)
+
     SetModelAsNoLongerNeeded(model)
     print('[qu_vehicles_spawn_modify_store] spawned sultan')
-    SetTimeout(60000, function() if testVehicle and DoesEntityExist(testVehicle) then DeleteEntity(testVehicle) print('[qu_vehicles_spawn_modify_store] auto-deleted') end end)
+
+    local spawned = testVehicle
+    SetTimeout(60000, function()
+        if spawned and DoesEntityExist(spawned) then
+            DeleteEntity(spawned)
+            print('[qu_vehicles_spawn_modify_store] auto-deleted')
+        end
+    end)
 end, false)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the F8 client console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_vehicles_spawn_modify_store
     ```
 
-    Save, then run:
+    Save, then run this in the server console:
 
     ```text
     restart qu_vehicles_spawn_modify_store
     ```
 
-    Run this test:
+    Join the server, open the F8 console, and run:
 
     ```text
     /testvehicle
     ```
+
+    A Sultan appears beside you, you are dropped into the driver seat, the plate reads QUCAR, and the body is dark grey. Sixty seconds later the car vanishes.
 
     <ExpectedOutput>
       F8: [qu_vehicles_spawn_modify_store] spawned sultan
@@ -103,14 +124,117 @@ F8 after 60 seconds: [qu_vehicles_spawn_modify_store] auto-deleted
   </Step>
 </StepGroup>
 
+## How it works
+
+The car spawned. Now take the code apart so the next time you write a garage or a dealership you are deciding, not copying. The whole command is one story in five beats: clear the old car, load the model, spawn it, dress it up, and arm a timer to delete it. We will follow that order.
+
+### Why a model must be loaded before you spawn it
+
+```lua
+local model = joaat('sultan')
+RequestModel(model)
+while not HasModelLoaded(model) do
+    Wait(0)
+end
+```
+
+A vehicle in GTA is built from a model: a bundle of meshes, textures, and physics data that the game keeps on disk, not in memory. `CreateVehicle` cannot build a car from a model that is not in memory yet, so you have to ask the engine to stream it in first. That is exactly what these three pieces do.
+
+`RequestModel(model)` tells the engine to start loading the Sultan. It does not wait. The load happens in the background over the next few frames, so the line after `RequestModel` runs long before the model is actually ready. If you called `CreateVehicle` immediately you would get a null entity, because the data simply is not there yet.
+
+That is why the `while` loop is there. `HasModelLoaded(model)` returns `false` until the streaming finishes, then `true`. The loop spins until that flip happens. `Wait(0)` is the important part: it hands control back to the engine for one frame on each pass. Without it you would lock the whole game thread in a tight loop and the model would never get a chance to finish loading, because you never gave the engine a turn. This request-then-poll-with-Wait shape is one of the most-used idioms in all of FiveM. You will see it again for peds, for props, for animation dictionaries, for anything the game streams.
+
+### What joaat actually returns
+
+```lua
+local model = joaat('sultan')
+```
+
+`joaat` is the Jenkins one-at-a-time hash function, and it turns the text `'sultan'` into a number. Internally the game does not identify models by their string name; it identifies them by a 32-bit hash of that name. `CreateVehicle` and `RequestModel` both expect that hash, not the word. `joaat('sultan')` and `GetHashKey('sultan')` compute the exact same number, so they are interchangeable. `joaat` is just the shorter, native Lua-side spelling. Either way, the rule is the same: hand the spawn natives the hash, never the raw string.
+
+### CreateVehicle and the two flags that confuse everyone
+
+```lua
+testVehicle = CreateVehicle(model, c.x + 3.0, c.y, c.z, GetEntityHeading(ped), true, false)
+```
+
+This is the line that builds the car. The first five arguments are the obvious ones: the model hash, then x, y, z, then the heading. We read the player's position with `GetEntityCoords(ped)` and add `3.0` to x so the car spawns a few metres to the side instead of inside the player. `GetEntityHeading(ped)` points the car the same way the player is facing.
+
+The last two booleans are where most beginners are silently wrong, and they are the network ownership basics this lesson is really about.
+
+- The first boolean, `true`, is `isNetwork`. When it is `true`, the entity is registered with FiveM's networking, gets a network ID, and is replicated to other players. The car you spawn is a real shared object everyone on the server can see. Set this to `false` and the car would exist only on your own machine; no one else would see it. For a car a player sits in, you want `true`.
+- The second boolean, `false`, is `netMissionEntity` (sometimes called `bScriptHostObject`). Leave it `false` for ordinary spawns. You set it `true` only for entities a single script wants to keep authority over across clients, which is an advanced mission-script concern, not something you need for a garage car.
+
+The client that calls `CreateVehicle` becomes the initial network owner of the car. Ownership is the right to control the entity's physics and state, and it can migrate to another player as they drive near it. The takeaway: `isNetwork = true` is what makes a spawned vehicle a proper networked entity instead of a ghost only you can see.
+
+<Checkpoint question="A teammate spawns a car with isNetwork set to false and asks why nobody else can see it. What do you tell them?">
+  The `false` first boolean means the car was never registered with FiveM's networking, so it exists only on the machine that spawned it. Other players have no network ID for it and the server never replicates it, so to them the spot is empty. The fix is to spawn with `isNetwork = true` (the first boolean), which gives the car a network ID and makes it a shared entity. The second boolean, `netMissionEntity`, stays `false` for an ordinary car and is unrelated to whether others can see it.
+</Checkpoint>
+
+### Dressing the car: plate and color
+
+```lua
+SetVehicleNumberPlateText(testVehicle, 'QUCAR')
+SetVehicleColours(testVehicle, 12, 12)
+```
+
+`SetVehicleNumberPlateText` takes the vehicle handle and a string, and stamps that string onto the plate. Plates are capped at eight characters, so `QUCAR` is fine.
+
+`SetVehicleColours(vehicle, primary, secondary)` is the line with the magic numbers. Those two numbers are not RGB values. They are indexes into GTA's built-in paint table, where each number maps to a specific named color. `12` is a dark grey (matte-ish metallic grey), which is why the body comes out grey. The full table lives in the FiveM and GTA modding references under vehicle colors; common anchors are `0` (black), `12` (dark grey), `27` (red), `64` (matte black). Passing the same index for primary and secondary, as we do here, paints the whole car one solid color. The reason to use an index instead of raw RGB is that these are the factory paints the game already ships, so they render correctly under the game's lighting without you defining a custom color.
+
+### Putting the player in the seat instantly
+
+```lua
+TaskWarpPedIntoVehicle(ped, testVehicle, -1)
+```
+
+`TaskWarpPedIntoVehicle` teleports a ped straight into a seat with no walking animation. The third argument is the seat index, and the seat numbering is the part to memorise: `-1` is the driver seat, `0` is the front passenger, `1` and `2` are the rear seats, and so on. So `-1` here drops the player behind the wheel the instant the car exists.
+
+The word "warp" is the contrast to learn. `TaskWarpPedIntoVehicle` is instant and unconditional, which is exactly what you want for a test command or an admin spawn. The alternative, `TaskEnterVehicle`, makes the ped physically walk over, open the door, and climb in, which looks natural but takes seconds and can fail if the path is blocked. For a spawn-and-go command, warp wins.
+
+### Releasing the model
+
+```lua
+SetModelAsNoLongerNeeded(model)
+```
+
+Back when you called `RequestModel`, you told the engine to pin the Sultan model in memory. Once the car is built, the spawned entity holds its own reference to that data, so the pin you placed is no longer needed. `SetModelAsNoLongerNeeded` lifts your hold and lets the streamer free the model when nothing else is using it. Skipping this will not crash anything, but pile up enough un-released models across a session and you leak memory. Release what you requested: that is the discipline.
+
+### The timer, the closure, and the existence guard
+
+```lua
+local spawned = testVehicle
+SetTimeout(60000, function()
+    if spawned and DoesEntityExist(spawned) then
+        DeleteEntity(spawned)
+        print('[qu_vehicles_spawn_modify_store] auto-deleted')
+    end
+end)
+```
+
+`SetTimeout(60000, fn)` schedules the function `fn` to run once, 60000 milliseconds (60 seconds) later. The function you hand it is a closure: it captures the variables in scope when it was created and remembers them until it fires. Here it captures `spawned`, which we set to the current `testVehicle` on the line above.
+
+That extra `local spawned = testVehicle` is deliberate, and it is the named takeaway of this lesson. `testVehicle` is the shared variable at the top of the file, and it changes every time the command runs. If the timer closed over `testVehicle` directly, then running `/testvehicle` a second time would overwrite `testVehicle` with the new car, and the first car's 60-second timer would fire and delete the new car by mistake. By snapshotting the handle into a fresh `spawned` for each run, every timer deletes exactly the car it was created for.
+
+`DoesEntityExist(spawned)` is the guard. By the time the timer fires, the car might already be gone: the player could have left and rejoined, another script could have cleaned it up, or the entity could have been streamed out. Calling `DeleteEntity` on a handle that no longer points to a live entity is exactly the kind of careless call that throws errors in the F8 console. The guard says "only delete this if it is still really here," which is the cleanup discipline from Lesson 25 applied to a real entity.
+
+### When you reach for this whole pattern
+
+Stream a model, spawn a networked entity, customize it, seat the player, and arm a guarded cleanup: that five-beat shape is the skeleton under almost every vehicle feature in FiveM.
+
+- **A garage or dealership.** Spawning the car the player selected, painting it to their saved color, and dropping them into the driver seat is this exact code with the model and colors read from a database instead of hard coded.
+- **A test or admin command.** Spawn any vehicle on demand to check handling or a livery, then let the timer clean it up so you do not litter the map.
+- **Temporary mission vehicles.** A getaway car or a delivery truck that should disappear when the job ends uses the same snapshot-and-guard cleanup so the right entity gets removed at the right time.
+
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_vehicles_spawn_modify_store does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_vehicles_spawn_modify_store", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_vehicles_spawn_modify_store, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "No car appears and F8 shows nothing", fix: "This is a client_script, so /testvehicle must be typed in the F8 console while you are in-game, not in the server console. Confirm you joined the server, then check the resource started with restart qu_vehicles_spawn_modify_store." },
+    { symptom: "The game freezes for a moment then a car appears far away", fix: "You likely removed the Wait(0) inside the model-loading loop or changed it to a positive number. Keep it Wait(0) so the loop yields a frame each pass and the model can stream in." },
+    { symptom: "The car spawns but no one else can see it", fix: "The first CreateVehicle boolean (isNetwork) is false. Set it to true so the car is registered with networking and replicated to other players." },
+    { symptom: "attempt to call a nil value (global 'joaat')", fix: "joaat is spelled in all lowercase. If it still fails, swap it for GetHashKey('sultan'), which computes the identical hash." },
+    { symptom: "Running /testvehicle twice deletes the wrong car after a minute", fix: "You let the timer close over testVehicle directly. Add local spawned = testVehicle before SetTimeout and delete spawned inside the closure so each timer owns its own car." },
   ]}
 />
 
@@ -118,23 +242,44 @@ F8 after 60 seconds: [qu_vehicles_spawn_modify_store] auto-deleted
 
 <Recap
   items={[
-    "Make the qu_vehicles_spawn_modify_store folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for CreateVehicle, plate, colors, warp, and auto-delete.",
-    "Add ensure qu_vehicles_spawn_modify_store to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Stream a model in with RequestModel and a Wait(0) poll loop, and explain why CreateVehicle would fail without it.",
+    "Turn a model name into the hash CreateVehicle needs with joaat, and know GetHashKey gives the same number.",
+    "Read CreateVehicle's isNetwork and netMissionEntity flags and say what network ownership means for who can see the car.",
+    "Customize a vehicle with a plate string and an index from the GTA color table, and warp the player into the driver seat with seat -1.",
+    "Release a requested model with SetModelAsNoLongerNeeded, and snapshot a handle so a SetTimeout closure deletes the exact entity it was armed for, guarded by DoesEntityExist.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_vehicles_spawn_modify_store`, rerun the test, and confirm the output changed.
+  Make the command accept a model name and a color so it is a real spawn tool instead of a fixed demo. FiveM passes the typed words into the handler as the `args` table:
+
+  ```lua
+  RegisterCommand('testvehicle', function(source, args)
+      local name = args[1] or 'sultan'
+      local color = tonumber(args[2]) or 12
+      local model = joaat(name)
+      if not IsModelInCdimage(model) or not IsModelAVehicle(model) then
+          print('[qu_vehicles_spawn_modify_store] not a valid vehicle: ' .. name)
+          return
+      end
+      RequestModel(model)
+      while not HasModelLoaded(model) do
+          Wait(0)
+      end
+      -- spawn, then: SetVehicleColours(testVehicle, color, color)
+  end, false)
+  ```
+
+  Run `/testvehicle adder 27` and confirm a red Adder spawns. Then run `/testvehicle notacar` and confirm the `IsModelInCdimage` and `IsModelAVehicle` guard prints the rejection line instead of trying to spawn a broken entity. You just turned a hard-coded demo into a command that validates user input before touching the spawn natives, which is the difference between a toy and a tool.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "CreateVehicle native reference", href: "https://docs.fivem.net/natives/?_0xAF35D0D2583051B0" },
+    { label: "TaskWarpPedIntoVehicle native reference", href: "https://docs.fivem.net/natives/?_0x9A7D091411C5F684" },
+    { label: "FiveM vehicle color reference", href: "https://docs.fivem.net/docs/game-references/vehicle-references/vehicle-colors/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

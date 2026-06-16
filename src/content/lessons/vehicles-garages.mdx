@@ -2,25 +2,26 @@
   crumbs="Track 2 · Pro Path"
   title="Vehicles &amp; garages"
   meta={[
-    { label: "You'll learn", value: "Plate as PK, garage states, CreateVehicleServerSetter, mods JSON, impound" },
+    { label: "You'll learn", value: "Plate as primary key, the garage state column, the take/store lifecycle, CreateVehicleServerSetter, parameterized upserts" },
     { label: "Time", value: "~24 minutes" },
-    { label: "Prereqs", value: "P1 (oxmysql), P7 (OneSync)" },
-    { label: "Outcome", value: "A working garage with take/store, persistent mods, and an impound list" },
+    { label: "Prereqs", value: "P1 (oxmysql + a MariaDB database), P7 (OneSync enabled)" },
+    { label: "Outcome", value: "A working garage where /takecar spawns and persists a car by plate, and /storecar flips its state back and despawns it" },
   ]}
 >
-  A garage is a valet with a clipboard. The clipboard is your DB. The plate is the ticket. Owning a vehicle in FiveM means: a row in `owned_vehicles`, a unique plate, and a state column that says "is the car spawned right now or sitting in the garage". This lesson walks the full take/store flow.
+  A garage is a valet with a clipboard. The clipboard is your database. The plate is the ticket. Owning a vehicle in FiveM is not the spawned car on the street, it is a **row** in a table: a unique plate, a model, and a state column that records whether the car is out right now or sitting in the garage. This lesson builds the full take and store flow, then takes it apart so you understand why the plate is the key and why the state column, not the spawning, is the actual garage.
 </LessonHero>
 
 <Prereq
   items={[
-    "I can find my server resources folder.",
+    "I have oxmysql running against a MariaDB database and can run a SQL query.",
+    "I have OneSync enabled in server.cfg.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds oxmysql plate row, CreateVehicleServerSetter, and garage state as a working FiveM resource named `qu_vehicles_garages`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a plate-keyed vehicle row, a server-side spawn with `CreateVehicleServerSetter`, and a garage state column as a working FiveM resource named `qu_vehicles_garages`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you can build a real garage instead of copying one.
 </Callout>
 
 ## Build it
@@ -44,7 +45,7 @@ resources/qu_vehicles_garages/
     ```
   </Step>
 
-  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM loads oxmysql first, then your server file.">
     Open `fxmanifest.lua` and paste this:
 
     ```lua
@@ -54,39 +55,68 @@ game 'gta5'
 server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
-dependency 'oxmysql'
+dependencies {
+    'oxmysql'
+}
     ```
 
-    Run this SQL before starting the resource:
-
-    ```sql
-CREATE TABLE IF NOT EXISTS qu_vehicles_garages_vehicles (
-  plate VARCHAR(12) PRIMARY KEY,
-  model VARCHAR(40) NOT NULL,
-  state VARCHAR(20) NOT NULL DEFAULT 'garage'
-);
-    ```
+    `oxmysql` is a community library from the Overextended group, not a built-in Cfx.re resource, so it must already be installed and started before this resource. The `dependencies { 'oxmysql' }` block (the plural list form is the documented manifest directive) tells FiveM to refuse to start `qu_vehicles_garages` until `oxmysql` is up, so your queries never fire against a library that has not loaded yet.
   </Step>
 
-  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+  <Step num={4} title="Create the table" outcome="The garage clipboard exists in your database.">
+    Run this SQL against your MariaDB database once, before you start the resource:
+
+    ```sql
+CREATE TABLE IF NOT EXISTS qu_owned_vehicles (
+  plate VARCHAR(12) NOT NULL,
+  model VARCHAR(40) NOT NULL,
+  state VARCHAR(20) NOT NULL DEFAULT 'garage',
+  PRIMARY KEY (plate)
+);
+    ```
+
+    The `PRIMARY KEY (plate)` line is the part that makes the rest of the lesson work. It tells the database that no two rows may share a plate. That single rule is what lets one plate stand for one car forever.
+  </Step>
+
+  <Step num={5} title="Write the lesson code" outcome="The take/store lifecycle is now runnable code.">
     Open `server.lua` and paste this:
 
     ```lua
+local PLATE = 'QUCAR1'
+local MODEL = 'sultan'
+
+local spawnedVehicle = nil
+
 RegisterCommand('takecar', function()
-    local vehicle = CreateVehicleServerSetter('sultan', 'automobile', 215.0, -810.0, 30.0, 90.0)
-    SetVehicleNumberPlateText(vehicle, 'QUCAR1')
-    MySQL.insert.await('INSERT INTO qu_vehicles_garages_vehicles (plate, model, state) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE state = ?', { 'QUCAR1', 'sultan', 'out', 'out' })
-    print('[qu_vehicles_garages] spawned QUCAR1 ' .. vehicle)
-end, false)
+    local vehicle = CreateVehicleServerSetter(MODEL, 'automobile', 215.0, -810.0, 30.0, 90.0)
+    SetVehicleNumberPlateText(vehicle, PLATE)
+    spawnedVehicle = vehicle
+
+    local rows = MySQL.insert.await(
+        'INSERT INTO qu_owned_vehicles (plate, model, state) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE state = ?',
+        { PLATE, MODEL, 'out', 'out' }
+    )
+
+    print('[qu_vehicles_garages] took ' .. PLATE .. ' rows affected ' .. rows)
+end, true)
 
 RegisterCommand('storecar', function()
-    MySQL.update.await('UPDATE qu_vehicles_garages_vehicles SET state = ? WHERE plate = ?', { 'garage', 'QUCAR1' })
-    print('[qu_vehicles_garages] stored QUCAR1')
-end, false)
+    if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+        DeleteEntity(spawnedVehicle)
+        spawnedVehicle = nil
+    end
+
+    local affected = MySQL.update.await(
+        'UPDATE qu_owned_vehicles SET state = ? WHERE plate = ?',
+        { 'garage', PLATE }
+    )
+
+    print('[qu_vehicles_garages] stored ' .. PLATE .. ' rows updated ' .. affected)
+end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in the server console.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -99,27 +129,114 @@ end, false)
     restart qu_vehicles_garages
     ```
 
-    Run this test:
+    Run this test in the txAdmin Live Console, twice in a row:
 
     ```text
-    /takecar then /storecar
+    takecar then storecar
     ```
 
+    The first time you run `takecar` the row is created, so one row is affected. `storecar` then flips one row back to `garage`. The second time you run `takecar` the row already exists, so the upsert updates it and reports two rows affected (MariaDB counts an updated upsert row as two).
+
     <ExpectedOutput>
-      [qu_vehicles_garages] spawned QUCAR1
-[qu_vehicles_garages] stored QUCAR1
+      [qu_vehicles_garages] took QUCAR1 rows affected 1
+[qu_vehicles_garages] stored QUCAR1 rows updated 1
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the console reported the take and the store. The car you saw on the street was never the point. The point is the row, the plate that keys it, and the state column that flips between `out` and `garage`. Take the code apart so the next garage you write is a decision, not a paste.
+
+### The plate is the primary key
+
+```sql
+PRIMARY KEY (plate)
+```
+
+A garage needs one fact above all others: given a car, which row in the database is it? The answer has to be a value the spawned entity carries with it and that nothing else in the world can duplicate. That value is the plate. So the plate is not just a label on the bumper, it is the link between the entity in the game and the row in the table, exactly like the numbered ticket a valet hands you.
+
+Making `plate` the primary key enforces that link at the database level. The database now refuses to store two rows with the same plate. If `QUCAR1` already exists and you try to insert it again, the insert does not silently create a duplicate and it does not quietly succeed. It collides with the primary key. That collision is not a bug to avoid, it is the behaviour you build on in a moment.
+
+### The state column is the actual garage
+
+```lua
+{ PLATE, MODEL, 'out', 'out' }
+```
+
+Beginners think the garage is the spawning. It is not. Spawning a car is one native call. The garage is the `state` column, and the entire feature is one question asked of one row: is this car `out` or in the `garage` right now?
+
+`/takecar` sets `state` to `out`. `/storecar` sets it back to `garage`. That is the whole lifecycle. Everything else, the spawn, the plate text, the despawn, is plumbing around those two writes. When you load a player's garage on a real server, you do not query for cars, you query for their rows where `state = 'garage'` and show them that list. When you store a car, you do not destroy data, you flip one column. The car always exists as a row. Only its location changes.
+
+<Checkpoint question="If you wanted to show a player only the cars currently parked in their garage, which column would you filter on, and to what value?">
+  You filter on the `state` column for the value `garage`. A car that is `out` has been spawned into the world and should not appear in the parked list, while a car that is `garage` is stored and available to take. The state column is the single source of truth for where each car is, which is why storing a car is a one-column update and never a delete of the row.
+</Checkpoint>
+
+### The question marks are parameter slots, not string glue
+
+```lua
+MySQL.insert.await(
+    'INSERT INTO qu_owned_vehicles (plate, model, state) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE state = ?',
+    { PLATE, MODEL, 'out', 'out' }
+)
+```
+
+Notice that the plate and the model never appear inside the SQL string. The string contains `?` placeholders, and the real values live in the table that follows. oxmysql substitutes them in order: the first `?` becomes `PLATE`, the second `MODEL`, the third the literal `'out'`, the fourth the `'out'` after `ON DUPLICATE KEY UPDATE`.
+
+This is a parameterized query, and it is a security fundamental, not a style choice. The dangerous alternative is to build the SQL by gluing the plate straight into the string. On a real server the plate often comes from a player or from a vehicle a player controls, which means it is untrusted input. If you concatenate untrusted input into a query, a crafted plate can close your string early and append its own SQL, and now an attacker is running commands against your database. That is SQL injection. Placeholders shut the door: oxmysql sends the SQL and the values to MariaDB separately, so a value is always treated as data and can never become code. Make every query you ever write use placeholders, even when the value looks safe today.
+
+### ON DUPLICATE KEY UPDATE is the upsert that depends on the key
+
+```sql
+ON DUPLICATE KEY UPDATE state = ?
+```
+
+Now the primary key collision from earlier pays off. The first time you run `/takecar`, the plate does not exist, so the `INSERT` runs and creates the row. The second time, the plate already exists, so the insert would collide with the primary key. `ON DUPLICATE KEY UPDATE` catches that exact collision and runs an update instead: it leaves the existing row in place and sets its `state` to `out`.
+
+This combined insert-or-update is called an upsert. It only works because `plate` is a key. Strip the `PRIMARY KEY (plate)` line from the table and there is no key to be duplicated, so the database never detects a collision, the `ON DUPLICATE KEY UPDATE` clause is never reached, and every `/takecar` quietly stacks another duplicate row for the same plate. The upsert and the key are one mechanism. You reach for this pattern whenever re-running an action should refresh an existing record rather than error or duplicate it, which describes almost every take-from-garage flow.
+
+### MySQL.insert.await versus MySQL.update.await
+
+```lua
+local rows = MySQL.insert.await(...)
+local affected = MySQL.update.await(...)
+```
+
+These two functions do the same kind of work, talk to the database, and differ mainly in what they hand back. `MySQL.insert` is built for `INSERT` statements and returns information about the insert, such as how many rows were affected. `MySQL.update` is built for `UPDATE` statements and returns the number of rows it changed. Using the matching function keeps your intent obvious and gives you the return value that makes sense for that statement, which is why the take command prints rows affected and the store command prints rows updated.
+
+The `.await` on the end is the important part. A database query is not instant: the server fires it off and the answer comes back a moment later. `.await` tells the code to pause this command handler at that line and wait for the real result before moving on, so by the next line `rows` already holds a number you can print. Without `.await` you would get a pending promise instead of a value. The reason `.await` is allowed here is that a `RegisterCommand` handler in FiveM already runs inside a managed thread, so pausing it yields cleanly instead of freezing the server. That is also why you cannot sprinkle `.await` or `Citizen.Await` into arbitrary top-level code that is not inside such a thread.
+
+### CreateVehicleServerSetter needs OneSync
+
+```lua
+local vehicle = CreateVehicleServerSetter(MODEL, 'automobile', 215.0, -810.0, 30.0, 90.0)
+```
+
+This is a server-side spawn. The server itself creates the car and owns it, and the handle it returns is a server entity handle, a reference that lives on the server, not on any one player's machine. That is a different world from the sibling lesson Vehicles: spawn, modify, store, where `CreateVehicle` runs on the client and the player who ran the command owns the entity locally.
+
+Server-side spawning only exists when OneSync is enabled, which is why it is a prereq for this lesson. OneSync is the networking model that lets the server be the authority over entities instead of delegating ownership to clients. Without it the server has no way to own a car it spawned, so `CreateVehicleServerSetter` has nothing to hand back. With it, the server holds the handle, which is exactly what a garage wants: the car belongs to the system, the system knows its plate, and the system can despawn it on store with `DeleteEntity` because the system is the owner.
+
+<Checkpoint question="Why does this lesson use CreateVehicleServerSetter and require OneSync, while the spawn-modify-store lesson uses CreateVehicle with no such requirement?">
+  Because a garage is server-authoritative. The server needs to own the spawned car so it can persist it by plate and despawn it on store, and server-side ownership of entities is exactly what OneSync provides. `CreateVehicleServerSetter` returns a server entity handle that the server controls. `CreateVehicle` in the other lesson runs on the client, so the player's own game owns that entity locally and no OneSync authority is involved. Same goal, different owner, which is why one needs OneSync and the other does not.
+</Checkpoint>
+
+### When you reach for this pattern
+
+The plate-keyed row with a state column is the spine of every persistent-ownership system in FiveM, not just garages. Three real cases you will build on top of it:
+
+- **A real garage menu.** Swap the hardcoded plate for the player's actual owned plates, query their rows where `state = 'garage'`, and let them pick one to take out.
+- **An impound.** Add a third state value such as `impound`. Storing a wrecked car sets `state = 'impound'` instead of `garage`, and a mechanic NPC flips it back to `garage` once the fee is paid. Same row, same column, one more value.
+- **Saved modifications.** Add a `mods` column holding the car's tuning as JSON. Write it on store and read it back on take so the car comes out exactly as the player left it. The plate still keys the row, you are only widening it.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_vehicles_garages does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_vehicles_garages", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_vehicles_garages, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Failed to start resource qu_vehicles_garages: oxmysql failed to start", fix: "oxmysql must be installed and ensured before this resource. The dependencies block stops qu_vehicles_garages until oxmysql is up, so fix oxmysql first." },
+    { symptom: "Table 'qu_owned_vehicles' doesn't exist", fix: "Run the CREATE TABLE SQL against your MariaDB database before starting the resource. The query in step 4 must succeed once." },
+    { symptom: "CreateVehicleServerSetter returns 0 and no car spawns", fix: "OneSync is not enabled. Server-side vehicle spawning requires onesync_enabled true in server.cfg, then a full server restart." },
+    { symptom: "attempt to perform arithmetic on a nil value (concatenating rows)", fix: "The query did not return a number, usually because oxmysql is not actually running. Confirm oxmysql started and the dependencies block names it exactly." },
+    { symptom: "Duplicate rows pile up for QUCAR1", fix: "The table has no primary key on plate, so the upsert never triggers. Recreate the table with PRIMARY KEY (plate)." },
   ]}
 />
 
@@ -127,23 +244,56 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_vehicles_garages folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for oxmysql plate row, CreateVehicleServerSetter, and garage state.",
-    "Add ensure qu_vehicles_garages to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain why the plate is the primary key: it is the one unique value that links a spawned entity to its database row, like a valet ticket.",
+    "Describe the take/store lifecycle as one column flipping between out and garage, and say why storing a car is an update and never a delete.",
+    "Write a parameterized query with ? placeholders and explain how it prevents SQL injection.",
+    "Use ON DUPLICATE KEY UPDATE as an upsert and explain why it only works because plate is a key.",
+    "Tell MySQL.insert.await from MySQL.update.await and say what .await does inside a command handler.",
+    "Explain why CreateVehicleServerSetter returns a server entity handle and requires OneSync."
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_vehicles_garages`, rerun the test, and confirm the output changed.
+  Add an impound state so the system has three places a car can be, not two. First add a new command, `impoundcar`, that flips the row to `impound` instead of `garage` and despawns the car the same way `storecar` does. Then make `takecar` refuse to spawn a car whose stored state is already `impound`, so an impounded car cannot be driven out until it is released.
+
+  ```lua
+  RegisterCommand('impoundcar', function()
+      if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+          DeleteEntity(spawnedVehicle)
+          spawnedVehicle = nil
+      end
+
+      MySQL.update.await(
+          'UPDATE qu_owned_vehicles SET state = ? WHERE plate = ?',
+          { 'impound', PLATE }
+      )
+      print('[qu_vehicles_garages] impounded ' .. PLATE)
+  end, true)
+  ```
+
+  Now change `takecar` to read the current state first and bail out when the car is impounded:
+
+  ```lua
+  local current = MySQL.scalar.await(
+      'SELECT state FROM qu_owned_vehicles WHERE plate = ?',
+      { PLATE }
+  )
+  if current == 'impound' then
+      print('[qu_vehicles_garages] ' .. PLATE .. ' is impounded, cannot take')
+      return
+  end
+  ```
+
+  Restart `qu_vehicles_garages`, run `impoundcar`, then `takecar`, and confirm the console refuses the take. You just turned a two-state garage into a three-state ownership system by adding one value to the column you already control, which is exactly how a real impound is built.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "CreateVehicleServerSetter native", href: "https://docs.fivem.net/natives/?_0x6AE51D4B" },
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
+    { label: "OneSync overview", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" }
   ]}
 />
