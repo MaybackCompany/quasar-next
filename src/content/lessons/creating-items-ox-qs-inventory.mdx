@@ -273,8 +273,8 @@ local ok, response = exports.ox_inventory:RemoveItem(src, 'water', 1)
 
 Now map the same `water` item onto qs-inventory. The idea is the same (an item is a key in a Lua table), but the file, the field names, and the `AddItem` argument order all differ.
 
-<Callout title="Confidence note">
-  qs-inventory is a paid, encrypted Quasar Store resource with no public source repository. The item shape, the export names, and the commands below come from the official Quasar docs and are reliable. The exact **argument order** of `AddItem` / `RemoveItem` is corroborated from the docs but the per-export parameter pages are JS-rendered and could not be read field by field. Treat the argument order as verify-in-product: test it with `/giveitem` or read the exports in your own copy of the resource before you ship code that depends on it.
+<Callout title="Verified against the Quasar docs">
+  qs-inventory is a paid Quasar Store resource (it supports ESX, QBCore, and Qbox). The item file and shape, the export names, and the `AddItem` argument order below were checked against the official Quasar Store documentation. The biggest difference from ox: qs item definitions are **flat**, with no nested `client` block. On-use behavior is wired separately with `CreateUsableItem` (shown below) or your framework's consumables config. After any update, glance at `shared/items.lua` and the docs for your exact version.
 </Callout>
 
 ### The qs-inventory item shape
@@ -295,7 +295,7 @@ qs-inventory items live in `shared/items.lua` (not `data/items.lua`), and they u
 },
 ```
 
-And a richer one with the nested `client` block for on-use behavior:
+That flat table is the whole item definition. This is the key difference from ox_inventory: qs items have **no nested `client` block** for animations, hunger, or props. The nine fields above are all a qs item holds. A second item looks the same, just with different values:
 
 ```lua
 ['burger'] = {
@@ -307,19 +307,11 @@ And a richer one with the nested `client` block for on-use behavior:
     unique = false,
     useable = true,
     shouldClose = true,
-    description = 'Greasy but filling.',
-    client = {
-        status  = { hunger = 200000 }, -- raises hunger stat
-        usetime = 2500,                -- ms progress bar
-        anim    = { dict = 'mp_player_inteat@burger', lib = 'mp_player_int_eat_burger' },
-        prop    = { model = 'prop_cs_burger_01', bone = 18905,
-                    coords = { x = 0.0, y = 0.0, z = 0.0 },
-                    rotation = { x = 0.0, y = 0.0, z = 0.0 } },
-        disable = { move = false, car = false, combat = true },
-        removeAfterUse = true
-    }
+    description = 'Greasy but filling.'
 },
 ```
+
+So where does the eating animation and the hunger boost come from? Not from the item table. In qs you flag the item `useable = true` and wire what happens on use with a `CreateUsableItem` handler on the server (shown two steps down), or through your framework's consumables config. ox bakes that behavior into the item; qs keeps the item flat and puts the behavior in code.
 
 ### Giving an item in qs-inventory
 
