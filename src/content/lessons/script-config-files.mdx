@@ -1,0 +1,381 @@
+<LessonHero
+  crumbs="Module B2 · Your first resource"
+  title="Reading and editing config.lua"
+  meta={[
+    { label: "You'll build", value: "A tiny resource with its own config.lua, read from a separate file as a shared_script, plus a clean before/after config edit you can prove in the console." },
+    { label: "Time", value: "~18 minutes" },
+    { label: "You need", value: "A local FiveM practice setup you can restart, a text editor, and the txAdmin Live Console open. Your first-line-of-Lua mental model helps but is not required." },
+    { label: "You'll learn", value: "The Config = {} table pattern, the keys most scripts expose, why editing config is safe but editing core logic is risky, and exactly how one missing comma breaks a whole resource" },
+  ]}
+>
+  Ninety percent of the time you spend with a downloaded script is not writing code. It is opening one file, `config.lua`, changing a few values, and restarting. This lesson shows you what that file actually is, how a script reads it, and where the landmines are. By the end you will read any `config.lua` with confidence and know the difference between a safe edit and one that takes the resource offline.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read the txAdmin Live Console for output and errors."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a working resource named `qu_config_demo`: a `config.lua` that holds settings, and a `server.lua` that reads them and prints them on a command. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes the config apart key by key so you know which lines are safe to touch and which are not.
+</Callout>
+
+## What a config file is
+
+A `config.lua` is just a Lua file that builds one big table and leaves it where the rest of the script can find it. There is no magic. The whole pattern is this:
+
+```lua
+Config = {}
+Config.Debug = true
+Config.MaxPlayers = 32
+```
+
+`Config = {}` creates an empty **table**, a container that holds named values. Each line after it drops one more value in under a name. `Config.Debug` is the name `Debug` inside the `Config` table, and you read it back the same way you set it. That is the entire idea. A real script just has more lines.
+
+When a script author wants you to change behavior, they pull those changeable values out of the code and into this one file. You edit the file, you do not edit the code. That separation is the point of a config: the risky logic stays sealed, and the safe knobs sit in one place with your name on them.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_config_demo
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact layout. The config lives in its own file, the way real scripts ship it:
+
+    ```text
+resources/qu_config_demo/
+  fxmanifest.lua
+  config.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM loads the config before the code that reads it.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script 'config.lua'
+server_script 'server.lua'
+    ```
+
+    The order matters. `shared_script 'config.lua'` is listed first, so FiveM runs it before `server.lua`. A shared script loads on both the client and the server, which is why almost every script ships its config as a `shared_script`: both sides can read the same settings. By the time `server.lua` runs, the `Config` table already exists.
+  </Step>
+
+  <Step num={4} title="Write config.lua" outcome="A real, multi-key config table the script can read.">
+    Open `config.lua` and paste this. These are the keys you will see in almost every script you download:
+
+    ```lua
+Config = {}
+
+Config.Framework = 'qbox'          -- 'qbox' | 'esx' | 'standalone'
+Config.Locale = 'en'               -- language file to load
+Config.Debug = false               -- true prints extra logs
+
+Config.OpenKey = 'F6'              -- key binding to open the menu
+
+Config.Prices = {
+    water = 5,
+    bandage = 25,
+    repairkit = 150,
+}
+
+Config.Locations = {
+    { label = 'Legion Square', coords = vec3(215.0, -810.0, 30.0) },
+    { label = 'Sandy Shores',  coords = vec3(1960.0, 3740.0, 32.0) },
+}
+
+Config.Webhook = ''                -- Discord webhook URL, blank = off
+    ```
+  </Step>
+
+  <Step num={5} title="Write server.lua" outcome="The code reads the config instead of hard coding values.">
+    Open `server.lua` and paste this. Notice it never hard codes a price or a framework name. It reads them from `Config`:
+
+    ```lua
+RegisterCommand('config_demo', function()
+    print('[qu_config_demo] framework: ' .. Config.Framework)
+    print('[qu_config_demo] locale:    ' .. Config.Locale)
+    print('[qu_config_demo] debug:     ' .. tostring(Config.Debug))
+    print('[qu_config_demo] open key:  ' .. Config.OpenKey)
+    print('[qu_config_demo] water price: ' .. Config.Prices.water)
+    print('[qu_config_demo] locations:   ' .. #Config.Locations)
+end, true)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The config values appear in the console.">
+    Open `server.cfg` and add this line:
+
+    ```cfg
+    ensure qu_config_demo
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_config_demo
+    ```
+
+    Run this test from the txAdmin Live Console:
+
+    ```text
+    config_demo
+    ```
+
+    <ExpectedOutput>
+      [qu_config_demo] framework: qbox
+[qu_config_demo] locale:    en
+[qu_config_demo] debug:     false
+[qu_config_demo] open key:  F6
+[qu_config_demo] water price: 5
+[qu_config_demo] locations:   2
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## The keys you will meet everywhere
+
+Different authors name things slightly differently, but the same handful of keys show up in nearly every `config.lua`. Here is what each one controls and whether it is safe to change.
+
+<MockTable
+  head={["Key", "What it does", "Safe to edit?"]}
+  rows={[
+    ["Config.Framework", "Which base your server runs: qbox, esx, or standalone", "Yes, set it to your actual framework"],
+    ["Config.Locale", "Which language file the script loads, e.g. en, fr, de", "Yes, if that locale file exists"],
+    ["Config.Debug", "true prints extra logs while you set up; false for live", "Yes, flip freely"],
+    ["Config.Prices", "Numbers the script charges for items or services", "Yes, change the numbers"],
+    ["Config.Locations", "Coordinates and labels for blips, shops, or job points", "Yes, add or edit entries"],
+    ["Config.Items", "Item names the script gives or takes", "Careful: names must match your inventory exactly"],
+    ["Config.OpenKey", "The key binding that opens the menu", "Yes, use a valid key name"],
+    ["Config.Webhook", "A Discord webhook URL for logs, blank disables it", "Yes, paste your own URL"],
+  ]}
+  caption="The common config surface. Values are yours to change. The code that uses them is not."
+/>
+
+A few of these deserve a closer look, because the type of the value matters as much as the value itself.
+
+### Booleans: true and false, never quoted
+
+```lua
+Config.Debug = false
+```
+
+`Config.Debug` is a **boolean**. It is either `true` or `false`, with no quotes. This is the single most common type to get wrong. If you write `Config.Debug = 'false'` with quotes, you have stored the text `"false"`, which is a string, and a string is always treated as true when the script checks it. So the debug logs you tried to turn off stay on. Booleans are bare words: `true` or `false`.
+
+### Numbers stay bare, strings get quotes
+
+```lua
+Config.Prices = {
+    water = 5,
+    bandage = 25,
+}
+```
+
+A price is a **number**, so it has no quotes: `water = 5`. A name like the framework is a **string**, so it sits inside quotes: `Config.Framework = 'qbox'`. Mixing these up is the second most common config break. Write `water = '5'` and the script may try to do math on text and error, or silently misbehave. The rule: numbers bare, text in quotes.
+
+### The Discord webhook
+
+```lua
+Config.Webhook = ''
+```
+
+A **webhook** is a URL the script posts log messages to so they show up in a Discord channel. Right now it is an empty string, which the author has wired to mean "logging off." When you are ready, you paste your channel's webhook URL between the quotes. Treat that URL like a password. Anyone who has it can post into your channel, so never share a `config.lua` with a live webhook still inside it.
+
+<Checkpoint question="Why does Config.Debug = 'false' fail to turn debugging off?">
+  Because the quotes turn it into a string, not a boolean. When the script checks `if Config.Debug then`, Lua treats any non-empty string as true, including the text `"false"`. So the check passes and the debug logs keep printing. The fix is to remove the quotes so it is the real boolean `false`. In Lua only `false` and `nil` count as false; every other value, including `0` and the string `"false"`, counts as true. That is a Lua rule worth memorizing early, because it surprises people coming from other languages.
+</Checkpoint>
+
+## Safe edits versus risky edits
+
+Here is the mental line that keeps your server alive. There are two kinds of files in a downloaded script.
+
+### The config is the cockpit
+
+`config.lua` is built to be edited. The author put values there on purpose so you can tune them. Changing a price, a key bind, a coordinate, or a boolean is a **safe edit**. You are turning a knob the author left out for you. The worst that happens with a clean edit is the number is wrong and you change it again.
+
+### The logic is the engine
+
+The other files, usually `server.lua`, `client.lua`, and anything in a `server/` or `client/` folder, hold the actual logic: how the script talks to the database, how it validates a player, how it moves money. Editing those is a **risky edit**. You can break things you cannot see, introduce a security hole, or make the script impossible to update later because your changes get wiped by the next version. As a rule: if a value is not exposed in `config.lua`, the author did not intend for you to change it. Touching the engine is an advanced move, not a setup step.
+
+```text
+resources/qu_config_demo/
+  config.lua      <- the cockpit. Edit these values freely.
+  server.lua      <- the engine. Read it, learn from it, do not casually edit.
+  fxmanifest.lua  <- the wiring. Only touch when adding or renaming files.
+```
+
+The whole reason a `config.lua` exists is to give you a safe surface so you never need to open the engine just to set a price.
+
+## A real before/after edit
+
+Let us change the water price from `5` to `12` and turn debug on. This is the most common edit you will ever make, and it is completely safe.
+
+**Before:**
+
+```lua
+Config.Debug = false
+
+Config.Prices = {
+    water = 5,
+    bandage = 25,
+    repairkit = 150,
+}
+```
+
+**After:**
+
+```lua
+Config.Debug = true
+
+Config.Prices = {
+    water = 12,
+    bandage = 25,
+    repairkit = 150,
+}
+```
+
+Two values changed, nothing else. Now restart and re-test:
+
+```text
+restart qu_config_demo
+config_demo
+```
+
+<ExpectedOutput>
+  [qu_config_demo] debug:     true
+[qu_config_demo] water price: 12
+</ExpectedOutput>
+
+That is the entire loop you will repeat hundreds of times: open `config.lua`, change a value, save, restart the resource, confirm in the console. A config edit only takes effect after a restart, because the resource reads the file once at start. Saving the file alone changes nothing until you restart.
+
+### Reskinning the UI is a config edit too
+
+Many scripts expose their menu accent color as a config value, so a "before/after" can be visual as well as numeric. If a script ships something like `Config.AccentColor`, switching the brand color is the same safe edit: change the value, restart, done.
+
+<Swatch colors={[{ hex: '#7c5cff', label: 'before' }, { hex: '#0fb6c4', label: 'after' }]} />
+
+You did not open the engine to do that. You changed one exposed value. That is the difference between a config edit and a logic edit, even when the result is something you can see on screen.
+
+## How a bad edit breaks the resource
+
+This is where most beginners lose an evening. A `config.lua` is real Lua, so it follows Lua's rules to the letter. A single missing comma or quote does not produce a friendly "you made a typo here" message. It stops the whole resource from loading, and the script that depended on it does nothing.
+
+### A missing comma
+
+Delete the comma after `water = 12` so two entries run together:
+
+```lua
+Config.Prices = {
+    water = 12
+    bandage = 25,
+}
+```
+
+The resource will not start. In the console you get something like:
+
+<Mockup app="txAdmin · Live Console">
+  ```text
+  Error parsing script @qu_config_demo/config.lua in resource qu_config_demo:
+  config.lua:3: '}' expected (to close '{' at line 1) near 'bandage'
+  Failed to load script config.lua.
+  ```
+</Mockup>
+
+Read it backwards. Lua reached `bandage` while it was still expecting either another item or the `}` that closes the table, because nothing told it the `water = 12` line had ended. The comma is the separator between entries. Without it, Lua cannot tell where one value stops and the next begins, so it gives up and the resource never loads.
+
+### A missing quote
+
+Now break a string instead. Drop the closing quote on the framework value:
+
+```lua
+Config.Framework = 'qbox
+```
+
+<Mockup app="txAdmin · Live Console">
+  ```text
+  Error parsing script @qu_config_demo/config.lua in resource qu_config_demo:
+  config.lua:3: unfinished string near ''qbox'
+  Failed to load script config.lua.
+  ```
+</Mockup>
+
+A string needs a fence on both ends. With only an opening quote, Lua reads to the end of the line looking for the closing one, never finds it, and reports an unfinished string. Same outcome: the resource fails to load and everything that reads `Config` is dead until you fix the quote.
+
+### The wrong type
+
+The nastiest break is the one that does not error at all. Quote a number that the code does math on:
+
+```lua
+Config.Prices = {
+    water = '12',
+}
+```
+
+The file loads fine. No red text. But when the script later runs `playerMoney - Config.Prices.water`, it is subtracting a string from a number, and Lua throws a runtime error at that moment instead of at startup. So the resource looks healthy until a player tries to buy water, then it breaks mid-action with an error that points at the code, not at your config. This is why type matters: numbers bare, strings quoted, booleans bare. Get the type right and the value almost takes care of itself.
+
+<Checkpoint question="You changed one value in config.lua and now the whole resource will not start. The error names a line near the bottom of the file. Where do you actually look?">
+  Start at the line the error names, then scan the lines just above it. A parse error like "'}' expected" or "unfinished string" usually points at the first place Lua got confused, which is often one line past the real mistake. The missing comma or quote is almost always on the line above the one named, or on the line you just edited. Reading the error backwards, from the symbol it expected to the value it choked on, points you straight at it. And because you only changed one value, the culprit is whatever you last touched. Undo that one edit and the resource loads again, which confirms you found it.
+</Checkpoint>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "'}' expected (to close '{' ...) near 'bandage'", fix: "A comma is missing between two table entries. Every entry inside a { } table needs a comma after it, including a trailing one is fine. Add the comma after the value on the line above the one named." },
+    { symptom: "unfinished string near ''qbox'", fix: "A quote is missing on one end of a string. Strings need a matching quote at the start and the end. Re-add the closing quote on the value named in the error." },
+    { symptom: "attempt to perform arithmetic on a string value", fix: "You quoted a number that the code does math on, like a price. Remove the quotes so it is a real number: water = 12, not water = '12'." },
+    { symptom: "attempt to index a nil value (global 'Config')", fix: "server.lua ran before Config existed. In fxmanifest.lua, list shared_script 'config.lua' before server_script 'server.lua' so the config loads first." },
+    { symptom: "I changed a value but nothing changed in game", fix: "A config edit only applies after a restart. Save the file, then run restart qu_config_demo in the console and test again." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Recognize the Config = {} table pattern and read any value back with Config.Name.",
+    "Name the common keys a script exposes: Framework, Locale, Debug, Prices, Locations, Items, key bindings, and Webhook, and say what each controls.",
+    "Tell a safe config edit from a risky logic edit, and know that anything not exposed in config.lua was not meant for you to change.",
+    "Set the right type every time: numbers bare, strings quoted, booleans as bare true or false.",
+    "Read a parse error backwards to find a missing comma or quote, and know a wrong type can break at runtime instead of at startup.",
+    "Run the full loop: edit config.lua, save, restart the resource, confirm the change in the console.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a brand new setting to the config and prove the code reads it. Open `config.lua` and add a max-stock limit for the water shop, then make `server.lua` print it:
+
+  ```lua
+  -- in config.lua, add this line:
+  Config.MaxStock = 50
+  ```
+
+  ```lua
+  -- in server.lua, add this line inside the command handler:
+  print('[qu_config_demo] max stock: ' .. Config.MaxStock)
+  ```
+
+  Restart `qu_config_demo` and run `config_demo`. Confirm the new line prints `max stock: 50`. Then deliberately break it: write `Config.MaxStock = '50'` with quotes, restart, and watch the demo still load fine but notice the value is now a string. Finally, add a second location to `Config.Locations` and confirm the `locations:` count prints `3` instead of `2`. You have now added a config key, read it from code, and seen first hand how type and the trailing comma decide whether your edit is safe or a trap.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM script loading (client/server/shared)", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#scripts" },
+    { label: "Lua 5.4 reference manual: tables", href: "https://www.lua.org/manual/5.4/manual.html#2.1" }
+  ]}
+/>

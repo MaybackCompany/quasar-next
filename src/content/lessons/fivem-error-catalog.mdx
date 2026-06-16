@@ -1,0 +1,373 @@
+<LessonHero
+  crumbs="Module A1 · Server setup from zero"
+  title="The FiveM error catalog"
+  meta={[
+    { label: "You'll build", value: "A reading habit and a lookup table: the exact console text of every error a beginner hits, what it means, and the one fix that clears it." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server you can restart and a txAdmin Live Console you can read. If you do not have that yet, do the server setup lesson first, then come back." },
+    { label: "You'll learn", value: "How to read a traceback (resource, file, line) -> the eight errors that stop every beginner -> the exact text, the meaning, and the fix for each" },
+  ]}
+>
+  Errors are not the enemy. A red line in the console is the server telling you exactly what is wrong and exactly where. The only skill you are missing is reading it. In this lesson you learn to read an error like an address, then you get a catalog of the eight errors every FiveM beginner hits, each with its exact console text, what it actually means, and the single fix that clears it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Read the error first, change code second">
+  Beginners delete code and guess. Professionals read the error, find the named resource, file, and line, and fix that one spot. This lesson trains the reading move first, because every fix in the catalog starts with knowing what the console already told you.
+</Callout>
+
+## Read an error before you fix it
+
+A FiveM error is not a wall of noise. It is a small structured report, and it almost always names three things: which **resource** broke, which **file** the problem is in, and which **line** number to open. Find those three and you have the address. The fix is usually obvious once you are standing at the right door.
+
+Here is a real one as it appears in the txAdmin Live Console. Read it top to bottom before you read the breakdown under it.
+
+<Mockup app="txAdmin · Live Console">
+```text
+[script:my_bank] Error loading script server/main.lua in resource my_bank:
+server/main.lua:14: attempt to index a nil value (global 'QBCore')
+stack traceback:
+        server/main.lua:14: in main chunk
+[script:my_bank] Failed to load script server/main.lua.
+```
+</Mockup>
+
+Now decode it line by line. Every error you will ever read has these same parts.
+
+- **`[script:my_bank]`** is the **resource**. The text in brackets is the folder name of the resource that threw the error. This is where you go. Not a random file somewhere on your server: this folder.
+- **`server/main.lua:14`** is the **file and line**. Open `server/main.lua` inside `my_bank` and go to line `14`. That is the exact line the server choked on.
+- **`attempt to index a nil value (global 'QBCore')`** is the **meaning**. It names the culprit: the variable `QBCore` was `nil` when the code tried to use it. The thing in parentheses is the name of whatever was empty.
+- **`stack traceback`** is the **trail**. It lists the chain of calls that led to the error, newest first. For a beginner the top line of the traceback is usually the only one you need, because that is the actual line that failed.
+
+That is the whole skill. Resource, file, line, meaning. The catalog below gives you the meaning and the fix for the eight you will meet first, but you find every one of them the same way: read the brackets, open the file, jump to the line.
+
+<Checkpoint question="The console prints [script:my_bank] server/main.lua:14: attempt to index a nil value. Where do you go and what do you read?">
+  Open the `my_bank` resource (the name in brackets), open `server/main.lua` inside it, and go to line `14`. Read that exact line: something on it is `nil` when the code expects a value. The error even names which thing is nil in the parentheses at the end. You do not search the whole server. The error already gave you the resource, the file, and the line. That three-part address is the single most useful thing in any FiveM error message.
+</Checkpoint>
+
+## The catalog
+
+Below are the eight errors that stop beginners, in the order you tend to meet them: manifest problems that stop a resource loading, then runtime nil-value errors, then dependency and database and config problems. Each one gives you the exact console text, what it means, and the fix.
+
+### 1. Could not load resource / failed to load script
+
+This is a manifest problem. The resource never even started, because `fxmanifest.lua` is wrong or points at a file that is not there.
+
+<Mockup app="txAdmin · Live Console">
+```text
+Could not load resource my_bank: failed to parse manifest.
+[script:my_bank] Failed to load script server/mian.lua.
+```
+</Mockup>
+
+Two root causes sit behind this message. The first is a manifest that does not parse. The most common version is the singular versus plural directive trap: the singular `client_script` and `server_script` take exactly **one** filename as a string, while the plural `client_scripts` and `server_scripts` take a Lua **table** in curly braces. Mix them up and the manifest silently drops files or refuses to load.
+
+```lua
+-- WRONG: singular directive given two files. The second is ignored or errors.
+server_script 'a.lua', 'b.lua'
+
+-- WRONG: plural directive without a table.
+server_scripts 'a.lua'
+
+-- CORRECT: singular for one file.
+server_script 'a.lua'
+
+-- CORRECT: plural for many, wrapped in a table. Globbing needs this form too.
+server_scripts {
+    'a.lua',
+    'b.lua',
+    'shared/*.lua'
+}
+```
+
+The second root cause is a path in the manifest that points at a file that does not exist. Look at the mockup above: the manifest asked for `server/mian.lua` but the file on disk is `server/main.lua`. A typo or a renamed file gives you `Failed to load script`. Every file you name in the manifest must physically exist at that exact path. Fix the name in the manifest or rename the file, then `restart` the resource.
+
+### 2. attempt to index a nil value
+
+This is the runtime error you saw in the reading section. It means you used the dot, colon, or bracket operator on something that was `nil`. You tried to reach **into** a value that was empty.
+
+<Mockup app="txAdmin · Live Console">
+```text
+[script:my_bank] server/main.lua:14: attempt to index a nil value (global 'QBCore')
+```
+</Mockup>
+
+The name in parentheses, here `QBCore`, is the thing that was `nil`. The classic cause is using a framework object before it has loaded, or before its resource has started. You wrote `QBCore.Functions...` but `QBCore` itself was never filled in, so reaching into it with the dot fails.
+
+```lua
+-- Error: attempt to index a nil value (global 'QBCore')
+-- QBCore is nil because qb-core had not started, so the export returned nothing.
+local QBCore = exports['qb-core']:GetCoreObject()
+local money = QBCore.Functions.GetPlayerData().money  -- indexing nil here
+
+-- FIX: ensure qb-core starts BEFORE this resource in server.cfg,
+-- and guard before you index, so a not-yet-loaded object cannot crash you.
+if QBCore and QBCore.Functions then
+    local data = QBCore.Functions.GetPlayerData()
+    local money = data and data.money or 0
+end
+```
+
+The fix is two parts. First, make sure the resource that provides the value is started before yours (see error 4). Second, guard with `if value then` before you index, so an empty object stops the code politely instead of crashing it.
+
+### 3. attempt to call a nil value (the export or event)
+
+Almost the same words as the last one, but a different operator. Here you tried to **call** something, with parentheses, that does not exist on this side. The function, export, or event you named is `nil`.
+
+<Mockup app="txAdmin · Live Console">
+```text
+[script:my_bank] server/main.lua:8: attempt to call a nil value (field 'DoThing')
+[script:my_bank] server/main.lua:3: attempt to call a nil value (global 'PlayerPedId')
+```
+</Mockup>
+
+There are four usual causes, and one of them is the single biggest source of confusion in FiveM. A `client_script` runs on **every player's** game. A `server_script` runs **once** on the server. A native or export that exists on one side is `nil` on the other. `PlayerPedId` is a client native, so calling it in a `server_script` gives you exactly the second line above.
+
+```lua
+-- WRONG (in a server_script): PlayerPedId is a CLIENT native, so it is nil here.
+local ped = PlayerPedId()
+
+-- 'attempt to call a nil value (field DoThing)':
+-- resourceA is not started, or the export name is mistyped.
+exports['resourceA']:DoThing()
+```
+
+Work through the four causes in order:
+
+- **Side mismatch.** A client native called in a `server_script`, or the reverse. Match the call to the right side.
+- **Resource not started.** `exports['resourceA']:DoThing()` is `nil` if `resourceA` is not running. Ensure it in `server.cfg`.
+- **Typo.** The export or event name is misspelled on one side. The names must match exactly, character for character.
+- **Framework not initialized yet.** You called it before the resource that defines it had finished loading.
+
+### 4. Missing dependency / resource not started
+
+A resource needs another resource that is not running. Either you declared the dependency in the manifest and it is missing from `server.cfg`, or it failed to start, or it starts after the resource that needs it.
+
+<Mockup app="txAdmin · Live Console">
+```text
+Couldn't start resource my_bank.
+Failed to load resource my_bank: it depends on oxmysql, which couldn't be started.
+```
+</Mockup>
+
+In a manifest you declare what must load first with the `dependencies` key. Note the key name and the table form.
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+
+-- These resources must be started BEFORE this one.
+dependencies {
+    'oxmysql',
+    'ox_lib'
+}
+```
+
+The fix lives in `server.cfg`, and **order matters**. Use `ensure` (it starts a resource if it is not already running) and list dependencies above the resources that use them. Databases and libraries go near the top.
+
+```cfg
+# Load order is top to bottom. Dependencies first, dependents below them.
+ensure oxmysql
+ensure ox_lib
+ensure qb-core
+ensure my_bank
+```
+
+Two operational notes that catch people. After you **add a brand-new resource folder** you must run `refresh` in the console so the server notices it exists, then `ensure` or `start` it. And `status` lists everything currently running, which is how you confirm a dependency actually started instead of assuming it did.
+
+### 5. oxmysql: no such table / connection_string
+
+Database errors come in two flavours, and telling them apart saves you an hour. One means the database connection itself failed. The other means the connection is fine but a table is missing. oxmysql is the Overextended (community) MySQL library; it reads its credentials from the `mysql_connection_string` convar in `server.cfg`.
+
+<Mockup app="txAdmin · Live Console">
+```text
+[oxmysql] Unable to establish a connection to the database (0)
+[oxmysql] ER_NO_SUCH_TABLE: Table 'es_db.bank_accounts' doesn't exist
+```
+</Mockup>
+
+**`Unable to establish a connection`** means oxmysql never reached the database at all. The convar is missing or malformed, the MariaDB or MySQL service is not running, the credentials are wrong, or the database name does not exist. This is a config problem, not a code bug. Set the convar correctly in `server.cfg`. There are two accepted formats.
+
+```cfg
+# URI format (most common).
+set mysql_connection_string "mysql://root:mypassword@localhost:3306/mydatabase"
+
+# If the password contains reserved characters like ; , / ? : @ & = + $ #
+# the URI form breaks. Switch to the key=value form instead.
+set mysql_connection_string "host=localhost;user=root;password=P@ss=word;database=mydatabase"
+
+# No password at all? Omit the field. Do NOT leave password= blank.
+set mysql_connection_string "mysql://root@localhost/mydatabase"
+```
+
+**`ER_NO_SUCH_TABLE` / `no such table`** is the opposite situation: the connection works fine, but the table the script asked for was never created. Almost every script that uses a database ships a `.sql` schema file. If you never imported it, the tables do not exist. The fix is to import that `.sql` file into your database once. Open your database tool (HeidiSQL is the common one), select your database, and run the script's `.sql` file against it.
+
+A quick way to confirm the import landed: list the tables and look for the one the error named.
+
+<Mockup app="HeidiSQL · es_db">
+<MockTable
+  head={["Tables_in_es_db"]}
+  rows={[
+    ["users"],
+    ["bank_accounts"],
+    ["owned_vehicles"]
+  ]}
+  caption="After importing the script's .sql file, the table named in the error now exists."
+/>
+</Mockup>
+
+If `bank_accounts` shows up in that list, the `no such table` error is gone. If it does not, the import did not run against this database.
+
+### 6. sv_enforceGameBuild mismatch
+
+This one often does not look like an error at all. `sv_enforceGameBuild` locks your server to a specific GTA V game build so that DLC assets load. If a player's game data does not match, or the build is wrong for your assets, you get a connect error or, worse, silent failures.
+
+<Mockup app="FiveM Client · Connection">
+```text
+This server requires a different version (3258) of game data than
+what you have installed. Please try again later.
+```
+</Mockup>
+
+The meaning: the build number in `server.cfg` does not match what the connecting client has, or it does not match the build your DLC vehicles, weapons, and clothing were made for. The sneaky version of this bug has no error message at all: a DLC vehicle simply never spawns, because the build that ships it is not enforced. Set the build in `server.cfg` to match your assets. This is a startup-only setting, so you set it before the server boots.
+
+```cfg
+# Lock the game build so DLC assets load. The value must match what
+# your scripts and assets were built for. This is set at startup only.
+sv_enforceGameBuild 3258   # example build; 2802 and 3095 are common older ones
+```
+
+### 7. Duplicate resource
+
+FiveM identifies a resource by its **folder name**, not its full path. If the same folder name exists in two places anywhere under `resources`, they collide and one refuses to load.
+
+<Mockup app="txAdmin · Live Console">
+```text
+Could not load resource my_bank because it was already declared.
+[c-scripting-core] Creating script environments for my_bank failed.
+```
+</Mockup>
+
+The cause is almost always a copy. You dragged a resource into a second category folder, or unzipped a download on top of an existing one, and now `my_bank` exists twice. Because FiveM keys on the folder name, the path does not save you.
+
+```text
+resources/
+  [core]/
+    my_bank/        <- one copy here
+  [standalone]/
+    my_bank/        <- a second copy with the SAME folder name -> collision
+```
+
+The fix is to delete or rename one of the two folders so the name is unique across the whole `resources` tree, then `refresh` and `ensure` the one you kept.
+
+## How it works
+
+You can now find any error and you have the catalog. This section explains the one idea underneath most of them, so the next unfamiliar error is one you can reason about instead of search for.
+
+### Why so many errors say "nil"
+
+`nil` is Lua's word for nothing, for a value that was never set. The two most common runtime errors, "attempt to index a nil value" and "attempt to call a nil value", are both the same root event: you reached for something that was not there. The difference is only the operator. Indexing uses a dot, colon, or bracket to reach **into** a value. Calling uses parentheses to **run** a value as a function. Both fail the same way when the value is `nil`, and both name the empty thing in parentheses so you know what was missing.
+
+The reason this happens so often in FiveM specifically is the client and server split. The same word can be a real function on one side and `nil` on the other. So when you see a nil-value error, your first two questions are always: is this thing defined on the side I am calling it from, and has the resource that provides it actually started yet?
+
+### Why load order is half the battle
+
+A lot of nil-value errors are not really code bugs. They are timing bugs. Your code is correct, but it ran before the thing it needed existed. If `my_bank` starts before `oxmysql`, then every database call in `my_bank` reaches for an export that is not there yet, and you get a nil-value error that looks like broken code but is actually a wrong line order in `server.cfg`.
+
+That is why `ensure` and order in `server.cfg` matter so much. Databases and libraries first, frameworks next, your own resources last. Get the order right and a surprising number of mysterious errors simply never appear.
+
+<Checkpoint question="Your resource throws 'attempt to index a nil value (global QBCore)' on boot, but the code is identical to a working server. What do you check before touching the code?">
+  Check the load order in `server.cfg`. The error means `QBCore` was `nil` at the moment your code ran, and the most common reason is that `qb-core` had not started yet. If your resource is `ensure`d above `qb-core`, your code runs first, the export returns nothing, and you index `nil`. Move `ensure qb-core` above `ensure my_resource`, restart, and the object exists by the time your code reaches it. The code was fine. The order was wrong. This is why "is it a timing problem" is a better first question than "is my code broken."
+</Checkpoint>
+
+### Reading the colour, not just the words
+
+Most console tools, txAdmin included, colour errors so you can triage at a glance before you read a single word. The pattern is consistent enough to lean on while you scan a fast-moving console.
+
+<Swatch
+  colors={[
+    { hex: "#ef4444", label: "error: stops the resource" },
+    { hex: "#f59e0b", label: "warning: runs but watch it" },
+    { hex: "#22c55e", label: "info: resource started ok" }
+  ]}
+/>
+
+Red is the one that demands action: the resource failed and something is broken now. Amber is a warning, often a deprecation notice or a missing-but-optional dependency; the resource still runs but the line is telling you about future pain. Green and plain white are normal life, including the `started resource` lines you want to see. When the console is scrolling, find the red first.
+
+## Common mistakes
+
+These are the failure modes that send beginners in the wrong direction even after they have read the error. The error text was correct; the reaction to it was not.
+
+<FailureList
+  items={[
+    { symptom: "Could not load resource: failed to parse manifest", fix: "A directive in fxmanifest.lua is wrong. The usual culprit is singular vs plural: client_script takes ONE string, client_scripts takes a TABLE in curly braces. Fix the directive, then restart the resource." },
+    { symptom: "Failed to load script server/main.lua", fix: "The manifest names a file that does not exist at that path. Check for a typo or a renamed file. The path in the manifest must match the file on disk exactly, including the folder." },
+    { symptom: "attempt to index a nil value (global 'QBCore')", fix: "The framework object was nil when the code used it. Ensure qb-core starts BEFORE this resource in server.cfg, and guard with if QBCore then before you index it." },
+    { symptom: "attempt to call a nil value (global 'PlayerPedId')", fix: "You called a CLIENT native inside a server_script (or the reverse). PlayerPedId is client-only. Move the call to the correct side, matching the native's badge in the docs." },
+    { symptom: "it depends on oxmysql, which couldn't be started", fix: "A dependency is missing or starts too late. Add ensure oxmysql to server.cfg ABOVE the resource that needs it. After adding a new folder, run refresh first, then ensure." },
+    { symptom: "Unable to establish a connection to the database", fix: "This is config, not code. Check mysql_connection_string in server.cfg, confirm MariaDB is running, and confirm the database name exists. Percent-encode reserved chars in the password or use the key=value form." },
+    { symptom: "ER_NO_SUCH_TABLE / no such table", fix: "The connection works but the table was never created. Import the script's provided .sql file into your database once, then confirm the table appears in HeidiSQL." },
+    { symptom: "requires a different version of game data", fix: "sv_enforceGameBuild does not match the client or the assets. Set the correct build in server.cfg (startup only) to match what your DLC assets were made for." },
+    { symptom: "Could not load resource because it was already declared", fix: "The same folder name exists twice anywhere under resources. FiveM keys on folder name, not path. Delete or rename one copy so the name is unique, then refresh." },
+    { symptom: "I edited the file but the error is unchanged", fix: "Saving a file does nothing on a running server. Run restart on the resource after editing code or a manifest, and refresh then start after adding a whole new resource folder." }
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Read any FiveM error as an address: the resource in brackets, the file and line number, and the meaning at the end.",
+    "Tell apart 'index a nil value' (reaching into an empty value) and 'call a nil value' (running an empty value as a function), and name the culprit from the parentheses.",
+    "Diagnose a manifest failure by checking the singular vs plural directive and confirming every named file exists on disk.",
+    "Fix dependency errors by setting load order in server.cfg with ensure, dependencies first, and using refresh after adding a new folder.",
+    "Separate a database connection failure (mysql_connection_string config) from a 'no such table' error (an unimported .sql schema).",
+    "Recognize an sv_enforceGameBuild mismatch and a duplicate-folder-name collision from their exact console text.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Build a broken resource on purpose, read the error it throws, then fix it from the console text alone. This is the whole skill in one drill.
+
+  Create a resource named `qu_break_on_purpose` with a manifest and one server file:
+
+  ```text
+  resources/qu_break_on_purpose/
+    fxmanifest.lua
+    server.lua
+  ```
+
+  In `fxmanifest.lua`, name a file that does not exist on disk:
+
+  ```lua
+  fx_version 'cerulean'
+  game 'gta5'
+
+  server_script 'srver.lua'
+  ```
+
+  Save `server.lua` with a single `print('[qu_break_on_purpose] loaded')` in it, then `refresh` and `ensure qu_break_on_purpose`. Read the error in the Live Console without looking back at this lesson. Identify the resource, the file the manifest asked for, and the meaning. Then fix it by correcting `srver.lua` to `server.lua` in the manifest, `restart` the resource, and confirm your print line appears.
+
+  For a second round, fix the manifest but make `server.lua` call a client native: `local ped = PlayerPedId()`. Restart, read the new error, and explain in one sentence why a server file cannot call that native. You have now produced and fixed two of the catalog's errors by reading, not guessing.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" },
+    { label: "FiveM server commands (ensure, refresh, restart)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "sv_enforceGameBuild convar", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-convars/" },
+    { label: "oxmysql connection setup", href: "https://overextended.dev/oxmysql" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

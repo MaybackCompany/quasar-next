@@ -1,0 +1,316 @@
+<LessonHero
+  crumbs="Module A1 · Server setup from zero"
+  title="server.cfg, annotated line by line"
+  meta={[
+    { label: "You'll build", value: "A complete, production-shaped server.cfg you write top to bottom and can defend every line of: endpoints, identity, slots, OneSync, game build, ACE permissions, resource start order, and the license key." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A server-data folder with a resources folder next to it, a text editor, and a Cfx.re license key from portal.cfx.re. If you have not set the folders up yet, read the companion lesson server.cfg, resources, and dependencies first, then come back here for the full annotated file." },
+    { label: "You'll learn", value: "What every section of a real server.cfg does, why set vs sets vs setr matters, why load order is literally the order of the lines, and which one line stops the server from booting if you forget it." },
+  ]}
+>
+  The conceptual lesson taught you that `server.cfg` is read top to bottom and that order is a rule. This is the worked-example companion: one complete config you build line by line, then take apart section by section. By the end you will be able to open any server's config, point at a line, and say exactly what it does and what breaks if it is wrong.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a server-data folder with server.cfg at its root, next to a resources folder.",
+    "I can launch the server with the artifacts and watch the console.",
+    "I have a Cfx.re license key, or I know to get one at portal.cfx.re.",
+    "I have read the conceptual lesson on server.cfg, resources, and dependencies."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the whole file, then understand it">
+  This lesson writes one complete `server.cfg` from scratch, modeled on the official vanilla starter and modernized for 2026. Type the whole file first and boot the server so you see it work, then the How it works section walks every section and explains why each line sits where it does. Where this file disagrees with an old tutorial you found, this file is the current one.
+</Callout>
+
+## Where the file lives
+
+`server.cfg` is not a resource. It is the startup script for the whole server, and it lives at the root of your `server-data` folder, right next to the `resources` folder. The server is launched by pointing the artifacts at it with `+exec server.cfg`.
+
+```text
+C:\FXServer\
+├── server/                 # FXServer artifacts (FXServer.exe / run.sh) — update freely
+└── server-data/            # YOUR content — this is what you version-control
+    ├── resources/
+    │   ├── [framework]/     # community convention: a [bracketed] folder is a group
+    │   │   ├── oxmysql/
+    │   │   ├── es_extended/   # or qb-core / qbx_core
+    │   │   └── ox_lib/
+    │   ├── [standalone]/    # standalone deps: ox_target, ox_inventory, etc.
+    │   └── [scripts]/       # your own gameplay scripts
+    └── server.cfg           # <- you are editing THIS, at the root of server-data
+```
+
+Two things to lock in before you write a line. First, the artifacts (`server/`) and your data (`server-data/`) are kept in separate folders on purpose, so you can update the binaries without touching your content. Second, the `[brackets]` around `[framework]` and `[scripts]` are a community convention, not a FiveM feature you must use. A folder whose name is wrapped in brackets is treated as a grouping container, so you can keep things tidy, but the brackets only group resources. They do not control load order. Load order still comes from the order of your `ensure` lines, which you are about to write.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Open server.cfg at the root of server-data" outcome="You are editing the one file FXServer executes at startup.">
+    Open `server-data/server.cfg` in your editor. If it has starter content from a txAdmin recipe, you can read along, but for this lesson you are going to write the file in full so every line is yours. Clear it or start a fresh `server.cfg` you can compare against.
+  </Step>
+
+  <Step num={2} title="Write the complete file, top to bottom" outcome="You have a full, bootable, 2026-correct server.cfg.">
+    Paste this entire file. Every line is explained in the next section. The order of the sections is deliberate: built-in resources and dependencies load first, identity and tuning sit in the middle, and the required license key anchors the bottom.
+
+    ```cfg
+    ## ============================================================
+    ##  server.cfg — annotated starter (2026)
+    ## ============================================================
+
+    ## --- Endpoints (how players reach the box) ---
+    # 0.0.0.0 = all network interfaces. Only change the IP on a multi-NIC box.
+    # 30120 is the canonical FiveM port. Change the PORT, not the IP, if you must.
+    endpoint_add_tcp "0.0.0.0:30120"
+    endpoint_add_udp "0.0.0.0:30120"
+
+    ## --- Resource start order (top to bottom = load order) ---
+    # Built-in resources first.
+    ensure mapmanager
+    ensure chat
+    ensure spawnmanager
+    ensure sessionmanager
+    ensure basic-gamemode
+    ensure hardcap
+    ensure rconlog
+
+    # Then dependencies BEFORE the resources that depend on them:
+    ensure oxmysql        # database layer (registers MySQL exports)
+    ensure ox_lib         # shared library (callbacks, UI, utils)
+    ensure es_extended    # framework, needs oxmysql + ox_lib above it
+    ensure my_job_script  # your script, needs es_extended above it
+
+    ## --- ScriptHook (0 = blocked, the safe default) ---
+    sv_scriptHookAllowed 0
+
+    ## --- RCON (leave commented to keep it disabled) ---
+    #set rcon_password "CHANGE_ME_TO_SOMETHING_STRONG"
+
+    ## --- Server browser info (sets = replicated to the server list) ---
+    sets tags "roleplay, jobs, economy"
+    sets locale "en-US"            # replace root-AQ from the starter with a REAL locale
+    #sets banner_detail "https://url.to/your-banner.png"
+    #sets banner_connecting "https://url.to/your-connect-banner.png"
+
+    sv_hostname "Quasar Academy RP"
+    sets sv_projectName "Quasar Academy"
+    sets sv_projectDesc "A teaching server built from zero."
+
+    ## --- Game build (STARTUP ONLY; pick a current build) ---
+    sv_enforceGameBuild 3407       # Agents of Sabotage; use 3751 for the newest
+
+    ## --- Icon / nested configs ---
+    #load_server_icon myLogo.png   # 96x96 PNG next to server.cfg
+    #exec permissions.cfg          # split admins into their own file if you like
+
+    ## --- Replicated convar a script can read at runtime ---
+    setr server_motd "Welcome to the city."
+
+    ## --- Admins (FiveM ACE permission tree) ---
+    add_ace group.admin command allow            # the admin group may run all commands
+    add_ace group.admin command.quit deny        # except quit, so a typo can't kill the box
+    add_principal identifier.fivem:1 group.admin # put a real player in the admin group
+
+    ## --- OneSync (required for state awareness and >32 slots) ---
+    set onesync on
+
+    ## --- Slots ---
+    sv_maxclients 48
+
+    ## --- Steam auth (optional) ---
+    set steam_webApiKey ""
+
+    ## --- License key (REQUIRED — the server will not boot without it) ---
+    # Get yours at https://portal.cfx.re
+    sv_licenseKey changeme
+    ```
+  </Step>
+
+  <Step num={3} title="Replace the two values that must be yours" outcome="The file is no longer a template; it is your server.">
+    Two lines ship as placeholders and the server will not run correctly until you change them:
+
+    ```cfg
+    sv_licenseKey changeme
+    add_principal identifier.fivem:1 group.admin
+    ```
+
+    Replace `changeme` with the real key from `https://portal.cfx.re`. Replace `identifier.fivem:1` with your own identifier. To find it, boot the server, join it, and run `status` in the console to print every connected player with their identifiers. Copy your `license:` or `fivem:` value and paste it in.
+
+    <Callout variant="fivem" title="Treat the license key like a password">
+      The license key is a secret. Do not commit it to a public repo and do not paste it in a Discord channel. If it ever leaks, regenerate it from the portal immediately. This is why many owners keep it in a separate `server_internal.cfg` that is `exec`'d but git-ignored.
+    </Callout>
+  </Step>
+
+  <Step num={4} title="Boot the server and read the console" outcome="The server starts clean and lands on your config.">
+    Launch the server from inside the `server-data` folder so it finds `server.cfg`:
+
+    ```text
+    # Windows, run from server-data:
+    C:\FXServer\server\FXServer.exe +exec server.cfg
+
+    # Linux, run from server-data:
+    bash ~/FXServer/server/run.sh +exec server.cfg
+    ```
+
+    Watch the console as it executes the file top to bottom. You should see each `ensure` line start its resource in order, then the server settle and report it is listening.
+
+    <ExpectedOutput>
+      Started resource mapmanager
+Started resource chat
+Started resource spawnmanager
+Started resource sessionmanager
+Started resource oxmysql
+Started resource ox_lib
+Started resource es_extended
+Server license key authentication succeeded.
+Authenticating server license key...
+    </ExpectedOutput>
+
+    The exact lines depend on your resources, but the shape is the goal: resources start in the order you wrote them, and the license key authenticates instead of refusing to boot.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You booted it and it came up. Now take the file apart section by section so the next time you read someone else's config you are deciding, not guessing. The file is grouped on purpose. Read it as endpoints, then start order, then identity and tuning, then permissions, then the license key.
+
+### Endpoints: how players reach the box
+
+```cfg
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+```
+
+These two lines bind the network address the server listens on. FiveM needs both TCP and UDP on the same port. The `0.0.0.0` part means all network interfaces on the machine, which is the correct value for almost every host. The number after the colon is the port, and `30120` is the canonical FiveM port that the launcher and server browser expect.
+
+The single most common mistake here is editing the IP when you should not. People hardcode their machine's LAN address into `0.0.0.0`, the binding breaks, and nobody can connect. Leave the IP as `0.0.0.0`. Only change it if the box genuinely has multiple network cards and you need to pin one. If you must move off the default port, change the number, not the IP.
+
+### Resource start order: the order is the order
+
+```cfg
+ensure oxmysql        # database layer
+ensure ox_lib         # shared library
+ensure es_extended    # framework, depends on oxmysql + ox_lib
+ensure my_job_script  # your script, depends on es_extended
+```
+
+This is the section the conceptual lesson hammered, and it is the one that bites beginners most. FXServer reads `server.cfg` from top to bottom, and that reading order is the load order. There is no separate priority field. A resource that needs another resource's exports or events must be `ensure`d below the one it depends on, because the dependency has to be running before the dependent tries to call it.
+
+The chain in this file is the standard one. `oxmysql` first, because it registers the database exports everything else uses. Then `ox_lib`, the shared utility library. Then your framework, `es_extended` here (it would be `qb-core` or `qbx_core` on a Qbox server), which calls into both of those on startup. Then your own scripts, which call into the framework. Flip any two of these and the higher one errors on boot with a missing export or event, because the thing it needs has not started yet.
+
+Notice the directive is `ensure`, not `start`. `ensure` is idempotent: it starts the resource if it is stopped and restarts it if it is already running. `start` errors if the resource is already up and is useless on a live restart. Always reach for `ensure` in the config. And if you drop a brand-new resource folder in while the server is live, run `refresh` in the console first so FXServer rescans and loads its manifest, then `ensure` it.
+
+<Checkpoint question="You add ensure my_job_script ABOVE ensure es_extended by mistake. What happens at boot, and why?">
+  `my_job_script` errors on startup, usually with a missing-export or unknown-event message, because it tries to call into `es_extended` before that framework has started. Load order is literally the top-to-bottom order of the `ensure` lines, so a dependent listed above its dependency runs first and the thing it needs does not exist yet. The fix is to move the dependent line below every resource it relies on: database layer, then shared library, then framework, then your script. The brackets on folders like `[scripts]` do not save you here; they group resources but do not reorder them.
+</Checkpoint>
+
+### Identity and the set / sets / setr distinction
+
+```cfg
+sv_hostname "Quasar Academy RP"
+sets sv_projectName "Quasar Academy"
+sets sv_projectDesc "A teaching server built from zero."
+sets tags "roleplay, jobs, economy"
+sets locale "en-US"
+```
+
+This block is where the prefix matters more than the value. FiveM has three convar prefixes and using the wrong one means your value silently does not reach where you expect.
+
+- `set` is a plain server-side convar. Nobody outside the server sees it. Use it for `onesync`, `maxclients`, and internal settings.
+- `sets` is a server-info convar. It replicates to the server browser and to connecting clients. Anything that should show in the public listing, the project name, the description, the tags, the locale, the banners, must use `sets`. Use plain `set` for these and they will not appear in the browser.
+- `setr` is a replicated convar that scripts can read on the client at runtime. The `setr server_motd "Welcome to the city."` line in this file is an example: a value you set in config and read from Lua on the client.
+
+`sv_hostname` is the name shown in-game and is a plain `set`-style line of its own. The starter ships `sets locale "root-AQ"` as a placeholder and the docs explicitly tell you to replace it with a real locale like `en-US`, `fr-CA`, or `pt-BR`. If you leave the placeholder, your server advertises a nonsense language.
+
+### Slots, OneSync, and game build
+
+```cfg
+set onesync on
+sv_maxclients 48
+sv_enforceGameBuild 3407
+```
+
+`sv_maxclients` is your slot count and accepts 1 to 2048, though your practical ceiling depends on your OneSync tier and your hosting. The starter uses 48.
+
+`set onesync on` is the line that gets written wrong in old tutorials. The current syntax is `set onesync on`. The old `onesync_enabled true` form is deprecated and you should not copy it. OneSync has three values: `on` for full state awareness, which you need for server-side entity logic, for routing buckets, and for any server above 32 slots; `legacy` for a compatibility mode; and `off` for plain peer-to-peer. For a real server in 2026 you want `on`.
+
+`sv_enforceGameBuild` locks which GTA5 build clients load, so everyone is on the same game version as your content. The critical property of this convar is that it is startup-only. You cannot change it while the server runs; you set it here and restart. Pick a current build. As of 2026 the values you care about are `3258` (Bottom Dollar Bounties), `3407` (Agents of Sabotage), `3570` (Money Fronts), and `3751` (A Safehouse in the Hills). This file uses `3407`. Do not paste an outdated `2802` from a years-old guide unless your content specifically needs it.
+
+### Permissions: the ACE tree
+
+```cfg
+add_ace group.admin command allow            # group.admin may run all commands
+add_ace group.admin command.quit deny        # except quit
+add_principal identifier.fivem:1 group.admin # put a player in the group
+```
+
+FiveM permissions are an ACE tree. You build it with two directives. `add_ace [principal] [object] [allow|deny]` grants or denies a principal access to an object, which is usually a command. `add_principal [child] [parent]` makes one principal inherit another, which is how you put a real player into a group.
+
+Read the three lines as a story. The first gives the `group.admin` principal the right to run every command. The second carves out an exception: `group.admin` may run everything except `quit`, so an admin cannot accidentally shut the whole server down with a typo. The third line is the one you personalize: it puts a specific player, identified by `identifier.fivem:1`, into `group.admin`, so that player inherits the admin rights you just defined.
+
+The identifier is the part you change. Players can be identified by `identifier.fivem:`, `identifier.steam:`, `identifier.license:`, or `identifier.discord:`. You get the real value by running `status` in the live console, which prints every connected player with their identifiers. Frameworks layer their own naming on top of this same ACE system: ESX uses `group.admin` and `group.owner`, QBCore uses `qbcore.god` and `qbcore.admin`, and Qbox uses `group.admin`, `group.mod`, and `group.support`. They are all just principals in this same tree.
+
+<Checkpoint question="You ran /addpermission or added a principal in the live console and it worked, but after a restart the admin is gone. Why?">
+  Permissions added at runtime in the console are session-only ACE principals. They apply to the current run of the server and are not written back to `server.cfg`. When the server restarts it re-reads the config, and since your live grant was never saved there, the admin loses access. For a permanent admin you must add the matching `add_principal identifier.&lt;type&gt;:&lt;id&gt; group.admin` line to `server.cfg` (or to a `permissions.cfg` you `exec`). Runtime grants are for quick testing; the config file is the source of truth that survives a restart.
+</Checkpoint>
+
+### The license key: the line that decides if it boots
+
+```cfg
+sv_licenseKey changeme
+```
+
+This is the one required line. Without a valid key the server refuses to start. The starter ships the literal placeholder `changeme`, and leaving it is the number one reason a fresh server will not boot. Get your key from the Cfx.re portal at `https://portal.cfx.re`. The old `keymaster.fivem.net` URL still redirects, but `portal.cfx.re` is the current home.
+
+It sits at the bottom of this file by convention, but FiveM does not care where it appears. What matters is that it is present and valid. Because it is a secret, many owners move it out of the main `server.cfg` into a separate file they `exec` and keep out of version control, so the config can be shared without leaking the key.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Server refuses to start, console mentions the license key", fix: "You left sv_licenseKey changeme as the placeholder, or pasted an invalid key. Get a fresh key from portal.cfx.re and paste the exact value with no quotes or trailing spaces." },
+    { symptom: "Your server name and tags never appear in the server browser", fix: "You used set instead of sets for sv_projectName, sv_projectDesc, tags, or locale. Server-info convars must use sets so they replicate to the list. Use plain set only for onesync and maxclients." },
+    { symptom: "A framework or script errors on boot with a missing export or unknown event", fix: "A dependent resource is ensured above its dependency. Move it below: ensure oxmysql, then ox_lib, then the framework, then your script. Load order is the top-to-bottom order of the lines." },
+    { symptom: "onesync_enabled true does nothing or warns it is deprecated", fix: "That is the old syntax. Use set onesync on. OneSync must be on for server-side state awareness, routing buckets, and any server above 32 slots." },
+    { symptom: "Nobody can connect after you edited the endpoints", fix: "You changed the 0.0.0.0 IP. Put it back. 0.0.0.0 binds all interfaces and is correct for almost every host. Change only the port number, never the IP, unless the box has multiple network cards." },
+    { symptom: "sv_enforceGameBuild change is ignored until you restart", fix: "That convar is startup-only and cannot change at runtime. Set it in server.cfg, then fully restart the server. Pick a current build like 3407 or 3751, not an outdated one." },
+    { symptom: "Your admin works until the next restart, then loses access", fix: "You granted the principal in the live console, which is session-only. Add the add_principal line to server.cfg so it survives a restart." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Place server.cfg at the root of server-data and launch the server with +exec server.cfg.",
+    "Read the endpoints block and know to change the port, never the 0.0.0.0 IP.",
+    "Order the ensure block so every dependency loads above the resources that need it, and use ensure over start.",
+    "Choose set, sets, or setr correctly: sets for anything in the server browser, setr for client-readable convars, set for everything else.",
+    "Turn OneSync on with the current set onesync on syntax and pick a valid, current sv_enforceGameBuild.",
+    "Build the ACE permission tree with add_ace and add_principal, and know that runtime grants must be written to the config to survive a restart.",
+    "Recognize sv_licenseKey as the one required line, get it from portal.cfx.re, and keep it secret.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Split your single `server.cfg` into two files the way a real production server does, and prove it still boots. Create a `permissions.cfg` next to `server.cfg` and move every `add_ace` and `add_principal` line into it. Then move the `sv_licenseKey` line into a third file called `server_internal.cfg`. In `server.cfg`, replace the removed blocks with two lines:
+
+  ```cfg
+  exec permissions.cfg
+  exec server_internal.cfg
+  ```
+
+  Place the `exec permissions.cfg` line where the ACE block used to be, and the `exec server_internal.cfg` line at the bottom where the key used to be. Restart the server and confirm it still authenticates and your admin still has access. You have just built the pattern that lets you share `server.cfg` publicly while keeping the key and the admin list private, and you proved that `exec` simply inlines another file at the point it is called, so order is still preserved.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM setting up a server (vanilla)", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/" },
+    { label: "FiveM server commands and convars", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "sv_enforceGameBuild build list", href: "https://docs.fivem.net/docs/server-manual/server-commands/#sv_enforcegamebuild-build" },
+    { label: "Cfx.re portal (license keys)", href: "https://portal.cfx.re" }
+  ]}
+/>

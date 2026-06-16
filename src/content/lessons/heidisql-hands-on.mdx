@@ -1,0 +1,256 @@
+<LessonHero
+  crumbs="Module B5 · Data that survives a restart"
+  title="HeidiSQL, hands on"
+  meta={[
+    { label: "You'll build", value: "A real fivem database in HeidiSQL, then run a script's .sql and SEE the rows that script wrote in the Data tab." },
+    { label: "Time", value: "~18 minutes" },
+    { label: "You need", value: "MariaDB or MySQL running and listening on 127.0.0.1:3306 (XAMPP or a standalone MariaDB service started), HeidiSQL installed, and the root password you set during install." },
+    { label: "You'll learn", value: "The HeidiSQL panel layout -> opening a local session -> creating a database -> running a .sql two ways -> browsing a table's Data tab to confirm what a script actually saved" },
+  ]}
+>
+  You already wrote SQL in **sql-from-zero** and queried from Lua in **oxmysql-crud**. Those lessons talked to the database through code. This one opens the same database with your own eyes. HeidiSQL is the free GUI that lets you connect to MariaDB, create databases, run a resource's schema file, and stare straight at the rows a script saved. By the end you will open a session, create a `fivem` database, run a `.sql`, and watch a `players` table fill up with the exact data your server wrote.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I know what a database, a table, a row, and a column are.",
+    "MariaDB or MySQL is running and listening on 127.0.0.1 port 3306.",
+    "I know the root password I set when I installed the database.",
+    "I have a resource's .sql schema file saved somewhere I can find it."
+  ]}
+/>
+
+<Callout title="See it first, then understand it">
+  HeidiSQL is not part of FiveM. It is a separate desktop tool that connects to the same MariaDB your `oxmysql` connection string points at. In this lesson you will connect to `127.0.0.1` as `root`, make a database, run a script's `.sql`, and open the Data tab to confirm the rows landed. Follow the panel names and clicks exactly. Once it works, the next section explains why each region of the window exists and what it is showing you.
+</Callout>
+
+<Callout title="Windows tool, Mac and Linux workaround">
+  HeidiSQL is Windows-native. Almost every FiveM tutorial assumes Windows, so this lesson does too. On macOS people run it through Wine, or reach for TablePlus or Sequel Ace instead. The panels differ but the four moves are the same everywhere: connect, create a database, run a `.sql`, browse a table.
+</Callout>
+
+## The panel layout
+
+Before you click anything, learn the map. When HeidiSQL launches it does not drop you straight into a database. It opens the **Session Manager** first, a dialog that holds your saved connections. You pick or create a session, hit Open, and only then does the main window appear.
+
+The main window has three regions. Lock these names in now, because the rest of the lesson points at them constantly.
+
+<Mockup app="HeidiSQL · main window">
+  ```text
+  ┌──────────────────────────────────────────────────────────────┐
+  │ File  Edit  Search  Tools  Go to  Help        [menu bar]      │
+  │ [▶ run] [stop] [new query] ...                 [icon toolbar] │
+  ├───────────────────┬──────────────────────────────────────────┤
+  │ LEFT TREE         │  CENTER · tabbed workspace               │
+  │                   │  ┌───────┬────────┬───────┬───────────┐  │
+  │ ▼ 127.0.0.1 (root)│  │ Host  │Database│ Query │   Data    │  │
+  │   ▼ fivem         │  └───────┴────────┴───────┴───────────┘  │
+  │     ▦ players     │  ┌──────────────────────────────────────┐│
+  │     ▦ vehicles    │  │ SQL editor (Query tab)               ││
+  │     ▦ bans        │  │ SELECT * FROM players;               ││
+  │   ▶ information_  │  ├──────────────────────────────────────┤│
+  │       schema      │  │ result grid (rows show here)         ││
+  │                   │  └──────────────────────────────────────┘│
+  ├───────────────────┴──────────────────────────────────────────┤
+  │ SQL log + status bar (last query, row count, timing)          │
+  └──────────────────────────────────────────────────────────────┘
+  ```
+</Mockup>
+
+- **LEFT: the database and table tree.** The top node is the server you connected to (`127.0.0.1`). Under it sit your databases, and under each database its tables, views, routines, triggers, and events. This is your map of everything on the server. You right-click nodes here to create things, and you single-click a table here to select it.
+- **CENTER: the tabbed workspace.** Tabs across the top switch what the center shows. The two you live in are the **Query** tab (an SQL editor on top, a result grid below) and the **Data** tab (a grid of a table's actual rows you can read and edit).
+- **TOP and BOTTOM: chrome.** The menu bar (File, Edit, Search, Tools, Go to, Help) and the icon toolbar with the blue play button sit on top. The SQL log and status bar sit on the bottom and tell you the last query that ran, how many rows it touched, and how long it took.
+
+That is the whole tool. Three regions, two tabs you actually use. Everything below is just clicking around this map on purpose.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Open a session to 127.0.0.1 root" outcome="The main window opens and the left tree shows your server.">
+    Launch HeidiSQL. The **Session Manager** opens first. The left of that dialog lists saved sessions; the right has the connection settings. Click **New** to start a fresh session, then fill in the Settings tab:
+
+    ```text
+    Network type:  MariaDB or MySQL (TCP/IP)
+    Hostname / IP: 127.0.0.1
+    User:          root
+    Password:      <the root password you set at install>
+    Port:          3306
+    ```
+
+    Click **Save** so the session sticks for next time, then click **Open**. The dialog closes and the main window appears with `127.0.0.1` at the top of the left tree.
+
+    `127.0.0.1` means this machine. It is the same place your `oxmysql` connection string points at with `localhost`. Port `3306` is the default port for both MariaDB and MySQL, so unless you changed it during install, leave it.
+  </Step>
+
+  <Step num={2} title="Create the fivem database" outcome="A new, empty fivem database appears in the left tree.">
+    In the left tree, **right-click the host node** (the very top `127.0.0.1` line), then choose **Create new**, then **Database**. A small dialog opens. Set the name and collation:
+
+    ```text
+    Name:       fivem
+    Collation:  utf8mb4_general_ci
+    ```
+
+    Click **OK**. A `fivem` node appears in the left tree with no tables under it yet. That is correct. You made the container; the next step fills it.
+
+    Pick `utf8mb4_general_ci` on purpose. It is the character set FiveM frameworks expect, and it handles emoji and accented player names without corrupting them. This is the same `charset=utf8mb4` you see at the end of an `oxmysql` connection string.
+  </Step>
+
+  <Step num={3} title="Run the script's .sql, method A (File menu)" outcome="The schema file imports and tables appear under fivem.">
+    Most resources ship a `.sql` file with their schema. You run it from the menu. First, **single-click the `fivem` database** in the left tree so it is the selected target. Then go to **File** then **Run SQL file**, pick the resource's `.sql`, and in the encoding dropdown choose **UTF-8** explicitly. Click **OK**.
+
+    HeidiSQL streams the file statement by statement. When it finishes, expand the `fivem` node in the left tree and you will see new tables, for example `players`, that the file created.
+
+    <Callout title="Encoding is not optional here">
+      Leave the encoding on **Auto detect** and framework SQL with special characters can import garbled. Always pick **UTF-8** by hand on Run SQL file. The bug it prevents is silent: the import succeeds, but accented names and emoji come out as mojibake.
+    </Callout>
+  </Step>
+
+  <Step num={4} title="Run a query, method B (Query tab + F9)" outcome="A query you typed runs and a result grid appears below it.">
+    The second way to run SQL is to type it. Open a **Query** tab (press `Ctrl` `T` for a fresh one), make sure `fivem` is selected in the left tree, and type:
+
+    ```sql
+    USE fivem;
+    SHOW TABLES;
+    ```
+
+    Press **F9** (or click the blue play button) to run the whole tab. The result grid below the editor fills in. You should see the tables the `.sql` created listed out:
+
+    <Mockup app="HeidiSQL · Query tab result">
+      <MockTable
+        head={["Tables_in_fivem"]}
+        rows={[["bans"], ["players"], ["vehicles"]]}
+        caption="Result of SHOW TABLES — proof the schema imported into the right database."
+      />
+    </Mockup>
+
+    F9 runs the **entire** Query tab. If you only want one statement out of several, select just that line first, then press F9.
+  </Step>
+
+  <Step num={5} title="Browse the Data tab to SEE the rows" outcome="You read the actual rows a running server wrote, without typing any SQL.">
+    Here is the payoff. **Single-click the `players` table** in the left tree, then click the **Data** tab at the top of the center workspace. No query needed. HeidiSQL shows you the live rows in a grid.
+
+    If your server has run and a player has joined, you are now looking at the real record the script saved:
+
+    <Mockup app="HeidiSQL · Data tab — players">
+      <MockTable
+        head={["citizenid", "name", "money", "job", "last_updated"]}
+        rows={[
+          ["QZ1A4K", "John Quasar", "5400", "police", "2026-06-16 14:02:11"],
+          ["QZ9F2M", "Jane Santos", "1200", "unemployed", "2026-06-16 13:55:40"],
+        ]}
+        caption="Data tab grid — the rows your server actually persisted. This is the database telling the truth."
+      />
+    </Mockup>
+
+    This is the whole reason the tool exists. Code told the database to save something. Now you are reading it back with your own eyes, completely outside the game, to confirm it is really there.
+
+    <ExpectedOutput label="WHAT YOU SHOULD SEE">
+      A grid with one row per player who has connected. If the grid is empty, the table exists but no script has written to it yet. That is not an error.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## How it works
+
+You connected, created a database, ran a `.sql`, and read rows back. Now take the tool apart so the next time you open it you are navigating on purpose, not clicking around hoping.
+
+### Why the Session Manager opens first
+
+HeidiSQL is a database **client**. It does not hold any data of its own. It connects to a server that does. A server can be your local machine, a teammate's box, or a hosted panel, and each one needs a hostname, a user, and a password. The Session Manager is just the saved list of those connection profiles. When you clicked **New**, **Save**, **Open**, you created one profile and used it. Next launch, that `127.0.0.1` session is sitting in the list ready to reopen, which is why you saved it instead of retyping the host every time.
+
+The connection itself is the same one your server makes. Your `oxmysql` line in `server.cfg` looks like this:
+
+```cfg
+# server.cfg — oxmysql reads this convar to find the database.
+# HeidiSQL connects to the SAME server with the SAME host and port.
+set mysql_connection_string "mysql://fivem:change_me@localhost/fivem?charset=utf8mb4"
+```
+
+HeidiSQL on `127.0.0.1:3306` and `oxmysql` on `localhost/fivem` are two different doors into the exact same MariaDB. That is the mental model that makes this lesson click: the game writes through one door, you look through the other.
+
+### Why you create the database before running the .sql
+
+A database is a named container for tables. Some resource `.sql` files start with their own `CREATE DATABASE` and `USE` lines, in which case they make and select the container for you. Many do not. They assume the database already exists and you have selected it, and they jump straight to `CREATE TABLE`.
+
+That is why Step 2 made `fivem` first and Step 3 single-clicked it before importing. If you run a container-less dump with no database selected, the tables either land in the wrong database or the import errors out with nowhere to put them. Selecting `fivem` in the tree tells HeidiSQL where everything in the file should go.
+
+### Two ways to run SQL, and when to use each
+
+You ran SQL twice, two different ways, on purpose:
+
+- **File then Run SQL file** is for a whole schema dump. A framework `.sql` can be thousands of lines. You do not paste that into an editor; you point HeidiSQL at the file and let it stream the statements through. This is how you install a resource's tables.
+- **Query tab plus F9** is for SQL you are writing right now. A `SELECT`, a quick `SHOW TABLES`, a one-row `UPDATE`. You type it, press F9, read the grid. This is how you poke at the data by hand.
+
+Both end at the same place: statements sent to the server, results or row counts reported in the status bar. The only difference is where the SQL comes from, a file or your keyboard.
+
+### Why the Data tab needs no query
+
+The Data tab is a `SELECT *` that HeidiSQL writes for you. When you single-click a table in the tree and open Data, the tool quietly runs the equivalent of `SELECT * FROM players LIMIT 1000` and renders the grid. That is why you did not type anything. It is the fastest way to answer the one question you ask constantly while building, did my script actually save the row.
+
+The grid lazy-loads about a thousand rows at a time so a huge table does not freeze the window. And a sharp warning: editing a cell in the Data tab writes to the **live** database the instant you commit the change. There is no separate save button and no undo. On a practice database that is fine. On a production server's player data, one careless double-click can wipe someone's money, so treat the Data tab as live wiring, not a scratchpad.
+
+<Checkpoint question="You ran a resource's .sql with no errors, but the Data tab for its table is empty. Is the import broken?">
+  No. An empty Data tab means the table exists but nothing has written to it yet. The `.sql` file only creates the structure, the columns and types, not the rows. Rows appear when a script inserts them, which usually means a player has to connect or an in-game action has to fire. Confirm the import worked by checking the table is present in the left tree and that `SHOW TABLES` lists it. Empty is the expected state for a fresh schema; you will see rows once the server runs and writes to it. If the table itself is missing from the tree, then the import did fail, most likely because no database was selected or the encoding mangled the file.
+</Checkpoint>
+
+### Reskinning the UI is not your job here
+
+A quick word, because people get distracted by it. HeidiSQL has theme options, and FiveM tooling loves an accent color. You can tint a session or change the editor theme, but none of that touches your data. The accent below is cosmetic only. Spend your attention on the tree, the Query tab, and the Data tab, not on the chrome.
+
+<Swatch colors={[{ hex: "#0fb6c4", label: "accent" }, { hex: "#1b1f24", label: "editor bg" }]} />
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Can't connect: SQL Error (2003) Can't connect to MySQL server on '127.0.0.1'", fix: "MariaDB or MySQL is not running, or it is not listening on 3306. Start the database service (XAMPP control panel, or your MariaDB service) and confirm the port. This is a server-down problem, not a HeidiSQL bug." },
+    { symptom: "Connects fine as root on 127.0.0.1 but the game's fivem user fails to connect", fix: "127.0.0.1 and localhost can be different hosts for MySQL grants (TCP versus socket). A user granted on 'localhost' may not be granted on '127.0.0.1'. This is a grant mismatch in the GRANT statement, not HeidiSQL." },
+    { symptom: "After Run SQL file the accented names and emoji show as garbled characters", fix: "The encoding was left on Auto detect. Re-run the import and pick UTF-8 explicitly in the Run SQL file dialog. utf8mb4 on the database alone does not fix a file read with the wrong encoding." },
+    { symptom: "Ran the .sql but the tables landed in the wrong database or it errored with no target", fix: "No database was selected and the dump had no CREATE DATABASE / USE lines. Single-click the fivem database in the left tree first, then File then Run SQL file." },
+    { symptom: "F9 ran every statement when you only wanted one", fix: "F9 runs the whole Query tab. Select just the one statement you want first, then press F9, and only the highlighted SQL runs." },
+    { symptom: "You edited a cell in the Data tab and the change is already live in game", fix: "The Data tab writes to the live database on commit with no save step and no undo. Never edit production player data in the grid; run a scoped UPDATE in a Query tab where you can read it before you run it." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Name the three regions of the HeidiSQL window (left tree, center tabbed workspace, top and bottom chrome) and the two tabs you actually use (Query and Data).",
+    "Open a saved session to 127.0.0.1 as root on port 3306, and explain that it is the same MariaDB your oxmysql connection string reaches.",
+    "Create a fivem database with utf8mb4_general_ci collation by right-clicking the host node.",
+    "Run a resource's .sql two ways: File then Run SQL file with UTF-8 encoding for a full dump, or a Query tab plus F9 for SQL you type.",
+    "Browse a table's Data tab to SEE the exact rows a script wrote, and explain why an empty Data tab is normal for a freshly imported schema.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Prove the round trip end to end: write a row by hand, then find it from the other direction. In a Query tab against your `fivem` database, run an insert into the `players` table (adjust the column names to match your schema):
+
+  ```sql
+  USE fivem;
+
+  INSERT INTO players (citizenid, name, money, job)
+  VALUES ('TEST01', 'Heidi Test', 999, 'tester');
+  ```
+
+  Press F9. Now do NOT verify it with another query. Instead, single-click the `players` table in the left tree, open the **Data** tab, and find your `Heidi Test` row in the grid with your own eyes. Then sort the grid by clicking the `money` column header and confirm the `999` value sits where it should.
+
+  Finally, clean up the way a real query should look. Open a fresh Query tab and run a scoped delete you can read before you fire it:
+
+  ```sql
+  DELETE FROM fivem.players WHERE citizenid = 'TEST01';
+  ```
+
+  Refresh the Data tab and confirm the test row is gone. You just watched data go in through SQL, appear in the grid, and leave again, which is exactly the loop you will use to debug every "did my script actually save it" question for the rest of your FiveM work.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "HeidiSQL official site", href: "https://www.heidisql.com/" },
+    { label: "HeidiSQL help and documentation", href: "https://www.heidisql.com/help.php" },
+    { label: "oxmysql connection string reference", href: "https://overextended.dev/oxmysql" },
+    { label: "MariaDB SQL statements reference", href: "https://mariadb.com/kb/en/sql-statements/" }
+  ]}
+/>

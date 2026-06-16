@@ -1,0 +1,294 @@
+<LessonHero
+  crumbs="Module A1 · Server setup from zero"
+  title="Install a script: the walkthrough"
+  meta={[
+    { label: "You'll build", value: "A clean install of one real script and its dependencies, dropped into resources/[scripts], with its SQL imported and its load order set correctly in server.cfg." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A local FiveM server you can restart (the 7-day starter is fine), a database tool like HeidiSQL pointed at your MariaDB, and a text editor." },
+    { label: "You'll learn", value: "How to read a script's README and fxmanifest to find its dependencies -> install dependencies FIRST -> drop the resource in -> import its .sql -> ensure it AFTER its deps -> restart and read the console. One repeatable checklist for ANY script." },
+  ]}
+>
+  Most beginners install a script by dragging the folder in, typing `ensure`, and hoping. When it works it feels like luck, and when it breaks they have no idea why. This lesson replaces luck with a method. You will install one script the right way, and more importantly you will learn the **order of operations** that makes every other install predictable. Dependencies first, resource second, database third, load order fourth, console last.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read the txAdmin Live Console.",
+    "I can open my database in HeidiSQL and run a .sql file."
+  ]}
+/>
+
+<Callout variant="fivem" title="Read the order, then run it">
+  The single skill in this lesson is reading what a script needs before you start it, then installing those needs in dependency order. We will install a fictional but realistic script called `qs_lockpick` that depends on `oxmysql`, `ox_lib`, and a framework. Follow the order exactly. Once it boots clean, the next section explains why each step has to happen when it does, and what breaks if you swap two of them.
+</Callout>
+
+## The mental model: install bottom-up
+
+A script almost never stands alone. It calls into other resources, and those resources must already be running and have registered their exports before your script asks for them. So you do not install top-down (the script you want first). You install **bottom-up**: the things at the base of the stack first, the script that sits on top of them last.
+
+Here is the order, drawn as a stack. Read it from the bottom.
+
+```text
+                 ┌─────────────────────────────┐
+   install LAST  │  qs_lockpick                 │  the script you actually want
+                 │    needs: oxmysql, ox_lib,   │
+                 │           a framework        │
+                 ├─────────────────────────────┤
+                 │  es_extended  /  qb-core     │  framework (player data, jobs)
+                 │    needs: oxmysql, ox_lib    │
+                 ├─────────────────────────────┤
+                 │  ox_lib                      │  shared library (UI, callbacks)
+                 ├─────────────────────────────┤
+   install FIRST │  oxmysql                     │  database layer -> MariaDB
+                 └─────────────────────────────┘
+                          loads top-down in server.cfg,
+                          so write deps ABOVE the script
+```
+
+In `server.cfg` the load order is literally the top-to-bottom order of your `ensure` lines. So the resource that everyone depends on, `oxmysql`, gets `ensure`d first, and your script gets `ensure`d last. If you flip that, your script boots before `oxmysql` exists and you get `attempt to call a nil value` the instant it starts. That one rule prevents most install failures.
+
+Note the names. `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are **Overextended** community resources, not official Cfx.re resources. Your database engine is **MariaDB** (the modern drop-in for MySQL). On the framework line, **Qbox** (`qbx_core`) is the actively maintained QBCore successor, while classic **QBCore** development has stalled. ESX (`es_extended`) is also current. Pick whichever your script's README names.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Read the README and the fxmanifest" outcome="You have a written list of what this script depends on.">
+    Before you touch a single folder, open the script's `README.md` and its `fxmanifest.lua`. You are hunting for three things: its dependencies, whether it ships a `.sql` file, and which framework it targets.
+
+    The README usually states it in plain English near the top. The `fxmanifest.lua` states it in machine-readable form with the `dependencies` key:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+author 'SomeDev'
+description 'Lockpick minigame'
+version '1.0.0'
+
+shared_script '@ox_lib/init.lua'   -- the @ prefix means: load from another resource
+client_script 'client.lua'
+server_script {
+    '@oxmysql/lib/MySQL.lua',      -- pulls oxmysql's query API into this script
+    'server.lua'
+}
+
+-- These resources MUST be started BEFORE this one:
+dependencies {
+    'oxmysql',
+    'ox_lib'
+}
+    ```
+
+    Write the list down. From the manifest above plus the README, this script needs: `oxmysql`, `ox_lib`, and a framework (say `es_extended`). The `@oxmysql/...` and `@ox_lib/...` paths are a second, louder signal: a script that loads files **from** another resource cannot run unless that resource is already started.
+
+    <Callout variant="fivem" title="What the @ prefix tells you">
+      Any `'@resource/path.lua'` entry in a manifest is a hard dependency. The script is borrowing code from that resource at load time. If you see `@oxmysql` or `@ox_lib`, those two are non-negotiable installs, even if the README forgot to mention them.
+    </Callout>
+  </Step>
+
+  <Step num={2} title="Install the dependencies FIRST" outcome="oxmysql, ox_lib, and your framework are sitting in resources, before the script.">
+    Download each dependency from its official source and place each one in your `resources` folder. The community convention is to group them under bracketed category folders. A folder whose name is wrapped in `[brackets]` is treated by FiveM as a grouping container, not a resource.
+
+    Put the shared base in `[framework]` and standalone libraries in `[standalone]`:
+
+    ```text
+resources/
+  [framework]/
+    oxmysql/         # database layer (Overextended)
+    ox_lib/          # shared library (Overextended)
+    es_extended/     # framework, OR qbx_core / qb-core
+  [standalone]/
+    # other shared deps go here as you add them
+  [scripts]/
+    # qs_lockpick will go here in the next step
+    ```
+
+    Do not rename these folders. FiveM identifies a resource by its folder name, and your script's `dependencies` list and `@oxmysql/...` paths reference those exact names. Rename `oxmysql` to `oxmysql-v2` and every `@oxmysql` reference breaks.
+  </Step>
+
+  <Step num={3} title="Drop the resource into resources/[scripts]" outcome="The script folder exists exactly once, with its fxmanifest at the top.">
+    Unzip the script and place its folder inside `[scripts]`. The folder must contain the `fxmanifest.lua` directly, not nested one level too deep.
+
+    ```text
+resources/[scripts]/
+  qs_lockpick/
+    fxmanifest.lua     # this must be here, NOT in a subfolder
+    client.lua
+    server.lua
+    lockpick.sql       # the schema this script needs in the database
+    README.md
+    ```
+
+    A common unzip mistake produces `qs_lockpick/qs_lockpick/fxmanifest.lua`, a folder inside a folder. FiveM will not find the manifest and the resource silently does nothing. If you ever see a resource that refuses to appear, check that the `fxmanifest.lua` is at the top level of its folder.
+  </Step>
+
+  <Step num={4} title="Import its .sql into MariaDB" outcome="The tables the script queries now exist in your database.">
+    This script ships `lockpick.sql`, which means it expects tables in your database. If you skip this, the script will boot fine and then crash the first time it runs a query, with a `no such table` error. Import the schema now, before the first run.
+
+    Open HeidiSQL, connect to your MariaDB, and select your FiveM database in the left tree so the import lands in the right place. Then use **File -> Run SQL file**, pick `lockpick.sql`, and set the encoding to **UTF-8** (not Auto detect, or framework characters corrupt).
+
+    <Mockup app="HeidiSQL">
+      ```text
+File   Edit   Search   Tools   Go to   Help
+────────────────────────────────────────────────────────
+ ▾ 127.0.0.1 (root@localhost)
+   ▾ fivem                 <- selected: import lands here
+       players
+       owned_vehicles
+   ────────────────────────────────────────────────────
+   Run SQL file:  C:\...\qs_lockpick\lockpick.sql
+   Encoding:      UTF-8        [ x ]   <- not "Auto detect"
+                                  [ OK ]   [ Cancel ]
+      ```
+    </Mockup>
+
+    After it runs, confirm the table is really there. Open a Query tab and run:
+
+    ```sql
+USE fivem;
+SHOW TABLES LIKE 'lockpick%';
+    ```
+
+    <MockTable
+      head={["Tables_in_fivem (lockpick%)"]}
+      rows={[["lockpick_attempts"]]}
+      caption="HeidiSQL result grid: the table the script needs now exists."
+    />
+
+    Seeing the table name in the grid is your proof the import worked. No row here means the import ran against the wrong database, or the file never ran.
+  </Step>
+
+  <Step num={5} title="Ensure it AFTER its dependencies in server.cfg" outcome="The load order in server.cfg matches the dependency stack.">
+    Now wire the load order. Open `server.cfg` and add the `ensure` lines so every dependency starts **above** the script that needs it. Top to bottom is load order.
+
+    ```cfg
+# --- Database + libraries (the base of the stack) ---
+ensure oxmysql        # must start before anything that queries the DB
+ensure ox_lib         # shared library used by the framework and scripts
+
+# --- Framework (depends on oxmysql + ox_lib, so it comes after them) ---
+ensure es_extended
+
+# --- Your script (depends on all of the above, so it comes LAST) ---
+ensure qs_lockpick
+    ```
+
+    Your database connection string must also be set, or `oxmysql` cannot connect. Confirm this line exists earlier in the file, pointing at the MariaDB database you imported into:
+
+    ```cfg
+set mysql_connection_string "mysql://root:yourpassword@localhost:3306/fivem"
+    ```
+
+    Prefer `ensure` over `start`. `ensure` starts the resource if it is stopped and restarts it if it is already running, so it is the safe, idempotent directive. `start` errors when the resource is already running.
+  </Step>
+
+  <Step num={6} title="Restart and read the console" outcome="The script boots clean, and you can prove it in the console.">
+    You just added a brand-new resource folder while the server may be live, so FiveM has not scanned it yet. Run `refresh` first so the manifest is detected, then start the script:
+
+    ```text
+    refresh
+    ensure qs_lockpick
+    ```
+
+    Now read the txAdmin Live Console. A clean install prints the script's own start banner and no red error lines:
+
+    <ExpectedOutput>
+      [    script:oxmysql] Database server connection established!
+[    script:qs_lockpick] Resource qs_lockpick started.
+[    script:qs_lockpick] Loaded 0 saved lockpick attempts from the database.
+    </ExpectedOutput>
+
+    Reading the console is not optional. It is the script telling you, in its own words, whether it found its database, loaded its config, and started. If those lines appear and no red traceback follows, the install is done.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You installed it in a specific order and it booted clean. Now take the order apart, because the *why* behind each step is what lets you install any script, not just this one.
+
+### Why dependencies go in first
+
+A resource registers its exports and events only once it has started. `oxmysql` registers its query API when it boots; `ox_lib` registers `lib.*` when it boots; your framework registers the player object when it boots. Your script calls all of those the moment it starts. If the thing it calls has not started yet, the call resolves to `nil`, and Lua throws `attempt to call a nil value`.
+
+So the rule is not a style preference. It is cause and effect. The dependency must be **running** before the dependent asks it for anything. Installing bottom-up, and ordering `server.cfg` top-down with deps above the script, is how you guarantee that.
+
+### Why the .sql import is its own step
+
+A script's code and a script's database are two separate things you must both provide. The folder you dropped in is the code. The `.sql` file is the shape of the data the code expects: tables, columns, keys. FiveM starts the code regardless of whether the tables exist, because it has no idea what your script will query. The mismatch only surfaces at runtime, the first time the code runs a `SELECT` or `INSERT` against a table that was never created.
+
+That is why `no such table` is a database error, not a code error. The connection worked. The script ran. The table simply was never imported. Importing the `.sql` before the first run closes that gap. If a script ships no `.sql` file, it stores nothing in the database and you skip this step entirely, which is itself useful information about what the script does.
+
+### Why load order is the order of the lines
+
+There is no separate "priority" setting in `server.cfg`. The order resources start in is exactly the order their `ensure` lines appear, read top to bottom. Bracketed `[category]` folders like `[framework]` and `[scripts]` only *group* resources for tidiness; they do not control fine-grained order. So two scripts where one depends on the other must still be ordered by hand in `server.cfg`, dependency first.
+
+<Checkpoint question="Your script errors with 'attempt to call a nil value' on the oxmysql export the instant it starts, even though oxmysql is installed and working. What is almost certainly wrong?">
+  The load order in `server.cfg` is backwards: your script is `ensure`d **above** `ensure oxmysql`, so it starts before oxmysql has registered its exports. At that moment `exports.oxmysql` is still `nil`, the call fails, and you get `attempt to call a nil value`. The fix is not in the code. Move the `ensure oxmysql` line above the `ensure qs_lockpick` line, restart, and the export exists by the time your script asks for it. This is why the install order and the `server.cfg` order have to match the dependency stack.
+</Checkpoint>
+
+### The repeatable checklist
+
+Strip away the specific names and you have a checklist that works for every script you will ever install:
+
+1. **Read.** Open the README and the `fxmanifest.lua`. List the `dependencies`, note every `@resource/...` path, find any `.sql` file, and identify the target framework.
+2. **Dependencies first.** Install `oxmysql`, `ox_lib`, the framework, and anything else on the list, into `resources`, with their real folder names.
+3. **Drop the resource.** Put the script in `resources/[scripts]`, with `fxmanifest.lua` at the top level of its folder.
+4. **Import the SQL.** If it ships a `.sql`, run it into your MariaDB database with HeidiSQL, then confirm the tables exist.
+5. **Order it.** Add `ensure` lines in `server.cfg` with every dependency above the script.
+6. **Restart and read.** Run `refresh` then `ensure <script>`, and read the console for its start banner and for red.
+
+Six steps, same order, every time. When step six shows red instead of a clean banner, that is your cue to switch from installing to diagnosing.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "attempt to call a nil value (the script's first oxmysql or framework call)", fix: "Load order is wrong. The script is ensured before its dependency in server.cfg. Move ensure oxmysql / ensure ox_lib / the framework ABOVE the script's ensure line, then restart." },
+    { symptom: "no such table 'lockpick_attempts'", fix: "The connection works but the .sql was never imported, or it ran against the wrong database. In HeidiSQL select your fivem database first, run the script's .sql file, then SHOW TABLES to confirm." },
+    { symptom: "Could not find resource qs_lockpick / it does not show in the resource list", fix: "Either the folder is nested (qs_lockpick/qs_lockpick/fxmanifest.lua) so the manifest is one level too deep, or you added it live and never ran refresh. Flatten the folder so fxmanifest.lua is at the top, then run refresh and ensure again." },
+    { symptom: "Unable to establish a connection to the database", fix: "This is oxmysql, not your script. The mysql_connection_string is missing or wrong, or MariaDB is not running. Fix the convar (mysql://user:pass@localhost:3306/db) and confirm the database engine is started before retrying." },
+    { symptom: "Failed to load resource qs_lockpick: it depends on ox_lib, which couldn't be started", fix: "A named dependency is missing or failed. Confirm ox_lib (and every name in the dependencies block) is actually in resources with that exact folder name and is ensured earlier in server.cfg." },
+    { symptom: "Could not load resource because it was already declared", fix: "The same folder name exists twice in the resources tree (a stray copy in another category folder). FiveM keys resources by folder name, not path. Delete the duplicate." },
+  ]}
+/>
+
+<Callout variant="fivem" title="When it still will not boot">
+  If the console shows a red traceback you cannot place, that is the moment to stop installing and start reading errors line by line. The Debugging like a developer lesson is the error catalog for exactly this: it takes the common red lines, names the root cause, and walks the fix. Install with this checklist; debug with that one.
+</Callout>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Read a script's README and fxmanifest to list its dependencies, spot @resource paths, and find any .sql file.",
+    "Install dependencies bottom-up: oxmysql, then ox_lib, then the framework, before the script itself.",
+    "Drop a resource into resources/[scripts] with its fxmanifest.lua at the top level of the folder.",
+    "Import a script's .sql into MariaDB with HeidiSQL and confirm the tables exist before the first run.",
+    "Order ensure lines in server.cfg so every dependency starts above the script, then refresh, ensure, and read the console for the start banner.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Take a real free script you have never installed (pick one from the Cfx.re releases forum that lists `ox_lib` as a dependency) and install it cold using only the six-step checklist, writing nothing down except what you read out of its own README and fxmanifest. Before you touch `server.cfg`, answer these three on paper:
+
+  - What does its `dependencies` block list, and does the manifest load any `@resource/...` files that the README did not mention?
+  - Does it ship a `.sql` file? If yes, which tables will it create, and which database must you import them into?
+  - Given its dependencies, what is the exact top-to-bottom order of `ensure` lines you will add?
+
+  Then install it, restart, and read the console. If you get a clean start banner on the first try, you have internalized the order. If you get red, do not change code: re-check your three answers against the failure, because the mistake will almost always be a missing dependency, a skipped import, or a backwards load order, in that frequency.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM server commands (ensure, refresh, start)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "FiveM setting up a server (folders and server.cfg)", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/" },
+    { label: "oxmysql (Overextended)", href: "https://github.com/overextended/oxmysql" },
+    { label: "ox_lib (Overextended)", href: "https://github.com/overextended/ox_lib" },
+    { label: "HeidiSQL", href: "https://www.heidisql.com/" }
+  ]}
+/>

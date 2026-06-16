@@ -123,8 +123,65 @@ Official downloads only. Use these links, not random mirrors. The editor edits y
     <ExpectedOutput>
       The result grid shows a single value: fivem
     </ExpectedOutput>
+
+    Here is what your screen looks like once it works. The session is open on the left, the `fivem` database sits in the tree, and the query you ran returns its result in the grid below.
+
+    <Mockup app="HeidiSQL · local FiveM">
+      ```text
+      TREE (left)            QUERY TAB (center, top)
+      ─────────────────      ─────────────────────────────
+      ▾ local FiveM          SELECT DATABASE();
+        ▾ fivem
+            players          [ F9 / blue play ▶ runs it ]
+            characters
+        ▸ information_schema
+      ```
+
+      <MockTable
+        head={["DATABASE()"]}
+        rows={[["fivem"]]}
+        caption="Result grid (center, bottom). One row, one column: proof HeidiSQL is pointed at your fivem database."
+      />
+    </Mockup>
   </Step>
 </StepGroup>
+
+## How MariaDB and HeidiSQL relate (and why scripts care)
+
+You just installed two things that sound like one thing. They are not. Knowing which is which is the difference between fixing a database problem in ten seconds and uninstalling the wrong program at midnight.
+
+### MariaDB is the engine, HeidiSQL is the window
+
+**MariaDB** is the database engine. It is a background Windows service with no real screen of its own. It listens on `127.0.0.1:3306`, holds your tables on disk, and answers SQL it is handed. When you ran `Get-Service MariaDB*` in Step 5 and saw **Running**, that service is the engine doing its job whether or not any window is open.
+
+**HeidiSQL** is a separate program that connects to that engine and draws it for you: the session on the left, the database tree, the query editor, the result grid. Close HeidiSQL and your data is untouched, because the data never lived in HeidiSQL. It lives in MariaDB. HeidiSQL is just the window you look through.
+
+This is why the two install steps are separate. Step 5 installs the engine and proves it is running. Step 6 installs the window and proves it can see in. If HeidiSQL says "connection refused," the window is fine; the engine behind it is stopped. If HeidiSQL says "Access denied," the window reached the engine but handed it the wrong password.
+
+### How a script reaches the same database
+
+Your FiveM scripts never open HeidiSQL, and they are not MariaDB either. They reach the engine through a third piece you install later as a resource: **oxmysql**, the community connector built by Overextended. You drop it into `resources`, `ensure` it in `server.cfg`, and point it at the same engine HeidiSQL connects to, using one convar:
+
+```cfg
+# server.cfg — oxmysql reads this, then your scripts query through it
+set mysql_connection_string "mysql://root:YOUR_PASSWORD@localhost/fivem?charset=utf8mb4"
+ensure oxmysql
+```
+
+Read that string left to right and it is the same four facts you typed into the HeidiSQL session: user `root`, your password, host `localhost` (the same machine as `127.0.0.1`), and the `fivem` database. HeidiSQL connects so a human can look. oxmysql connects so scripts can read and write. Both knock on the same door at `127.0.0.1:3306`. That shared door is the whole point of getting the database right now, before txAdmin or any framework asks for it.
+
+So the chain a script follows is one hop longer than the one you do by hand:
+
+```text
+You          ->  HeidiSQL  ->  MariaDB (127.0.0.1:3306)  ->  fivem database
+A FiveM script ->  oxmysql  ->  MariaDB (127.0.0.1:3306)  ->  fivem database
+```
+
+When you reach the hands-on lesson [HeidiSQL hands-on](/lessons/heidisql-hands-on), you will use that same window to import a framework's tables and browse player rows. Everything you build there is just the human path into the engine your scripts will hit through oxmysql.
+
+<Checkpoint question="HeidiSQL is closed, but your script still cannot read the database. Where is the problem most likely to be, and where is it definitely not?">
+  Not in HeidiSQL. HeidiSQL is only a window for humans; closing it changes nothing for scripts, because scripts go through oxmysql, not HeidiSQL. The problem is in the path your script actually uses: either the MariaDB service is stopped (run `Get-Service MariaDB*` and confirm Running), or the `mysql_connection_string` in `server.cfg` has the wrong user, password, host, or database name. Both HeidiSQL and oxmysql hit the same engine at `127.0.0.1:3306`, so if HeidiSQL can connect with a given user and password, point `mysql_connection_string` at exactly those values.
+</Checkpoint>
 
 ## If something went wrong
 
@@ -134,6 +191,7 @@ Official downloads only. Use these links, not random mirrors. The editor edits y
     { symptom: "MariaDB installer says the port is already in use", fix: "MySQL, XAMPP, or Laragon is already on 3306. Stop that service or pick one database stack, then reinstall on port 3306." },
     { symptom: "HeidiSQL says Access denied for user 'root'", fix: "The password is wrong. Reopen your db-creds.txt; if it is lost on a fresh install, reinstall MariaDB and write the password down first." },
     { symptom: "HeidiSQL says connection refused", fix: "The MariaDB service is stopped. Run Get-Service MariaDB* and start it from Windows Services if it is not Running." },
+    { symptom: "HeidiSQL connects fine but a script later cannot reach the database", fix: "Scripts go through oxmysql, not HeidiSQL. Make the mysql_connection_string in server.cfg use the exact user, password, host, and database (fivem) that HeidiSQL connects with. Closing HeidiSQL never affects scripts." },
     { symptom: "The Cfx.re portal will not create a key", fix: "Verify your account email and sign in to portal.cfx.re with the same account; try a private window if old cookies are stuck." },
   ]}
 />
@@ -146,7 +204,8 @@ Official downloads only. Use these links, not random mirrors. The editor edits y
     "Extract FiveM artifact archives with 7-Zip or WinRAR.",
     "Generate a free Cfx.re license key from the portal and store it safely.",
     "Run MariaDB as a service and confirm it with Get-Service MariaDB*.",
-    "Connect HeidiSQL to MariaDB and create the fivem database for txAdmin to use in Step 03."
+    "Connect HeidiSQL to MariaDB and create the fivem database for txAdmin to use in Step 03.",
+    "Explain that MariaDB is the engine, HeidiSQL is the window humans look through, and oxmysql is the connector scripts use, all reaching the same database at 127.0.0.1:3306."
   ]}
 />
 

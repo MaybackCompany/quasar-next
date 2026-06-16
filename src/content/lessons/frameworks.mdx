@@ -149,7 +149,49 @@ That single call is your first real `ox_lib` usage. The library also gives you t
 
 ### The translation guide: player, money, job
 
-This is the part the title promised. The framework name you just detected tells you which dialect to speak. Here is the same job, getting a player and reading their money, in each one.
+This is the part the title promised. The framework name you just detected tells you which dialect to speak. Every other line in this section depends on one move first: turning a server id into a player object. Get that one call right and the rest is just reading fields.
+
+#### First, get the player object
+
+You cannot read money or a job until you hold the player object. Each framework hands it to you a little differently, but the shape is identical: feed it the player's server id, get back a table you then read from. Here are the three calls side by side, nothing else.
+
+<MockTable
+  head={["Framework", "Get the object", "What you get back"]}
+  rows={[
+    ["ESX Legacy", "ESX.GetPlayerFromId(src)", "xPlayer (nil if not loaded)"],
+    ["QBCore", "QBCore.Functions.GetPlayer(src)", "Player (nil if not loaded)"],
+    ["Qbox", "exports.qbx_core:GetPlayer(src)", "player (nil if not loaded)"],
+  ]}
+  caption="The single call that turns a server id into a player object. src is the server-side source."
+/>
+
+Read it as one idea in three spellings. ESX grabs the shared object first, then calls `GetPlayerFromId`. QBCore grabs the core object, then calls `Functions.GetPlayer`. Qbox keeps the QBCore-style `Functions.GetPlayer` for compatibility but also exposes the leaner `exports.qbx_core:GetPlayer(src)` getter shown above. In every case `src` is the server-side `source`, and in every case the return value is `nil` until the framework has finished loading that player. That `nil` is the trap the load-events section below exists to close.
+
+Here is each call on its own, with the line that proves you got a real object:
+
+```lua
+-- ESX Legacy (server side)
+local ESX = exports['es_extended']:getSharedObject()
+local xPlayer = ESX.GetPlayerFromId(src)
+print(xPlayer.getName())                  -- proves the object exists
+```
+
+```lua
+-- QBCore (server side)
+local QBCore = exports['qb-core']:GetCoreObject()
+local Player = QBCore.Functions.GetPlayer(src)
+print(Player.PlayerData.name)             -- proves the object exists
+```
+
+```lua
+-- Qbox (server side)
+local player = exports.qbx_core:GetPlayer(src)
+print(player.PlayerData.name)             -- proves the object exists
+```
+
+That getter is the spine of the next lesson, [How a script talks to a framework](/lessons/how-scripts-talk-to-frameworks), which turns this one call into a full framework-agnostic resource that gets the player, gives them money, and reads their job on all three. Here you just need to recognize the call. There you build the whole thing.
+
+Once you hold the object, reading money and job is the same job in each one. Here is the full pattern.
 
 **ESX Legacy.** You grab the shared object, then ask it for a player by server id. The player object is usually called `xPlayer`.
 

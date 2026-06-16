@@ -24,6 +24,10 @@
   FXServer starts resources in the exact order their `ensure` lines appear in `server.cfg`. A dependency must come first; the script that needs it comes second. You will not memorize this. You will watch one console line flip from `provider found: pong` to `provider MISSING` and never forget it.
 </Callout>
 
+<Callout variant="fivem" title="Want the full file, line by line?">
+  This lesson is the conceptual one: it teaches the rule and proves it. When you want a complete, production-shaped `server.cfg` you can defend every line of, read the companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated). It walks the whole file top to bottom, including `set` vs `sets` vs `setr`, OneSync, ACE permissions, and the game-build line. Stay here first to learn why order matters, then go there for the worked file.
+</Callout>
+
 ## Build it
 
 <StepGroup>
@@ -92,6 +96,24 @@
     ```
 
     A script that calls `lib.` functions needs `ox_lib` above it, because `lib` does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
+
+    Here is the same idea reduced to its smallest form, so you can see exactly what flips. `es_extended` calls `oxmysql` exports the moment it starts. Put the database layer first and those exports already exist. Put the framework first and it reaches for exports that have not been registered yet:
+
+    ```cfg
+    # CORRECT: dependency first, dependent second
+    ensure oxmysql        # registers the MySQL exports
+    ensure es_extended    # calls exports.oxmysql:* on start -> they exist, boots clean
+
+    # WRONG: dependent before dependency -> startup error
+    ensure es_extended    # tries to use oxmysql exports that do not exist yet -> errors
+    ensure oxmysql        # too late, the framework already failed above
+    ```
+
+    The fix is never "restart it again" or "ensure it twice." The fix is to move the dependency line **above** the line that needs it, save, and reload. Order is the whole mechanism.
+
+    <Callout variant="fivem" title="Organize it into sections">
+      A real `server.cfg` grows fast, so group it with comment headers instead of one long wall of lines: an endpoints section, an identity section, a secrets section, then the `ensure` block as its own clearly marked region. Comments start with `#` and FXServer ignores them. The order of your `ensure` lines is the only thing that controls load order, but a tidy file is what lets you find the one line that is in the wrong place. The companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated) shows the full sectioned layout.
+    </Callout>
   </Step>
 
   <Step num={4} title="Build two throwaway resources to test order safely" outcome="You have a provider and a consumer that report whether the order worked.">
@@ -256,6 +278,7 @@
 
 <Refs
   items={[
+    { label: "Next lesson · server.cfg annotated line by line", href: "/lessons/server-cfg-annotated" },
     { label: "Cfx.re docs · Server commands", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
     { label: "Cfx.re docs · Resource manifest", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" },

@@ -158,6 +158,56 @@ Why did five burgers print as one count and not clutter five slots? Because iden
 
 Metadata is the per-item data attached to a single stack: durability, a weapon serial, a registered owner, a crafting quality. The rule that follows is the one to memorize. Items only stack when their metadata matches. Give two burgers different metadata and they can no longer share a slot, because they are no longer identical, so they occupy two slots with a count of 1 each. This is exactly how unique items work. A serialized pistol cannot stack with another pistol, because each carries a different serial in its metadata. You attach metadata as a fourth argument: `AddItem(src, 'burger', 1, { quality = 100 })`. Switch to `'slots'` mode and you will watch a plain burger and a metadata burger split into two separate slots.
 
+### Where the item itself is defined
+
+`AddItem(src, 'burger', 5)` only works if `'burger'` already exists. The name is not magic. It is a key in `ox_inventory`'s `data/items.lua`, a single Lua table where each key is the canonical item name and each value is that item's config. If you call `AddItem` with a name that is not in this table, it fails with `invalid_item`, which is exactly the failure mode listed below.
+
+Here is a real entry from `ox_inventory`'s own `data/items.lua`, kept verbatim. Note `stack` is absent because it defaults to `true`, `weight` is in grams not kilograms, and `consume = 0.3` drains durability per use instead of removing a whole item:
+
+```lua
+['testburger'] = {
+    label = 'Test Burger',
+    weight = 220,
+    degrade = 60,
+    client = {
+        image = 'burger_chicken.png',
+        status = { hunger = 200000 },
+        anim = 'eating',
+        prop = 'burger',
+        usetime = 2500,
+        export = 'ox_inventory_examples.testburger'
+    },
+    server = {
+        export = 'ox_inventory_examples.testburger',
+        test = 'what an amazingly delicious burger, amirite?'
+    },
+    buttons = {
+        { label = 'Lick it', action = function(slot) print('You licked the burger') end },
+        { label = 'Squeeze it', action = function(slot) print('You squeezed the burger :(') end }
+    },
+    consume = 0.3
+}
+```
+
+The key (`'testburger'`) is the string you pass everywhere: in `AddItem`, in shops, in the database. The icon is a PNG in `web/images/` named after the key (or after `client.image` when set, here `burger_chicken.png`). After you edit `data/items.lua` you must `restart ox_inventory` so it reloads the definitions, otherwise the running server keeps rejecting the new name with `invalid_item`.
+
+<Mockup app="data/items.lua · ox_inventory">
+  <pre style={{ margin: 0, fontFamily: "var(--font-mono)", fontSize: 13, lineHeight: 1.7 }}>{`data/items.lua   return { ['key'] = { config } }
+
+  ['testburger']
+    label    "Test Burger"   display name
+    weight   220             grams, not kg
+    stack    absent -> true  identical items merge
+    consume  0.3             drains durability, not a whole item
+    client   { image, status, anim, prop, usetime, export }
+    server   { export, ...custom keys }
+    buttons  { right-click menu entries }
+
+  web/images/burger_chicken.png   icon, filename = client.image (or the key)`}</pre>
+</Mockup>
+
+A one-line note on the paid alternative: **qs-inventory** (Quasar Store) defines items in `shared/items.lua` with a flatter QBCore-style shape and uses `unique = true` where ox uses `stack = false`, so an ox item config will not stack correctly if you paste it straight into qs without translating those fields. Building a full item in both, icon and capacity check included, is its own walkthrough: [Create a usable item in ox_inventory (and qs-inventory)](/lessons/creating-items-ox-qs-inventory).
+
 <Checkpoint question="You call AddItem(src, 'burger', 5) and it returns success = true, but Search(src, 'count', 'burger') returns 3. What happened, and why is the lesson right to print the Search result instead of 5?">
   The player only had room for 3 burgers before hitting a slot or weight cap, so ox_inventory added 3 and stopped. `success = true` means the add was accepted, not that all five units fit, which is the trap. `Search` with `'count'` mode reads the real total back from the inventory, so it returns the honest `3`. Printing the value you passed to `AddItem` would claim five items that do not exist, and any code that trusted that number would drift out of sync with reality. Always confirm against what the inventory actually holds.
 </Checkpoint>

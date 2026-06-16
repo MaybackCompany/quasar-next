@@ -1,0 +1,481 @@
+<LessonHero
+  crumbs="Module C2 · Vehicles and items"
+  title="Create a usable item in ox_inventory (and qs-inventory)"
+  meta={[
+    { label: "You'll build", value: "A real `water` item in ox_inventory: the items.lua entry, the PNG icon, a restart to load it, and a server command that hands it to a player after a capacity check. Then the same item the qs-inventory way, side by side." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A local server already running ox_inventory (with ox_lib and oxmysql ensured before it), a text editor, and one PNG you can rename. If you have not installed an inventory yet, do that first, then come back." },
+    { label: "You'll learn", value: "The ox_inventory items.lua entry shape field by field -> where the icon file goes -> how to load a new item -> how to give it safely with AddItem after CanCarryItem -> and how the qs-inventory shape and AddItem differ" },
+  ]}
+>
+  An item in a FiveM inventory is not magic. It is one row in a Lua table that you write by hand. Get the shape right and the inventory draws an icon, shows a tooltip, plays an animation on use, and lets you give it with one export. Get the shape wrong and the slot is blank, the item does not stack, or `AddItem` rejects it. By the end you will have a working `water` item in **ox_inventory**, you will give it to yourself from the server console, and you will be able to read the **qs-inventory** version and name every difference.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder and open data files in a text editor.",
+    "I can edit server.cfg and restart one resource from the console.",
+    "I know ox_lib and oxmysql are Overextended community resources my inventory depends on.",
+    "I can read txAdmin Live Console output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson adds one real item named `water` to ox_inventory, drops its icon, restarts the resource, and gives it to a player with a server command. Follow the file paths, the table fields, the icon filename, and the restart command exactly. Once the item is in your hands in game, the next section takes the table apart key by key, and the last section shows the qs-inventory equivalent so you can work in either inventory.
+</Callout>
+
+## Two inventories, one idea
+
+Before you touch a file, fix one thing in your head. **ox_inventory** and **qs-inventory** are different resources made by different people, and they store items in different files with different field names. But the idea is identical in both: an item is a key in a Lua table, and the value is a config table that describes the item.
+
+- **ox_inventory** is Overextended's free, open-source, slot-based inventory. Items live in `data/items.lua`. You can read its source on GitHub.
+- **qs-inventory** is Quasar Store's paid, encrypted inventory (it supports ESX, QBCore, and Qbox). Items live in `shared/items.lua` in the QBCore-style shape. There is no public source to read, only the docs.
+
+This lesson builds the item in ox_inventory first because it is free and open, so you can verify every claim against the real source. Then it maps the same item onto qs-inventory.
+
+<Callout title="Which file am I editing?">
+  ox_inventory uses `data/items.lua`. qs-inventory uses `shared/items.lua`. They are not interchangeable. Copy-pasting an ox item config into the qs file (or the reverse) is the number one reason a new item shows up blank or refuses to stack. We cover the exact field differences in the last section.
+</Callout>
+
+## Build it in ox_inventory
+
+<StepGroup>
+  <Step num={1} title="Open data/items.lua" outcome="You are looking at the real item table.">
+    Inside your ox_inventory resource, open this file:
+
+    ```text
+    resources/[inventory]/ox_inventory/
+      data/
+        items.lua        <- you edit this
+      web/
+        images/          <- icons live here (filename = item key)
+    ```
+
+    The file is one big Lua table that is `return`ed. Every item is a key in that table. The top and bottom look like this:
+
+    ```lua
+    return {
+        -- each item is a key here, for example ['water'] = { ... }
+    }
+    ```
+
+    The item **key** (the string in the brackets) is the canonical name of the item. It is the exact string you will use everywhere else: in the database, in shops, and in every `AddItem` call. Choose it carefully and keep it lowercase.
+  </Step>
+
+  <Step num={2} title="Add the water item" outcome="A new item entry exists in items.lua.">
+    Add this entry inside the returned table, alongside the items already there. This is a real, minimal usable item:
+
+    ```lua
+['water'] = {
+    label = 'Water',
+    weight = 500,
+    stack = true,
+    close = true,
+    description = 'A refreshing bottle of water',
+    consume = 1,
+    client = {
+        status = { thirst = 200000 },
+        anim = { dict = 'mp_player_intdrink', clip = 'loop_bottle' },
+        prop = { model = `prop_ld_flow_bottle`, pos = vec3(0.03, 0.03, 0.02), rot = vec3(0.0, 0.0, -1.5) },
+        usetime = 2500,
+        cancel = true
+    }
+}
+-- Then drop the icon at web/images/water.png (filename = item key).
+    ```
+
+    Mind the commas. Lua table entries are separated by commas, so if `water` is not the last entry in the table, it needs a comma after the closing brace. We explain every field in the next section.
+  </Step>
+
+  <Step num={3} title="Drop the icon PNG" outcome="The inventory has art to draw for the slot.">
+    The icon is a PNG file, and its filename must match the item key exactly, lowercase, with `.png`. The `water` key needs `water.png`. Put it here:
+
+    ```text
+    resources/[inventory]/ox_inventory/web/images/water.png
+    ```
+
+    <Callout title="web/images, not data/images">
+      Newer ox_inventory builds read icons from `web/images/` (the NUI build folder). Some very old guides say `data/images/`. Use `web/images/`. A missing or misnamed file does not throw an error. It just draws a blank slot, which is easy to miss.
+    </Callout>
+
+    You can picture the result as a single inventory slot:
+
+    <Mockup app="ox_inventory · slot">
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ width: 56, height: 56, borderRadius: 8, border: "1px solid var(--hairline)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "var(--muted)" }}>
+          water.png
+        </span>
+        <div>
+          <div style={{ color: "var(--fg)", fontWeight: 600 }}>Water</div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>A refreshing bottle of water</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>0.50 kg</div>
+        </div>
+      </div>
+    </Mockup>
+  </Step>
+
+  <Step num={4} title="Restart ox_inventory to load the item" outcome="The new item definition is live.">
+    A running server caches item definitions. It will keep rejecting `water` until you reload. In the server console (txAdmin Live Console) run:
+
+    ```text
+    restart ox_inventory
+    ```
+
+    For reference, ox_inventory must be ensured after its dependencies in `server.cfg`:
+
+    ```cfg
+    # Load order: ox_lib and oxmysql must start BEFORE ox_inventory
+    ensure oxmysql
+    ensure ox_lib
+    ensure ox_inventory
+    ```
+  </Step>
+
+  <Step num={5} title="Give the item to a player and check capacity first" outcome="The item lands in a player's inventory the safe way.">
+    Now hand the item to a player. Put this command in any server-side file (a `server_script`). It checks capacity first, then adds, then reports failure if it failed:
+
+    ```lua
+RegisterCommand('givewater', function(source)
+    local src = source
+    if exports.ox_inventory:CanCarryItem(src, 'water', 1) then
+        local success, response = exports.ox_inventory:AddItem(src, 'water', 1)
+        if not success then
+            print('AddItem failed: ' .. tostring(response)) -- invalid_item | inventory_full | invalid_inventory
+        end
+    end
+end, false)
+    ```
+
+    Join the server so you have a ped and an inventory, then run `givewater` from the console. A bottle of water appears in your inventory. If it does not, the console prints exactly why.
+
+    <ExpectedOutput>
+      [    script:ox_inventory] item 'water' added (count 1) to inventory 1
+    </ExpectedOutput>
+
+    If the item is not registered yet, you will instead see the failure path fire:
+
+    <ExpectedOutput>
+      AddItem failed: invalid_item
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## How it works
+
+You have a real item and you gave it to yourself. Now take the table apart so the next item you write, you are deciding, not copying. Two things matter: the fields on the entry, and the export that gives it.
+
+### The item key is the canonical name
+
+```lua
+['water'] = {
+    -- fields
+}
+```
+
+The bracketed string `'water'` is the item key, and it is the single source of truth for this item's name. The database row uses it, shops use it, and every `AddItem` and `RemoveItem` call uses this exact string. The icon file is named after it too. If you ever rename it, you rename it everywhere or things silently break. Keep it lowercase with no spaces.
+
+### The top-level fields describe the item itself
+
+```lua
+label = 'Water',
+weight = 500,
+stack = true,
+close = true,
+description = 'A refreshing bottle of water',
+consume = 1,
+```
+
+Read these one at a time, because three of them have traps.
+
+- **label** is the display name shown in the UI. The key (`water`) is the internal name; the label (`Water`) is what the player sees. They do not have to match.
+- **weight** is in grams as an integer, not kilograms. `500` means half a kilogram. This is the trap that makes one item fill the whole bag: if you write `500` thinking it is grams but the rest of your items are tuned as if it were something else, the magnitude is off. Stay consistent in grams.
+- **stack** defaults to `true`, so you can leave it off and the item stacks. Set it to `false` for unique items that must carry their own metadata, like phones, weapons, and IDs. If you leave a phone stackable, two phones merge into one slot and lose their per-item data.
+- **close** (default `true`) closes the inventory UI when the item is used. For something you drink and put away, `true` feels right.
+- **description** is the tooltip text on hover. Optional, but a blank tooltip looks unfinished.
+- **consume** is the subtle one. `1` removes one whole item per use. `0` means the item is never consumed on use, which is what you want for a phone or a radio. A decimal like `0.3` does **not** remove an item. It drains durability or a percentage instead. So `consume = 1` here means each drink uses up one bottle.
+
+### The client table is the using player's experience
+
+```lua
+client = {
+    status = { thirst = 200000 },
+    anim = { dict = 'mp_player_intdrink', clip = 'loop_bottle' },
+    prop = { model = `prop_ld_flow_bottle`, pos = vec3(0.03, 0.03, 0.02), rot = vec3(0.0, 0.0, -1.5) },
+    usetime = 2500,
+    cancel = true
+}
+```
+
+Everything inside `client` runs on the machine of the player using the item.
+
+- **status** is an ESX-style need adjustment. `{ thirst = 200000 }` raises the thirst stat when the bottle is drunk. A burger would use `{ hunger = 200000 }` instead.
+- **anim** is the animation played during use. Here it is a table with a `dict` (the animation dictionary) and a `clip` (the clip name inside it). ox_inventory also accepts a string preset like `anim = 'eating'`, but the explicit table gives you control.
+- **prop** is the object attached to the hand during use, with a `model`, a `pos` offset, and a `rot` rotation. Notice the backticks around `` `prop_ld_flow_bottle` `` . Those backticks are a CfxLua shortcut that hashes the model name at compile time, so you do not call `GetHashKey` yourself.
+- **usetime** is how long the progress bar runs, in milliseconds. `2500` is two and a half seconds.
+- **cancel** set to `true` lets the player cancel the use mid-progress-bar.
+
+### The export that gives the item, and why you check first
+
+```lua
+if exports.ox_inventory:CanCarryItem(src, 'water', 1) then
+    local success, response = exports.ox_inventory:AddItem(src, 'water', 1)
+```
+
+`AddItem` is the server export that puts an item into an inventory. Read its full signature from the docs:
+
+```lua
+exports.ox_inventory:AddItem(inv, item, count, metadata, slot)
+```
+
+- **inv** is the target. The player `source` works as the inventory id.
+- **item** is the item-name string, the same key from items.lua.
+- **count** is how many.
+- **metadata** is an optional table (durability, a serial number, custom data) or string.
+- **slot** is an optional target slot.
+
+It returns two values: `success` (a boolean) and `response` (a string when it fails). The failure responses are worth memorizing: `invalid_item` means the name is not in items.lua, `inventory_full` means no room, and `invalid_inventory` means the target source is bad.
+
+`CanCarryItem(inv, item, count, metadata)` returns a boolean and is your pre-flight check. You call it before `AddItem` so you never try to add something the player has no room for. Skipping it is not catastrophic (`AddItem` returns `inventory_full` anyway), but checking first is the clean pattern and lets you tell the player why nothing happened.
+
+Here is the rhythm: register the item in items.lua, restart so the definition loads, check capacity, then add. That order is the whole job.
+
+<Checkpoint question="You added ['juice'] to items.lua and saved, but exports.ox_inventory:AddItem(src, 'juice', 1) returns success = false with response 'invalid_item'. The spelling is correct. What did you forget?">
+  You forgot to restart the resource. ox_inventory reads item definitions when it starts and caches them. Editing and saving `data/items.lua` does nothing to a running server until you `restart ox_inventory` (or restart the server). Until then, `AddItem` does not know `juice` exists, so it returns `invalid_item`. Restart, then run the command again. This is different from a misspelled key, which also returns `invalid_item` but stays broken after a restart. So restart first, and only then suspect the spelling.
+</Checkpoint>
+
+### Adding metadata or a specific slot
+
+When you do need metadata, like a serial number on a phone, you pass it as the fourth argument and the slot as the fifth:
+
+```lua
+-- AddItem with metadata + specific slot
+exports.ox_inventory:AddItem(src, 'phone', 1, { serial = 'ABC123' }, 5)
+```
+
+Remember the order for ox_inventory: **metadata comes before slot**. Hold that thought, because qs-inventory reverses it, and that reversal is the single easiest way to break a copied snippet.
+
+### Reading and removing
+
+You will not only add items. The matching exports read and remove:
+
+```lua
+-- How many does the player have?
+local count = exports.ox_inventory:GetItemCount(src, 'water')
+
+-- Remove 1 water from player `src`
+local ok, response = exports.ox_inventory:RemoveItem(src, 'water', 1)
+-- response on failure: not_enough_items | invalid_item | invalid_inventory
+```
+
+`RemoveItem` takes the same first five arguments as `AddItem`. One quiet gotcha: its `strict` behavior matches metadata exactly by default, so if you stored metadata on an item and call `RemoveItem` without matching it, you can get `not_enough_items` even though the player visibly holds the item.
+
+## The qs-inventory equivalent
+
+Now map the same `water` item onto qs-inventory. The idea is the same (an item is a key in a Lua table), but the file, the field names, and the `AddItem` argument order all differ.
+
+<Callout title="Confidence note">
+  qs-inventory is a paid, encrypted Quasar Store resource with no public source repository. The item shape, the export names, and the commands below come from the official Quasar docs and are reliable. The exact **argument order** of `AddItem` / `RemoveItem` is corroborated from the docs but the per-export parameter pages are JS-rendered and could not be read field by field. Treat the argument order as verify-in-product: test it with `/giveitem` or read the exports in your own copy of the resource before you ship code that depends on it.
+</Callout>
+
+### The qs-inventory item shape
+
+qs-inventory items live in `shared/items.lua` (not `data/items.lua`), and they use the QBCore-style flat fields. Here is the same water bottle, qs-style:
+
+```lua
+['water_bottle'] = {
+    name = 'water_bottle',
+    label = 'Water Bottle',
+    weight = 500,           -- grams
+    type = 'item',          -- 'item' | 'weapon'
+    image = 'water_bottle.png', -- lives in qs-inventory/html/images/
+    unique = false,         -- false = stacks; true = unique/non-stacking slot
+    useable = true,
+    shouldClose = true,     -- close inventory UI on use
+    description = 'A refreshing bottle of water.'
+},
+```
+
+And a richer one with the nested `client` block for on-use behavior:
+
+```lua
+['burger'] = {
+    name = 'burger',
+    label = 'Burger',
+    weight = 220,
+    type = 'item',
+    image = 'burger.png',
+    unique = false,
+    useable = true,
+    shouldClose = true,
+    description = 'Greasy but filling.',
+    client = {
+        status  = { hunger = 200000 }, -- raises hunger stat
+        usetime = 2500,                -- ms progress bar
+        anim    = { dict = 'mp_player_inteat@burger', lib = 'mp_player_int_eat_burger' },
+        prop    = { model = 'prop_cs_burger_01', bone = 18905,
+                    coords = { x = 0.0, y = 0.0, z = 0.0 },
+                    rotation = { x = 0.0, y = 0.0, z = 0.0 } },
+        disable = { move = false, car = false, combat = true },
+        removeAfterUse = true
+    }
+},
+```
+
+### Giving an item in qs-inventory
+
+The export namespace is `exports['qs-inventory']` (the hyphen forces the bracket syntax), and the argument order is different from ox:
+
+```lua
+-- exports['qs-inventory']:AddItem(source, item, amount, slot, info)
+-- slot = nil  -> first available slot
+local src = source
+exports['qs-inventory']:AddItem(src, 'water_bottle', 5)
+
+-- With a specific slot + metadata (info):
+exports['qs-inventory']:AddItem(src, 'water_bottle', 1, nil, { quality = 100, expiry = '2026-01-01' })
+```
+
+And the safe pattern, capacity check then add:
+
+```lua
+-- GetItemTotalAmount(source, item) -> number (sum across slots)
+local total = exports['qs-inventory']:GetItemTotalAmount(src, 'water_bottle')
+
+-- CanCarryItem(source, item, amount) -> boolean (weight/slot check before adding)
+if exports['qs-inventory']:CanCarryItem(src, 'water_bottle', 5) then
+    exports['qs-inventory']:AddItem(src, 'water_bottle', 5)
+end
+```
+
+To make a qs item actually do something when used, flag it `useable = true` and register a handler (the QBCore style), unless you wired behavior through `client.status` / `client.export`:
+
+```lua
+-- Wires the 'use' action for an item flagged useable = true
+exports['qs-inventory']:CreateUsableItem('water_bottle', function(source, item)
+    local src = source
+    exports['qs-inventory']:RemoveItem(src, 'water_bottle', 1)
+    -- TriggerClientEvent your drink logic here
+end)
+```
+
+### The differences, side by side
+
+This is the table to screenshot. Same item, two inventories.
+
+<MockTable
+  head={["What", "ox_inventory", "qs-inventory"]}
+  rows={[
+    ["Items file", "data/items.lua", "shared/items.lua"],
+    ["Icon folder", "web/images/", "html/images/"],
+    ["Icon name", "= item key (water.png)", "= image field (water_bottle.png)"],
+    ["Stack control", "stack = false (non-stack)", "unique = true (non-stack)"],
+    ["Stacks by default?", "yes (stack defaults true)", "yes (unique defaults false)"],
+    ["Export namespace", "exports.ox_inventory", "exports['qs-inventory']"],
+    ["AddItem args", "(src, item, count, metadata, slot)", "(src, item, amount, slot, info)"],
+    ["Use wiring", "client block + exports() handler", "useable=true + CreateUsableItem"],
+    ["Weight unit", "grams", "grams"],
+    ["Public source?", "yes (GitHub)", "no (paid, encrypted)"],
+  ]}
+  caption="Note the two reversals: metadata vs slot order in AddItem, and stack vs unique for non-stacking."
+/>
+
+Two of those rows cause almost every bug when you move code between the inventories:
+
+1. **AddItem argument order is reversed.** ox is `(src, item, count, metadata, slot)`; qs is `(src, item, amount, slot, info)`. In ox, metadata comes before slot. In qs, slot comes before metadata. Paste an ox call into a qs script unchanged and your metadata table lands in the slot parameter, which silently drops the metadata or mis-slots the item.
+2. **The non-stacking flag is named differently and the polarity reads opposite.** ox uses `stack = false` to stop stacking. qs uses `unique = true`. They mean the same outcome (each unit gets its own slot and metadata), but the field name and the boolean are different, so a blind copy stacks things that should be unique.
+
+A small mental aid: the `unique` field is qs-inventory's trap. `unique = false` stacks, `unique = true` does not. If you think of it as "is each one special and unique," `true` meaning non-stacking makes sense.
+
+<Checkpoint question="You copy your working ox call exports.ox_inventory:AddItem(src, 'phone', 1, { serial = 'X1' }, 3) into a qs-inventory script and just swap the namespace to exports['qs-inventory']. The phone appears but the serial metadata is gone. Why?">
+  Because qs-inventory's `AddItem` is `(source, item, amount, slot, info)`. Your fourth argument `{ serial = 'X1' }` is read as the **slot**, and your fifth argument `3` is read as the **info/metadata**. So qs tries to place the phone in a slot described by a table (nonsense, so it falls back to a free slot) and stores `3` as the metadata instead of your serial table. The serial is lost. The fix is to reorder for qs: put the slot fourth and the metadata fifth, e.g. `exports['qs-inventory']:AddItem(src, 'phone', 1, 3, { serial = 'X1' })`, or pass `nil` for the slot: `AddItem(src, 'phone', 1, nil, { serial = 'X1' })`.
+</Checkpoint>
+
+### A note on rarity color, if your build shows it
+
+qs-inventory item configs support a `rare` rarity tier that some UI skins render as a colored slot border. If you tier your items, keep the palette readable against the dark inventory background. A common, legible set:
+
+<Swatch colors={[{ hex: '#9aa0a6', label: 'common' }, { hex: '#3ea6ff', label: 'rare' }, { hex: '#a974ff', label: 'epic' }, { hex: '#f0a020', label: 'legendary' }]} />
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "AddItem returns success = false, response = invalid_item", fix: "Either the item key is not in items.lua, or you edited items.lua but did not restart the resource. Restart ox_inventory (or qs-inventory), then check the spelling of the key against the AddItem string. They must match exactly, lowercase." },
+    { symptom: "The slot draws blank with no icon, but no error appears", fix: "The PNG is missing or misnamed. In ox_inventory the file must be web/images/<key>.png with the filename equal to the item key. In qs-inventory it must be html/images/ and match the item's image field. A missing icon never throws, it just renders empty." },
+    { symptom: "Two phones (or weapons, or IDs) merge into one slot and lose their data", fix: "The item is stacking when it should not. In ox_inventory set stack = false. In qs-inventory set unique = true. Both stop the merge so each unit keeps its own metadata." },
+    { symptom: "A single item fills the whole inventory", fix: "weight is wrong. It is grams as an integer (500 = 0.5kg), not kilograms and not a large arbitrary number. Re-tune the weight against your other items." },
+    { symptom: "Copied an ox AddItem call into qs and the metadata vanished or the item mis-slotted", fix: "The argument order is reversed. ox is (src, item, count, metadata, slot); qs is (src, item, amount, slot, info). Reorder so slot is fourth and metadata is fifth for qs, or pass nil for the slot." },
+    { symptom: "consume = 0.3 was meant to remove one item per use but nothing is consumed", fix: "In ox_inventory a decimal consume drains durability, it does not remove a whole item. Use consume = 1 to remove one item per use, or consume = 0 to never consume the item (phones, radios)." },
+    { symptom: "qs item is flagged useable = true but using it does nothing", fix: "useable = true alone runs no code. Either give the item a client.status / client.export block, or register a handler with exports['qs-inventory']:CreateUsableItem(name, cb). Forgetting this is the number one 'my item does nothing' bug in qs-inventory." },
+    { symptom: "ox_inventory errors on boot before the item even loads", fix: "ox_inventory depends on ox_lib and oxmysql. In server.cfg ensure oxmysql and ox_lib BEFORE ox_inventory, or it fails on start." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Write an ox_inventory items.lua entry: a lowercase key plus label, weight (grams), stack, close, description, consume, and a client table with status, anim, prop, and usetime.",
+    "Explain consume: 1 removes one item, 0 never consumes, a decimal drains durability.",
+    "Put an icon PNG in web/images/ named exactly after the item key, and restart ox_inventory so the new definition loads.",
+    "Give an item the safe way: CanCarryItem first, then AddItem(src, item, count, metadata, slot), and read the success/response return.",
+    "Write the qs-inventory version in shared/items.lua with name/label/weight/type/image/unique/useable, and give it with exports['qs-inventory']:AddItem(src, item, amount, slot, info).",
+    "Name the two reversals that break copied code: metadata-vs-slot in AddItem, and stack=false vs unique=true for non-stacking.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Build a usable medkit in ox_inventory that heals the player, plus a server command that gives one only when the player does not already hold one.
+
+  1. Add a `medkit` item to `data/items.lua` with `label = 'Medkit'`, a sensible `weight`, `stack = true`, `consume = 1`, and a `client` table with a `usetime` of about `4000` and an `anim`. Drop `web/images/medkit.png`.
+  2. Wire the heal as a usable item. In a `client_script`, register the use handler the official way and raise health, capped at max:
+
+  ```lua
+  exports('medkit', function(data, slot)
+      local ped = PlayerPedId()
+      local maxHealth = GetEntityMaxHealth(ped)
+      local health = GetEntityHealth(ped)
+      if health < maxHealth then
+          exports.ox_inventory:useItem(data, function(result)
+              if result then
+                  SetEntityHealth(ped, math.min(maxHealth, health + 50))
+                  lib.notify({ description = 'Patched up' })
+              end
+          end)
+      else
+          lib.notify({ type = 'error', description = 'You are already at full health' })
+      end
+  end)
+  ```
+
+  3. In a `server_script`, write a `givemedkit` command that gives one **only if the player has none**. Use `GetItemCount` to check, then `CanCarryItem`, then `AddItem`:
+
+  ```lua
+  RegisterCommand('givemedkit', function(source)
+      local src = source
+      if exports.ox_inventory:GetItemCount(src, 'medkit') > 0 then
+          print('Player already has a medkit')
+          return
+      end
+      if exports.ox_inventory:CanCarryItem(src, 'medkit', 1) then
+          local ok, response = exports.ox_inventory:AddItem(src, 'medkit', 1)
+          if not ok then print('AddItem failed: ' .. tostring(response)) end
+      end
+  end, false)
+  ```
+
+  Restart ox_inventory, join, run `givemedkit`, take some damage, then use the medkit from your inventory and watch your health climb. Run `givemedkit` again with one already in your bag and confirm the console prints the "already has" line instead of stacking a second. Then, for extra credit, port the whole item to qs-inventory: move it to `shared/items.lua` in the qs shape, put the icon in `html/images/`, and rewrite the give command with qs's reversed argument order.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "ox_inventory: Creating items guide", href: "https://overextended.dev/ox_inventory/Guides/creatingItems" },
+    { label: "ox_inventory: server functions (AddItem, RemoveItem, CanCarryItem)", href: "https://overextended.dev/ox_inventory/Functions/Server" },
+    { label: "ox_inventory: items.lua source on GitHub", href: "https://github.com/overextended/ox_inventory/blob/main/data/items.lua" },
+    { label: "qs-inventory: item configuration docs", href: "https://www.quasar-store.com/docs/inventory/item-configuration" },
+    { label: "qs-inventory: commands and exports docs", href: "https://www.quasar-store.com/docs/inventory/commands-and-exports" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+  ]}
+/>

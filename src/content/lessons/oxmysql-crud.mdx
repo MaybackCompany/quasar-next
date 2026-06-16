@@ -55,7 +55,9 @@ game 'gta5'
 server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
-dependency 'oxmysql'
+dependencies {
+    'oxmysql'
+}
     ```
 
     Then run this SQL against your database before starting the resource:
@@ -109,6 +111,33 @@ end, true)
 
     The number after `updated` is the new row id, so it climbs by one each time you run `dbtest`. The first run prints `1`, the next prints `2`, and so on. The `selected lesson 100` line stays the same because every run inserts the same name and amount before reading it back.
   </Step>
+
+  <Step num={6} title="See your write land in HeidiSQL" outcome="The exact row your code inserted is now visible in the database GUI.">
+    The console proved the code ran. Now prove the data is really on disk. Open HeidiSQL, connect to the same database your `mysql_connection_string` points at, click `qu_oxmysql_crud_rows` in the left tree, and open the **Data** tab. You should see the row your `INSERT` created, already carrying the `150` your `UPDATE` set:
+
+    <Mockup app="HeidiSQL · Data tab">
+      <MockTable
+        head={["id", "name", "amount"]}
+        rows={[[1, "lesson", 150]]}
+        caption="qu_oxmysql_crud_rows · 1 row — the same row dbtest just inserted and updated"
+      />
+    </Mockup>
+
+    This is the whole point of a database: the console message disappears the moment you close the server, but this row stays. Run `dbtest` a second time and refresh the Data tab (F5) to watch a second row appear with the next `id`:
+
+    <Mockup app="HeidiSQL · Data tab">
+      <MockTable
+        head={["id", "name", "amount"]}
+        rows={[
+          [1, "lesson", 150],
+          [2, "lesson", 150],
+        ]}
+        caption="qu_oxmysql_crud_rows · 2 rows — each dbtest run adds one row and bumps the id"
+      />
+    </Mockup>
+
+    New to this GUI? The full connect, create database, and run SQL walkthrough is in [HeidiSQL hands on](/lessons/heidisql-hands-on). If 127.0.0.1:3306 refuses the connection, your MariaDB is not running, not HeidiSQL being broken.
+  </Step>
 </StepGroup>
 
 ## How it works
@@ -124,10 +153,12 @@ server_script '@oxmysql/lib/MySQL.lua'
 The `@` prefix means "load this file from another resource". You are not copying oxmysql into your folder. You are telling FiveM to run oxmysql's `MySQL.lua` inside your resource's environment first. That file is what defines the global `MySQL` table you call later. Without this line, `MySQL` is `nil` and your first query throws `attempt to index a nil value`.
 
 ```lua
-dependency 'oxmysql'
+dependencies {
+    'oxmysql'
+}
 ```
 
-This is a guarantee about load order. It tells the server "do not start `qu_oxmysql_crud` until `oxmysql` has started". If oxmysql is still booting when your resource runs, the connection pool is not ready and queries fail. The `dependency` line removes that race.
+This is a guarantee about load order. It tells the server "do not start `qu_oxmysql_crud` until `oxmysql` has started". If oxmysql is still booting when your resource runs, the connection pool is not ready and queries fail. The `dependencies` block removes that race. The key is plural and takes a table in braces, so you can list more than one, like `dependencies { 'oxmysql', 'ox_lib' }`.
 
 ### The table is the shape of your data
 
@@ -208,7 +239,7 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
 
 <FailureList
   items={[
-    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing or misspelled in fxmanifest.lua, or oxmysql is not started. Add the line, add dependency 'oxmysql', and ensure oxmysql loads before this resource." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing or misspelled in fxmanifest.lua, or oxmysql is not started. Add the line, add the dependencies { 'oxmysql' } block, and ensure oxmysql loads before this resource." },
     { symptom: "oxmysql could not connect / no connection string", fix: "oxmysql has no database to talk to. Set mysql_connection_string in server.cfg pointing at your MariaDB, and confirm the database is running." },
     { symptom: "Unknown column or Table doesn't exist", fix: "You skipped the CREATE TABLE step or ran it against the wrong database. Run the SQL from step 3 against the same database in your connection string." },
     { symptom: "attempt to index a nil value (local 'row')", fix: "MySQL.single returned nil because no row matched. Confirm the insert ran first and that you are passing the returned id into the WHERE id = ? slot." },
@@ -220,7 +251,7 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
 
 <Recap
   items={[
-    "Wire a resource to oxmysql with @oxmysql/lib/MySQL.lua and dependency 'oxmysql'.",
+    "Wire a resource to oxmysql with @oxmysql/lib/MySQL.lua and a dependencies { 'oxmysql' } block.",
     "Run insert, read, and update with MySQL.insert.await, MySQL.single.await, and MySQL.update.await.",
     "Use ? placeholders so user input can never be executed as SQL.",
     "Capture the new row id from an insert and use it to read and update the same row.",

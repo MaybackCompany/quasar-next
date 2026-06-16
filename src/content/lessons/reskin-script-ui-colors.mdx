@@ -1,0 +1,287 @@
+<LessonHero
+  crumbs="Module C3 · Interfaces (NUI)"
+  title="Reskin a script's UI colors without breaking it"
+  meta={[
+    { label: "You'll build", value: "A recolored HUD panel for a real script: same layout, same code, new palette, swapped by editing two CSS variables." },
+    { label: "Time", value: "~16 minutes" },
+    { label: "You need", value: "A local FiveM practice server you can restart, a script that ships an HTML NUI (its folder has an html/, web/, or ui/ directory), and a text editor (VS Code is free)." },
+    { label: "You'll learn", value: "Where a script's NUI lives, what a CSS custom property is, how to change values without touching structure, how to refresh in game, and why a built React NUI must be rebuilt while a raw-HTML NUI is edited directly." },
+  ]}
+>
+  Most scripts let you change how they look without ever opening the Lua. The colors of a HUD, a menu, or a notification almost always live in a **CSS file** inside the script's NUI folder. In this lesson you find that file, change a couple of color values, refresh in game, and watch the panel repaint, all without touching a single line that makes the script *work*. The rule that keeps you safe is simple: change **values**, never **structure**.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder and open a script's folder.",
+    "I can edit a file and restart one resource from the console.",
+    "I know the difference between a file that styles a UI and a file that runs the logic."
+  ]}
+/>
+
+<Callout variant="fivem" title="Reskin the proof, then understand it">
+  This lesson reskins one real NUI panel by editing the CSS color variables in its `html/` folder. Follow the folder hunt, the exact edit, and the in-game refresh. Once the panel repaints, the next section explains what a CSS custom property is and why editing values is safe while editing structure is not.
+</Callout>
+
+## Where a script's UI actually lives
+
+A FiveM script that draws an interface inside the game does it with **NUI**: a tiny web page (HTML, CSS, JavaScript) that FiveM renders on top of GTA. That web page lives in a folder inside the resource, and the manifest points at it. Open the script's `fxmanifest.lua` and look for these two keys:
+
+```lua
+ui_page 'html/index.html'
+files {
+    'html/index.html',
+    'html/style.css',
+    'html/script.js'
+}
+```
+
+`ui_page` is the entry HTML file FiveM loads. `files { }` lists every asset that page is allowed to load. The folder name in front of those paths is your target. It is almost always one of three names:
+
+```text
+your_script/
+  fxmanifest.lua        <- read this first; it names the ui_page
+  client.lua            <- logic. DO NOT touch for a reskin.
+  server.lua            <- logic. DO NOT touch for a reskin.
+  html/                 <- the NUI lives here (most common name)
+    index.html          <- structure (markup). Leave it alone.
+    style.css           <- COLORS LIVE HERE. This is your file.
+    script.js           <- behavior (logic). Leave it alone.
+```
+
+Some authors name the folder `web/` or `ui/` instead of `html/`. The name does not matter; the manifest's `ui_page` line tells you exactly which folder and file to open. Inside it you are looking for the **CSS** file, the one ending in `.css`. That is where color is defined. The `.js` and `.html` files are markup and behavior; leave them be.
+
+<Callout variant="fivem" title="Two flavors of NUI, and it matters a lot">
+  Some scripts ship a **raw-HTML** NUI: the `html/` folder contains a plain `.css` file you can read and edit directly. Others ship a **built React (or Vue) NUI**: the folder is named `web/`, `ui/`, or `build/`, and the CSS is compiled into a minified bundle like `web/build/assets/index-a1b2c3.css`. You can still edit a raw built file, but the real source lives in a `src/` folder and the proper fix is to change the source and **rebuild**. This lesson does the safe, universal case first (raw HTML), then shows you how to tell the two apart in How it works.
+</Callout>
+
+## Reskin it
+
+<StepGroup>
+  <Step num={1} title="Find the NUI folder from the manifest" outcome="You know exactly which CSS file owns the colors.">
+    Open the script's `fxmanifest.lua` and read the `ui_page` line. It names the folder and entry file:
+
+    ```lua
+    ui_page 'html/index.html'
+    ```
+
+    So the NUI folder is `html/`. Open it and find the CSS file. If you do not see a `ui_page` line at all and instead see a folder named `web/` or `ui/` with a `build/` inside, you have a built NUI; jump to How it works before editing.
+  </Step>
+
+  <Step num={2} title="Back up the file you are about to edit" outcome="You can undo in one step if anything looks wrong.">
+    Before any reskin, copy the CSS file next to itself:
+
+    ```text
+    html/style.css         <- the file you will edit
+    html/style.css.bak     <- your untouched copy (FiveM ignores .bak)
+    ```
+
+    A reskin should never be a gamble. If the panel looks broken after your edit, you delete `style.css`, rename `style.css.bak` back to `style.css`, restart, and you are exactly where you started.
+  </Step>
+
+  <Step num={3} title="Read the current palette" outcome="You know the old colors before you touch them.">
+    Open `style.css`. Near the top you will usually find a `:root` block holding the script's color values as **custom properties** (the names start with two dashes):
+
+    ```css
+    :root {
+        --accent: #7b2ff7;     /* buttons, active tab, the brand color */
+        --bg-panel: #1a1a1f;   /* the panel background */
+        --text: #e8e8ee;       /* body text */
+        --danger: #ff4d4d;     /* warnings, delete buttons */
+    }
+    ```
+
+    This is the old palette. Write the four hex values down. That is what you are replacing.
+
+    <Swatch
+      colors={[
+        { hex: "#7b2ff7", label: "accent" },
+        { hex: "#1a1a1f", label: "bg-panel" },
+        { hex: "#e8e8ee", label: "text" },
+        { hex: "#ff4d4d", label: "danger" }
+      ]}
+    />
+  </Step>
+
+  <Step num={4} title="Change the values, not the names" outcome="New colors are in; every selector and class is untouched.">
+    Replace only the hex codes after each `:`. Keep every property name, every brace, and every semicolon exactly as it was:
+
+    ```css
+    :root {
+        --accent: #0fb6c4;     /* was #7b2ff7 */
+        --bg-panel: #10141a;   /* was #1a1a1f */
+        --text: #eef4f6;       /* was #e8e8ee */
+        --danger: #ff5d5d;     /* was #ff4d4d */
+    }
+    ```
+
+    That is the entire reskin. You changed four values. You did not rename a property, delete a line, or move a brace. Every part of the file that controls layout and behavior is byte-for-byte identical to before.
+
+    <Swatch
+      colors={[
+        { hex: "#0fb6c4", label: "accent" },
+        { hex: "#10141a", label: "bg-panel" },
+        { hex: "#eef4f6", label: "text" },
+        { hex: "#ff5d5d", label: "danger" }
+      ]}
+    />
+  </Step>
+
+  <Step num={5} title="Refresh in game and look" outcome="The panel repaints with the new palette, layout unchanged.">
+    Save the file. In the txAdmin Live Console (or your server console), restart just this resource so FiveM reloads the NUI files:
+
+    ```text
+    restart your_script
+    ```
+
+    Then open the script's UI in game the normal way (the command or key the script uses). The panel comes back with the new colors. If a stale skin lingers, clear the NUI cache once and reconnect:
+
+    ```text
+    # In the FiveM client app data folder (%localappdata%/FiveM/FiveM.app/):
+    # delete data/nui-storage, then rejoin the server.
+    ```
+
+    Here is what the same panel looks like before and after. Same boxes, same buttons, same positions. Only the paint changed.
+
+    <Mockup app="HUD panel · old palette (#7b2ff7 accent)">
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, lineHeight: 1.7 }}>
+        ┌── GARAGE ────────────────────────┐<br />
+        │ [#7b2ff7] Spawn   [#1a1a1f] List │<br />
+        │ Adder            $1,200,000       │<br />
+        │ Zentorno         $725,000         │<br />
+        │ [#ff4d4d] Delete vehicle          │<br />
+        └──────────────────────────────────┘
+      </div>
+    </Mockup>
+
+    <Mockup app="HUD panel · new palette (#0fb6c4 accent)">
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, lineHeight: 1.7 }}>
+        ┌── GARAGE ────────────────────────┐<br />
+        │ [#0fb6c4] Spawn   [#10141a] List │<br />
+        │ Adder            $1,200,000       │<br />
+        │ Zentorno         $725,000         │<br />
+        │ [#ff5d5d] Delete vehicle          │<br />
+        └──────────────────────────────────┘
+      </div>
+    </Mockup>
+  </Step>
+</StepGroup>
+
+## How it works
+
+You changed four values and the whole panel changed color. Now take it apart so the next time you open a strange script's CSS you are deciding, not guessing. There are three ideas doing the work, and one fork in the road that decides whether your edit takes effect.
+
+### What a CSS custom property is
+
+```css
+:root {
+    --accent: #0fb6c4;
+}
+```
+
+A name that starts with two dashes, like `--accent`, is a **CSS custom property** (people also call them **CSS variables**). It is a named color stored in one place. The `:root` block at the top of the file is just the document's outermost element, so a property defined there is visible to the entire page. Defining it here makes it the single source of truth for that color.
+
+Everywhere else in the file, the script reads that value back with `var(...)`:
+
+```css
+.btn-spawn {
+    background: var(--accent);   /* reads #0fb6c4 from :root */
+}
+.tab.active {
+    border-bottom: 2px solid var(--accent);   /* same color, same source */
+}
+```
+
+This is why changing one line repainted several things at once. The Spawn button, the active tab underline, and anything else that wrote `var(--accent)` all pulled from the same property. You did not hunt down every button; you changed the value once and every `var(--accent)` updated. That is the entire reason authors use custom properties: one knob, many controls.
+
+### Why you change values, not structure
+
+A CSS file has two kinds of content, and they are not equally safe to touch.
+
+- **Values** are the things after the colon: `#0fb6c4`, `12px`, `bold`. Changing a color value can only ever change how something looks. The worst case is an ugly color, and you can read it right back off the panel and fix it.
+- **Structure** is everything else: the property *names* (`--accent`, `background`, `display`), the **selectors** (`.btn-spawn`, `.tab.active`), and the **braces and semicolons** that hold the file together. The JavaScript and the HTML look these names up by their exact spelling.
+
+Rename `--accent` to `--accentt` and every `var(--accent)` in the file now reads an undefined property and falls back to nothing. Delete a closing brace and the browser stops parsing the file at that point, so half the panel loses all styling. Touch a selector like `.btn-spawn` and the rule no longer matches the button it was meant to style. None of that is a Lua error you will see in the console; it is a silently broken-looking UI. So the discipline is strict: in a reskin you only ever edit the text **between the colon and the semicolon**. Leave the names, the selectors, and the punctuation exactly as the author wrote them.
+
+### The fork: raw-HTML NUI vs built React NUI
+
+This is the part that decides whether your edit shows up at all.
+
+A **raw-HTML NUI** ships the CSS as a human-readable file you can open and read, like `html/style.css` with a tidy `:root` block. You edit it directly, restart the resource, and you are done. That is the case you just did.
+
+A **built (compiled) NUI** is written in React or Vue and then **bundled** into minified files before shipping. The folder is often named `web/`, `ui/`, or `build/`, and the CSS is a single dense line in a file like `web/build/assets/index-9f3a.css`. You can technically find and replace a hex value in that minified file, and it will work until the author ships the next build, which overwrites it. The correct fix is to change the color in the **source** (commonly `web/src/index.css` or a theme/`tailwind.config` file) and then run the project's build, usually:
+
+```text
+# inside the script's web/ source folder, only when a package.json is present
+npm install
+npm run build
+```
+
+How do you tell which one you have? Two quick tells:
+
+```text
+your_script/web/
+  package.json        <- present  => built NUI. Edit src/, then npm run build.
+  src/                <- the real, readable source you should edit
+  build/ (or dist/)   <- the compiled output FiveM actually loads
+```
+
+If there is a `package.json` and a `src/` folder, it is a built NUI: edit the source and rebuild. If the `html/` folder is just `.html`, `.css`, and `.js` with no `package.json`, it is raw and you edit the CSS directly. Editing the compiled bundle of a built NUI is the classic "my change keeps disappearing" trap, and now you know why.
+
+<Checkpoint question="You changed --accent in html/style.css, restarted the resource, but the panel still shows the old color. What are the two most likely causes?">
+  First, the script is a **built NUI** and the file you edited is not the one FiveM loads. Check for a `web/` or `ui/` folder with a `package.json` and a compiled bundle under `build/` or `dist/`; if it exists, your real edit belongs in `web/src/` followed by `npm run build`, and the loose `html/style.css` you changed may be unused. Second, you edited the right raw file but the client cached the old NUI: the resource restarted, but the player's FiveM client is still showing the previous render. Delete `data/nui-storage` in the FiveM app data folder and reconnect, or fully rejoin the server, so the client fetches the fresh CSS. If neither applies, confirm you actually saved the file and that `var(--accent)` is what the button uses, not a hardcoded hex on that specific rule.
+</Checkpoint>
+
+### When you reach for this
+
+Recoloring a NUI is one of the most common first edits a server owner makes, and the value-not-structure rule applies every time:
+
+- **Matching a script to your brand.** A paid HUD ships purple; your server is teal. You change the accent property, not the layout, and it now matches everything else.
+- **Fixing a readability problem.** Light gray text on a light panel is unreadable. You darken the panel value or lighten the text value, leaving the structure that positions the text alone.
+- **A quick seasonal theme.** Swap the accent to red and green for a holiday weekend, keep the backup, and revert with one file rename when it is over.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Edited the CSS, restarted, panel still shows the old colors", fix: "Either you edited a built NUI's loose file instead of its src/ + rebuild, or the client cached the old NUI. Confirm there is no web/ build/ bundle that overrides html/, then delete data/nui-storage in the FiveM app folder and reconnect." },
+    { symptom: "After the edit, part of the panel lost ALL its styling (raw, unstyled boxes)", fix: "You deleted or broke a brace or semicolon, so the browser stopped parsing the CSS at that point. Restore from your style.css.bak and re-do the edit, changing only the text between the colon and the semicolon." },
+    { symptom: "The color did not change anywhere even though the file saved fine", fix: "You renamed the property (for example --accent to --accentt). Every var(--accent) now reads an undefined value. Put the original property name back; change the value after it, never the name." },
+    { symptom: "One element changed but the button you wanted is still the old color", fix: "That specific rule uses a hardcoded hex (background: #7b2ff7) instead of var(--accent). Change that one value in that one rule too, leaving its selector and property name untouched." },
+    { symptom: "Change worked, then vanished after the script author shipped an update", fix: "It is a built NUI and you edited the compiled bundle, which the new build overwrote. Edit the source in web/src/ and run npm run build, or re-apply after each update." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Find a script's NUI folder by reading the ui_page line in fxmanifest.lua, whether it is named html/, web/, or ui/.",
+    "Identify the CSS file as the one that owns color, and leave the .html markup and .js behavior alone.",
+    "Explain what a CSS custom property is and why changing one --accent value repaints every element that reads var(--accent).",
+    "State the safety rule: edit only the value between the colon and the semicolon, never the property names, selectors, or punctuation.",
+    "Tell a raw-HTML NUI from a built React NUI by the presence of package.json and a src/ folder, and know that a built NUI must be rebuilt while a raw one is edited directly.",
+    "Refresh a reskin in game with restart, and clear data/nui-storage when the client shows a stale skin.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Build a full second theme for the panel as a swappable backup, and prove you can flip between two skins safely. Starting from the raw `html/style.css` you reskinned:
+
+  1. Save your current working file as `style.teal.css.bak`.
+  2. Make a third copy, `style.amber.css.bak`, and in it set a warm palette: `--accent: #f5a524`, `--bg-panel: #1b160e`, `--text: #f7efe2`, `--danger: #ff5d5d`. Change only the four values; the property names, selectors, and braces stay identical to the teal version.
+  3. To wear the amber skin, copy `style.amber.css.bak` over `style.css`, run `restart your_script`, and open the panel in game. To go back to teal, copy `style.teal.css.bak` over `style.css` and restart again.
+
+  Confirm that switching skins never touches `index.html` or `script.js`, that both themes leave every button in the same position, and that you can revert to the original at any time with one file copy. You now have a repeatable reskin workflow: keep named backups of each palette, swap by overwriting `style.css`, and restart. If a future script turns out to be a built NUI, your skill transfers; you do the same value-only edit, just in `web/src/` followed by `npm run build`.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM NUI development guide", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/" },
+    { label: "FiveM resource manifest: ui_page and files", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "MDN: Using CSS custom properties (variables)", href: "https://developer.mozilla.org/en-US/docs/Web/CSS/Using_CSS_custom_properties" },
+    { label: "FiveM server commands (restart, refresh)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" }
+  ]}
+/>

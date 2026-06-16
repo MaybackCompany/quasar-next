@@ -4,6 +4,7 @@ import { Pre } from "@/components/lesson/mdx/code-block";
 import { LessonChecklist } from "@/components/fqs/lesson-checklist";
 import { LuaSandbox } from "@/components/fqs/lua-sandbox";
 import { TechLinks, TechLink } from "@/components/fqs/tech-links";
+import { Mockup, MockTable, Swatch } from "@/components/fqs/mockups";
 import { LessonVideo } from "@/components/fqs/lesson-video";
 import { YouTubeVideo } from "@/components/fqs/youtube-video";
 // Components used by hub pages (cheatsheets/server/...) that aren't restyled here yet.
@@ -303,6 +304,9 @@ const components: MDXComponents = {
   Sandbox: LuaSandbox,
   TechLinks,
   TechLink,
+  Mockup,
+  MockTable,
+  Swatch,
   LessonVideo,
   YouTube: YouTubeVideo,
 

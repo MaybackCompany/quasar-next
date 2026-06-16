@@ -1,0 +1,369 @@
+<LessonHero
+  crumbs="Module B6 · Build real features"
+  title="How a script talks to a framework"
+  meta={[
+    { label: "You'll build", value: "A server script that detects whether the server runs ESX, QBCore, or Qbox, gets the player object, gives them $100, and prints their job. The same action, three frameworks, one file." },
+    { label: "Time", value: "~24 minutes" },
+    { label: "You need", value: "A local server running ONE framework you can restart (es_extended, qb-core, or qbx_core), plus the natives toolbox and command/print habits from earlier modules." },
+    { label: "You'll learn", value: "How to get the player object in each framework -> how to read money and job -> the export style vs the event style -> why real scripts detect the framework first and then branch" },
+  ]}
+>
+  You already know how to register a command and print a line. The missing piece is the player. A framework like ESX, QBCore, or Qbox is the thing that knows who the player is, how much cash they hold, and what job they work. Your script does not store any of that. It **asks the framework**. In this lesson you build one server script that asks all three the same two questions, give $100 and what is your job, and you watch each one answer in its own dialect.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can make a resource folder, write an fxmanifest, and ensure it in server.cfg.",
+    "I can register a server command and read txAdmin Live Console output.",
+    "I know my server runs exactly one of ESX, QBCore, or Qbox, and I can restart it."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds one server script named `qu_framework_talk` that detects the framework, gets the player object, adds $100, and prints the player's job. Follow the folder names, files, code, and restart steps exactly. Once a command prints money and job for your framework, the next section takes the call apart so you can read any framework export without copying.
+</Callout>
+
+<Callout title="This complements the frameworks overview">
+  If you have not met ESX, QBCore, and Qbox as concepts yet, read [What a FiveM framework is](/lessons/what-a-framework-is) first. That lesson tells you what each framework *is*. This one shows you how your code actually *talks* to it.
+</Callout>
+
+## The one idea: your script asks, the framework answers
+
+A plain FiveM resource knows almost nothing about a player. It can read a ped with `PlayerPedId`, but it has no idea that ped is "John, a cop, with $4,200 in the bank." That knowledge lives in the framework. So every framework hands your script a **getter**: you pass it a server id, and it hands back a **player object**, a table that holds that player's money, job, identifier, and a set of functions to change them.
+
+```text
+your script              framework                database
+-----------              ---------                --------
+GetPlayer(source)  --->  look up player    --->   read row
+                   <---  player object (table)
+
+Player.addMoney(100) --> framework updates --->   write row
+```
+
+The whole skill is three moves, in this order:
+
+1. Get a reference to the framework itself (the "core object" or its exports).
+2. Use it to get the **player object** for one `source`.
+3. Call functions on that player object to read or change money and job.
+
+Every framework follows that exact shape. Only the names change. That is why, once you can read one, you can read all three.
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_framework_talk
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout. Everything here is server side, because money and job live on the server, never on the client.
+
+    ```text
+resources/qu_framework_talk/
+  fxmanifest.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM loads your one server file.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+    ```
+
+    No `lua54` line: Lua 5.4 is the only runtime now, so that directive is deprecated and ignored. We are deliberately not adding a `dependencies { }` block yet. The detection code in the next step handles a framework that has not loaded, so the script will not crash even if it starts in the wrong order.
+  </Step>
+
+  <Step num={4} title="Write the detect-and-act code" outcome="The topic is now runnable code that works on whichever framework you run.">
+    Open `server.lua` and paste this. It detects the framework once, then a `/fwtest` command gets the player, gives $100, and prints the job.
+
+    ```lua
+-- Detect the framework ONCE when the resource starts.
+-- GetResourceState returns 'started' only for a resource that is actually running.
+local Framework = nil
+local FrameworkName = 'none'
+
+if GetResourceState('es_extended') == 'started' then
+    Framework = exports['es_extended']:getSharedObject()
+    FrameworkName = 'esx'
+elseif GetResourceState('qbx_core') == 'started' then
+    FrameworkName = 'qbox'
+elseif GetResourceState('qb-core') == 'started' then
+    Framework = exports['qb-core']:GetCoreObject()
+    FrameworkName = 'qbcore'
+end
+
+print(('[qu_framework_talk] detected framework: %s'):format(FrameworkName))
+
+RegisterCommand('fwtest', function(source)
+    local src = source
+    if src == 0 then
+        print('[qu_framework_talk] run this in-game, not from the console (it needs a real player)')
+        return
+    end
+
+    if FrameworkName == 'esx' then
+        local xPlayer = Framework.GetPlayerFromId(src)
+        if not xPlayer then return end
+        xPlayer.addMoney(100)
+        print(('[qu_framework_talk] ESX gave $100, job is %s'):format(xPlayer.getJob().name))
+
+    elseif FrameworkName == 'qbcore' then
+        local Player = Framework.Functions.GetPlayer(src)
+        if not Player then return end
+        Player.Functions.AddMoney('cash', 100)
+        print(('[qu_framework_talk] QBCore gave $100, job is %s'):format(Player.PlayerData.job.name))
+
+    elseif FrameworkName == 'qbox' then
+        local Player = exports.qbx_core:GetPlayer(src)
+        if not Player then return end
+        Player.Functions.AddMoney('cash', 100)
+        print(('[qu_framework_talk] Qbox gave $100, job is %s'):format(Player.PlayerData.job.name))
+
+    else
+        print('[qu_framework_talk] no supported framework is running on this server')
+    end
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in txAdmin and the player's cash goes up.">
+    Open `server.cfg` and make sure this line is **below** your framework's `ensure` line, so the framework starts first:
+
+    ```cfg
+    ensure es_extended       # or qb-core, or qbx_core (only one of these)
+    ensure qu_framework_talk
+    ```
+
+    Save, then in the txAdmin Live Console run:
+
+    ```text
+    restart qu_framework_talk
+    ```
+
+    The moment it restarts, the detection line prints. On an ESX server you see:
+
+    <ExpectedOutput>
+      [qu_framework_talk] detected framework: esx
+    </ExpectedOutput>
+
+    Now join the server so you are a real player, open F8, and run:
+
+    ```text
+    /fwtest
+    ```
+
+    Watch txAdmin. On ESX, with the default unemployed job, you see:
+
+    <ExpectedOutput>
+      [qu_framework_talk] ESX gave $100, job is unemployed
+    </ExpectedOutput>
+
+    Open your wallet or inventory and confirm your cash went up by $100. On QBCore or Qbox the wording changes to match, and the job prints as `unemployed`, which is QBCore's and Qbox's default job name. The cash increase is the real proof: your script just changed live player state through the framework.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran it and your cash went up. Now take the calls apart so the next time you open a framework's docs you are deciding, not copying. There are only four things happening: get the core, get the player, change money, read job. The rest is the detection wrapper that lets one file serve three frameworks.
+
+### Getting the framework: export style vs event style
+
+The very first thing every framework script needs is a reference to the framework itself. There are two historical ways to get it, and knowing both is what lets you read old and new scripts.
+
+```lua
+-- The EXPORT style (modern, preferred everywhere in 2026)
+local ESX = exports['es_extended']:getSharedObject()
+local QBCore = exports['qb-core']:GetCoreObject()
+```
+
+An **export** is a function one resource publishes for other resources to call. `exports['es_extended']` reaches into the running `es_extended` resource and `:getSharedObject()` calls the function it published under that name. You get back the big `ESX` table on the spot. QBCore does the identical thing with `:GetCoreObject()`. This is a direct, synchronous call: you ask, you receive, on the same line.
+
+```lua
+-- The EVENT style (older ESX scripts you will still meet in the wild)
+ESX = nil
+TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
+```
+
+An **event** is a message. Here your script shouts `esx:getSharedObject` into the resource and hands over a callback function. ESX runs that callback and passes the object back into it, which assigns it to your `ESX` variable. It does the same job as the export, but indirectly, through the event bus. You will see this pattern in tutorials written before 2021. It still works on ESX Legacy, but the export style is cleaner and is what you should write today. Qbox never shipped a shared-object event at all; it is exports only, which is why the Qbox branch in your code calls `exports.qbx_core` directly and never stores a core table.
+
+The mental model: **export is a phone call, event is a letter.** A phone call gives you the answer while you wait. A letter gets answered later, when the other side gets around to reading it. For grabbing the framework object, you want the phone call.
+
+### Getting the player object
+
+Once you hold the framework, you ask it for one player by their `source`, the server id of the connected player.
+
+```lua
+local xPlayer = Framework.GetPlayerFromId(src)   -- ESX
+local Player  = Framework.Functions.GetPlayer(src) -- QBCore
+local Player  = exports.qbx_core:GetPlayer(src)    -- Qbox
+```
+
+Look at the shape. All three take the same input, a `source` number, and all three return the same kind of thing, a **player object** table. The only differences are the path you call it through:
+
+- **ESX** exposes it flat on the shared object as `GetPlayerFromId`. The object it returns is called `xPlayer` by convention.
+- **QBCore** nests its functions under a `.Functions` sub-table, so it is `GetPlayer`. The object is called `Player`.
+- **Qbox** skips the core table entirely and exposes `GetPlayer` straight off the `qbx_core` export.
+
+That `if not Player then return end` line under each call matters. `GetPlayer` returns `nil` when the framework has no loaded player for that source yet, for example a player who is connecting but has not finished loading their character. Indexing a `nil` value is the single most common framework crash, the `attempt to index a nil value` error. Guarding for it is not optional politeness; it is the difference between a script that survives a busy server and one that errors every time someone joins.
+
+### Changing money
+
+With the player object in hand, you call its functions to change state.
+
+```lua
+xPlayer.addMoney(100)                  -- ESX
+Player.Functions.AddMoney('cash', 100) -- QBCore
+Player.Functions.AddMoney('cash', 100) -- Qbox
+```
+
+Here the dialects diverge in a way worth noticing. ESX's `addMoney(amount)` takes just a number and moves the player's main money account. QBCore and Qbox take a **money type** first, then the amount, because they track several accounts separately: `'cash'`, `'bank'`, and often `'crypto'`. So `AddMoney('cash', 100)` means add 100 to the cash account specifically. If you passed `'bank'` instead, the cash in their pocket would not move at all. Qbox is a community continuation of QBCore, so it inherits the same `'cash'` and `'bank'` account model and the same `Player.Functions.AddMoney` shape. To take money away you call `xPlayer.removeMoney(100)` on ESX and `Player.Functions.RemoveMoney('cash', 100)` on QBCore and Qbox.
+
+### Reading job
+
+```lua
+xPlayer.getJob().name        -- ESX, returns the job name string
+Player.PlayerData.job.name   -- QBCore
+Player.PlayerData.job.name   -- Qbox
+```
+
+ESX hands you the job through a **function**, `getJob()`, which returns a table, and you read `.name` off it. QBCore and Qbox instead expose the job as plain **data** sitting on `Player.PlayerData.job`, so you read `.name` directly without calling anything. Both styles carry the same fields underneath: `name` (like `police`), `label` (the pretty `Police Officer`), and a `grade` table with the rank. The default job a fresh character holds is `unemployed`, which is exactly what your `/fwtest` printed.
+
+### Why real scripts detect the framework first
+
+Look again at the top of the file. Before any command, the script decides once which framework it is running on:
+
+```lua
+if GetResourceState('es_extended') == 'started' then
+    Framework = exports['es_extended']:getSharedObject()
+    FrameworkName = 'esx'
+elseif GetResourceState('qbx_core') == 'started' then
+    FrameworkName = 'qbox'
+elseif GetResourceState('qb-core') == 'started' then
+    Framework = exports['qb-core']:GetCoreObject()
+    FrameworkName = 'qbcore'
+end
+```
+
+`GetResourceState('es_extended')` is a FiveM native that returns the string `'started'` only when that resource is actually running on this server. So this block is your script looking around the server and asking "which framework is home?" It sets `FrameworkName` once, and from then on every command just branches on that string. This is exactly how published, multi-framework scripts work: a popular robbery or job script does not ship three separate downloads, it ships one that **detects then branches**, so it drops into an ESX server or a QBCore server unchanged.
+
+Notice the order. Qbox uses `qbx_core` as its core resource, while QBCore uses `qb-core`. Some Qbox servers also keep a compatibility `qb-core` running, so you must check for `qbx_core` **before** `qb-core`, or a Qbox server would be misread as QBCore. Order of detection is not cosmetic; it decides correctness on hybrid servers.
+
+<Checkpoint question="On a Qbox server that also runs a qb-core compatibility shim, why does checking qbx_core before qb-core matter?">
+  Because `GetResourceState` would return `'started'` for both `qbx_core` and `qb-core` on that server. If you checked `qb-core` first, the script would set `FrameworkName = 'qbcore'` and then try to call `exports['qb-core']:GetCoreObject()` and read job and money through QBCore's paths, when it should be using Qbox's `exports.qbx_core:GetPlayer`. The two are close cousins but not identical, and the resource that defines the *real* player data is `qbx_core`. Checking the more specific resource first makes the branch land on the framework that actually owns the player, not the shim that happens to be running beside it.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Getting the player object is the opening move of nearly every server-side feature you will ever build:
+
+- **Any shop, job, or reward.** Selling fish, paying a mechanic, a daily login bonus: all of them start with `GetPlayer(source)` and end with `AddMoney` or `RemoveMoney`.
+- **Any job-gated action.** A police-only `/cuff`, a mechanic-only repair: you read `job.name` and compare it before letting the action run.
+- **Any script meant to be shared or sold.** The detect-then-branch wrapper is what makes a script "framework agnostic." It is the difference between code that works on one server and code that works on thousands.
+
+## A side by side: the same action in three frameworks
+
+Here is the whole job, give $100 and read the job name, lined up so you can see the dialects against each other. Same shape, different words.
+
+<Mockup app="The same two actions, three frameworks">
+```lua
+-- ============ ESX ============
+local ESX = exports['es_extended']:getSharedObject()
+local xPlayer = ESX.GetPlayerFromId(src)
+xPlayer.addMoney(100)                       -- give $100 (main account)
+local job = xPlayer.getJob().name           -- read job (via function)
+
+-- ============ QBCore ============
+local QBCore = exports['qb-core']:GetCoreObject()
+local Player = QBCore.Functions.GetPlayer(src)
+Player.Functions.AddMoney('cash', 100)      -- give $100 (cash account)
+local job = Player.PlayerData.job.name      -- read job (plain data)
+
+-- ============ Qbox ============
+local Player = exports.qbx_core:GetPlayer(src)
+Player.Functions.AddMoney('cash', 100)      -- give $100 (cash account)
+local job = Player.PlayerData.job.name      -- read job (plain data)
+```
+</Mockup>
+
+Read top to bottom and the family resemblance is obvious. Every framework: get the core (or its export), get the player, change money, read job. The table below is the same comparison as a lookup you can keep open while you script.
+
+<MockTable
+  head={["Task", "ESX", "QBCore", "Qbox"]}
+  rows={[
+    ["Get the framework", "exports['es_extended']:getSharedObject()", "exports['qb-core']:GetCoreObject()", "exports.qbx_core (no core table)"],
+    ["Get the player", "ESX.GetPlayerFromId(src)", "QBCore.Functions.GetPlayer(src)", "exports.qbx_core:GetPlayer(src)"],
+    ["Player object name", "xPlayer", "Player", "Player"],
+    ["Give $100", "xPlayer.addMoney(100)", "Player.Functions.AddMoney('cash', 100)", "Player.Functions.AddMoney('cash', 100)"],
+    ["Take $100", "xPlayer.removeMoney(100)", "Player.Functions.RemoveMoney('cash', 100)", "Player.Functions.RemoveMoney('cash', 100)"],
+    ["Read job name", "xPlayer.getJob().name", "Player.PlayerData.job.name", "Player.PlayerData.job.name"],
+    ["Money model", "single main account", "cash / bank / crypto", "cash / bank / crypto"],
+  ]}
+  caption="The same two actions across all three frameworks. Same shape, different names."
+/>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "attempt to index a nil value (global 'ESX' / 'QBCore')", fix: "The framework object is nil because the framework had not started when you grabbed it, or the resource name is misspelled. Confirm the framework is ensured ABOVE qu_framework_talk in server.cfg, and that the detection branch matched your framework (check the 'detected framework' print line)." },
+    { symptom: "detected framework: none", fix: "GetResourceState found no es_extended, qbx_core, or qb-core in the 'started' state. Run the resource list in txAdmin and confirm your framework is actually running and spelled exactly as the code checks it." },
+    { symptom: "attempt to index a nil value (local 'Player' / 'xPlayer')", fix: "GetPlayer returned nil, usually because the source has no loaded character yet. Run /fwtest in-game after you are fully spawned, and keep the 'if not Player then return end' guard so a half-loaded player cannot crash the handler." },
+    { symptom: "Job prints but money does not change on QBCore or Qbox", fix: "You probably added to the wrong account. AddMoney needs a money type first: AddMoney('cash', 100) moves pocket cash, AddMoney('bank', 100) moves the bank balance. Check which account you are reading in-game." },
+    { symptom: "Qbox server prints 'detected framework: qbcore'", fix: "A qb-core compatibility resource is running alongside qbx_core and your detection checked qb-core first. Keep the qbx_core check ABOVE the qb-core check so the more specific framework wins." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain that your script does not store money or job: it asks the framework, which owns that data.",
+    "Get the framework object the export way (getSharedObject / GetCoreObject) and recognize the older ESX event way when you read old scripts.",
+    "Get the player object from a source in ESX, QBCore, and Qbox, and guard against the nil it returns for an unloaded player.",
+    "Give and take money, and read the job name, knowing ESX uses one account while QBCore and Qbox split cash and bank.",
+    "Write a detect-then-branch wrapper with GetResourceState so one script serves all three frameworks, checking qbx_core before qb-core.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Turn `/fwtest` into a real job-gated paycheck command, `/paycop`, that only pays players whose job is `police`, and pays them an amount you type. Read the job, compare it, then add the money only if it matches.
+
+  ```lua
+  RegisterCommand('paycop', function(source, args)
+      local src = source
+      local amount = tonumber(args[1])
+      if not amount then
+          print('[qu_framework_talk] usage: /paycop <amount>')
+          return
+      end
+
+      -- 1. Get the player object for your framework (reuse the branch from the lesson).
+      -- 2. Read their job name into a variable called jobName.
+      -- 3. if jobName ~= 'police' then print a 'not a cop' line and return.
+      -- 4. Otherwise add `amount` to their cash and print a confirmation.
+  end, false)
+  ```
+
+  Fill in the four steps using the right calls for your framework. `tonumber(args[1])` turns the typed amount into a number, and the job check is just a string compare against `'police'`. Test it twice: once as an unemployed player, where it should refuse, and once after running `/setjob` (ESX) or `/setjob` in QBCore/Qbox to make yourself police, where it should pay out. You have now written the exact gate every job script in FiveM uses: read job, compare, then act.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "ESX commands and player functions", href: "https://docs.esx-framework.org/en/esx_core/es_extended/commands" },
+    { label: "QBCore server function reference", href: "https://docs.qbcore.org/qbcore-documentation/qb-core/server-function-reference" },
+    { label: "Qbox qbx_core exports", href: "https://docs.qbox.re/resources/qbx_core/" },
+    { label: "FiveM GetResourceState native", href: "https://docs.fivem.net/natives/?_0x4039B485" },
+    { label: "FiveM exports and the manifest", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+  ]}
+/>

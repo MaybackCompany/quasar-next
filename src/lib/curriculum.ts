@@ -56,6 +56,10 @@ export const PATHS: Path[] = [
           { num: "04", title: "server.cfg and dependencies", blurb: "ensure resources in the right order, wire dependencies.", slug: "server-cfg", tag: "Setup" },
           { num: "05", title: "The txAdmin tour", blurb: "Players, resources, console: the panels you live in.", slug: "txadmin-tour", tag: "Setup" },
           { num: "06", title: "Connect, restart, read console", blurb: "F8 console, direct connect, ensure vs restart.", slug: "connect-restart", tag: "Setup" },
+          { num: "07", title: "Organize your server: folders and resources", blurb: "server vs server-data, [category] folders, and why load order follows folders.", slug: "organize-server-folders", tag: "Setup" },
+          { num: "08", title: "A complete server.cfg, annotated", blurb: "A production server.cfg top to bottom, every line and section explained.", slug: "server-cfg-annotated", tag: "Setup" },
+          { num: "09", title: "Install any script: the method", blurb: "Read the deps, install them first, import the SQL, ensure in order, restart.", slug: "install-a-script-walkthrough", tag: "Setup" },
+          { num: "10", title: "Reading and fixing common errors", blurb: "The console errors every beginner hits: what each means and the fix.", slug: "fivem-error-catalog", tag: "Debugging" },
           { num: "07", title: "Installing and managing scripts", blurb: "Drop in a downloaded or bought script, load it in order, refresh and test.", slug: "installing-managing-scripts", tag: "Setup" },
         ],
       },
@@ -67,6 +71,7 @@ export const PATHS: Path[] = [
           { num: "08", title: "ConVars and secrets", blurb: "Keep webhook URLs and keys out of the repo with GetConvar.", slug: "convars-server-cfg", tag: "Security" },
           { num: "09", title: "Shipping: launch checklist", blurb: "Production server.cfg and the pre-launch sweep.", slug: "shipping", tag: "Ops" },
           { num: "10", title: "The connection flow: deferrals and queue", blurb: "playerConnecting, deferral cards, and gating who gets in.", slug: "deferrals-connection-queue", tag: "Ops", bonus: true },
+          { num: "11", title: "Giving players permissions (ESX, QBCore, Qbox)", blurb: "ACE groups, add_principal, and admin/jobs in each framework.", slug: "player-permissions-frameworks", tag: "Permissions", bonus: true },
         ],
       },
       {
@@ -121,6 +126,7 @@ export const PATHS: Path[] = [
           { num: "09", title: "Start, restart, stop: the dev loop", blurb: "ensure vs restart, reading the console as feedback.", slug: "dev-loop", tag: "Workflow" },
           { num: "10", title: "Version control with GitHub Desktop", blurb: "Git without a terminal. The safety net every pro uses.", slug: "github-desktop", tag: "Tooling", bonus: true },
           { num: "Deploy", title: "Localhost to VPS with Git", blurb: "Code on your PC, push, pull on the VPS, restart, with a rollback path.", slug: "git-localhost-to-vps", tag: "Workflow", bonus: true },
+          { num: "Config", title: "Reading and editing a script's config.lua", blurb: "The Config table, what most scripts expose, and safe edits vs core logic.", slug: "script-config-files", tag: "Config", bonus: true },
         ],
       },
       {
@@ -158,6 +164,7 @@ export const PATHS: Path[] = [
           { num: "20", title: "Database with oxmysql (CRUD)", blurb: "CRUD without footguns, prepared statements, transactions.", slug: "oxmysql-crud", tag: "SQL" },
           { num: "21", title: "Persistence: cache and write-back", blurb: "Survive restarts without smashing the DB.", slug: "persistence", tag: "SQL" },
           { num: "Bonus", title: "Persistence without a database: the KVS", blurb: "SetResourceKvp/GetResourceKvp for small state with no SQL.", slug: "kvs-no-database-persistence", tag: "SQL", bonus: true },
+          { num: "22", title: "HeidiSQL hands-on", blurb: "Navigate HeidiSQL, run a table, import a script's SQL, and see a script's writes land.", slug: "heidisql-hands-on", tag: "SQL" },
         ],
       },
       {
@@ -171,6 +178,7 @@ export const PATHS: Path[] = [
           { num: "25", title: "Mini banking capstone", blurb: "Balance checks, server validation, safe writes.", slug: "mini-banking-capstone", tag: "Capstone" },
           { num: "26", title: "Server-only banking and audit", blurb: "Persist balances, audit-log every transaction.", slug: "server-only-banking-audit", tag: "Capstone" },
           { num: "27", title: "Jobs framework", blurb: "Clock-in, grades, a payroll loop that never double-pays.", slug: "jobs-framework", tag: "Gameplay" },
+          { num: "Bridge", title: "How scripts talk to frameworks", blurb: "Get the player object, money, and job in ESX, QBCore, and Qbox side by side.", slug: "how-scripts-talk-to-frameworks", tag: "Frameworks", bonus: true },
         ],
       },
       {
@@ -244,6 +252,7 @@ export const PATHS: Path[] = [
           { num: "05", title: "Handling basics and safe edits", blurb: "handling.meta with a Git revert path.", slug: "handling-basics", tag: "Handling" },
           { num: "06", title: "Vehicles and garages", blurb: "Plate as key, the spawn-store-retrieve loop.", slug: "vehicles-garages", tag: "Gameplay" },
           { num: "07", title: "Inventories", blurb: "Stack, weight, slot. The ox_inventory shape.", slug: "inventories", tag: "Gameplay" },
+          { num: "08", title: "Creating items for ox and qs inventory", blurb: "data/items.lua, the icon, AddItem, and the qs-inventory equivalent.", slug: "creating-items-ox-qs-inventory", tag: "Items" },
         ],
       },
       {
@@ -254,6 +263,7 @@ export const PATHS: Path[] = [
           { num: "08", title: "NUI from scratch", blurb: "A Chromium overlay with two-way messages.", slug: "nui-from-scratch", tag: "NUI" },
           { num: "09", title: "NUI advanced: React and Vite", blurb: "SetNuiFocus, callbacks, the production React setup.", slug: "nui-advanced", tag: "NUI" },
           { num: "Bonus", title: "DUI: render HTML on 3D surfaces", blurb: "Paint a live webpage onto a prop or screen with CreateDui.", slug: "dui-3d-surfaces", tag: "NUI", bonus: true },
+          { num: "Bonus", title: "Reskin a script's UI colors", blurb: "Change NUI colors safely: find the CSS, edit values not structure, refresh.", slug: "reskin-script-ui-colors", tag: "NUI", bonus: true },
         ],
       },
       {
