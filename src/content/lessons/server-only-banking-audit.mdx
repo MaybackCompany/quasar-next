@@ -8,7 +8,7 @@
     { label: "Prereqs", value: "SQL from zero (oxmysql, parameterized queries) and the mini bank capstone (server-held balance, reject-if-larger) complete." },
   ]}
 >
-  The mini bank proved the server owns the balance. This lesson adds the part a real economy cannot run without: a record. Every deposit and withdraw now goes through a server net event fired by a real connected player, the server reads that player's true balance, applies the change in a single safe UPDATE, and writes an audit row that captures who, what, how much, the balance before, and the balance after. The client sends an intent. It never sends a balance, and now it can never move money without leaving a trace.
+  The mini bank proved the server owns the balance. This lesson adds the part a real economy cannot run without: a record. Every deposit and withdraw now runs through one server-side handler, triggered by a server-registered command that hands you the real connected player's source. The server reads that player's true balance, applies the change in a single safe UPDATE, and writes an audit row that captures who, what, how much, the balance before, and the balance after. The client sends an intent. It never sends a balance, and now it can never move money without leaving a trace.
 </LessonHero>
 
 <Prereq
@@ -119,16 +119,18 @@ local function getBalance(citizenid)
 end
 
 -- The single trusted path. Every money move on the server goes through here.
-RegisterNetEvent('qu_audit_bank:request', function(action, amount)
-    local source = source
-    local citizenid = citizenIdFor(source)
+-- This is a same-runtime handler fired by AddEventHandler below, so the player
+-- is passed in explicitly as `src` (the magic `source` is only populated for a
+-- real client -> server net event, which this is not).
+AddEventHandler('qu_audit_bank:request', function(src, action, amount)
+    local citizenid = citizenIdFor(src)
 
     -- Validate the intent. The client may only ask to deposit or withdraw a
     -- positive whole number. It never sends a balance.
     amount = tonumber(amount)
     if action ~= 'deposit' and action ~= 'withdraw' then return end
     if not amount or amount <= 0 or amount ~= math.floor(amount) then
-        print('[qu_audit_bank] REJECTED bad amount from source ' .. source)
+        print('[qu_audit_bank] REJECTED bad amount from source ' .. src)
         return
     end
 
@@ -154,22 +156,24 @@ RegisterNetEvent('qu_audit_bank:request', function(action, amount)
     -- One INSERT records the transaction. This runs for every action.
     MySQL.insert.await(
         'INSERT INTO qu_audit_log (citizenid, source, action, amount, balance_before, balance_after) VALUES (?, ?, ?, ?, ?, ?)',
-        { citizenid, source, action, amount, balanceBefore, balanceAfter }
+        { citizenid, src, action, amount, balanceBefore, balanceAfter }
     )
 
     print('[qu_audit_bank] ' .. action .. ' ' .. amount ..
         ' for ' .. citizenid .. ': ' .. balanceBefore .. ' -> ' .. balanceAfter)
 end)
 
--- Thin commands so you can fire the event as a real player from chat.
--- The command runs on the client and triggers the server event, which is
--- exactly how a finished UI would call the server.
+-- Thin commands so you can fire the request as a real player from chat.
+-- These commands are registered in a server_script, so their handlers run on
+-- the server, where RegisterCommand hands you the player's server id as the
+-- first argument. We pass that trusted source into the same-runtime event with
+-- TriggerEvent (the correct same-runtime call; TriggerServerEvent is client-only).
 RegisterCommand('deposit', function(source, args)
-    TriggerServerEvent('qu_audit_bank:request', 'deposit', args[1])
+    TriggerEvent('qu_audit_bank:request', source, 'deposit', args[1])
 end, false)
 
 RegisterCommand('withdraw', function(source, args)
-    TriggerServerEvent('qu_audit_bank:request', 'withdraw', args[1])
+    TriggerEvent('qu_audit_bank:request', source, 'withdraw', args[1])
 end, false)
 
 -- Print the last few audit rows so you can read the trail.
@@ -234,13 +238,17 @@ You ran it as a real player, the server moved your money, and a permanent record
 ### source is the server's proof of who asked
 
 ```lua
-RegisterNetEvent('qu_audit_bank:request', function(action, amount)
-    local source = source
+RegisterCommand('deposit', function(source, args)
+    TriggerEvent('qu_audit_bank:request', source, 'deposit', args[1])
+end, false)
+
+AddEventHandler('qu_audit_bank:request', function(src, action, amount)
+    local citizenid = citizenIdFor(src)
 ```
 
-The mini bank ran from the console, where there is no real player. This lesson runs from a connected player, so the request arrives as a **server net event**. Inside a server net-event handler, FiveM gives you a magic variable named `source`: the server slot of the player who fired the event. That is the one piece of identity the player cannot fake, because the server assigns the slot, not the client.
+The mini bank ran from the console, where there is no real player. This lesson runs from a connected player, but it stays entirely on the server: the `deposit` command is registered inside a `server_script`, so its handler runs on the server, and there `RegisterCommand` hands you the player's server slot as the first callback argument, `source`. That is the one piece of identity the player cannot fake, because the server assigns the slot, not the client. There is no client file and no round-trip across the wire for the identity; the trusted `source` comes straight from the command callback.
 
-The first line, `local source = source`, copies that magic value into a normal local at the top of the handler. Do this immediately. The global `source` can change out from under you if your handler later yields at an `.await` and another event fires, so the safe habit is to capture it into a local on line one and use the local everywhere after. From `source` you derive the `citizenid`, and that is the account the rest of the handler reads and writes. The client sent you `action` and `amount`. It did not, and could not, send you the identity.
+Because everything happens in one runtime, the command passes that trusted `source` explicitly into the handler with `TriggerEvent`, which fires a same-runtime event. The handler receives it as its first parameter, `src`, and uses that local everywhere after. This is the key reason for the explicit pass: the magic `source` global is only populated for a real client -> server net event, which this is not, so a plain same-runtime handler must be told who the player is. From `src` you derive the `citizenid`, and that is the account the rest of the handler reads and writes. The client typed `action` and `amount` into chat. It did not, and could not, supply the identity.
 
 ### The client sends an intent, never a balance
 
@@ -248,7 +256,7 @@ The first line, `local source = source`, copies that magic value into a normal l
 amount = tonumber(amount)
 if action ~= 'deposit' and action ~= 'withdraw' then return end
 if not amount or amount <= 0 or amount ~= math.floor(amount) then
-    print('[qu_audit_bank] REJECTED bad amount from source ' .. source)
+    print('[qu_audit_bank] REJECTED bad amount from source ' .. src)
     return
 end
 ```
@@ -288,16 +296,16 @@ Notice the deposit and the withdraw both end at the same single UPDATE. There is
 ```lua
 MySQL.insert.await(
     'INSERT INTO qu_audit_log (citizenid, source, action, amount, balance_before, balance_after) VALUES (?, ?, ?, ?, ?, ?)',
-    { citizenid, source, action, amount, balanceBefore, balanceAfter }
+    { citizenid, src, action, amount, balanceBefore, balanceAfter }
 )
 ```
 
-This INSERT is the lesson. Immediately after the balance changes, the server appends one row to the append-only log: who (`citizenid` and `source`), what (`action`), how much (`amount`), and the balance on both sides of the move (`balance_before`, `balance_after`). The `created_at` timestamp fills itself in from `DEFAULT CURRENT_TIMESTAMP`, so you do not pass it.
+This INSERT is the lesson. Immediately after the balance changes, the server appends one row to the append-only log: who (`citizenid` and the player's `src`, stored in the `source` column), what (`action`), how much (`amount`), and the balance on both sides of the move (`balance_before`, `balance_after`). The `created_at` timestamp fills itself in from `DEFAULT CURRENT_TIMESTAMP`, so you do not pass it.
 
 Two details matter. First, the INSERT runs for every successful action, not just some, so the log is complete: any balance the table holds can be reconstructed by replaying the rows. Second, it sits below both rejection `return`s on purpose. A rejected withdraw never moved money, so it never writes an audit row. The log records transactions, not attempts. If you also wanted to record refused attempts for fraud review, you would add a separate INSERT before each `return`, with its own action like `withdraw_rejected`.
 
-<Checkpoint question="A player edits their game and fires qu_audit_bank:request with action 'withdraw' and amount 1000000 while holding 50. What does the audit log show afterward, and why?">
-  Nothing new. The amount lives on the client, but the identity, the balance, and the decision all live on the server. The handler captures the real `source`, derives the `citizenid`, reads the true balance of 50 from its own table, sees the requested 1,000,000 is larger, prints a rejection, and `return`s before either the UPDATE or the audit INSERT runs. No money moved, so no row is logged. The player can lie about the amount they want, but they cannot touch the balance the server reads, cannot forge the `source` the server assigns, and cannot reach the INSERT. The only thing they control is the request, never the record.
+<Checkpoint question="A player runs /withdraw 1000000 while holding 50. What does the audit log show afterward, and why?">
+  Nothing new. The amount is the only thing the player typed; the identity, the balance, and the decision all live on the server. Because the command is registered in a server_script, `RegisterCommand` hands the handler the player's real server slot as `source`, which it passes into the request. The handler derives the `citizenid` from that trusted `src`, reads the true balance of 50 from its own table, sees the requested 1,000,000 is larger, prints a rejection, and `return`s before either the UPDATE or the audit INSERT runs. No money moved, so no row is logged. The player can type any amount, but they cannot touch the balance the server reads, cannot forge the slot the server assigns, and cannot reach the INSERT. The only thing they control is the request, never the record.
 </Checkpoint>
 
 ### When you reach for this pattern
@@ -312,7 +320,7 @@ A server-owned balance plus an append-only audit log is the shape every economy 
 
 <FailureList
   items={[
-    { symptom: "source is nil or attempt to concatenate a nil value (source)", fix: "You ran deposit or withdraw from the server console instead of in-game. The console has no player source. Join the server and run the commands from your chat box (press T), so the net event carries a real source." },
+    { symptom: "source is nil or attempt to concatenate a nil value (source)", fix: "You ran deposit or withdraw from the server console instead of in-game. The console has no player, so RegisterCommand passes source as 0 or nil. Join the server and run the commands from your chat box (press T), so the command callback carries a real player source." },
     { symptom: "The balance changes but qu_audit_log stays empty", fix: "The audit INSERT is above a return, or you only wired it into one branch. It must run after the UPDATE for both deposit and withdraw, below every rejection return, so every successful move writes a row." },
     { symptom: "Unknown column 'created_at' or it inserts a wrong time", fix: "You added created_at to the INSERT column list. Leave it out. The DEFAULT CURRENT_TIMESTAMP on the column fills it in with server time; passing it by hand defeats the point." },
     { symptom: "A player deposits a negative number and gains money", fix: "Your validation is missing or runs after the math. Check amount > 0 and amount == math.floor(amount) at the top of the handler, before you compute balanceAfter, so withdraw -500 and deposit 10.5 are refused at the boundary." },
@@ -324,7 +332,7 @@ A server-owned balance plus an append-only audit log is the shape every economy 
 
 <Recap
   items={[
-    "Take a player's request through a server net event and read the trusted source the server assigns, capturing it into a local on the first line of the handler.",
+    "Register a command in a server_script and read the trusted player source the server hands you in the command callback, then pass it into your handler explicitly.",
     "Accept only an intent (action plus a bounded, positive, whole amount) from the client, and validate it at the boundary before any query runs.",
     "Read the real balance, decide the new balance on the server, and apply it in a single safe UPDATE that the client cannot influence.",
     "Write one append-only audit row for every successful transaction, capturing citizenid, source, action, amount, balance_before, balance_after, and an automatic timestamp.",
@@ -341,21 +349,21 @@ A server-owned balance plus an append-only audit log is the shape every economy 
   if amount > balanceBefore then
       MySQL.insert.await(
           'INSERT INTO qu_audit_log (citizenid, source, action, amount, balance_before, balance_after) VALUES (?, ?, ?, ?, ?, ?)',
-          { citizenid, source, 'withdraw_rejected', amount, balanceBefore, balanceBefore }
+          { citizenid, src, 'withdraw_rejected', amount, balanceBefore, balanceBefore }
       )
       print('[qu_audit_bank] REJECTED withdraw of ' .. amount .. ', balance is only ' .. balanceBefore)
       return
   end
   ```
 
-  Restart `qu_audit_bank`, join the server, run `/deposit 100` then `/withdraw 250`, and then run `auditlog` in the console. Confirm a `withdraw_rejected` row now appears with `balance_before` equal to `balance_after` (no money moved), alongside the real deposit. Notice the rejected row logs the same `source` the server trusts, so a player spamming oversized withdrawals leaves a visible pattern you can act on. You just turned the audit log from a record of money moved into a record of intent, which is what real fraud review needs.
+  Restart `qu_audit_bank`, join the server, run `/deposit 100` then `/withdraw 250`, and then run `auditlog` in the console. Confirm a `withdraw_rejected` row now appears with `balance_before` equal to `balance_after` (no money moved), alongside the real deposit. Notice the rejected row logs the same `src` the server trusts, so a player spamming oversized withdrawals leaves a visible pattern you can act on. You just turned the audit log from a record of money moved into a record of intent, which is what real fraud review needs.
 </Exercise>
 
 <Refs
   items={[
     { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
-    { label: "FiveM RegisterNetEvent and server source", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/" },
-    { label: "FiveM triggering events (client to server)", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
+    { label: "FiveM RegisterCommand and the server-side source argument", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterCommand/" },
+    { label: "FiveM triggering events (TriggerEvent is the same-runtime call; TriggerServerEvent is client-only)", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
     { label: "MariaDB CURRENT_TIMESTAMP and TIMESTAMP", href: "https://mariadb.com/kb/en/timestamp/" }
   ]}
 />

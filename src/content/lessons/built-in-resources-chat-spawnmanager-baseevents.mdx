@@ -21,7 +21,7 @@
 />
 
 <Callout variant="fivem" title="These ship with the server, so check before you build">
-  Open your server's default `server.cfg` and you will already see lines like `ensure chat`, `ensure spawnmanager`, and `ensure sessionmanager`. Those are stock Cfx.re resources that boot before yours. You never write them; you trigger their events and call their exports. This lesson builds one resource named `qu_builtins_tour` that leans on three of them. Follow the names and code exactly, then the next section takes every line apart.
+  Open your server's default `server.cfg` and you will already see lines like `ensure chat`, `ensure spawnmanager`, and `ensure sessionmanager`. Those are stock Cfx.re resources that boot before yours. You never write them; you trigger their events, listen for the ones they fire, and call their exports. This lesson builds one resource named `qu_builtins_tour` that leans on three of them. Follow the names and code exactly, then the next section takes every line apart.
 </Callout>
 
 ## What you already have running
@@ -33,7 +33,7 @@ Before the build, here is the map of what is sitting in your server doing work y
   rows={[
     { cmd: "chat", desc: "The chat box. You post messages with the chat:addMessage event, register slash-command hints with chat:addSuggestion, and filter or rewrite messages with the exports.chat:registerMessageHook export." },
     { cmd: "spawnmanager", desc: "Decides where players appear. You call exports.spawnmanager:addSpawnPoint, setAutoSpawnCallback, and forceRespawn to control respawning." },
-    { cmd: "baseevents", desc: "Emits life events: baseevents:onPlayerDied and onPlayerKilled on the server, baseevents:enteredVehicle and leftVehicle on the client." },
+    { cmd: "baseevents", desc: "Emits life events: baseevents:enteredVehicle and leftVehicle fire on the server (the client tells the server), while baseevents:onPlayerDied and onPlayerKilled fire on both the client and the server." },
     { cmd: "sessionmanager", desc: "Manages the player session and fires playerActivated on the server once a player is fully loaded in and ready." },
   ]}
 />
@@ -52,12 +52,13 @@ The point of this lesson is a habit, not a single script. When you need a chat m
   </Step>
 
   <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
-    This resource talks to chat from the client and reacts to a client baseevent, so both pieces of code live in one `client_script`. Create this exact layout:
+    This resource talks to chat from the client, but it reacts to the `baseevents:enteredVehicle` event, which the stock `baseevents` resource fires on the *server*. So the chat suggestion and message live in a `client_script`, and the vehicle handler lives in a `server_script`. Create this exact layout:
 
     ```text
 resources/qu_builtins_tour/
   fxmanifest.lua
   client.lua
+  server.lua
     ```
   </Step>
 
@@ -71,13 +72,14 @@ game 'gta5'
 dependencies { 'chat', 'baseevents' }
 
 client_script 'client.lua'
+server_script 'server.lua'
     ```
 
-    The `dependencies` block names the stock resources you call into. It tells the server to load `chat` and `baseevents` before `qu_builtins_tour`, so their events exist by the time your code runs. Note there is no `lua54 'yes'` line: that directive was deprecated in June 2025 and is ignored, since Lua 5.4 is now the only runtime.
+    The `dependencies` block names the stock resources you call into. It tells the server to load `chat` and `baseevents` before `qu_builtins_tour`, so their events exist by the time your code runs. The `client_script` holds the chat suggestion and message; the `server_script` holds the vehicle handler, because `baseevents:enteredVehicle` is a server event. Note there is no `lua54 'yes'` line: that directive was deprecated in June 2025 and is ignored, since Lua 5.4 is now the only runtime.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `client.lua` and paste this:
+    Open `client.lua` and paste this. These two calls are genuinely client-side: the chat box lives on each player's own game instance.
 
     ```lua
 -- 1. Tell the chat box about a command we want to hint at.
@@ -91,15 +93,25 @@ TriggerEvent('chat:addMessage', {
     multiline = true,
     args = { 'Quasar', 'Builtins tour loaded. Get in a vehicle to test baseevents.' }
 })
+    ```
 
--- 3. React to a stock client baseevent: fired when this player enters a vehicle.
-AddEventHandler('baseevents:enteredVehicle', function(vehicle, seat, displayName, netId)
-    TriggerEvent('chat:addMessage', {
+    Now open `server.lua` and paste this. `baseevents:enteredVehicle` is a *server* event: the stock `baseevents` resource detects the vehicle on the client and fires it across to the server with `TriggerServerEvent`, so the handler must live here and read which player it was about from `source`.
+
+    ```lua
+-- 3. React to the baseevents:enteredVehicle SERVER event.
+-- baseevents fires this with TriggerServerEvent, so we register a net event.
+RegisterNetEvent('baseevents:enteredVehicle')
+AddEventHandler('baseevents:enteredVehicle', function(currentVehicle, currentSeat, vehicleDisplayName, vehicleNetId)
+    local src = source
+
+    -- Send the confirmation line back to just that player's chat box.
+    TriggerClientEvent('chat:addMessage', src, {
         color = { 0, 200, 120 },
         multiline = true,
-        args = { 'Quasar', ('You entered a %s (seat %d).'):format(displayName, seat) }
+        args = { 'Quasar', ('You entered a %s (seat %d).'):format(vehicleDisplayName, currentSeat) }
     })
-    print(('[qu_builtins_tour] enteredVehicle: %s seat %d netId %s'):format(displayName, seat, tostring(netId)))
+
+    print(('[qu_builtins_tour] player %d enteredVehicle: %s seat %d netId %s'):format(src, vehicleDisplayName, currentSeat, tostring(vehicleNetId)))
 end)
     ```
   </Step>
@@ -117,25 +129,25 @@ end)
     restart qu_builtins_tour
     ```
 
-    Join the server so your ped exists. As you load in, watch the chat box for the system message. Then type `/` and look for the `/wave` hint. Finally, get into any vehicle and watch chat plus the F8 console:
+    Join the server so your ped exists. As you load in, watch the chat box for the system message. Then type `/` and look for the `/wave` hint. Finally, get into any vehicle and watch chat plus the server console (txAdmin Live Console):
 
     ```text
-    open F8, get into a car
+    open the server console, get into a car
     ```
 
     <ExpectedOutput>
       [Quasar] Builtins tour loaded. Get in a vehicle to test baseevents.
 [Quasar] You entered a Sultan (seat -1).
-[qu_builtins_tour] enteredVehicle: Sultan seat -1 netId 65538
+[qu_builtins_tour] player 1 enteredVehicle: Sultan seat -1 netId 65538
     </ExpectedOutput>
 
-    The vehicle name and netId depend on the car you enter, and seat `-1` is the driver's seat. The two `[Quasar]` lines appear in the in-game chat box; the `[qu_builtins_tour]` line appears in the F8 console because it comes from `print`.
+    The vehicle name and netId depend on the car you enter, and seat `-1` is the driver's seat. Both `[Quasar]` lines appear in your in-game chat box: the first from the client message, the second from the server sending `chat:addMessage` back to your player with `TriggerClientEvent`. The `[qu_builtins_tour]` line appears in the server console (not F8) because the `print` now runs server-side, and `player 1` is your server id from `source`.
   </Step>
 </StepGroup>
 
 ## How it works
 
-You ran it, the message appeared, the hint showed up, and getting in a car triggered a reaction. None of that chat or vehicle plumbing is yours. You only sent events to resources that were already running. Now take each call apart so you know exactly which resource you are talking to and why.
+You ran it, the message appeared, the hint showed up, and getting in a car triggered a reaction. None of that chat or vehicle plumbing is yours. You sent events to resources that were already running, and listened for one they fire. Now take each call apart so you know exactly which resource you are talking to, on which side, and why.
 
 ### The chat suggestion: a hint, not a command
 
@@ -168,30 +180,34 @@ TriggerEvent('chat:addMessage', {
 ### The baseevent handler: reacting to the game
 
 ```lua
-AddEventHandler('baseevents:enteredVehicle', function(vehicle, seat, displayName, netId)
+RegisterNetEvent('baseevents:enteredVehicle')
+AddEventHandler('baseevents:enteredVehicle', function(currentVehicle, currentSeat, vehicleDisplayName, vehicleNetId)
+    local src = source
     -- ...
 end)
 ```
 
-`AddEventHandler` registers a listener for an event that some other code fires. This is different from `TriggerEvent`, which sends an event. Sending versus listening is the whole shape of event-driven code: one resource triggers, another handles. Here the `baseevents` resource is doing the triggering. It watches the game and, the moment your local ped sits in a vehicle, it fires `baseevents:enteredVehicle` and hands your handler four values.
+`AddEventHandler` registers a listener for an event that some other code fires. This is different from `TriggerEvent`, which sends an event. Sending versus listening is the whole shape of event-driven code: one resource triggers, another handles. Here the `baseevents` resource is doing the triggering. Its client-side code watches the game and, the moment a player's local ped sits in a vehicle, it fires `baseevents:enteredVehicle` across to the *server* with `TriggerServerEvent`. That is why this handler lives in `server.lua` and pairs `RegisterNetEvent` with `AddEventHandler`: `RegisterNetEvent` allows the event to be received over the network, and `AddEventHandler` runs your code when it arrives.
 
-Read the parameters in order: `vehicle` is the entity handle of the car, the same kind of handle `PlayerPedId` gave you for your ped. `seat` is which seat you took, where `-1` is the driver and `0` is the front passenger. `displayName` is the readable model name like `Sultan`. `netId` is the network id, the identifier other clients and the server use to refer to that same vehicle across the network.
+Read the parameters in order, the four values baseevents sends: `currentVehicle` is the entity handle of the car. `currentSeat` is which seat the player took, where `-1` is the driver and `0` is the front passenger. `vehicleDisplayName` is the readable model name like `Sultan`. `vehicleNetId` is the network id, the identifier other clients and the server use to refer to that same vehicle across the network. On top of those, `source` is set on every net event the server receives: it is the server id of the player the event came from. We copy it into `local src = source` right away, because `source` can change if any other event fires before we use it.
 
-Inside the handler we do two things: post a chat message confirming the car and seat, and `print` a line to the F8 console. The chat line is the user-facing proof; the `print` is your developer probe. The `('...'):format(...)` method fills the placeholders, `%s` for the model name string and `%d` for the integer seat, exactly the formatting you saw in the natives lesson.
+Inside the handler we do two things: send a chat message back to that one player and `print` a line to the server console. Because the handler runs on the server, it cannot just `TriggerEvent('chat:addMessage', ...)` and expect it in someone's chat box. Instead it uses `TriggerClientEvent('chat:addMessage', src, ...)`, which sends the event to the chat resource running on that specific player's client. The chat line is the user-facing proof; the `print` is your developer probe, and it lands in the server console rather than F8. The `('...'):format(...)` method fills the placeholders, `%s` for the model name string and `%d` for the integer seat, exactly the formatting you saw in the natives lesson.
 
-Why use the stock baseevent instead of writing your own vehicle detection? Without it you would have to spin up a thread that runs every frame, calls `IsPedInAnyVehicle`, and tracks whether the answer changed since last frame. That is a real loop you would have to write, tune, and keep from eating CPU. `baseevents` already does that work and simply tells you the instant it happens. Calling its event is cheaper, cleaner, and the same data every other resource on the server is reading.
+Why use the stock baseevent instead of writing your own vehicle detection? Without it you would have to spin up a thread on every client that runs every frame, calls `IsPedInAnyVehicle`, tracks whether the answer changed since last frame, and reports it to the server yourself. That is a real loop you would have to write, tune, and keep from eating CPU. `baseevents` already does that work and simply tells the server the instant it happens. Calling its event is cheaper, cleaner, and the same data every other resource on the server is reading.
 
 <Checkpoint question="Why does the vehicle reaction use AddEventHandler, while the chat message uses TriggerEvent?">
-  Because the two calls are on opposite ends of the same event. `TriggerEvent` sends an event out, so you use it to push a message into the `chat` resource that is listening for `chat:addMessage`. `AddEventHandler` listens for an event, so you use it to catch `baseevents:enteredVehicle`, which the stock `baseevents` resource fires when your ped gets in a car. You are the sender for chat and the listener for baseevents. If you swapped them, your chat message would never reach chat and your vehicle handler would never run, because triggering an event you mean to listen for, or listening for one you mean to send, does nothing useful.
+  Because the two calls are on opposite ends of the same event. `TriggerEvent` sends an event out, so you use it to push a message into the `chat` resource that is listening for `chat:addMessage`. `AddEventHandler` listens for an event, so you use it to catch `baseevents:enteredVehicle`, which the stock `baseevents` resource fires when a player gets in a car. The catch: `baseevents:enteredVehicle` is a *server* event, fired with `TriggerServerEvent`, so the listener lives in `server.lua` and you pair `AddEventHandler` with `RegisterNetEvent` so the event can arrive over the network. You are the sender for chat and the listener for baseevents. If you swapped the sender and listener, or put the vehicle handler in a `client_script`, it would never run, because triggering an event you mean to listen for, listening for one you mean to send, or listening on the wrong side, does nothing useful.
 </Checkpoint>
 
 ### Sides matter: which events live where
 
-The events in this lesson are client events, which is why all the code is a `client_script`. `chat:addMessage` and `chat:addSuggestion` are triggered from the client, and `baseevents:enteredVehicle` and `leftVehicle` are client events because the vehicle and the ped exist on each player's own game instance.
+This is where most beginners get burned, so read the stock code, not your assumptions. `chat:addMessage` and `chat:addSuggestion` are triggered from the client, because the chat box exists on each player's own game instance, which is why those two calls are in `client.lua`.
 
-The other half of `baseevents` lives on the server. `baseevents:onPlayerDied` and `baseevents:onPlayerKilled` are server events, and a server handler for them receives the player as `source`. That `source` is only meaningful in a server-side net-event handler; it tells you which player the event is about. `sessionmanager` is the same shape: it fires `playerActivated` on the server once a player has fully loaded in, which is the correct moment to set up that player's data, far more reliable than reacting to them merely connecting.
+But `baseevents:enteredVehicle` and `baseevents:leftVehicle` are *server* events. The stock `baseevents` resource does detect the vehicle on the client, but it does not hand you a client event: its client code fires `TriggerServerEvent('baseevents:enteredVehicle', ...)`, and `server.lua` registers it with `RegisterServerEvent`. So a `client_script` that does `AddEventHandler('baseevents:enteredVehicle', ...)` never fires, no matter what. You listen on the server with `RegisterNetEvent` plus `AddEventHandler`, and `source` tells you which player got in the car.
 
-The rule to carry forward: the client can request things, but only the server grants them. A client can ask to spawn or to be given an item; the server is what actually decides and applies it. Reading a stock event on the wrong side is the most common reason a beginner's handler "never fires."
+The death events behave differently again. `baseevents:onPlayerDied` and `baseevents:onPlayerKilled` fire on *both* sides: the stock code triggers each one with a client-local `TriggerEvent` and a `TriggerServerEvent` at the same time. So a `client_script` can listen for them with `AddEventHandler` and read the death data directly (there is no `source` on the client), while a `server_script` listens with `RegisterNetEvent` and reads the player who died from `source`. Pick the side that has the data you need. `sessionmanager` rounds this out: it fires `playerActivated` on the server once a player has fully loaded in, which is the correct moment to set up that player's data, far more reliable than reacting to them merely connecting.
+
+The rule to carry forward: read which side a stock event actually fires on before you write the handler. The client can request things, but only the server grants them, and listening for an event on the wrong side is the most common reason a beginner's handler "never fires."
 
 ### When you reach for these
 
@@ -209,8 +225,8 @@ You will touch these stock resources in nearly every script you write:
   items={[
     { symptom: "The /wave hint never appears in the autocomplete list", fix: "chat:addSuggestion only registers the hint, not the command, and it is a client event. Make sure the TriggerEvent call is in a client_script and that 'chat' is listed in your dependencies so it loads first." },
     { symptom: "attempt to index a nil value, or the message never shows", fix: "The table passed to chat:addMessage is malformed. color must be a three-number table like { 0, 200, 120 }, and args must be a table, usually { 'Name', 'Body text' }. A missing comma or brace breaks the whole table." },
-    { symptom: "The enteredVehicle handler never runs", fix: "You used TriggerEvent instead of AddEventHandler, or you put the handler in a server_script. baseevents:enteredVehicle is a client event you listen for, so it belongs in a client_script registered with AddEventHandler." },
-    { symptom: "onPlayerDied or onPlayerKilled never fires in your client file", fix: "Those two are server events, not client ones. Move that handler into a server_script and read the player from source. Only enteredVehicle and leftVehicle are client side." },
+    { symptom: "The enteredVehicle handler never runs", fix: "baseevents:enteredVehicle (and leftVehicle) are server events: the stock baseevents resource fires them with TriggerServerEvent. A client_script AddEventHandler for them never fires. Put the handler in a server_script, register it with RegisterNetEvent plus AddEventHandler, and read the player from source." },
+    { symptom: "onPlayerDied or onPlayerKilled never fires in your client file", fix: "These actually fire on both the client and the server, since the stock code triggers each with TriggerEvent and TriggerServerEvent. A client handler is fine and gets the death data with no source. If yours is silent, check the event name spelling and that baseevents is in your dependencies, not the side." },
     { symptom: "The colors look wrong or the message is one washed-out shade", fix: "RGB values run 0 to 255, not 0 to 1. { 0, 200, 120 } is correct; { 0, 0.8, 0.5 } collapses to near black because the numbers are read as raw 0 to 255 values." },
   ]}
 />
@@ -222,15 +238,17 @@ You will touch these stock resources in nearly every script you write:
     "Name the four stock resources, chat, spawnmanager, baseevents, and sessionmanager, and say what each one already does for you.",
     "Post a styled message to the chat box with chat:addMessage, controlling the name tag, color, and body through the args and color fields.",
     "Register a slash-command hint with chat:addSuggestion, and explain why it is only a hint and still needs a real RegisterCommand.",
-    "Listen for a stock client baseevent with AddEventHandler and read the values it hands your handler, instead of writing your own per-frame detection loop.",
-    "Tell which stock events live on the client and which live on the server, and why onPlayerDied and playerActivated belong in a server_script with source.",
+    "Listen for the stock baseevents:enteredVehicle server event with RegisterNetEvent plus AddEventHandler, read the values it hands your handler, and send a line back to that player with TriggerClientEvent, instead of writing your own per-frame detection loop.",
+    "Tell which side each stock event fires on: enteredVehicle and leftVehicle are server events, onPlayerDied and onPlayerKilled fire on both sides, and playerActivated is server-side, so you read source only when handling on the server.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Make the resource a real driving companion. First, register an actual `/wave` command so the suggestion you added is not a dead hint. Then add a second baseevent handler for `baseevents:leftVehicle` so the chat box reacts when the player gets out, not just in.
+  Make the resource a real driving companion. First, register an actual `/wave` command so the suggestion you added is not a dead hint. Then add a second handler for `baseevents:leftVehicle` so the chat box reacts when the player gets out, not just in. Remember `leftVehicle` is a server event, the same as `enteredVehicle`, so its handler goes in `server.lua` with the same pattern.
+
+  Add the command to `client.lua`, since the command runs on the player typing it and the chat box is client-side:
 
   ```lua
   -- A real command to back the suggestion you already added.
@@ -242,13 +260,19 @@ You will touch these stock resources in nearly every script you write:
           args = { 'Quasar', ('You wave (%s) at the locals.'):format(style) }
       })
   end, false)
+  ```
 
-  -- React when the player leaves a vehicle.
-  AddEventHandler('baseevents:leftVehicle', function(vehicle, seat, displayName, netId)
-      TriggerEvent('chat:addMessage', {
+  Add the leftVehicle handler to `server.lua`, next to the enteredVehicle one, and send the line back to that player with `TriggerClientEvent`:
+
+  ```lua
+  -- React when the player leaves a vehicle (also a SERVER event).
+  RegisterNetEvent('baseevents:leftVehicle')
+  AddEventHandler('baseevents:leftVehicle', function(currentVehicle, currentSeat, vehicleDisplayName, vehicleNetId)
+      local src = source
+      TriggerClientEvent('chat:addMessage', src, {
           color = { 200, 120, 0 },
           multiline = true,
-          args = { 'Quasar', ('You stepped out of the %s.'):format(displayName) }
+          args = { 'Quasar', ('You stepped out of the %s.'):format(vehicleDisplayName) }
       })
   end)
   ```

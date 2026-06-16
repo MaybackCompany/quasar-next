@@ -131,7 +131,7 @@ local oneSync = GetConvar('onesync', 'off')
 
 `GetConvar` and `GetConvarInt` are the server-side way to read a configuration variable that was set in `server.cfg`. The first argument is the convar name. The second argument is a fallback default: if the convar was never set, you get that value instead of `nil`. `GetConvarInt` returns a number; `GetConvar` returns a string, which is why `onesync` (whose values are the words `off`, `on`, and `legacy`) is read as a string while the port and player cap are read as integers.
 
-The mental model: a convar is a setting that lives outside your code, in `server.cfg`, and your script asks for its value at runtime. You declared `endpoint_add_udp "0.0.0.0:30120"` in the cfg in Step 3, and here the code reads the port back. The cfg is the source of truth; the script is just a window onto it.
+The mental model: a convar is a setting that lives outside your code, in `server.cfg`, and your script asks for its value at runtime. One catch on the port. The bound game port comes from the `endpoint_add_udp` / `endpoint_add_tcp` directive string you wrote in Step 3, not from a `netPort` convar. `netPort` is initialized to zero and only consulted as a master-list and heartbeat override, so declaring an endpoint does not populate it. Because you never explicitly `set netPort`, `GetConvarInt('netPort', 30120)` falls back to the `30120` you passed as the default. So treat that `30120` as a documented constant you keep in sync with your endpoint line, not as proof of the live bound port. The convar read makes the port a visible number you can print and compare against your `endpoint_add` lines; the endpoint directive is the real source of truth for what the server binds.
 
 ### Why the port needs both TCP and UDP
 

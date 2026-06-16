@@ -113,7 +113,7 @@ RegisterCommand('fwtest', function(source)
     if FrameworkName == 'esx' then
         local xPlayer = Framework.GetPlayerFromId(src)
         if not xPlayer then return end
-        xPlayer.addMoney(100)
+        xPlayer.addAccountMoney('money', 100) -- 'money' is the cash account; reason is optional
         print(('[qu_framework_talk] ESX gave $100, job is %s'):format(xPlayer.getJob().name))
 
     elseif FrameworkName == 'qbcore' then
@@ -220,12 +220,14 @@ That `if not Player then return end` line under each call matters. `GetPlayer` r
 With the player object in hand, you call its functions to change state.
 
 ```lua
-xPlayer.addMoney(100)                  -- ESX
+xPlayer.addAccountMoney('money', 100)  -- ESX
 Player.Functions.AddMoney('cash', 100) -- QBCore
 Player.Functions.AddMoney('cash', 100) -- Qbox
 ```
 
-Here the dialects diverge in a way worth noticing. ESX's `addMoney(amount)` takes just a number and moves the player's main money account. QBCore and Qbox take a **money type** first, then the amount, because they track several accounts separately: `'cash'`, `'bank'`, and often `'crypto'`. So `AddMoney('cash', 100)` means add 100 to the cash account specifically. If you passed `'bank'` instead, the cash in their pocket would not move at all. Qbox is a community continuation of QBCore, so it inherits the same `'cash'` and `'bank'` account model and the same `Player.Functions.AddMoney` shape. To take money away you call `xPlayer.removeMoney(100)` on ESX and `Player.Functions.RemoveMoney('cash', 100)` on QBCore and Qbox.
+Here the dialects diverge in a way worth noticing. On ESX you name the account first, then the amount: `addAccountMoney('money', 100)` adds 100 to the cash account (the account literally named `'money'`), and a third `reason` argument is optional. QBCore and Qbox also take a **money type** first, then the amount, because they track several accounts separately: `'cash'`, `'bank'`, and often `'crypto'`. So `AddMoney('cash', 100)` means add 100 to the cash account specifically. If you passed `'bank'` instead, the cash in their pocket would not move at all. Qbox is a community continuation of QBCore, so it inherits the same `'cash'` and `'bank'` account model and the same `Player.Functions.AddMoney` shape. To take money away you call `xPlayer.removeAccountMoney('money', 100)` on ESX and `Player.Functions.RemoveMoney('cash', 100)` on QBCore and Qbox.
+
+> On ESX Legacy you will still see the shorter `xPlayer.addMoney(100)` and `xPlayer.removeMoney(100)` in older scripts. Those are backwards-compatibility shortcuts; `addAccountMoney('money', ...)` and `removeAccountMoney('money', ...)` are the current API, so write those today.
 
 ### Reading job
 
@@ -278,7 +280,7 @@ Here is the whole job, give $100 and read the job name, lined up so you can see 
 -- ============ ESX ============
 local ESX = exports['es_extended']:getSharedObject()
 local xPlayer = ESX.GetPlayerFromId(src)
-xPlayer.addMoney(100)                       -- give $100 (main account)
+xPlayer.addAccountMoney('money', 100)       -- give $100 (cash account)
 local job = xPlayer.getJob().name           -- read job (via function)
 
 -- ============ QBCore ============
@@ -302,8 +304,8 @@ Read top to bottom and the family resemblance is obvious. Every framework: get t
     ["Get the framework", "exports['es_extended']:getSharedObject()", "exports['qb-core']:GetCoreObject()", "exports.qbx_core (no core table)"],
     ["Get the player", "ESX.GetPlayerFromId(src)", "QBCore.Functions.GetPlayer(src)", "exports.qbx_core:GetPlayer(src)"],
     ["Player object name", "xPlayer", "Player", "Player"],
-    ["Give $100", "xPlayer.addMoney(100)", "Player.Functions.AddMoney('cash', 100)", "Player.Functions.AddMoney('cash', 100)"],
-    ["Take $100", "xPlayer.removeMoney(100)", "Player.Functions.RemoveMoney('cash', 100)", "Player.Functions.RemoveMoney('cash', 100)"],
+    ["Give $100", "xPlayer.addAccountMoney('money', 100)", "Player.Functions.AddMoney('cash', 100)", "Player.Functions.AddMoney('cash', 100)"],
+    ["Take $100", "xPlayer.removeAccountMoney('money', 100)", "Player.Functions.RemoveMoney('cash', 100)", "Player.Functions.RemoveMoney('cash', 100)"],
     ["Read job name", "xPlayer.getJob().name", "Player.PlayerData.job.name", "Player.PlayerData.job.name"],
     ["Money model", "single main account", "cash / bank / crypto", "cash / bank / crypto"],
   ]}

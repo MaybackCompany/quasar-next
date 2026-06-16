@@ -92,7 +92,7 @@ RegisterCommand('takecar', function()
     SetVehicleNumberPlateText(vehicle, PLATE)
     spawnedVehicle = vehicle
 
-    local rows = MySQL.insert.await(
+    local rows = MySQL.update.await(
         'INSERT INTO qu_owned_vehicles (plate, model, state) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE state = ?',
         { PLATE, MODEL, 'out', 'out' }
     )
@@ -200,11 +200,13 @@ This combined insert-or-update is called an upsert. It only works because `plate
 ### MySQL.insert.await versus MySQL.update.await
 
 ```lua
-local rows = MySQL.insert.await(...)
+local rows = MySQL.update.await(...)     -- take: upsert, we want affectedRows
 local affected = MySQL.update.await(...)
 ```
 
-These two functions do the same kind of work, talk to the database, and differ mainly in what they hand back. `MySQL.insert` is built for `INSERT` statements and returns information about the insert, such as how many rows were affected. `MySQL.update` is built for `UPDATE` statements and returns the number of rows it changed. Using the matching function keeps your intent obvious and gives you the return value that makes sense for that statement, which is why the take command prints rows affected and the store command prints rows updated.
+These two functions do the same kind of work, talk to the database, and differ mainly in what they hand back. The thing to get right is that oxmysql picks the return shape from the export you call, not from the SQL keyword you pass it. `MySQL.insert` returns the new row's insert id (the AUTO_INCREMENT value the insert generated). `MySQL.update` returns `affectedRows`, the count of rows the statement changed. So the choice of export is really a choice of which number you get back.
+
+That is exactly why the take command calls `MySQL.update.await` even though its SQL begins with `INSERT`. The take command runs an upsert, and what you want to print is how many rows it touched, not an insert id. Because oxmysql reads the return shape from the `.update` export, `MySQL.update.await` hands back `affectedRows` for that statement regardless of the leading keyword. MariaDB reports `affectedRows` as `1` for the first run, when the row is freshly inserted, and `2` for a later run, when the `ON DUPLICATE KEY UPDATE` clause updates the existing row (MariaDB counts an updated upsert row as two). Had the take command used `MySQL.insert.await`, it would have printed the insert id instead, which is `0` here because the table has no AUTO_INCREMENT column. The store command runs a plain `UPDATE` and naturally uses `MySQL.update.await` to print how many rows it changed. Matching the export to the number you actually want is what keeps both prints meaningful.
 
 The `.await` on the end is the important part. A database query is not instant: the server fires it off and the answer comes back a moment later. `.await` tells the code to pause this command handler at that line and wait for the real result before moving on, so by the next line `rows` already holds a number you can print. Without `.await` you would get a pending promise instead of a value. The reason `.await` is allowed here is that a `RegisterCommand` handler in FiveM already runs inside a managed thread, so pausing it yields cleanly instead of freezing the server. That is also why you cannot sprinkle `.await` or `Citizen.Await` into arbitrary top-level code that is not inside such a thread.
 

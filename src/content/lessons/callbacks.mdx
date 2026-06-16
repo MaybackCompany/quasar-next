@@ -161,33 +161,43 @@ That pause is only possible because a command handler runs inside a coroutine, a
 lib.callback.await('qu_callbacks:getBalance', false)
 ```
 
-That `false` is the most copied and least understood value in the whole lesson. It is the timeout, in milliseconds. It controls how long the client is willing to wait before it gives up.
+That `false` is the most copied and least understood value in the whole lesson. It is the `delay`, in milliseconds: a re-trigger cooldown, not a response timeout. It controls the minimum time that must pass before the same callback name can be triggered again from this client.
 
-- Pass a number, like `5000`, and the client waits up to five seconds. If the server has not answered by then, `await` stops waiting and returns `nil` so your code is not frozen forever.
-- Pass `false` and you disable the timeout entirely. The client will wait as long as it takes. That is fine for this proof because the server answers instantly, but in production a disabled timeout means a slow or broken server handler can leave the asking thread stuck.
+- Pass a number, like `5000`, and you set a five second cooldown on this callback name. If you try to trigger `qu_callbacks:getBalance` again within that window, the new request is silently dropped, no answer comes back, and you do not even get a `nil`. Use this to rate-limit a callback a player could spam.
+- Pass `false` and you set no cooldown. Every call is allowed through immediately. That is the right choice here, and the common one, because most callbacks do not need to be rate-limited.
 
-The honest default for real code is a number. Pick a budget like `5000`, then check the result before you trust it, because a timeout hands you `nil`:
+Note what `delay` is not: it is not how long `await` waits for the answer. The response timeout is a separate global convar, covered below. If you want to throttle a spammable callback, pick a cooldown like `5000`; otherwise pass `false` and move on.
+
+You should still guard the result before you trust it, because the server handler can return `nil`:
 
 ```lua
-local balance = lib.callback.await('qu_callbacks:getBalance', 5000)
+local balance = lib.callback.await('qu_callbacks:getBalance', false)
 if balance == nil then
-    print('[qu_callbacks] server did not answer in time')
+    print('[qu_callbacks] server returned no balance')
     return
 end
 print('[qu_callbacks] my balance is ' .. balance)
 ```
 
+The real response timeout lives somewhere else entirely. It is a global convar named `ox:callbackTimeout`, set once for the whole server, not per call. Its default is `300000` (five minutes). You change it in `server.cfg` with a single line:
+
+```text
+setr ox:callbackTimeout 10000
+```
+
+When that limit is hit, `await` does not hand you `nil`, it raises an error like `callback event 'qu_callbacks:getBalance' timed out`. So a timeout surfaces as a thrown error you can see in the console, while a `nil` means the server handler ran but returned nothing useful.
+
 <Checkpoint question="Why does the print line wait for the server instead of running immediately, and what would make balance come back as nil?">
-  `lib.callback.await` blocks the handler's coroutine at that line. It yields the thread, sends the request to the server, and only resumes, letting the next line run, once the server's `return` value has arrived back. So the print cannot run with an empty `balance`, it runs with the real answer. `balance` comes back `nil` only when you pass a numeric timeout and the server fails to answer within that many milliseconds. With the timeout set to `false`, as in the build, there is no time limit, so it never returns `nil` for that reason, it just keeps waiting.
+  `lib.callback.await` blocks the handler's coroutine at that line. It yields the thread, sends the request to the server, and only resumes, letting the next line run, once the server's `return` value has arrived back. So the print cannot run with an empty `balance`, it runs with the real answer. `balance` comes back `nil` when the server handler returns `nil` or returns no value at all. The second argument, `false`, is a re-trigger cooldown, not a timeout, so it has nothing to do with `nil`. The actual response timeout is the global convar `ox:callbackTimeout`, and when it fires it raises an error rather than handing you `nil`.
 </Checkpoint>
 
 ### Why this beats two raw events
 
 You could fake a callback with the tools from the previous lessons: the client fires `TriggerServerEvent('askBalance')`, the server fires back `TriggerClientEvent('balanceAnswer', src, 500)`, and a separate `RegisterNetEvent('balanceAnswer', ...)` on the client catches it. That works, but look at what you lost.
 
-The answer arrives in a different place from where you asked. Your "what do I do with the balance" logic now lives in the event handler, far from the command that started everything. If you fire two balance requests close together, nothing tells you which answer belongs to which request, you have to hand-match them yourself with request ids. And there is no built-in timeout, so a dropped response leaves the client waiting on an event that never comes, with no way to notice.
+The answer arrives in a different place from where you asked. Your "what do I do with the balance" logic now lives in the event handler, far from the command that started everything. If you fire two balance requests close together, nothing tells you which answer belongs to which request, you have to hand-match them yourself with request ids. And there is no safety net for a dropped response, so a lost answer leaves the client waiting on an event that never comes, with no way to notice.
 
-`lib.callback.await` solves all three for free. The answer comes back to the exact line that asked, so the request and its handling stay together. Each request is correlated to its own response under the hood, so two questions never cross wires. And the timeout argument gives you a clean escape hatch. That is why frameworks moved to callbacks for any client-to-server question.
+`lib.callback.await` solves all three for free. The answer comes back to the exact line that asked, so the request and its handling stay together. Each request is correlated to its own response under the hood, so two questions never cross wires. And the global `ox:callbackTimeout` convar means a request that is never answered eventually errors out instead of hanging silently forever. That is why frameworks moved to callbacks for any client-to-server question.
 
 ### The async form, when you do not want to block
 
@@ -211,7 +221,7 @@ Notice the call is `lib.callback` with no `.await`, and the last argument is a f
     { symptom: "attempt to index a nil value (global 'lib')", fix: "ox_lib is not loaded. Confirm ensure ox_lib comes before ensure qu_callbacks in server.cfg, and that the manifest has shared_script '@ox_lib/init.lua'." },
     { symptom: "Unable to load resource qu_callbacks (dependency ox_lib)", fix: "ox_lib is not installed or not running. Download ox_lib from Overextended, place it in resources, and ensure it. The dependencies block blocks startup until it loads." },
     { symptom: "/mybalance does nothing and F8 stays empty", fix: "This is a client command, so join the server and run it from the in-game chat box (press T), not the txAdmin console. Check F8 for the client print." },
-    { symptom: "balance is nil / attempt to concatenate a nil value", fix: "The server handler did not return, or a numeric timeout expired before the answer arrived. Make sure server.lua returns a value and, if you set a timeout, guard for nil before using balance." },
+    { symptom: "balance is nil / attempt to concatenate a nil value", fix: "The server handler did not return a value (or returned nil). Make sure server.lua returns a value, and guard for nil before using balance." },
     { symptom: "attempt to yield from outside a coroutine", fix: "lib.callback.await must run inside a thread. Keep it inside the RegisterCommand handler, a CreateThread, or an event handler, never at the top level of the file." },
   ]}
 />
@@ -223,7 +233,7 @@ Notice the call is `lib.callback` with no `.await`, and the last argument is a f
     "Explain when to reach for a callback instead of an event: any time the client needs an answer back, not just to send a message.",
     "Register a server-side answer with lib.callback.register and return the value the client receives, using the auto-passed src to know who asked.",
     "Ask from the client with lib.callback.await and explain that it blocks the coroutine until the server's return arrives.",
-    "Say what the timeout argument does: a number waits that many milliseconds then returns nil, false disables the timeout and waits forever.",
+    "Say what the second argument does: it is a cooldown (delay) — a number is the minimum time before the same callback can be re-triggered; false means no cooldown.",
     "Explain why one callback beats two raw events: the answer returns to the asking line, requests and responses are correlated automatically, and you get a timeout escape hatch.",
     "Choose between the blocking await form and the async lib.callback function form based on whether the next line needs the answer.",
   ]}
@@ -241,7 +251,7 @@ Notice the call is `lib.callback` with no `.await`, and the last argument is a f
   end)
   ```
 
-  Change the client to send a price and branch on the boolean answer. Note that any value after the timeout is forwarded to the server handler as an extra argument:
+  Change the client to send a price and branch on the boolean answer. Here `5000` is the `delay`: a 5 second re-trigger cooldown on `qu_callbacks:canAfford`, not a 5 second budget for the answer. Any value after that second argument is forwarded to the server handler as an extra argument, which is how `price` reaches the server:
 
   ```lua
   RegisterCommand('canibuy', function(_, args)

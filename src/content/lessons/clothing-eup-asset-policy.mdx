@@ -95,7 +95,7 @@ end)
     In your own FiveM client connected to the server, open the F8 console and run:
 
     ```text
-    strdbg 1
+    strmem 1
     ```
 
     That turns on the streaming memory overlay. Each streamed resource shows its current memory use in MB. Your `qu_stream_proof` will sit near zero because the placeholder is tiny. Note the number. When you swap in a real clothing pack, this same overlay is how you tell a 40 MB pack from a 400 MB one before your players have to download it.
@@ -160,7 +160,7 @@ Within a slot, a **drawable** is which model variation (the jacket shape), and a
 
 ### Measuring instead of guessing
 
-"Keep textures at sane resolutions" is useless advice because it has no number attached. Here is the number. With `strdbg 1` running, the streaming overlay shows each resource's memory in MB and the total against your streaming budget. A healthy clothing pack is tens of MB, not hundreds. Most bloat is `.ytd` texture dictionaries saved at 2048x2048 or 4096x4096 when 1024x1024 would look identical at gameplay distance. Open a fat pack's textures, downscale the oversized ones, repack, and watch the resmon number drop. That is the whole optimization loop: change something, restart, read the overlay, compare. You ship the version with the smaller number that still looks right.
+"Keep textures at sane resolutions" is useless advice because it has no number attached. Here is the number. With `strmem 1` running, the streaming overlay shows each resource's memory in MB and the total against your streaming budget. A healthy clothing pack is tens of MB, not hundreds. Most bloat is `.ytd` texture dictionaries saved at 2048x2048 or 4096x4096 when 1024x1024 would look identical at gameplay distance. Open a fat pack's textures, downscale the oversized ones, repack, and watch the resmon number drop. That is the whole optimization loop: change something, restart, read the overlay, compare. You ship the version with the smaller number that still looks right.
 
 ### When you reach for this pattern
 
@@ -173,8 +173,8 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
     { symptom: "Resource starts but the proof line never prints", fix: "The onResourceStart handler is checking the wrong name, or server.lua is not listed as a server_script in the manifest. Confirm the guard uses GetCurrentResourceName() and that the manifest has server_script 'server.lua'." },
     { symptom: "Props from the pack are invisible or fall through the map", fix: "The .ytyp type was never requested. Add data_file 'DLC_ITYP_REQUEST' 'stream/yourfile.ytyp' to the manifest, one line per .ytyp the pack ships." },
     { symptom: "Pack downloads (visible in resmon) but no uniforms in the menu", fix: "Streaming works but the slots are not wired. For EUP, confirm the meta patch loaded so the variations register on the ped models, then add the new component and drawable indexes to your clothing menu config." },
-    { symptom: "First join takes forever after adding a pack", fix: "The pack is too big or you stacked several. Read each resource's MB in the strdbg overlay, downscale oversized .ytd textures, and cut variants you will never use." },
-    { symptom: "Memory warning or crash under player load", fix: "Streamed asset memory counts against your streaming budget. Trim pack size and texture resolution until the strdbg total sits comfortably under the limit." },
+    { symptom: "First join takes forever after adding a pack", fix: "The pack is too big or you stacked several. Read each resource's MB in the strmem overlay, downscale oversized .ytd textures, and cut variants you will never use." },
+    { symptom: "Memory warning or crash under player load", fix: "Streamed asset memory counts against your streaming budget. Trim pack size and texture resolution until the strmem total sits comfortably under the limit." },
     { symptom: "Got a takedown or marketplace warning", fix: "You streamed unlicensed or ripped assets. Remove them and replace with licensed or free-for-FiveM packs, and document the license for each one." },
   ]}
 />
@@ -187,7 +187,7 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
     "Explain why the stream/ folder auto-registers assets while a .ytyp needs data_file 'DLC_ITYP_REQUEST'.",
     "Say how EUP differs from a normal clothing swap: variation meta patch plus eup-stream, not just drawables.",
     "Map a menu selection to a component ID, drawable index, and texture index.",
-    "Read streaming memory in resmon with strdbg so pack size is a measured number, not a guess.",
+    "Read streaming memory in resmon with strmem so pack size is a measured number, not a guess.",
     "Use only licensed or free-for-FiveM assets and document each one.",
   ]}
 />
@@ -202,7 +202,7 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
   data_file 'DLC_ITYP_REQUEST' 'stream/pack_props_b.ytyp'
   ```
 
-  Restart the resource, then run `strdbg 1` in F8 and write down the MB the resource reports. Now open the pack's largest `.ytd` in OpenIV or CodeWalker, find any texture saved above 1024x1024, downscale it, repack, and restart again. Read the overlay a second time. Confirm the MB dropped and the asset still looks right in game. You just ran the optimization loop on real numbers: change, restart, measure, compare. That is the difference between shipping a pack and shipping a pack you can defend.
+  Restart the resource, then run `strmem 1` in F8 and write down the MB the resource reports. Now open the pack's largest `.ytd` in OpenIV or CodeWalker, find any texture saved above 1024x1024, downscale it, repack, and restart again. Read the overlay a second time. Confirm the MB dropped and the asset still looks right in game. You just ran the optimization loop on real numbers: change, restart, measure, compare. That is the difference between shipping a pack and shipping a pack you can defend.
 </Exercise>
 
 <Refs

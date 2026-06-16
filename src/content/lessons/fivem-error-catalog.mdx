@@ -99,23 +99,25 @@ This is the runtime error you saw in the reading section. It means you used the 
 ```
 </Mockup>
 
-The name in parentheses, here `QBCore`, is the thing that was `nil`. The classic cause is using a framework object before it has loaded, or before its resource has started. You wrote `QBCore.Functions...` but `QBCore` itself was never filled in, so reaching into it with the dot fails.
+The name in parentheses, here `QBCore`, is the thing that was `nil`. There are two distinct causes, and the file above is `server/main.lua`, so the first one bites even when qb-core is fully loaded.
+
+The first cause is calling a client-only function on the server. `QBCore.Functions.GetPlayerData()` with no argument is **client-only**: it returns the local player's data and is documented only in the Client Function Reference. There is no "current player" on the server, so on the server it is `nil` no matter what your load order is. The server way is to look up the player by their `source` with `QBCore.Functions.GetPlayer(source)` and then read `Player.PlayerData`.
 
 ```lua
--- Error: attempt to index a nil value (global 'QBCore')
--- QBCore is nil because qb-core had not started, so the export returned nothing.
+-- WRONG (in server/main.lua): GetPlayerData() with no source is CLIENT-ONLY.
+-- On the server there is no "current player", so this is nil regardless of load order.
 local QBCore = exports['qb-core']:GetCoreObject()
 local money = QBCore.Functions.GetPlayerData().money  -- indexing nil here
 
--- FIX: ensure qb-core starts BEFORE this resource in server.cfg,
--- and guard before you index, so a not-yet-loaded object cannot crash you.
+-- FIX (server side): look the player up by source, then read PlayerData.
+-- Guard QBCore too, so a not-yet-loaded core object cannot crash you.
 if QBCore and QBCore.Functions then
-    local data = QBCore.Functions.GetPlayerData()
-    local money = data and data.money or 0
+    local Player = QBCore.Functions.GetPlayer(source)
+    local money = Player and Player.PlayerData.money or 0
 end
 ```
 
-The fix is two parts. First, make sure the resource that provides the value is started before yours (see error 4). Second, guard with `if value then` before you index, so an empty object stops the code politely instead of crashing it.
+The second, separate cause is load order: even the correct server call breaks if you index `QBCore` before qb-core has started, because the export returned nothing. That is why the guard above checks `if QBCore and QBCore.Functions then` and why you make sure the resource that provides the value is started before yours (see error 4). So the fix is two parts: use the right side's API (`GetPlayer(source)` on the server, `GetPlayerData()` on the client), and guard before you index so an empty object stops the code politely instead of crashing it.
 
 ### 3. attempt to call a nil value (the export or event)
 

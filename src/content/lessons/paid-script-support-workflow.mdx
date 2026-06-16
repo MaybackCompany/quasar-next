@@ -89,7 +89,7 @@ Now you can act. That error names your resource, your file, and your line. It is
 
 Spin up a clean test server: the framework (ESX Legacy 1.10.6), your dependencies (ox_lib, oxmysql), and `qs_garage` 2.1.0. Nothing else. Set `sv_enforceGameBuild 3258` to match. Walk into the zone and press E.
 
-If the error reproduces, it is your bug. Line 42 indexes `ESX.Functions`, which does not exist on this framework version, so the menu never opens. If it does not reproduce, the cause lives in something the buyer has that you do not, and you go hunting for a conflict instead.
+If the error reproduces, it is your bug. Line 42 calls `ESX.Functions.GetPlayerFromId(...)` — but ESX has no `Functions` table (that is QBCore syntax: `QBCore.Functions.GetPlayer`). On ESX the function lives directly on the ESX object as `ESX.GetPlayerFromId(...)`, so `ESX.Functions` is nil and indexing it throws. If it does not reproduce, the cause lives in something the buyer has that you do not, and you go hunting for a conflict instead.
 
 ### Classify and respond
 
@@ -103,9 +103,11 @@ Here it is your bug, so you fix line 42 on a branch, then reply with a real vers
 
 ```text
 Confirmed on a clean server, this is on us. Fixed in 2.1.1 (out now):
-the garage menu was reading a framework field that ESX Legacy 1.10.6
-removed. Update qs_garage to 2.1.1 and restart the resource. Thanks
-for the clean report, it made this a five-minute fix.
+the garage code used QBCore-style `ESX.Functions.*` syntax; on ESX
+those functions live directly on `ESX` (e.g. `ESX.GetPlayerFromId`),
+so the call hit a nil `ESX.Functions`. Update qs_garage to 2.1.1 and
+restart the resource. Thanks for the clean report, it made this a
+five-minute fix.
 ```
 
 ### Why the version number carries the meaning
@@ -121,7 +123,7 @@ Because the buyer knows `2.1.1` is a patch, they know the update is safe and rou
 ```text
 ## 2.1.1 - 2026-06-16
 ### Fixed
-- Garage menu failed to open on ESX Legacy 1.10.6 (nil ESX.Functions on line 42).
+- Garage menu failed to open on ESX Legacy 1.10.6 (called nil ESX.Functions instead of ESX.GetPlayerFromId on line 42).
 ```
 
 ## Common mistakes
