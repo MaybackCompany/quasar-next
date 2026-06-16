@@ -206,6 +206,25 @@ The key (`'testburger'`) is the string you pass everywhere: in `AddItem`, in sho
   web/images/burger_chicken.png   icon, filename = client.image (or the key)`}</pre>
 </Mockup>
 
+### Check capacity before you add
+
+The lesson's command adds first and reads the truth back, which is the right reflex for a quick proof. In production code there is a cleaner move: ask the inventory whether the item will fit *before* you call `AddItem`. The export is `CanCarryItem`, and it returns a single boolean after checking the same weight and slot caps that `AddItem` enforces.
+
+```lua
+RegisterCommand('givewater', function(source)
+    local src = source
+    if exports.ox_inventory:CanCarryItem(src, 'water', 1) then
+        local success, response = exports.ox_inventory:AddItem(src, 'water', 1)
+        if not success then
+            -- response: invalid_item | inventory_full | invalid_inventory
+            print('[qu_inventories] add failed: ' .. tostring(response))
+        end
+    end
+end, false)
+```
+
+`CanCarryItem(inv, item, count, metadata)` takes the same first arguments as `AddItem`: the inventory (`src`), the item name, the count, and an optional metadata table. When it returns `false` you skip the add entirely, so you never partially fill an inventory and never have to refund a half-completed transaction. This is the pattern to reach for in a shop purchase or a reward payout: gate the whole exchange on `CanCarryItem`, take the money only after it passes, then `AddItem`. The earlier command's add-then-Search check is still worth keeping as a sanity read, because `CanCarryItem` is a preflight estimate and the authoritative count always comes from the inventory itself.
+
 A one-line note on the paid alternative: **qs-inventory** (Quasar Store) defines items in `shared/items.lua` with a flatter QBCore-style shape and uses `unique = true` where ox uses `stack = false`, so an ox item config will not stack correctly if you paste it straight into qs without translating those fields. Building a full item in both, icon and capacity check included, is its own walkthrough: [Create a usable item in ox_inventory (and qs-inventory)](/lessons/creating-items-ox-qs-inventory).
 
 <Checkpoint question="You call AddItem(src, 'burger', 5) and it returns success = true, but Search(src, 'count', 'burger') returns 3. What happened, and why is the lesson right to print the Search result instead of 5?">

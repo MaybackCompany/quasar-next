@@ -111,6 +111,15 @@
 
     The fix is never "restart it again" or "ensure it twice." The fix is to move the dependency line **above** the line that needs it, save, and reload. Order is the whole mechanism.
 
+    Here is the full chain in the order it must appear: database bridge, then shared library, then framework, then a script that depends on all three. One line each, with the reason it sits where it does:
+
+    ```cfg
+    ensure oxmysql        # database bridge, registers MySQL exports first
+    ensure ox_lib         # shared library, defines the global lib used by the rest
+    ensure es_extended    # framework, needs oxmysql + ox_lib already loaded above it
+    ensure qs-smartphone-pro  # your script, needs the framework + ox_lib above it
+    ```
+
     <Callout variant="fivem" title="Organize it into sections">
       A real `server.cfg` grows fast, so group it with comment headers instead of one long wall of lines: an endpoints section, an identity section, a secrets section, then the `ensure` block as its own clearly marked region. Comments start with `#` and FXServer ignores them. The order of your `ensure` lines is the only thing that controls load order, but a tidy file is what lets you find the one line that is in the wrong place. The companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated) shows the full sectioned layout.
     </Callout>
