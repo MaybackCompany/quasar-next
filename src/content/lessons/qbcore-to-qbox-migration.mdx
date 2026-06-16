@@ -34,10 +34,10 @@
   </Step>
 
   <Step num={3} title="Install qbx_core and turn on the bridge" outcome="QBCore scripts run against Qbox where compatibility allows.">
-    Install `qbx_core`. The compatibility layer is not a separate download: `qbx_core` ships a QBCore shim that rebuilds the old `QBCore` object on top of the Qbox API. It is enabled with a convar in your `server.cfg`:
+    Install `qbx_core`. The compatibility layer is not a separate download: `qbx_core` ships a QBCore shim that rebuilds the old `QBCore` object on top of the Qbox API. `qbx_core` ships with the QBCore bridge enabled by default. You can set it explicitly with a convar in your `server.cfg` (note the capital B):
 
     ```cfg
-    setr qbx:enablebridge true
+    setr qbx:enableBridge true
     ```
 
     With the bridge on, many QBCore exports and events are translated to Qbox, so a lot of scripts work as-is. Expect a list of scripts that still need edits; that is normal, not failure. The next section shows you exactly where the line falls.
@@ -68,7 +68,7 @@ local Player = QBCore.Functions.GetPlayer(source)
 print(Player.PlayerData.money.cash)
 ```
 
-With `qbx:enablebridge` on, `qbx_core` answers that `qb-core` export and rebuilds the `QBCore` object, so `QBCore.Functions.GetPlayer(source)` returns a player you can read. The script does not know it is talking to Qbox. The Qbox-native way to write the same thing is `exports.qbx_core:GetPlayer(source)`, and that is what you migrate toward over time, but you do not have to rewrite every script on day one.
+With `qbx:enableBridge` on, `qbx_core` answers that `qb-core` export and rebuilds the `QBCore` object, so `QBCore.Functions.GetPlayer(source)` returns a player you can read. The script does not know it is talking to Qbox. The Qbox-native way to write the same thing is `exports.qbx_core:GetPlayer(source)`, and that is what you migrate toward over time, but you do not have to rewrite every script on day one.
 
 ### A call you have to edit yourself
 
@@ -90,7 +90,7 @@ The shapes differ (ox_inventory takes the player `source`, not a player-bound me
   items={[
     { symptom: "Migrated live and broke the server", fix: "Always migrate on a test server first; cut production over only after the core loop is proven." },
     { symptom: "qbx_core will not start", fix: "Missing the ox stack. Install oxmysql, ox_lib, and ox_inventory in order before qbx_core." },
-    { symptom: "Old QBCore scripts behave as if Qbox is not there", fix: "The bridge is off. Add setr qbx:enablebridge true to server.cfg and restart qbx_core, then re-test." },
+    { symptom: "Old QBCore scripts behave as if Qbox is not there", fix: "The bridge was explicitly disabled. Confirm qbx:enableBridge is true (it is the default) and restart qbx_core, then re-test." },
     { symptom: "Inventory exports fail after switching", fix: "qb-inventory is gone; Qbox uses ox_inventory. Rewrite AddItem and RemoveItem calls to the ox_inventory exports; the bridge does not cover these." },
     { symptom: "Player data missing after switch", fix: "Restore the backup; confirm the database schema and character ids map correctly before retrying." },
   ]}
@@ -102,7 +102,7 @@ The shapes differ (ox_inventory takes the player `source`, not a player-bound me
   items={[
     "Explain why Qbox is the maintained, ox-native QBCore successor while QBCore development stalled.",
     "Back up and migrate on a test server with matching artifact and game build, never live.",
-    "Install the ox dependency stack before qbx_core and turn the bridge on with qbx:enablebridge.",
+    "Install the ox dependency stack before qbx_core and confirm the bridge is enabled with qbx:enableBridge (on by default).",
     "Tell a bridged call (GetPlayer) from one you must rewrite yourself (ox_inventory items).",
     "Test script by script and cut over only once the core loop is solid."
   ]}

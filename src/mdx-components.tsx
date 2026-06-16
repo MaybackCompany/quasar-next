@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Pre } from "@/components/lesson/mdx/code-block";
 import { LessonChecklist } from "@/components/fqs/lesson-checklist";
 import { LuaSandbox } from "@/components/fqs/lua-sandbox";
-import { TechLinks, TechLink } from "@/components/fqs/tech-links";
+import { TechLinks, TechLink, faviconUrl } from "@/components/fqs/tech-links";
 import { Mockup, MockTable, Swatch } from "@/components/fqs/mockups";
 import { LessonVideo } from "@/components/fqs/lesson-video";
 import { YouTubeVideo } from "@/components/fqs/youtube-video";
@@ -177,7 +177,22 @@ function Refs({ items }: { items: { label: string; href: string }[] }) {
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {items.map((r) => (
-          <a key={r.href} className="chip" href={r.href} target="_blank" rel="noopener noreferrer">
+          <a
+            key={r.href}
+            className="chip"
+            href={r.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
+          >
+            <img
+              src={faviconUrl(r.href, 32)}
+              alt=""
+              width={15}
+              height={15}
+              loading="lazy"
+              style={{ display: "block", borderRadius: 3, objectFit: "contain" }}
+            />
             {r.label} ↗
           </a>
         ))}

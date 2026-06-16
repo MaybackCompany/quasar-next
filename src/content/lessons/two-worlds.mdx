@@ -83,7 +83,7 @@ ServerOnlySecret = 'only the server knows this'
 RegisterCommand('splitproof', function(src)
     print('[qu_two_worlds] server handled splitproof, ServerOnlySecret = ' .. ServerOnlySecret)
     TriggerClientEvent('qu_two_worlds:clientProof', src)
-end, true)
+end, false)
     ```
 
     Open `client.lua` and paste this:
@@ -164,7 +164,7 @@ This is exactly why `Config.Label` resolves on both sides while `ServerOnlySecre
 
 If the two worlds never share memory, then the command itself is the demonstration. Follow the path of `/splitproof`.
 
-A command typed in the chat box arrives on the **server**, because `RegisterCommand` with the restricted flag set to `true` registers a server command. The handler runs in `server.lua`, prints its line to the server console, and then hits this:
+A command registered by `RegisterCommand` inside `server.lua` runs on the **server**, because the file is a `server_script`. The handler runs in `server.lua`, prints its line to the server console, and then hits this:
 
 ```lua
 TriggerClientEvent('qu_two_worlds:clientProof', src)
@@ -205,7 +205,7 @@ You will use the two-worlds split on every resource you ever write, so the goal 
   items={[
     { symptom: "attempt to concatenate a nil value (global 'Config')", fix: "config.lua is not declared as shared_script, so one side never loaded it. Check the manifest line reads shared_script 'config.lua' exactly, then restart qu_two_worlds." },
     { symptom: "The server line prints but nothing appears in F8", fix: "You ran /splitproof before joining the server, so there is no client to receive the event. Join your own server, then run the command from the chat box." },
-    { symptom: "The command does nothing at all", fix: "RegisterCommand uses the restricted flag true, so it is a server command fired from chat. Make sure you typed /splitproof in the in-game chat box, and that restart qu_two_worlds ran without a manifest error." },
+    { symptom: "The command does nothing at all", fix: "RegisterCommand lives in server.lua, so it runs on the server the moment any joined player types it in chat. Make sure you typed /splitproof in the in-game chat box, and that restart qu_two_worlds ran without a manifest error." },
     { symptom: "client got the event, my ped handle = 0", fix: "Your ped does not exist yet because you have not spawned in. Wait until you are loaded into the world, then run /splitproof again. A handle of 0 means there is no valid ped." },
   ]}
 />

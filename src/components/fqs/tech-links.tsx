@@ -1,5 +1,15 @@
 import { ArrowUpRight } from "lucide-react";
 
+/** Real favicon of the referenced site, derived from its URL host. */
+export function faviconUrl(href: string, size = 64): string {
+  try {
+    const { hostname } = new URL(href);
+    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=${size}`;
+  } catch {
+    return `https://www.google.com/s2/favicons?sz=${size}`;
+  }
+}
+
 // Registry of FiveM / dev tools — brand-colored logo tile + name + blurb + official link.
 // Add to this map to expose a new `id` to <TechLinks ids={[...]} /> in any lesson.
 interface Tech {
@@ -70,17 +80,22 @@ function Tile({ t }: { t: Tech }) {
           width: 40,
           height: 40,
           borderRadius: 9,
-          background: t.color,
-          color: "#fff",
+          background: "#fff",
+          border: `1px solid ${t.color}`,
+          boxShadow: `inset 0 0 0 2px #fff`,
           display: "grid",
           placeItems: "center",
-          fontFamily: "var(--font-mono)",
-          fontWeight: 700,
-          fontSize: t.mark.length > 2 ? 11 : 14,
-          letterSpacing: t.mark.length > 2 ? "0.02em" : "0",
+          overflow: "hidden",
         }}
       >
-        {t.mark}
+        <img
+          src={faviconUrl(t.href)}
+          alt=""
+          width={22}
+          height={22}
+          loading="lazy"
+          style={{ display: "block", objectFit: "contain" }}
+        />
       </span>
       <span style={{ minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, color: "var(--fg)", fontFamily: "var(--font-head)" }}>
