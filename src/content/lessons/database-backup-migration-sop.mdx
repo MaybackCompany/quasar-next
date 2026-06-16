@@ -5,7 +5,7 @@
     { label: "You'll build", value: "A backup routine and a safe migration habit so a bad change or a crash never costs you player data." },
     { label: "Time", value: "~25 minutes." },
     { label: "You need", value: "MariaDB running, HeidiSQL connected, and a database your server uses." },
-    { label: "You'll learn", value: "Why backups matter -> how to dump and restore -> safe schema migrations -> a restore test you actually run" },
+    { label: "You'll learn", value: "Why backups matter -> how to dump and automate it on a schedule -> safe schema migrations -> a restore test you actually run" },
   ]}
 >
   Your players' money, vehicles, and characters live in one database. One bad migration, one crash, one fat-fingered DELETE, and it is gone unless you have a backup you have actually tested. CRUD lessons teach you to write data; this one teaches you to never lose it.
@@ -27,11 +27,21 @@
 
 <StepGroup>
   <Step num={1} title="Take a full dump on a schedule" outcome="You have a recent, complete copy of the database.">
-    Export the whole database to a `.sql` file on a schedule (daily for an active server). In HeidiSQL: right-click the database, Export database as SQL, to a dated file. From the command line, `mysqldump` does the same.
+    Export the whole database to a `.sql` file on a schedule (daily for an active server). In HeidiSQL: right-click the database, Export database as SQL, to a dated file. From the command line, the dump tool does the same.
 
     ```bash
-    mysqldump -u root -p fivem > fivem-2026-06-12.sql
+    mariadb-dump -u root -p fivem > fivem-2026-06-12.sql
     ```
+
+    On a pure MariaDB box the dump tool is `mariadb-dump`. The old `mysqldump` name still works because MariaDB ships it as a compatibility symlink, but if `mysqldump` returns `command not found`, use `mariadb-dump` instead. They take the same flags.
+
+    To make daily real instead of aspirational, run that command on a schedule. On Linux, a cron line that dumps every night at 4am:
+
+    ```bash
+    0 4 * * * /usr/bin/mariadb-dump -u root -pYOURPASS fivem > /backups/fivem-$(date +\%F).sql
+    ```
+
+    On Windows, create a Task Scheduler task that runs the same `mariadb-dump` line in a `.bat` file. If you run txAdmin, its scheduled-tasks feature can fire a backup script on the same cadence as your restarts.
   </Step>
 
   <Step num={2} title="Store backups off the server box" outcome="A server failure does not take the backups with it.">
@@ -39,7 +49,17 @@
   </Step>
 
   <Step num={3} title="Migrate schema safely" outcome="Adding columns/tables never destroys existing data.">
-    Before any schema change: take a fresh dump, run the change on a copy first, and prefer additive changes (`ADD COLUMN`) over destructive ones. Never run an untested `ALTER`/`DROP` against live data.
+    Before any schema change: take a fresh dump, run the change on a throwaway copy first, and prefer additive changes (`ADD COLUMN`) over destructive ones. Never run an untested `ALTER`/`DROP` against live data.
+
+    First build the copy from your latest dump and run the migration there:
+
+    ```bash
+    mariadb -u root -p -e "CREATE DATABASE fivem_migrate_test;"
+    mariadb -u root -p fivem_migrate_test < fivem-2026-06-12.sql
+    mariadb -u root -p fivem_migrate_test -e "ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;"
+    ```
+
+    Only once that runs clean on the copy do you touch production. Stop writes first: a live `ALTER` while oxmysql is still writing can leave half-applied rows. Stop the resources that write to this database (or `stop`/`ensure` the framework), run the change, then bring them back:
 
     ```sql
     ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;
@@ -47,15 +67,34 @@
   </Step>
 
   <Step num={4} title="Run a restore test" outcome="You have proven you can bring data back.">
-    Create a throwaway database, import a dump into it, and confirm the tables and rows are there. This is the step everyone skips and everyone regrets skipping.
+    Create a throwaway database and import a dump into it. This is the step everyone skips and everyone regrets skipping.
 
     ```bash
-    mysql -u root -p fivem_restore_test < fivem-2026-06-12.sql
+    mariadb -u root -p -e "CREATE DATABASE fivem_restore_test;"
+    mariadb -u root -p fivem_restore_test < fivem-2026-06-12.sql
+    ```
+
+    Do not eyeball it. Prove the restore by comparing a real row count per table between production and the restore. Run the same `SELECT COUNT(*)` against both:
+
+    ```sql
+    SELECT COUNT(*) FROM fivem.players;
+    SELECT COUNT(*) FROM fivem_restore_test.players;
     ```
 
     <ExpectedOutput>
-      The restore test database contains the same tables and row counts as production.
+      +----------+
+      | COUNT(*) |
+      +----------+
+      |     1487 |
+      +----------+
+      +----------+
+      | COUNT(*) |
+      +----------+
+      |     1487 |
+      +----------+
     </ExpectedOutput>
+
+    The two counts match. If they differ, the dump is incomplete or the import errored, and that backup is not safe to rely on.
   </Step>
 </StepGroup>
 
@@ -74,17 +113,37 @@
 
 <Recap
   items={[
-    "Dump the full database on a schedule with mysqldump or HeidiSQL.",
+    "Dump the full database on a schedule with mariadb-dump (or HeidiSQL), automated via cron or Task Scheduler.",
     "Store backups off the server machine.",
-    "Make schema changes additive, and dump before every ALTER/DROP.",
-    "Run a restore test so a backup is proven, not assumed."
+    "Run every migration on a throwaway copy first, stop writes before a live ALTER, and prefer additive changes.",
+    "Run a restore test and compare row counts so a backup is proven, not assumed."
   ]}
 />
+
+## Try it yourself
+
+<Exercise>
+  Run one full backup-and-restore-test cycle on your own database, end to end, and report the numbers.
+
+  1. Take a dated dump of your live database with `mariadb-dump`.
+  2. Create `fivem_restore_test`, import the dump into it.
+  3. Pick one table that actually has rows on your server, for example `players` or `users`, and run `SELECT COUNT(*)` against both the live database and the restore.
+
+  ```bash
+  mariadb-dump -u root -p fivem > fivem-test.sql
+  mariadb -u root -p -e "CREATE DATABASE fivem_restore_test;"
+  mariadb -u root -p fivem_restore_test < fivem-test.sql
+  mariadb -u root -p -e "SELECT COUNT(*) FROM fivem.players;"
+  mariadb -u root -p -e "SELECT COUNT(*) FROM fivem_restore_test.players;"
+  ```
+
+  The two counts must match exactly. Write down both numbers. If they match, you have a backup you have actually restored, which is the only kind that counts. When you are done, drop the test database with `DROP DATABASE fivem_restore_test;` so it does not sit around getting stale.
+</Exercise>
 
 <Refs
   items={[
     { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" },
-    { label: "MariaDB · mysqldump backups", href: "https://mariadb.org/download/" },
+    { label: "MariaDB · mariadb-dump", href: "https://mariadb.com/kb/en/mariadb-dump/" },
     { label: "HeidiSQL · export and import", href: "https://www.heidisql.com/" }
   ]}
 />

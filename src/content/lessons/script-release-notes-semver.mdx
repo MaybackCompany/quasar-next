@@ -2,10 +2,10 @@
   crumbs="Module B8 · Ship, sell & maintain"
   title="Release notes and semantic versioning"
   meta={[
-    { label: "You'll learn", value: "How to version a script so buyers know what changed and whether an update is safe to take." },
+    { label: "You'll build", value: "A versioned release with a grouped changelog and a GitHub tag a buyer can roll back to." },
     { label: "Time", value: "~15 minutes." },
     { label: "You need", value: "A script under Git and a place to publish changelogs." },
-    { label: "You'll learn", value: "What MAJOR.MINOR.PATCH means -> when to bump which -> how to write a changelog -> how to tag a release" },
+    { label: "You'll learn", value: "What MAJOR.MINOR.PATCH means -> how each maps to a real FiveM change -> how to write a changelog -> how to tag a release" },
   ]}
 >
   Buyers update with confidence when versions mean something. Semantic versioning (semver) and a short changelog turn "new update lol" into "this is a safe patch" or "this one needs a config change." It is five minutes per release and it kills a whole category of support tickets.
@@ -27,7 +27,13 @@
 
 <StepGroup>
   <Step num={1} title="Decide the bump" outcome="The version number matches the kind of change.">
-    Bug fix only -> bump PATCH. New optional feature, nothing breaks -> bump MINOR. Anything that breaks existing configs, exports, or the database -> bump MAJOR and say so loudly.
+    For a FiveM resource, the bump is not a feeling, it maps to concrete things a buyer's server depends on:
+
+    - **PATCH** (1.2.3 -> 1.2.4): you fixed a bug and nothing the buyer touches changes. A fixed dupe exploit, a corrected blip colour, a typo in a notification. Drop in the new files, restart, done.
+    - **MINOR** (1.2.x -> 1.3.0): you added something optional and the old setup still works untouched. A new optional `Config` block with a sensible default, a brand new export alongside the existing ones, a new command. A buyer who ignores the new feature notices nothing.
+    - **MAJOR** (1.x -> 2.0.0): you broke something the buyer has wired into. A renamed or removed `Config` key, a changed export signature (different arguments or return), a required SQL migration, a dependency swap (for example moving from a deprecated MySQL wrapper to oxmysql). Their current config or database no longer works as-is.
+
+    The test for MAJOR: would a buyer who drops in your new files and restarts get errors or silent breakage with their existing config and database? If yes, it is a MAJOR bump and it needs a migration note.
   </Step>
 
   <Step num={2} title="Write a short changelog" outcome="Buyers can read what changed in ten seconds.">
@@ -36,17 +42,18 @@
     ```text
     ## 2.0.0
     Breaking: config key `cooldown` renamed to `cooldownMs` — update your config.
-    Added: support for Qbox.
+    Breaking: requires the new SQL migration in /sql/2.0.0.sql before first start.
+    Added: support for Qbox alongside ESX Legacy and QBCore.
     Fixed: dupe when spamming the use key.
     ```
   </Step>
 
   <Step num={3} title="Tag the release" outcome="The version is a real, downloadable point in history.">
-    Create a GitHub release tagged with the version (for example `v2.0.0`) and paste the changelog into it. Now buyers can download an exact version and roll back if needed.
+    Create a GitHub release tagged with the version (for example `v2.0.0`) and paste the changelog into it. The tag pins this exact commit, so a buyer can download `v2.0.0` as a zip, or drop back to `v1.9.4` if your update breaks their live server. That rollback is the safety net: when a server owner takes your update mid-session and it errors, they need to revert to a known-good version in seconds, not dig through commit history while players sit in a broken city.
   </Step>
 
   <Step num={4} title="Announce with the migration note" outcome="Nobody is surprised by a breaking change.">
-    When you ship a MAJOR, tell buyers exactly what they must change. A breaking update with no migration note is how you earn refunds and bad reviews.
+    When you ship a MAJOR, tell buyers exactly what they must change: which config keys moved, which SQL file to run, which dependency to install first. A breaking update with no migration note is how you earn refunds and bad reviews. Pin the migration note above the download so nobody misses it.
   </Step>
 </StepGroup>
 
@@ -55,9 +62,10 @@
 <FailureList
   items={[
     { symptom: "Buyers afraid to update", fix: "Use semver and a changelog. A PATCH should feel safe because the number says so." },
-    { symptom: "A breaking change shipped as a patch", fix: "Breaking changes are MAJOR bumps, with a migration note. Mislabeling them destroys trust." },
-    { symptom: "No way to roll back", fix: "Tag every release on GitHub so buyers can download and revert to an exact version." },
-    { symptom: "Support flooded after an update", fix: "You shipped a breaking change quietly. Always lead the changelog and announcement with breaking items." },
+    { symptom: "A renamed config key shipped as a patch", fix: "Renaming or removing a Config key breaks every existing buyer's config. That is a MAJOR bump with a migration note, never a quiet PATCH." },
+    { symptom: "An export's arguments changed and dependent resources broke", fix: "A changed export signature breaks any resource that calls it. Bump MAJOR and document the new signature so buyers can update their callers." },
+    { symptom: "A required SQL migration left out of the notes", fix: "If first start needs a new table or column, the migration file and the run order are the most important line in the changelog. Lead with it." },
+    { symptom: "No way to roll back after a bad update", fix: "Tag every release on GitHub so a server owner can revert to an exact version mid-incident instead of waiting on you." },
   ]}
 />
 
@@ -65,12 +73,25 @@
 
 <Recap
   items={[
-    "Map a change to a PATCH, MINOR, or MAJOR bump.",
-    "Write a grouped changelog that leads with breaking changes.",
-    "Tag each release on GitHub so versions are downloadable and revertible.",
-    "Ship breaking changes with a clear migration note."
+    "Map a FiveM change to a PATCH (fix), MINOR (optional addition), or MAJOR (config, export, or SQL break).",
+    "Write a grouped changelog that leads with breaking changes and names the SQL migration.",
+    "Tag each release on GitHub so versions are downloadable and a buyer can revert mid-incident.",
+    "Ship breaking changes with a clear migration note pinned above the download."
   ]}
 />
+
+## Try it yourself
+
+<Exercise>
+  Classify each of these real resource changes as PATCH, MINOR, or MAJOR before you read the answers:
+
+  1. You fixed a money dupe that triggered when a player spam-clicked the use key.
+  2. You added an optional `Config.UseTarget` flag that defaults to `false`, so existing servers behave exactly as before.
+  3. You renamed the export `getCash` to `getMoney` to match your other resources.
+  4. You added a new column to the `player_garages` table and the resource errors on start without it.
+
+  Answers: (1) PATCH, a bug fix with nothing for the buyer to change. (2) MINOR, a new optional feature that is backwards compatible. (3) MAJOR, a changed export signature breaks every resource that called `getCash`. (4) MAJOR, a required SQL migration; ship the `.sql` file and lead the changelog with the run-it-first instruction. Now do the same for the last change you actually made to one of your scripts, write its one-line changelog entry, and decide the bump.
+</Exercise>
 
 <Refs
   items={[

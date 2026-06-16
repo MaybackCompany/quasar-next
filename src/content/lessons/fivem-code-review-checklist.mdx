@@ -55,6 +55,60 @@
   ]}
 />
 
+## How it works
+
+The checklist tells you what to look for. This section walks the three checks that catch the most damage, so you are reviewing with intent instead of pattern matching. Take one suspect line, ask the right question, and you can usually decide approve or block in seconds.
+
+### Server authority, in practice
+
+Authority means one question: if this value decides money, items, a job, admin rights, or a price, did the server compute it, or did it trust whatever the client sent? Here is the bug you are hunting:
+
+```lua
+-- client.lua  (what an exploited client can send)
+TriggerServerEvent('bank:deposit', 999999)
+
+-- server.lua  (the version you must block)
+RegisterNetEvent('bank:deposit', function(amount)
+    local src = source
+    addMoney(src, amount)   -- trusts the client's number
+end)
+```
+
+The client decided the amount, so a player editing the trigger can deposit nine hundred thousand. The fix is to make the server the source of truth and recompute from server-held state, never from the payload:
+
+```lua
+-- server.lua  (server authority)
+RegisterNetEvent('bank:deposit', function(amount)
+    local src = source
+    amount = tonumber(amount)
+    if not amount or amount <= 0 then return end   -- validate the input
+    local cash = getCash(src)                       -- server-held truth
+    if cash < amount then return end                -- server decides if it is allowed
+    removeCash(src, amount)
+    addBank(src, amount)
+end)
+```
+
+Note that `source` is only trustworthy because the server fills it in, not the client. On a FiveM review, this is the first pass you make: trace every value-bearing net event back to whoever decided the number. If the answer is the client, that is the bug, no matter how clean the rest reads.
+
+### Parameterized queries, in practice
+
+The SQL row on the checklist exists to stop one specific attack. Concatenating a player-supplied value straight into a query string lets that value break out of the data and become SQL. Compare the two forms:
+
+```lua
+-- Vulnerable: the name is glued into the query string
+MySQL.query('SELECT * FROM users WHERE name = "' .. name .. '"')
+
+-- Safe: oxmysql sends the value as a parameter, never as code
+MySQL.query('SELECT * FROM users WHERE name = ?', { name })
+```
+
+In the first line, a name of `" OR "1"="1` turns the query into one that matches every row, and a more hostile value can drop tables. That is SQL injection. The `?` placeholder form hands the value to MariaDB separately from the query text, so it is always treated as data. The review rule is simple: every value that came from a player must travel as a `?` parameter, never inside the query string.
+
+### resmon and the tick budget, in practice
+
+The performance section assumes two terms from earlier in the track, so here they are in one line each. resmon is the in-game resource monitor you open with the `resmon` command in F8; it shows each resource's CPU time per tick in milliseconds. The tick budget is the time a single client frame allows: at 60 frames per second a frame is about 16 milliseconds, shared across every running resource, so any one resource sitting at a fraction of a millisecond at idle is healthy and anything climbing toward a full millisecond while nothing is happening needs a longer `Wait` or distance gating. With those two numbers in hand, the resmon row becomes a concrete check rather than a vibe: read the millisecond figure at idle, then under load, and confirm both stay small.
+
 ## Common mistakes
 
 <FailureList

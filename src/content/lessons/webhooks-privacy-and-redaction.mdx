@@ -5,7 +5,7 @@
     { label: "You'll learn", value: "How to log to Discord webhooks without leaking secrets, spamming channels, or exposing player data." },
     { label: "Time", value: "~20 minutes." },
     { label: "You need", value: "The HTTP/webhooks lesson and a server you can configure." },
-    { label: "You'll learn", value: "Webhooks are secrets -> server-side only -> what NOT to log -> rate limits and redaction" },
+    { label: "The arc", value: "Webhooks are secrets, send server-side only, decide what NOT to log, then rate-limit and redact." },
   ]}
 >
   Webhooks are how your server tells Discord what happened: a sale, a ban, an error. Done carelessly they leak the webhook URL, dump player data into a channel, or spam Discord until it rate-limits you. This lesson keeps logging useful and safe.
@@ -27,19 +27,74 @@
 
 <StepGroup>
   <Step num={1} title="Send only from the server" outcome="The webhook URL never reaches a client.">
-    All webhook calls happen in server scripts, with the URL read from a convar. A client never sees the URL and never triggers the send directly without a server check.
+    All webhook calls happen in server scripts, with the URL read from a convar. A client never sees the URL and never triggers the send directly without a server check. `PerformHttpRequest` is a server native, so this code can only live in a `server_script`.
+
+    Read the URL from a convar, then post a Discord embed. Discord expects JSON, so set the `Content-Type` header and encode the body with `json.encode`.
 
     ```lua
     local hook = GetConvar('logs_webhook', '')
+
+    local function sendLog(title, description)
+        if hook == '' then return end -- no webhook configured, do nothing
+        local body = json.encode({
+            embeds = {
+                {
+                    title = title,
+                    description = description,
+                    color = 3447003, -- a blue stripe down the embed
+                }
+            }
+        })
+        PerformHttpRequest(hook, function(status)
+            if status ~= 200 and status ~= 204 then
+                print(('[logs] webhook returned %s'):format(status))
+            end
+        end, 'POST', body, { ['Content-Type'] = 'application/json' })
+    end
     ```
   </Step>
 
   <Step num={2} title="Decide what NOT to log" outcome="No private or sensitive data goes to a channel.">
-    Log events, not secrets. Never send license keys, passwords, full IPs, tokens, or anything that identifies a real person beyond what you actually need. Redact or hash identifiers where you can.
+    Log events, not secrets. Never send license keys, passwords, full IPs, tokens, or anything that identifies a real person beyond what you actually need.
+
+    When you do need a stable identifier (to tell two players apart, or to follow one player across events), hash it with a server-side salt instead of posting the raw value. The salt lives in a convar and never leaves the server, so the channel shows a consistent tag you cannot reverse back into a real license.
+
+    ```lua
+    local salt = GetConvar('logs_salt', '')
+
+    -- license looks like "license:0fa3c1..." from GetPlayerIdentifierByType
+    local function tag(license)
+        local digest = GetHashKey(salt .. license) -- never log the raw license
+        return ('player#%x'):format(digest & 0xFFFFFFFF)
+    end
+
+    sendLog('Ban issued', ('Target %s for cheating'):format(tag(license)))
+    ```
   </Step>
 
   <Step num={3} title="Rate-limit your sends" outcome="Discord does not throttle or block your webhook.">
     Discord rate-limits webhooks. Batch or throttle high-frequency events instead of firing one request per tick. A log that spams itself stops logging when Discord cuts it off.
+
+    Push lines onto a queue and flush them on a timer. One request every few seconds carries many events instead of one request per event.
+
+    ```lua
+    local queue = {}
+
+    local function logEvent(line)
+        queue[#queue + 1] = line
+    end
+
+    CreateThread(function()
+        while true do
+            Wait(3000) -- flush at most once every 3 seconds
+            if #queue > 0 then
+                local batch = table.concat(queue, '\n')
+                queue = {}
+                sendLog('Activity', batch)
+            end
+        end
+    end)
+    ```
   </Step>
   <Step num={4} title="Separate channels by severity" outcome="Important logs are not buried in noise.">
     Send errors and security events to a private staff channel, routine activity to another. Mixing a critical ban alert into a firehose of chat logs means nobody sees it.

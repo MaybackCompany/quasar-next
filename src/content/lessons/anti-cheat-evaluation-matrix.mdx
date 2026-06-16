@@ -2,13 +2,12 @@
   crumbs="Module A3 · Operate & secure"
   title="Choosing an anti-cheat"
   meta={[
-    { label: "You'll learn", value: "How to evaluate anti-cheat options without getting sold snake oil, and why server-side authority matters more than any product." },
+    { label: "You'll learn", value: "What anti-cheat can and cannot do, how to score options without getting sold snake oil, the layers that actually stop cheaters, and the red flags when buying." },
     { label: "Time", value: "~20 minutes." },
     { label: "You need", value: "An understanding of client vs server authority (the trust lesson)." },
-    { label: "You'll learn", value: "What anti-cheat can and cannot do -> evaluation criteria -> the layers that actually stop cheaters -> red flags when buying" },
   ]}
 >
-  New owners think anti-cheat is a product you buy that makes cheating stop. It is not. The strongest protection is a server that never trusts the client. Anti-cheat is a layer on top of that, not a replacement for it. This lesson gives you a sober way to evaluate options so you spend money on the right thing.
+  New owners think anti-cheat is a product you buy that makes cheating stop. It is not. The strongest protection is a server that never trusts the client. Anti-cheat is a layer on top of that, not a replacement for it. This is the decide companion to the anti-cheat build lesson: that one writes the server guards, this one helps you evaluate what to buy on top of them so you spend money on the right thing.
 </LessonHero>
 
 <Prereq
@@ -39,24 +38,51 @@
 
 ## The layers that actually stop cheaters
 
-<Recap
-  items={[
-    "Server authority: the client may request, only the server grants, after a check.",
-    "Rate limits: cap how often an action can happen so spam and automation are blocked.",
-    "Integrity checks: detect tampered resources and unexpected events.",
-    "Logging and review: catch patterns after the fact and ban with evidence.",
-    "Anti-cheat product: a layer for injected menus and known cheat signatures, on top of the above."
-  ]}
-/>
+The order here is deliberate. Each layer catches a class of attack the one above it cannot, and a product anti-cheat only earns its keep once the first four are in place.
+
+- **Server authority.** The client may request, only the server grants, after a check. This is the floor. A client that asks for money gets recomputed by the server, never trusted.
+- **Rate limits.** Cap how often an action can happen so spam and automation are blocked. A legitimate player robs a store every few minutes; a bot tries every frame.
+- **Integrity checks.** Detect tampered resources and unexpected events fired by an injected script.
+- **Logging and review.** Catch patterns after the fact and ban with evidence, not vibes.
+- **Anti-cheat product.** A layer for injected menus and known cheat signatures, sitting on top of all of the above. Never under it.
+
+## How it works
+
+The reason this lesson exists is that the words above stay abstract until you know what each layer is actually fighting. Two threats get blurred together constantly, and the difference decides which layer addresses them.
+
+### Injected menus versus resource tampering
+
+An **injected menu** (often called an external menu or mod menu) is a separate program the cheater runs alongside the game. It hooks into the game client's memory and calls game functions directly, or fires fake network events at your server. Nothing on your server gave it permission. It exists entirely inside the player's machine, which the cheater controls completely.
+
+**Resource tampering** is different. Here the cheater modifies a resource your server actually sent them, or runs an extra client resource that talks to your scripts. The attack rides on top of legitimate resources rather than bypassing them. An integrity layer is aimed at this case: it looks for client state that does not match what the server shipped.
+
+Knowing which is which tells you which layer does the work. Server authority and rate limits defend against both, because they live on the server and judge requests no matter where they came from. Integrity checks and a product anti-cheat are aimed mostly at the injected and tampered client.
+
+### Why client-side detection can be faked
+
+This is the mechanism behind never trust the client. The cheater owns the client process. Anything that runs there, including a detection script that is supposed to report cheating, runs inside a sandbox the cheater controls. They can patch it, feed it false data, or stop it from ever sending its report.
+
+So a check that runs on the client and sends a clean here, nothing wrong message to the server is worthless on its own. A cheater simply makes that message always say clean. The same logic, run on the server against a request the client cannot forge, holds, because the server decides the outcome and the client cannot edit the server. That is the entire reason server authority sits at the bottom of the stack: it is the only place a check cannot be tampered out of existence.
+
+### What an integrity check actually inspects
+
+Integrity check is a buzzword until you know what it reads. A real one inspects concrete signals on the server side, where the client cannot rewrite them:
+
+- **Unexpected event names.** Your resources fire a known set of net events. An injected script firing an event your code never registers, or firing one far more often than your UI ever could, is a flag.
+- **Resource hashes and lists.** The set of client resources is known. A client running a resource that was never sent, or whose contents do not match what the server shipped, is tampering.
+- **Impossible triggers.** A reward event that should only follow a verified server-side action, arriving without that action having happened, did not come from your code path.
+
+None of these trust a self-report from the client. Each one watches what the client does from a vantage point the cheater cannot reach, which is exactly why it works and why a client-side scanner does not.
 
 ## Common mistakes
 
 <FailureList
   items={[
-    { symptom: "Bought anti-cheat, still getting robbed", fix: "The exploit is server trust, not injection. Move money/item/job decisions server-side first." },
+    { symptom: "Bought anti-cheat, still getting robbed", fix: "The exploit is server trust, not injection. Move money/item/job decisions server-side first, the way the anti-cheat build lesson does." },
     { symptom: "Anti-cheat tanks server performance", fix: "Measure its resmon cost. If it is heavy, the cure is worse than the disease; find a lighter option." },
     { symptom: "It is an opaque blob with full access", fix: "You are trusting an unknown resource completely. Prefer options you or your community can audit." },
     { symptom: "Sold on hype in the seller's own channel", fix: "Ask about bypass history in neutral communities. Recency of patches matters more than marketing." },
+    { symptom: "Relying on a client-side detection script alone", fix: "The cheater controls the client process and can silence or fake its report. Detection that matters runs server-side against requests the client cannot forge." },
   ]}
 />
 
@@ -64,10 +90,11 @@
 
 <Recap
   items={[
-    "State plainly that server authority beats any anti-cheat product.",
+    "State plainly that server authority beats any anti-cheat product, and explain why a client-side report can be faked.",
+    "Tell an injected menu apart from resource tampering, and name which layer addresses each.",
     "Score an anti-cheat on detection, maintenance, performance, transparency, and bypass history.",
-    "Stack rate limits, integrity checks, and logging as layers.",
-    "Avoid opaque, stale, or hype-only options."
+    "Say what an integrity check actually inspects: unexpected events, resource hashes, and impossible triggers.",
+    "Avoid opaque, stale, or hype-only options, and treat any product as the layer on top of server authority, never the replacement for it.",
   ]}
 />
 

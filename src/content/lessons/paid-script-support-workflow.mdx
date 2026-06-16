@@ -5,7 +5,7 @@
     { label: "You'll build", value: "A repeatable support process for a script you sell: issue intake, reproduction templates, versioning, and a clear support boundary." },
     { label: "Time", value: "~25 minutes." },
     { label: "You need", value: "A script you ship (or plan to), and a place buyers can reach you." },
-    { label: "You'll learn", value: "Intake template -> reproduction -> triage -> fix-and-release -> the support scope you commit to" },
+    { label: "You'll learn", value: "Intake template -> clean-server reproduction -> triage -> fix, version, and release -> the support scope and response time you commit to" },
   ]}
 >
   Selling a script means signing up for support, and unmanaged support eats your time and your reviews. A workflow fixes that: a fixed intake template, a triage rule, and a written support boundary so buyers know what they get. This is the difference between a side income and a second unpaid job.
@@ -31,8 +31,8 @@
 
     ```text
     Script version:
-    Framework + version (ESX/QBCore/Qbox):
-    Artifact build:
+    Framework + version (ESX Legacy / Qbox / QBCore):
+    Artifact build (sv_enforceGameBuild):
     What you did:
     What you expected:
     What happened (exact console error):
@@ -40,7 +40,7 @@
   </Step>
 
   <Step num={2} title="Reproduce before you promise a fix" outcome="You know whether it is your bug or their setup.">
-    Reproduce on a clean test server with only your script plus its dependencies. If it only breaks with a third paid script loaded, that is a conflict (out of scope), not your bug.
+    Reproduce on a clean test server with only your script plus its dependencies (ox_lib, oxmysql, and your framework). If it only breaks with a third paid script loaded, that is a conflict (out of scope), not your bug.
   </Step>
 
   <Step num={3} title="Triage by cause" outcome="Each ticket gets the right response, fast.">
@@ -52,14 +52,87 @@
   </Step>
 </StepGroup>
 
+<Callout variant="fivem" title="Commit to a response time, not a fix time">
+  A support boundary is incomplete without a clock. Publish a first-response time you can actually hit, for example "first reply within 24 hours on weekdays." You are promising to read and classify the ticket, not to ship a fix on a deadline. That single line ends most "are you even there" follow-ups and keeps your reviews calm.
+</Callout>
+
+## How it works
+
+The four buckets only matter when you can route a real ticket through them without thinking twice. Here is one vague report taken end to end, the way you will handle dozens of them.
+
+### The ticket arrives
+
+A buyer messages your Discord:
+
+```text
+your shop script is broken, garage doesnt open. fix asap please
+```
+
+This is unactionable. There is no version, no framework, no error. You do not start debugging. You reply with the intake template from step 1 and ask them to fill every field. Hold the line here: the template is what makes the next four steps fast, so a report without it is not yet a ticket.
+
+### The buyer fills the template
+
+```text
+Script version: 2.1.0
+Framework + version: ESX Legacy 1.10.6
+Artifact build (sv_enforceGameBuild): 3258
+What you did: walked into the garage zone and pressed E
+What you expected: the garage menu opens
+What happened (exact console error):
+  [script:qs_garage] SCRIPT ERROR: @qs_garage/server/main.lua:42:
+  attempt to index a nil value (field 'Functions')
+```
+
+Now you can act. That error names your resource, your file, and your line. It is almost certainly your code, but you do not promise a fix yet. You reproduce first.
+
+### Reproduce on a clean server
+
+Spin up a clean test server: the framework (ESX Legacy 1.10.6), your dependencies (ox_lib, oxmysql), and `qs_garage` 2.1.0. Nothing else. Set `sv_enforceGameBuild 3258` to match. Walk into the zone and press E.
+
+If the error reproduces, it is your bug. Line 42 indexes `ESX.Functions`, which does not exist on this framework version, so the menu never opens. If it does not reproduce, the cause lives in something the buyer has that you do not, and you go hunting for a conflict instead.
+
+### Classify and respond
+
+It reproduced on a clean server, so this is bucket one: **your bug**. Compare that with the other three outcomes you could have landed on:
+
+- **Install/config**: it only broke because their `sv_enforceGameBuild` did not match what the script targets. You point them at the install doc, not a code fix.
+- **Conflict**: it only reproduced once a second paid inventory script was loaded. Out of scope. You name the likely culprit and suggest a load order or asking that script's author.
+- **Feature request**: "can the garage also store boats." Backlog, not support. You acknowledge and move on.
+
+Here it is your bug, so you fix line 42 on a branch, then reply with a real version number, not a vague "fixed soon":
+
+```text
+Confirmed on a clean server, this is on us. Fixed in 2.1.1 (out now):
+the garage menu was reading a framework field that ESX Legacy 1.10.6
+removed. Update qs_garage to 2.1.1 and restart the resource. Thanks
+for the clean report, it made this a five-minute fix.
+```
+
+### Why the version number carries the meaning
+
+The reply lands because `2.1.1` is not a random label. Semantic versioning gives each part a job, and that is what makes your one-line changelog readable at a glance:
+
+- **Patch** (2.1.0 to 2.1.**1**): a backward-compatible bug fix. The buyer updates and restarts. Nothing else changes. This is the answer to most support tickets.
+- **Minor** (2.1.0 to 2.**2**.0): new feature, still backward compatible. Existing configs keep working, so the buyer can update safely and adopt the feature when ready.
+- **Major** (2.1.0 to **3**.0.0): a breaking change. Configs or database schema change, so the buyer must read migration notes before updating, never mid-event.
+
+Because the buyer knows `2.1.1` is a patch, they know the update is safe and routine. Your changelog line says exactly that, and that is why "update to 2.1.1" is a complete support answer:
+
+```text
+## 2.1.1 - 2026-06-16
+### Fixed
+- Garage menu failed to open on ESX Legacy 1.10.6 (nil ESX.Functions on line 42).
+```
+
 ## Common mistakes
 
 <FailureList
   items={[
-    { symptom: "Tickets are vague and unfixable", fix: "Enforce the intake template. No version, framework, and error means no triage yet." },
-    { symptom: "Drowning in 'it does not work'", fix: "Triage by cause. Config and conflicts are not bugs; point to docs or mark out of scope." },
+    { symptom: "Tickets are vague and unfixable", fix: "Enforce the intake template. No version, framework, and exact console error means it is not a ticket yet, so reply with the template instead of guessing." },
+    { symptom: "You promised a fix, then it was a conflict", fix: "Reproduce on a clean server with only your script and its dependencies before you commit. If it needs a third paid script to break, it is out of scope." },
+    { symptom: "Drowning in 'it does not work'", fix: "Triage by cause. Config and conflicts are not bugs; point to docs or mark out of scope. Feature requests go to the backlog, not the support queue." },
     { symptom: "Buyers expect free custom edits", fix: "Publish the support scope up front. Customization is paid work, not support." },
-    { symptom: "Nobody knows which version fixed it", fix: "Bump semver and changelog every release; reply with the fixed version number." },
+    { symptom: "Nobody knows which version fixed it", fix: "Bump semver and changelog every release; reply with the fixed version number so 'update to 2.1.1' is the whole answer." },
   ]}
 />
 
@@ -67,16 +140,19 @@
 
 <Recap
   items={[
-    "Require a fixed intake template on every report.",
-    "Reproduce on a clean server before committing to a fix.",
-    "Triage tickets by cause: bug, config, conflict, or feature.",
-    "Fix, bump the version, changelog, and reply with the fixed version."
+    "Reply with the intake template instead of debugging a vague report, so every ticket arrives actionable.",
+    "Reproduce on a clean server with only your script and its dependencies before committing to a fix.",
+    "Route a ticket through the four buckets: your bug, install/config, conflict, or feature request.",
+    "Map a fix to the right semver part (patch, minor, major) and reply with the version number that contains it.",
+    "Publish a support scope and a first-response time you can actually hold.",
   ]}
 />
 
 <Refs
   items={[
     { label: "Tebex · developer docs", href: "https://docs.tebex.io/developers" },
-    { label: "Semantic Versioning", href: "https://semver.org/" }
+    { label: "Semantic Versioning 2.0.0", href: "https://semver.org/" },
+    { label: "Keep a Changelog", href: "https://keepachangelog.com/" },
+    { label: "GitHub · issue & PR templates", href: "https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository" }
   ]}
 />

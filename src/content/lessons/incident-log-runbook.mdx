@@ -51,13 +51,53 @@
   </Step>
 </StepGroup>
 
+## How it works
+
+The five steps are easy to nod along to and hard to actually run when a report lands at 2am. So walk one real incident through the whole loop. The point is not the specific bug; it is that the same five moves work on every report you will ever get.
+
+### One report, all five steps
+
+A player posts in your bug channel: "car shop lets me dupe cars". That is all you have. Here is the loop.
+
+**1. Capture.** You do not edit anything yet. You ask the reporter three things: roughly what time, which shop, and exactly what they clicked. They say around 21:40, the Luxury Autos shop, and "I just spammed the buy button." Now you open the evidence. The Live Console may already have scrolled past 21:40, so go to the file. Open `txData/<your-server>/logs/server` and search for the timestamp near `21:40`. You find repeated `vehicle:purchase` events from one player id inside the same second. Screenshot the report, copy that block of log lines, and note the player id and the resource name. That is your evidence packet.
+
+**2. Reproduce.** On a test server, stand at the same shop and spam the buy button the way they described. The vehicle is granted several times before any balance check catches up. It reproduces every time. A bug you can trigger on demand is a bug you can fix; if it had only happened once and never again, it would get a watch entry instead.
+
+**3. Classify.** Players minting free cars is duplicated value, which is a money/item exploit. That is **critical**. It jumps the queue ahead of the cosmetic bugs on your list, and you stop the bleed first by stopping or restricting that one shop resource while you work, rather than editing it live.
+
+**4. Fix or escalate.** Read the buy flow. The client sends `vehicle:purchase` and the server grants the car, but the server trusts the client to fire it once and never checks how fast the requests arrive or whether the player can afford each one. The fix lives on the server, not the client: charge and validate on the server before granting, and reject a second request that arrives before the first finishes. If this is your own resource, you make that change on your PC, test it against the same spam, and deploy through the Git loop. If it is a paid resource, you open a support ticket with the evidence packet from step 1 so the author can fix it the same way. Either way, nothing gets patched directly on the live server.
+
+**5. Record.** One line in the log, the same shape as the example above:
+
+```text
+2026-06-13 | luxury autos dupe on rapid buy | server trusted client to fire purchase once | charge + validate on server, reject rapid repeats | commit 9f2c7e1
+```
+
+Now the abstract steps are concrete, and the log line is not just a note. It names the real cause.
+
+### Why this class of bug keeps coming back
+
+Look at the cause field in both log lines. The first one says "client trusted for grant." The second says "server trusted client to fire purchase once." That is the same bug wearing a different shop. Any time the server hands out value because the client asked nicely, without checking on the server side, a player who can fire that request faster or more often than you expected gets free value. Shops, ATMs, crafting, item transfers all share the shape.
+
+This is why the record step matters more than it looks. When the next dupe report lands, you search your log for "dupe", see two prior entries that both trace back to a trusting server, and you already know where to look before you reproduce anything. The runbook does not just close one incident. Over time it teaches you the patterns in your own server, and the server-authority pattern is the one you will meet most.
+
+### Reading txData logs by timestamp
+
+Step 1 leans on finding the right lines in a file, so make that concrete. txAdmin keeps rotating logs under `txData/<your-server>/logs`:
+
+- `fxserver` is the raw server console output, the same stream you see live, including resource `print` lines and Lua errors.
+- `server` is txAdmin's structured event log: joins, drops, chat, deaths, explosions, and resource events, each stamped with a time.
+- `admin` is who did what in the txAdmin panel: kicks, bans, restarts, console commands.
+
+To work an incident, take the time from the report and open the `server` log first, because it is timestamped and searchable. Find the minute, then read outward to see what led up to the event and what followed. When you need the exact error text or a stack trace, cross to `fxserver` at the same time. The Live Console is for what is happening right now; the moment a restart clears it, these files are the only record left, which is exactly why step 1 is capture and not edit.
+
 ## Common mistakes
 
 <FailureList
   items={[
     { symptom: "Edited the live server and made it worse", fix: "Stop. Roll back via Git, reproduce on a test setup, then deploy the fix through the normal loop." },
     { symptom: "Report says 'it broke', nothing else", fix: "Ask for time, what they did, and any error text. No reproduction means a watch entry, not a blind change." },
-    { symptom: "Same bug keeps coming back", fix: "You fixed the symptom, not the cause. Use the incident log to find the real trigger." },
+    { symptom: "Same bug keeps coming back", fix: "You fixed the symptom, not the cause. Use the incident log to find the real trigger, which for value exploits is usually a server that trusts the client." },
     { symptom: "Lost the error after a restart", fix: "Pull it from txData logs by timestamp. The Live Console clears; the log files do not." },
   ]}
 />
@@ -69,9 +109,26 @@
     "Capture the error, time, and trigger before changing anything.",
     "Reproduce before you fix; watch what you cannot reproduce.",
     "Classify severity and fix or escalate accordingly.",
-    "Deploy fixes through Git, never on the live server, and log every incident."
+    "Deploy fixes through Git, never on the live server, and log every incident.",
+    "Read txData logs by timestamp to recover an error the Live Console already cleared."
   ]}
 />
+
+## Try it yourself
+
+<Exercise>
+  Run the runbook on a report cold, the way you will at 2am. The report is one line: "got robbed at the ATM but my balance went up." You have nothing else.
+
+  Write out, in order:
+
+  1. The three questions you ask the reporter to capture, and which txData log file you open first to find the matching event by timestamp.
+  2. How you would reproduce it on a test server.
+  3. The severity, with one sentence saying why.
+  4. Where the fix most likely lives, client or server, and the one sentence of cause you would write.
+  5. The single log line you would record, in the `date | symptom | cause | fix | commit` shape used above.
+
+  If your cause sentence in step 4 ends up being some version of "the server trusted the client," you have spotted the pattern this lesson is really about. Compare your log line to the two worked examples and confirm all five fields are filled, not just the symptom.
+</Exercise>
 
 <Refs
   items={[

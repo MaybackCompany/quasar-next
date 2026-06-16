@@ -8,7 +8,7 @@
     { label: "Result", value: "You are ready to install the latest FiveM artifacts and pick a txAdmin recipe in Step 03." },
   ]}
 >
-  Keep this simple. Install the tools FiveM owners use every day, create your free **Cfx.re license key** from the **portal** (portal.cfx.re), and prepare the **MariaDB** database before txAdmin asks for it. The mental model to keep: MariaDB is the database engine, **HeidiSQL** is the window you look through it with, and `oxmysql` is the resource that lets your scripts talk to it later.
+  Keep this simple. Install the tools FiveM owners use every day, create your free **Cfx.re license key** from the **portal** (portal.cfx.re), and prepare the **MariaDB** database before txAdmin asks for it. The mental model to keep: MariaDB is the database engine, **HeidiSQL** is the window you look through it with, and `oxmysql` is the community resource (built by Overextended, installed separately) that lets your scripts talk to it later.
 </LessonHero>
 
 <Prereq
@@ -21,12 +21,12 @@
 />
 
 <Callout variant="fivem" title="Owner mental model">
-  MariaDB is the database engine that stores players, money, vehicles, jobs, and inventory. HeidiSQL is the visual app you use to see and edit that database safely. `oxmysql` is the FiveM resource that lets your scripts talk to MariaDB later. Install each tool, read the proof, then move to the next step.
+  MariaDB is the database engine that stores players, money, vehicles, jobs, and inventory. HeidiSQL is the visual app you use to see and edit that database safely. `oxmysql` is a community resource from Overextended (not something that ships with FiveM) that lets your scripts talk to MariaDB later; you drop it into `resources` and `ensure` it like any other script. Install each tool, read the proof, then move to the next step.
 </Callout>
 
 ## The tools you'll install
 
-Official downloads only. Use these links, not random mirrors. The editor edits your files, MariaDB stores your data, HeidiSQL is the window into that data, and oxmysql is the resource your scripts use to reach it later.
+Official downloads only. Use these links, not random mirrors. The editor edits your files, MariaDB stores your data, HeidiSQL is the window into that data, and oxmysql is the Overextended community resource your scripts use to reach it later.
 
 <TechLinks ids={["vscode", "7zip", "winrar", "winscp", "mariadb", "heidisql", "oxmysql"]} />
 
@@ -70,7 +70,7 @@ Official downloads only. Use these links, not random mirrors. The editor edits y
   </Step>
 
   <Step num={4} title="Create your Cfx.re account and free license key" outcome="A license-key.txt file with your free key exists on your Desktop.">
-    Every FiveM server needs a license key, **even a local test server**. The key is **free** and comes from the Cfx.re **Portal**, not from any "Keymaster" page.
+    Every FiveM server needs a license key, **even a local test server**. The key authorizes your server to connect to the Cfx.re platform and run, and it ties your server to your Cfx.re account for the server list and entitlements. The key is **free** and comes from the Cfx.re **Portal** at portal.cfx.re, not from any old "Keymaster" page.
 
     1. Create or verify your account at [forum.cfx.re](https://forum.cfx.re/) and confirm the email.
     2. Go to the portal at [portal.cfx.re](https://portal.cfx.re/).
@@ -88,12 +88,12 @@ Official downloads only. Use these links, not random mirrors. The editor edits y
     Download the latest Windows x86_64 MSI from [mariadb.org/download](https://mariadb.org/download/) and run the installer.
 
     1. Set a **root password** and save it on your Desktop in `db-creds.txt`.
-    2. Enable **UTF8** as the default character set.
+    2. Enable **utf8mb4** as the default character set (not the legacy 3-byte `utf8`). This is the full 4-byte Unicode set that stores any player name or emoji, and it matches the collation you set in Step 6. Modern FiveM schemas (ESX Legacy, Qbox) assume it.
     3. Keep port **3306** and install it as a **Windows service**.
 
     Confirm the service is running. Open PowerShell and run:
 
-    ```bash
+    ```powershell
     Get-Service MariaDB*
     ```
 
@@ -112,7 +112,7 @@ Official downloads only. Use these links, not random mirrors. The editor edits y
     1. Name the session `local FiveM`.
     2. Host `127.0.0.1`, user `root`, password from your `db-creds.txt`, port `3306`.
     3. Open the session, then create a database named `fivem`.
-    4. Use collation `utf8mb4_unicode_ci`.
+    4. Use collation `utf8mb4_unicode_ci`. This pairs with the utf8mb4 charset from Step 5, so player names with accents or emoji store and sort correctly instead of breaking on insert.
 
     To prove the connection, click the `fivem` database, open a query tab, and run:
 

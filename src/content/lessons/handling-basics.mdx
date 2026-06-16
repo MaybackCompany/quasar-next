@@ -174,6 +174,47 @@
   </Step>
 </StepGroup>
 
+## How it works
+
+You built it and the brake edit landed. Now take the two dense parts apart, the `/testhandling` command and the XML, so the next time you touch a vehicle you are deciding, not copying.
+
+### Why a restart is the only way the edit takes
+
+The lesson repeats one rule twice: change a number, nothing happens until you restart the resource. Here is the mechanism behind that rule. The game does not re-read `handling.meta` while it runs. It loads every vehicle's physics data once, when the resource that ships the file starts. After that the numbers live in memory and the engine never looks at the file again. So editing the XML on disk changes nothing the running game can see. The `restart qu_handling` step is what forces the engine to drop the old physics data and load your new values. That is also why a typo in the XML can fail silently until the next restart: the bad file is only parsed at start time.
+
+### The model-loading wait loop
+
+The first three lines of the command body are a pattern you will write in almost every FiveM script that spawns something:
+
+```lua
+RequestModel(hash)
+while not HasModelLoaded(hash) do
+    Wait(100)
+end
+```
+
+Models are streamed in on demand, not held in memory all the time. `RequestModel(hash)` asks the engine to start loading the Adder's model, but loading takes time and does not finish on the same line. If you called `CreateVehicle` immediately, the model would not be ready and the spawn would fail or return a blank handle. The `while not HasModelLoaded(hash) do Wait(100) end` loop is how you wait for the load to finish: it checks every 100 milliseconds and only moves on once the model is in memory. `Wait` yields the thread so the game keeps running while you wait, instead of freezing. Learn this loop once and you can spawn vehicles, peds, and props the same way for the rest of the course.
+
+### Spawning the vehicle and seating the driver
+
+```lua
+local vehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
+SetPedIntoVehicle(ped, vehicle, -1)
+SetModelAsNoLongerNeeded(hash)
+```
+
+`CreateVehicle` takes the model hash, then the x, y, z where the car appears, then the heading it faces. The last two arguments are the ones beginners skip past. The `true` is `isNetworked`: the vehicle is created as a networked entity so other players on the server can see it, not just you. The `false` is `netMissionEntity`: leave it false for a normal spawn. `SetPedIntoVehicle(ped, vehicle, -1)` drops you into the car, and the `-1` is the seat index: `-1` always means the driver seat, while `0` is the front passenger and higher numbers are the rear seats. `SetModelAsNoLongerNeeded(hash)` tells the engine you are done holding the model in memory so it can be unloaded later, which keeps the request from leaking.
+
+### How the XML maps to a real car
+
+The handling file is just XML, and the one tag that does the linking is `<handlingName>`:
+
+```text
+<handlingName>ADDER</handlingName>
+```
+
+The structure nests in a fixed order: `<CHandlingDataMgr>` wraps a single `<HandlingData>` block, which holds one `<Item>` per vehicle. Inside each `<Item>`, the `<handlingName>` tag is the key that connects this block of numbers to a specific in-game model. When the Adder spawns, the engine looks up the handling entry whose `<handlingName>` matches the model's handling id, which for the Adder is `ADDER`, and applies these numbers. Change the name to the wrong id and your edits land on a different car, or no car at all, which is one of the quiet ways a handling edit appears to do nothing.
+
 ## If something went wrong
 
 <FailureList

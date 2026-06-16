@@ -2,13 +2,12 @@
   crumbs="Module B9 · Migrations & identity"
   title="QBCore to Qbox migration"
   meta={[
-    { label: "You'll learn", value: "Why servers move from QBCore to Qbox, what the compatibility bridge covers, and how to migrate without a dead weekend." },
+    { label: "You'll learn", value: "Why servers move from QBCore to Qbox, what the compatibility bridge actually covers, and how to migrate without a dead weekend." },
     { label: "Time", value: "~25 minutes." },
     { label: "You need", value: "A QBCore server, database backups, and a test environment." },
-    { label: "You'll learn", value: "Why migrate -> what Qbox keeps compatible -> bridge limits -> a staged migration plan" },
   ]}
 >
-  Qbox began as a QBCore fork and keeps backwards compatibility as a goal, which is exactly why people migrate: a more actively maintained, ox-native base without throwing away their QBCore scripts. But "compatible" is not "identical." This lesson sets realistic expectations and gives you a staged plan.
+  Qbox began as a QBCore fork and keeps backwards compatibility as a goal, which is exactly why people migrate: a more actively maintained, ox-native base without throwing away their QBCore scripts. QBCore development stalled, Qbox is the successor people are moving to. But "compatible" is not "identical." This lesson sets realistic expectations and gives you a staged plan.
 </LessonHero>
 
 <Prereq
@@ -20,32 +19,70 @@
 />
 
 <Callout variant="fivem" title="Why Qbox, honestly">
-  Qbox (qbx_core) is the actively maintained, ox-native successor to QBCore, built to keep QBCore scripts working where it can. It depends on oxmysql, ox_lib, and ox_inventory. You migrate for maintenance and modern dependencies, not because QBCore stops running overnight.
+  Qbox (qbx_core) is the actively maintained, ox-native successor to QBCore, built to keep QBCore scripts working where it can. It depends on oxmysql, ox_lib, and ox_inventory, which are Overextended (ox) community resources, not official Cfx.re resources. You migrate for maintenance and modern dependencies, not because QBCore stops running overnight.
 </Callout>
 
 ## A staged migration
 
 <StepGroup>
   <Step num={1} title="Back up and stand up a test server" outcome="You can experiment without risking the live server.">
-    Full database backup, then clone the server onto a test environment. Every step below happens on the test server first. Never migrate live.
+    Full database backup, then clone the server onto a test environment. Match the live server's artifact (FXServer) version and `sv_enforceGameBuild` on the test box so what you prove there holds in production. Every step below happens on the test server first. Never migrate live.
   </Step>
 
   <Step num={2} title="Install the ox dependency stack" outcome="oxmysql, ox_lib, and ox_inventory are running.">
-    Qbox is ox-native, so the modern dependency spine must be in place before qbx_core. Install and start oxmysql, ox_lib, and ox_inventory, in order, with no missing-dependency errors.
+    Qbox is ox-native, so the modern dependency spine must be in place before qbx_core. Install and start oxmysql, ox_lib, and ox_inventory, in order, with no missing-dependency errors. These are Overextended resources, so pull them from the Overextended GitHub releases, not from a QBCore bundle.
   </Step>
 
-  <Step num={3} title="Install qbx_core and use the bridge" outcome="QBCore scripts run against Qbox where compatibility allows.">
-    Install qbx_core and its compatibility layer. Many QBCore exports and events are bridged, so a lot of scripts work as-is. Expect a list of scripts that still need edits; that is normal, not failure.
+  <Step num={3} title="Install qbx_core and turn on the bridge" outcome="QBCore scripts run against Qbox where compatibility allows.">
+    Install `qbx_core`. The compatibility layer is not a separate download: `qbx_core` ships a QBCore shim that rebuilds the old `QBCore` object on top of the Qbox API. It is enabled with a convar in your `server.cfg`:
+
+    ```cfg
+    setr qbx:enablebridge true
+    ```
+
+    With the bridge on, many QBCore exports and events are translated to Qbox, so a lot of scripts work as-is. Expect a list of scripts that still need edits; that is normal, not failure. The next section shows you exactly where the line falls.
   </Step>
 
   <Step num={4} title="Test script by script, then cut over" outcome="You know exactly what works before going live.">
-    Go through your resources: core (banking, jobs, inventory) first, then the rest. Note what works, what needs an edit, and what to drop. Only cut production over once the core loop is solid on the test server.
+    Go through your resources: core (banking, jobs, inventory) first, then the rest. Note what works, what needs an edit, and what to drop. Confirm the production artifact version and game build match what you tested. Only cut production over once the core loop is solid on the test server.
 
     <ExpectedOutput>
-      On the test server: players spawn, money/jobs/inventory work, and your core scripts run without console errors.
+      [qbx_core] bridge enabled
+players spawn, money and jobs and inventory work, core scripts load with no console errors
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+The bridge translates the QBCore surface that scripts call into Qbox calls behind the scenes. That is why "best-effort, not total" is the right frame: anything that maps cleanly to a Qbox export gets translated for you, and anything that reached into QBCore internals or assumed qb-inventory has to be rewritten. Two concrete cases make the line obvious.
+
+### A call the bridge handles for you
+
+The most common QBCore call in any script is fetching a player object server-side:
+
+```lua
+-- QBCore original, still works through the bridge
+local QBCore = exports['qb-core']:GetCoreObject()
+local Player = QBCore.Functions.GetPlayer(source)
+print(Player.PlayerData.money.cash)
+```
+
+With `qbx:enablebridge` on, `qbx_core` answers that `qb-core` export and rebuilds the `QBCore` object, so `QBCore.Functions.GetPlayer(source)` returns a player you can read. The script does not know it is talking to Qbox. The Qbox-native way to write the same thing is `exports.qbx_core:GetPlayer(source)`, and that is what you migrate toward over time, but you do not have to rewrite every script on day one.
+
+### A call you have to edit yourself
+
+Inventory is where the bridge runs out. QBCore had its own `qb-inventory`, and Qbox uses `ox_inventory` instead. A direct QBCore inventory call has no clean translation:
+
+```lua
+-- QBCore inventory call: no equivalent on Qbox, must be rewritten
+Player.Functions.AddItem('water', 1)
+
+-- Qbox / ox_inventory replacement
+exports.ox_inventory:AddItem(source, 'water', 1)
+```
+
+The shapes differ (ox_inventory takes the player `source`, not a player-bound method), so this is a manual edit, not something the bridge papers over. The rule of thumb: player, job, and money reads usually survive the bridge; inventory, custom metadata, and anything that poked QBCore internals usually needs a Qbox-native rewrite. That is the list you build in step 4.
 
 ## Common mistakes
 
@@ -53,7 +90,8 @@
   items={[
     { symptom: "Migrated live and broke the server", fix: "Always migrate on a test server first; cut production over only after the core loop is proven." },
     { symptom: "qbx_core will not start", fix: "Missing the ox stack. Install oxmysql, ox_lib, and ox_inventory in order before qbx_core." },
-    { symptom: "Some QBCore scripts still break", fix: "The bridge is best-effort, not total. Those scripts need edits to Qbox's API or a Qbox-native replacement." },
+    { symptom: "Old QBCore scripts behave as if Qbox is not there", fix: "The bridge is off. Add setr qbx:enablebridge true to server.cfg and restart qbx_core, then re-test." },
+    { symptom: "Inventory exports fail after switching", fix: "qb-inventory is gone; Qbox uses ox_inventory. Rewrite AddItem and RemoveItem calls to the ox_inventory exports; the bridge does not cover these." },
     { symptom: "Player data missing after switch", fix: "Restore the backup; confirm the database schema and character ids map correctly before retrying." },
   ]}
 />
@@ -62,9 +100,10 @@
 
 <Recap
   items={[
-    "Explain why Qbox is the maintained, ox-native QBCore successor.",
-    "Back up and migrate on a test server, never live.",
-    "Install the ox dependency stack before qbx_core.",
+    "Explain why Qbox is the maintained, ox-native QBCore successor while QBCore development stalled.",
+    "Back up and migrate on a test server with matching artifact and game build, never live.",
+    "Install the ox dependency stack before qbx_core and turn the bridge on with qbx:enablebridge.",
+    "Tell a bridged call (GetPlayer) from one you must rewrite yourself (ox_inventory items).",
     "Test script by script and cut over only once the core loop is solid."
   ]}
 />

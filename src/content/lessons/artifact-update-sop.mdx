@@ -20,7 +20,7 @@
 />
 
 <Callout variant="fivem" title="The support clock">
-  Cfx.re support states recommended artifacts are supported until roughly six weeks after the next release, latest artifacts until about two weeks after, and artifacts older than three months become unsupported and unjoinable from the server browser. Translation: update on your schedule, not in a panic, but do not let an artifact rot past three months.
+  Cfx.re supports artifacts on a clock, and the exact windows change over time, so do not memorize numbers. As a rough mental model, Recommended builds stay supported for a while after the next release, Latest builds drop off support sooner, and any artifact that gets old enough becomes unsupported and unjoinable from the server browser. Before you plan an update, read the current windows from the support article linked at the bottom of this lesson. The point stands either way: update on your schedule, not in a panic, and do not let an artifact rot until the browser kicks your players.
 </Callout>
 
 ## The update routine
@@ -38,19 +38,29 @@
     ```
   </Step>
 
-  <Step num={2} title="Back up before you touch anything" outcome="The current working server folder is safe.">
-    Copy the current artifact folder to a dated backup (for example `server-2026-06-12`). Updating is just swapping the artifact binaries; the backup is your undo button if the new build misbehaves.
+  <Step num={2} title="Back up the artifact binaries before you touch anything" outcome="The exact build you run today is saved off to one side.">
+    Know the two halves of your server folder. The artifact binaries are the FXServer files you downloaded and extracted: `FXServer.exe`, `run.cmd` (or `run.sh` on Linux), the `citizen` folder, and the rest of the runtime. Your server-data is everything you own: the `resources` folder, `server.cfg`, your database, your `.env`. An update only swaps the binaries. It must never touch server-data.
+
+    Copy just the current binaries to a dated backup, for example `fxserver-2026-06-12`. That copy is your undo button if the new build misbehaves. Leave `resources`, `server.cfg`, and your database exactly where they are.
   </Step>
 
-  <Step num={3} title="Update on the Recommended channel" outcome="The server runs a current, stable build.">
-    Download the latest **Recommended** (green) artifact, extract it over a clean copy of the server folder, and start the server. Do not grab bleeding-edge "Latest" for a production server unless you are chasing a specific fix.
+  <Step num={3} title="Swap in the Recommended build" outcome="The server runs a current, stable build with your config untouched.">
+    Download the latest **Recommended** (green) artifact. Extract it over the artifact binaries only, the same files you backed up in Step 2. Do not extract it on top of your `resources` folder or `server.cfg`. If your binaries and server-data live in the same folder (a common txAdmin layout), extract carefully so you overwrite only `FXServer.exe`, `run.cmd`/`run.sh`, and `citizen`, never your config or resources. Then start the server. Do not grab bleeding-edge "Latest" for a production server unless you are chasing a specific fix.
   </Step>
 
-  <Step num={4} title="Test, then mark known-good or roll back" outcome="You either confirm the build or revert in one step.">
-    Join the server, run a quick smoke test (connect, spawn, use one core feature, check the console for new errors). If clean, update the note to the new build and mark known-good. If broken, restore the dated backup and start it again.
+  <Step num={4} title="Smoke-test, then mark known-good or roll back" outcome="You either confirm the build or revert in one step.">
+    Run the same checklist every time so a regression cannot hide:
+
+    - **Console clean.** Watch the console as resources load. No new red errors, no resource that failed to start.
+    - **Connect.** Join your own server from the FiveM client. You should reach character select or spawn, not a load loop.
+    - **Spawn.** Confirm your ped actually spawns in the world.
+    - **Framework command.** Run one command your framework owns to prove core systems came up: `/car` or `/setjob` on ESX Legacy, `/giveitem` or an admin menu action on Qbox. Pick a command you know works on a healthy server.
+    - **resmon.** Open `resmon 1` and confirm no resource is suddenly burning CPU it did not burn before. A build change can shift timing.
+
+    If every line passes, update the note to the new build and mark it known-good. If any line fails, do not debug live: stop the server, restore the dated artifact backup from Step 2, start it again, and you are back on the build you trusted this morning.
 
     <ExpectedOutput>
-      Console shows the new server version, players connect, and no new resource load errors appear.
+      Server version FXServer-master SERVER v1.0.0.xxxx, no new resource load errors, your join succeeds, and resmon shows normal timings.
     </ExpectedOutput>
   </Step>
 </StepGroup>
@@ -60,7 +70,7 @@
 <FailureList
   items={[
     { symptom: "Players kicked: artifact outdated / End of Support", fix: "Your build is past the support window. Update to a current Recommended artifact following this SOP." },
-    { symptom: "New build breaks a resource", fix: "Restore the dated backup folder and start it. Then test the update on a copy before retrying." },
+    { symptom: "New build breaks a resource", fix: "Restore the dated artifact binaries you saved in Step 2 and start the server. Your resources and config were never touched, so you are back on the known-good build. Then trial the update on a separate test server before retrying." },
     { symptom: "No idea which build was working", fix: "Keep the artifact-pin note updated every time. Without it you cannot roll back cleanly." },
     { symptom: "Game build mismatch after update", fix: "Set sv_enforceGameBuild to a current build the Recommended channel targets, then restart." },
   ]}
@@ -70,10 +80,10 @@
 
 <Recap
   items={[
-    "Explain the artifact support windows and why builds expire.",
+    "Explain why artifacts expire, and check the current support windows in the Cfx.re support article instead of trusting memorized numbers.",
     "Pin the current build in a note before every update.",
-    "Back up the server folder before swapping artifacts.",
-    "Update on Recommended, smoke-test, and roll back to the dated backup if needed."
+    "Tell the artifact binaries apart from your server-data, and back up only the binaries before swapping.",
+    "Update on Recommended, run the connect / spawn / framework command / resmon / clean-console smoke test, and roll back to the dated artifact backup if any line fails."
   ]}
 />
 

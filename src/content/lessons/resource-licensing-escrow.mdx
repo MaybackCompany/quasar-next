@@ -2,10 +2,9 @@
   crumbs="Module B8 · Ship, sell & maintain"
   title="Resource licensing and escrow"
   meta={[
-    { label: "You'll learn", value: "What escrow and licenses actually mean for FiveM scripts: what buyers can edit, what they cannot, and how to choose for what you sell or buy." },
+    { label: "You'll learn", value: "What escrow and licenses actually mean for FiveM scripts: what buyers can edit, what they cannot, how to recognize an escrowed resource on disk, and how to choose for what you sell or buy." },
     { label: "Time", value: "~20 minutes." },
     { label: "You need", value: "An interest in selling or buying scripts the right way." },
-    { label: "You'll learn", value: "Open vs escrowed -> what escrow protects -> buyer editing rights -> licensing your own work" },
   ]}
 >
   Before you sell or buy a script, you need to understand how FiveM protects code. Some scripts ship open and editable; others ship escrowed, where the core is protected and only a config is exposed. Getting this wrong means buyers cannot make the edits they expected, or sellers ship code they did not mean to give away.
@@ -43,13 +42,59 @@
   </Step>
 </StepGroup>
 
+## How to recognize escrow in the wild
+
+You will not always be told a script is escrowed. You have to read the signs, both in the files you receive and in the listing before you buy.
+
+### What an escrowed resource looks like on disk
+
+When you unzip an escrowed resource, most of it is unreadable. The core Lua files are encrypted, and opening one in a text editor shows a protected blob, not code you can follow or edit. What stays readable is whatever the author deliberately left out of protection: usually a `config.lua` (or a `locales` folder) so you can change settings without touching the core.
+
+The author controls that line with one manifest directive. In `fxmanifest.lua` the seller lists the files to keep open with `escrow_ignore`:
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script 'config.lua'
+client_script 'client/main.lua'
+server_script 'server/main.lua'
+
+-- Files the seller leaves OPEN and editable. Everything else is encrypted.
+escrow_ignore {
+    'config.lua',
+    'locales/*.lua'
+}
+
+dependencies {
+    'ox_lib'
+}
+```
+
+When that resource is packaged for sale, FiveM's asset protection layer (you will see it referred to as `fxap`) encrypts every file *except* the ones named in `escrow_ignore`. At runtime the server decrypts and runs the protected core in memory, so the script works normally, but the buyer never sees that code on disk. If you open `config.lua` and it reads like plain settings, while `server/main.lua` is an unreadable blob, that is escrow doing exactly its job.
+
+<Callout variant="fivem" title="What escrow does not do">
+  Escrow protects the source from being read and copied. It does not stop the resource from running, does not require an internet check on every start, and does not give the seller remote control of your server. It is code protection, not a kill switch.
+</Callout>
+
+### How to read a listing before you buy
+
+A good Tebex listing tells you where the author drew the escrow line before you pay. Look for the section that splits the resource three ways:
+
+- **Configurable** means exposed in the open `config.lua`: prices, coordinates, labels, item names. You can change these freely.
+- **Open** means a full file left out of escrow that you can read and edit, sometimes a client UI file or a hook the author wants you to extend.
+- **Locked** means encrypted core: the logic that is the actual product. You cannot read it, edit it, or copy it.
+
+Match that split against the change you actually need. If the one thing you came to modify sits in the locked column, an escrowed copy will not let you do it, no matter how good the config is. When a listing does not spell this out, ask the seller which files are open before you buy.
+
 ## Common mistakes
 
 <FailureList
   items={[
-    { symptom: "Bought a script, cannot edit the part I needed", fix: "It is escrowed and that logic is protected. Check editing rights in the listing before buying next time." },
-    { symptom: "Shipped open code, now it is being resold", fix: "Escrow the core logic; expose only a config. Open everything only if you intend it to be freely modified." },
-    { symptom: "Config is too thin, buyers keep asking for core edits", fix: "Expand the config and docs so common changes do not require touching protected code." },
+    { symptom: "Bought a script, cannot edit the part I needed", fix: "It is escrowed and that logic is protected. Check the configurable / open / locked split in the listing before buying next time." },
+    { symptom: "Opened a file and it is an unreadable blob", fix: "That file is escrowed (encrypted). Edit the open config.lua instead, or whatever the author named in escrow_ignore. The blob is not corrupt." },
+    { symptom: "Shipped open code, now it is being resold", fix: "Escrow the core logic and name only your config in escrow_ignore. Open everything only if you intend it to be freely modified." },
+    { symptom: "Config is too thin, buyers keep asking for core edits", fix: "Expand the config and docs so common changes do not require touching protected code. Add the field to escrow_ignore, not the whole core." },
     { symptom: "Marketplace warning for redistribution", fix: "You shipped or resold work you were not licensed to. Use only your own or properly licensed code." },
   ]}
 />
@@ -59,7 +104,8 @@
 <Recap
   items={[
     "Explain open vs escrowed resources and what each lets a buyer edit.",
-    "As a buyer, confirm editing rights before purchase.",
+    "Recognize an escrowed resource on disk: encrypted core files plus an open config, controlled by escrow_ignore in the manifest.",
+    "Read a listing's configurable / open / locked split and match it against the change you need.",
     "As a seller, expose a clean config and protect your core logic.",
     "Respect licenses: never resell, re-leak, or strip another author's escrow."
   ]}
@@ -67,7 +113,7 @@
 
 <Refs
   items={[
-    { label: "Cfx.re docs · Asset escrow", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "Cfx.re docs · Asset escrow", href: "https://docs.fivem.net/docs/server-manual/asset-escrow/" },
     { label: "Tebex · developer docs", href: "https://docs.tebex.io/developers" }
   ]}
 />

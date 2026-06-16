@@ -2,13 +2,12 @@
   crumbs="Module B9 · Migrations & identity"
   title="Inventory migration: QB, ESX, ox"
   meta={[
-    { label: "You'll learn", value: "What changes when you swap a framework inventory for ox_inventory, and how to plan the migration without losing items." },
+    { label: "You'll learn", value: "Why inventory is load-bearing, what the compatibility bridge covers, how QB/ESX item data differs from ox_inventory, and how to plan the migration so nobody loses items." },
     { label: "Time", value: "~25 minutes." },
     { label: "You need", value: "A framework server and the ox/oxmysql lessons." },
-    { label: "You'll learn", value: "Why inventory is load-bearing -> compatibility bridges -> the migration plan -> what breaks and how to test" },
   ]}
 >
-  Replacing your inventory is one of the most disruptive changes you can make, because half your scripts touch items. Moving to ox_inventory is popular for good reason, but it is a migration, not a drop-in. This lesson gives you the plan, the bridge concept, and the test that proves you did not lose anyone's items.
+  Replacing your inventory is one of the most disruptive changes you can make, because half your scripts touch items. Moving to ox_inventory is popular for good reason, but it is a migration, not a drop-in. This lesson gives you the plan, the bridge concept, the data-shape difference that actually loses items, and the test that proves you did not.
 </LessonHero>
 
 <Prereq
@@ -20,7 +19,11 @@
 />
 
 <Callout variant="danger" title="Back up before you migrate">
-  Inventory data is player property. Take a full database backup (the backup SOP) before you touch anything. A failed inventory migration without a backup means wiped player items and a community revolt.
+  Inventory data is player property. Take a full database backup before you touch anything. On a MariaDB server that is one command: `mysqldump -u root -p your_db > backup_pre_ox.sql`. A failed inventory migration without a backup means wiped player items and a community revolt.
+</Callout>
+
+<Callout variant="fivem" title="A note on frameworks in 2026">
+  When older guides say QB, they usually mean QBCore. QBCore development has stalled, and Qbox is the active community successor that most QB-targeted advice now points at. For new or migrating servers, ESX Legacy and Qbox are the recommended bases. ox_inventory, oxmysql, and ox_lib are Overextended community resources, not official Cfx.re ones, so you install them from the Overextended GitHub and read their docs, not the FiveM docs.
 </Callout>
 
 ## Plan the migration
@@ -31,30 +34,68 @@
   </Step>
 
   <Step num={2} title="Understand the compatibility bridge" outcome="You know whether old scripts can keep working during the move.">
-    ox_inventory provides compatibility shims for common framework inventory exports, so many scripts work with minimal change. But it warns these are best-effort: some scripts still need real edits. Plan for both.
+    ox_inventory ships compatibility shims that re-expose the common framework inventory exports (the QB `AddItem`/`RemoveItem`/`GetItemByName` calls and the ESX `addInventoryItem`/`removeInventoryItem`/`getInventoryItem` calls) so many scripts work with minimal change. The docs are explicit that these are best-effort: anything that read the framework's raw inventory table or used a niche export still needs real edits. Plan for both.
   </Step>
 
-  <Step num={3} title="Migrate the data and items definitions" outcome="Existing items map into the ox_inventory format.">
-    Move your items definitions into ox_inventory's format and ensure existing player inventory data maps over. This is the step that loses items if done blind; do it on a copy first, against your backup.
+  <Step num={3} title="Migrate the items definitions and the data" outcome="Existing items map into the ox_inventory format and player data carries over.">
+    Convert your framework `items` (QB `shared/items.lua` or the ESX `items` table) into ox_inventory's `data/items.lua` format, then map existing player inventory rows into the column ox_inventory reads. This is the step that loses items if done blind, because the storage shape is different. Do it on a copy first, against your backup. The next section shows the exact shape difference.
   </Step>
 
   <Step num={4} title="Test on a copy before going live" outcome="Items survive and scripts still grant/take correctly.">
     On a test server with the backup restored: load a character, confirm their items are intact, then run each item-touching script (buy, sell, job reward) and confirm it works.
 
     <ExpectedOutput>
-      A test character keeps its items, and shops/jobs add and remove items correctly.
+      [ox_inventory] character 1 loaded: 14 slots, 3 items
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+The plan above hides one genuinely hard step inside Step 3. The reason inventory migrations wipe items is that QB, ESX, and ox_inventory do not store items the same way. If you copy rows across blind, the new system reads garbage and shows an empty bag. So before you map anything, you need to see the shapes.
+
+### The data-shape difference
+
+Classic ESX stored each character's items in the `users` row as a JSON object keyed by item name, like `{"bread":2,"water":1}`. QBCore stored a JSON array of slot objects on the player row, like `[{"name":"bread","amount":2,"slot":1}]`. ox_inventory standardises on a single JSON column (`inventory`) on the character row, holding an array of slot objects with `name`, `count`, `slot`, and an optional `metadata` table:
+
+```json
+[
+  { "name": "bread", "count": 2, "slot": 1 },
+  { "name": "water", "count": 1, "slot": 2, "metadata": {} }
+]
+```
+
+The migration is therefore a transform, not a copy. The two fields that trip people up: ESX/QB call the quantity `amount`, ox_inventory calls it `count`; and the ESX object form has no slots at all, so you have to assign `slot` numbers as you convert. Metadata (durability, serials, registration) only exists if the old system tracked it, so most items map with an empty or absent `metadata`.
+
+### What an items definition looks like
+
+ox_inventory will not show an item it has never heard of, so every item name in the data above must exist in `data/items.lua`. A single definition looks like this:
+
+```lua
+['bread'] = {
+    label = 'Bread',
+    weight = 100,
+    stack = true,
+    close = true,
+    description = 'Fills you up a little'
+},
+```
+
+The field that actually matters for a migration is the key (`['bread']`): it must match the `name` you wrote into the inventory JSON exactly, lowercase and identical. `label` is the display name, `weight` drives the new weight-based limit (ox_inventory uses weight, not slot count, as the real cap), and `stack` decides whether two of the same item share a slot. Any item that exists in player data but is missing from `items.lua` silently disappears on load, which is the most common cause of "some items came back, some did not".
+
+### What the bridge actually covers
+
+The compatibility bridge from Step 2 intercepts the framework's inventory exports and reroutes them into ox_inventory. In practice that means the QB `exports.ox_inventory:` shims for `AddItem`, `RemoveItem`, `GetItemByName`, and `GetItemCount`, and the ESX equivalents `addInventoryItem`, `removeInventoryItem`, and `getInventoryItem`. A script that called those exports keeps working. A script that reached past the export and read `Player.PlayerData.items` directly, or queried the old inventory column in SQL, is not covered by best-effort and has to be edited to ask ox_inventory instead. That is the line between "the bridge handled it" and "I have to touch this script".
 
 ## Common mistakes
 
 <FailureList
   items={[
-    { symptom: "Players lost items after migration", fix: "Restore the pre-migration backup. Re-run the data mapping on a copy until items survive, then deploy." },
-    { symptom: "Shops/jobs no longer give items", fix: "Those scripts used the old inventory exports. Update them or rely on the compatibility bridge, and test each one." },
-    { symptom: "ox_inventory will not start", fix: "Missing oxmysql or ox_lib, or items definitions in the wrong format. Check dependencies and the items file." },
-    { symptom: "Bridge works for some scripts, not others", fix: "Compatibility shims are best-effort. The stubborn scripts need real edits to ox_inventory's API." },
+    { symptom: "Players lost items after migration", fix: "The data transform mapped amount->count or slot numbers wrong, or item names did not match items.lua keys. Restore the pre-migration backup and re-run the transform on a copy until items survive, then deploy." },
+    { symptom: "Some items return, some vanish", fix: "The vanished items have no matching key in data/items.lua. ox_inventory drops any item name it has not been told about. Add the missing definitions and reload the character." },
+    { symptom: "Shops/jobs no longer give items", fix: "Those scripts used the old inventory exports. Confirm the compatibility bridge is loaded, or update them to ox_inventory's exports, and test each one." },
+    { symptom: "ox_inventory will not start", fix: "Missing oxmysql or ox_lib, or a syntax error in data/items.lua. Check the Overextended dependencies and the items file. These are community resources, so install them from the Overextended GitHub." },
+    { symptom: "Bridge works for some scripts, not others", fix: "Compatibility shims are best-effort and only cover the standard exports. A script that read the raw framework inventory table needs real edits to ox_inventory's API." },
   ]}
 />
 
@@ -63,15 +104,38 @@
 <Recap
   items={[
     "List every script that touches the inventory before migrating.",
-    "Use ox_inventory's compatibility bridge but expect some scripts to need edits.",
-    "Map items definitions and player data into the ox_inventory format on a copy first.",
-    "Test that items survive and item-touching scripts still work before going live."
+    "Explain how QB array rows and ESX keyed objects differ from ox_inventory's single inventory JSON column.",
+    "Convert item amount to count and assign slot numbers when transforming player data.",
+    "Define every migrated item in data/items.lua so ox_inventory does not drop it on load.",
+    "Use the compatibility bridge for the standard exports, and edit scripts that read the raw inventory table.",
+    "Test that items survive and item-touching scripts still work on a copy before going live."
   ]}
 />
+
+<Exercise>
+  Before you migrate anything, write the transform by hand on one fake character so the shape sticks. Take this old ESX-style row and convert it into the ox_inventory array:
+
+  ```json
+  { "bread": 2, "water_bottle": 1, "phone": 1 }
+  ```
+
+  The answer is an array of slot objects where `amount` becomes `count`, you assign `slot` 1, 2, 3 in order, and every name must already exist as a key in `data/items.lua`:
+
+  ```json
+  [
+    { "name": "bread", "count": 2, "slot": 1 },
+    { "name": "water_bottle", "count": 1, "slot": 2 },
+    { "name": "phone", "count": 1, "slot": 3 }
+  ]
+  ```
+
+  If you can do this for one character on paper, you can write the SQL or Lua that does it for ten thousand. If you cannot, you are not ready to run it against real data yet.
+</Exercise>
 
 <Refs
   items={[
     { label: "ox_inventory documentation", href: "https://overextended.dev/ox_inventory" },
+    { label: "ox_inventory items definitions", href: "https://overextended.dev/ox_inventory/Guides/items" },
     { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" },
     { label: "ox_lib documentation", href: "https://overextended.dev/ox_lib" }
   ]}

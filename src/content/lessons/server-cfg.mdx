@@ -91,7 +91,7 @@
     ensure qs-smartphone-pro
     ```
 
-    A script that calls `lib.` functions needs `ox_lib` above it. A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
+    A script that calls `lib.` functions needs `ox_lib` above it, because `lib` does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
   </Step>
 
   <Step num={4} title="Build two throwaway resources to test order safely" outcome="You have a provider and a consumer that report whether the order worked.">
@@ -215,7 +215,9 @@
     }
     ```
 
-    That `@ox_lib/init.lua` line and that `dependencies` block both say the same thing: this script needs `ox_lib`, `oxmysql`, and the framework `ensure`d above it. Confirm each one already sits higher in `server.cfg`, then add the script below them. No live restart required.
+    That `@ox_lib/init.lua` line is not just a hint, it is the mechanism. The `@resource/file.lua` syntax tells FXServer to run another resource's file inside this one before its own scripts. So `shared_script '@ox_lib/init.lua'` runs ox_lib's init file here, and that init is what defines the global `lib` table this script then calls. If `ox_lib` has not started yet, the `@ox_lib/init.lua` include has nothing to pull in, `lib` is nil, and the script errors the instant it touches `lib.`. That is the real reason `ox_lib` must be `ensure`d above any script that uses it.
+
+    The `dependencies` block says the same thing in plain words: this script needs `ox_lib`, `oxmysql`, and the framework `ensure`d above it. Confirm each one already sits higher in `server.cfg`, then add the script below them. No live restart required.
 
     <Callout variant="fivem" title="The resources folder, at a glance">
       Bracket folders like `[local]`, `[jobs]`, or `[cars]` are just organizers, FiveM still sees the resources inside them, and `ensure [cars]` starts every resource in that bracket. Your tree usually looks like `resources/[standalone]/ox_lib`, `resources/[qb]/qb-core`, `resources/[local]/qu_dep_provider`, and so on.

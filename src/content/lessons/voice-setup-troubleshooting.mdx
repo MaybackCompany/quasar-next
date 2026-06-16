@@ -13,25 +13,40 @@
 
 <Prereq
   items={[
-    "I have a framework server running (ESX, QBCore, or Qbox).",
+    "I have a framework server running (ESX Legacy, QBCore, or Qbox).",
     "I can install a resource and edit server.cfg.",
     "I have a working microphone in the FiveM client."
   ]}
 />
 
 <Callout variant="fivem" title="How FiveM voice works">
-  FiveM has a built-in voice system; a resource like `pma-voice` configures proximity, radio, and phone channels on top of it. You do not need a separate TeamSpeak/Mumble server for proximity voice in 2026; the in-game system handles it.
+  FiveM has a built-in voice system that rides the same UDP connection as the game itself. A resource like `pma-voice` (a community resource, now maintained under the Overextended org) configures proximity, radio, and phone channels on top of that built-in system. You do not need a separate TeamSpeak or Mumble server for proximity voice in 2026; the in-game system handles it. Because voice and game traffic share one path, anything that hurts the connection (packet loss, an overloaded server thread) hurts voice too, which is why robotic or cutting voice is almost always a network symptom rather than a config one.
 </Callout>
 
 ## Get it working
 
 <StepGroup>
-  <Step num={1} title="Install the voice resource and its dependencies" outcome="The voice resource starts with no missing-dependency errors.">
-    Install your chosen voice resource (commonly `pma-voice`) and any dependency it lists. Add `ensure` lines in the right order and restart. Watch the console for missing dependencies.
+  <Step num={1} title="Install pma-voice and its dependency" outcome="The voice resource starts with no missing-dependency errors.">
+    Download `pma-voice` and drop it in your `resources` folder. It depends on `mumble-voip`, which ships with the server artifacts, so make sure that resource exists and is not deleted. Add the start line to `server.cfg`:
+
+    ```cfg
+    ensure pma-voice
+    ```
+
+    Restart and watch the console. A missing-dependency error here almost always means `mumble-voip` was removed from your artifacts or renamed.
   </Step>
 
-  <Step num={2} title="Set proximity and channels in config" outcome="Talk, whisper, and shout ranges behave as intended.">
-    Configure the proximity ranges, radio, and phone settings in the resource config. Keep defaults first; tune ranges only after it works.
+  <Step num={2} title="Set proximity and mode in config" outcome="Talk, whisper, and shout ranges behave as intended.">
+    pma-voice reads its settings from convars (set in `server.cfg`) and from `config.lua`. The three you touch first set the proximity ranges and the audio mode. Defaults work; tune ranges only after voice works:
+
+    ```cfg
+    # Proximity ranges in metres: whisper / normal / shout
+    setr voice_defaultVoiceMode 2
+    setr voice_useNativeAudio false
+    setr voice_enableRadioAnim false
+    ```
+
+    The talk, whisper, and shout distances themselves live in `config.lua` as `Cfg.voiceModes` (three entries: a range and a label each). Leave `voice_useNativeAudio` at `false` for standard mumble positional audio; flip it to `true` only if you specifically want OneSync native audio and have tested it.
   </Step>
 
   <Step num={3} title="Confirm mic permission and device" outcome="Your voice is captured and transmitted.">
@@ -43,14 +58,23 @@
   </Step>
 </StepGroup>
 
+## How it works
+
+Two facts explain almost every voice problem you will hit, and both are worth holding in your head before you start tuning anything.
+
+**Voice rides the game connection.** FiveM does not open a separate voice socket. Speech travels over the same UDP path as position updates, entity sync, and everything else the game sends. That single fact is why voice quality tracks connection quality so tightly. When a player's voice goes robotic, stutters, or drops mid-sentence, the cause is rarely the voice config; it is packet loss on that player's link or a server hitch (a resource hogging a thread, visible in resmon as a spike). Fixing it means looking at ping and server load, not at proximity ranges. Routing buckets, used to split players into separate game instances, also split voice, and buckets require OneSync to be enabled, so if voice works in the main world but not in an instanced job, that is the bucket boundary doing its job.
+
+**The proximity ranges are just numbers in config.** pma-voice does not invent a voice mode per player; it reads a fixed list of modes from `Cfg.voiceModes` in `config.lua` and lets the player cycle between them. Each entry is a distance and a label, for example a short whisper range, a default talk range, and a longer shout range. When a player complains that nobody can hear them from across the room, they are simply on the whisper mode, not on a broken setup. Teaching players that the modes are a deliberate cycle (the keybind switches whisper to talk to shout) prevents most of the "voice is broken" reports that are really just mode confusion. The convars in `server.cfg` set the defaults and the audio mode; the per-mode distances live in `config.lua`. Change the numbers there, restart, and the ranges change for everyone.
+
 ## Troubleshooting order
 
 <FailureList
   items={[
-    { symptom: "Nobody can hear anyone", fix: "Check the voice resource actually started (console), then confirm OS mic permission and the FiveM input device." },
+    { symptom: "Nobody can hear anyone", fix: "Check pma-voice actually started (console), confirm mumble-voip exists in your artifacts, then confirm OS mic permission and the FiveM input device." },
     { symptom: "I hear others but they cannot hear me", fix: "Your mic input or push-to-talk is wrong. Set the correct device and key in FiveM settings and unmute the OS mic." },
-    { symptom: "Voice cuts out or is robotic", fix: "Usually network/packet loss or server thread overload. Check ping and resmon; voice rides the same UDP path as the game." },
-    { symptom: "Radio or phone channels do not work", fix: "Those are config/framework integration. Confirm the framework bridge and channel settings in the voice resource config." },
+    { symptom: "My range feels wrong, people are too quiet or too loud", fix: "You are on the wrong voice mode (whisper/talk/shout). Cycle the mode keybind; if everyone is off, edit Cfg.voiceModes in config.lua and restart." },
+    { symptom: "Voice cuts out or is robotic", fix: "Network, not config. Voice rides the same UDP path as the game, so check the player's ping and resmon for a server thread spike. Packet loss equals robotic voice." },
+    { symptom: "Radio or phone channels do not work", fix: "Those are framework integration. Confirm the framework bridge (ESX Legacy, QBCore, or Qbox) and the radio/phone channel settings in the voice resource config." },
   ]}
 />
 
@@ -58,16 +82,18 @@
 
 <Recap
   items={[
-    "Install a voice resource with its dependencies and start it cleanly.",
-    "Configure proximity, radio, and phone channels from working defaults.",
-    "Confirm OS mic permission and the FiveM input device.",
-    "Troubleshoot in order: resource started, then mic, then network, then channel config."
+    "Install pma-voice, keep its mumble-voip dependency, and start it cleanly from server.cfg.",
+    "Set the proximity defaults via convars and tune the talk/whisper/shout distances in Cfg.voiceModes.",
+    "Confirm OS mic permission and the FiveM input device before blaming the server.",
+    "Read robotic or cutting voice as a network symptom, since voice rides the game's UDP path.",
+    "Troubleshoot in order: resource started, then mic, then voice mode, then network, then channel config.",
   ]}
 />
 
 <Refs
   items={[
-    { label: "Cfx.re docs · Voice (mumble) natives", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" },
+    { label: "Cfx.re docs · Voice (mumble) natives", href: "https://docs.fivem.net/natives/#voicechat" },
+    { label: "pma-voice (Overextended)", href: "https://github.com/AvarianKnight/pma-voice" },
     { label: "Cfx.re docs · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" }
   ]}
 />

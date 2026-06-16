@@ -50,6 +50,40 @@
   </Step>
 </StepGroup>
 
+## How the ACE example works
+
+Step 1 hands you two lines and tells you to trust them. That is exactly how servers end up with a permission system the owner cannot reason about. Take the two lines apart so you can write your own instead of pasting someone else's.
+
+```text
+add_ace group.admin command allow
+add_principal identifier.fivem:00000 group.admin
+```
+
+The permission system has three pieces: principals, objects, and a verdict.
+
+- A **principal** is a who. It can be a single person, identified by `identifier.fivem:<id>` or `identifier.discord:<id>`, or it can be a group like `group.admin`. Groups are themselves principals, which is the trick that makes the whole system scale.
+- An **object** is a what. `command` means every command. `command.kick` means only the kick command. The dotted name is a tree, so `command` is the parent of every `command.something` under it.
+- The verdict is `allow` or `deny`.
+
+Read the lines back in plain English. `add_ace group.admin command allow` says the `group.admin` principal is allowed to use the `command` object, which is every command. `add_principal identifier.fivem:00000 group.admin` says the player whose FiveM identifier ends in `00000` is a member of `group.admin`. The second argument of `add_principal` is the parent, so a child principal inherits everything its parent group is allowed.
+
+That inheritance is the point. You grant a power to a group once, then you add or remove people by adding or removing one `add_principal` line. The staffer maps to a group, the group maps to a set of commands, and you never edit a command grant to onboard a new moderator.
+
+`identifier.fivem:` and `identifier.discord:` are two different keys for the same person. The FiveM identifier follows them across name changes. The Discord identifier lets you tie permissions to your Discord roles. Pick whichever you can verify and stay consistent, because a typo in an identifier silently grants nothing rather than erroring.
+
+### Scope a moderator, do not clone an admin
+
+A moderator does not need `command` (all commands). Grant only the objects the role actually uses, and explicitly deny the dangerous parents:
+
+```text
+add_ace group.mod command.kick allow
+add_ace group.mod command.mute allow
+add_ace group.mod command.quit deny
+add_principal identifier.discord:000000000000000000 group.mod
+```
+
+`allow` and `deny` are not symmetric in importance. An object with no rule is already denied by default, so you do not have to deny everything. You add an explicit `deny` only where a child could otherwise inherit `allow` from a parent, or where you want a rule that no future grant can override. `command.quit` shuts the whole server down, so even on `group.admin` it is worth an explicit `add_ace group.admin command.quit deny` unless the owner alone holds it. The same logic applies to `command.*` wildcards: the broader the grant, the more carefully you fence off the few commands that can wipe or close the server.
+
 ## Common mistakes
 
 <FailureList
@@ -71,6 +105,34 @@
     "Re-run this baseline before launch and after any major change."
   ]}
 />
+
+## Prove it on your own server
+
+<Exercise>
+  Turn the ACE model into something you have watched work, not just read. Create a `group.mod` that can kick but cannot stop the server, and confirm both halves.
+
+  Add these lines to `server.cfg` (use your own Discord ID, and leave the placeholder until you do):
+
+  ```text
+  add_ace group.mod command.kick allow
+  add_ace group.mod command.quit deny
+  add_principal identifier.discord:YOUR_DISCORD_ID group.mod
+  ```
+
+  Restart the server, join with the account that owns that Discord ID, and run two checks from your in-game console. First the allowed one:
+
+  ```text
+  kick 1
+  ```
+
+  Then the denied one:
+
+  ```text
+  quit
+  ```
+
+  The kick should go through. The `quit` should be refused, and the server console prints a line that the command was denied for your principal. If `quit` actually shut the server down, your account is still inheriting `command` from an admin group somewhere higher up. Find that grant and scope it down. You just proved that a `deny` on a child holds even when a broad `allow` exists, which is the entire reason scoped roles are safe.
+</Exercise>
 
 <Refs
   items={[

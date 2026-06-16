@@ -45,7 +45,7 @@
   </Step>
 
   <Step num={2} title="Set up a ticket flow" outcome="A player issue becomes a tracked, assignable item.">
-    Use a ticket bot or a channel where opening a ticket creates a private thread. Each ticket should capture: what broke, when, and any error. This mirrors the incident runbook.
+    Use a ticket bot so opening a ticket creates a private thread or channel only the player and staff can see. Ticket Tool is a common free choice; any bot that does panel + private thread works. Configure the panel so each ticket prompts the player for the same fields every time: what broke, when it happened (server time helps), their in-game name or Steam/license ID, and any console or F8 error text. Those fields are not decoration. They are the exact inputs your incident runbook needs to reproduce and fix the issue.
   </Step>
 
   <Step num={3} title="Write the escalation path" outcome="Staff know who handles what without asking.">
@@ -56,6 +56,34 @@
     Post launches, updates, and events in announcements only. A predictable rhythm (weekly update, event teasers) keeps players returning.
   </Step>
 </StepGroup>
+
+## How it works
+
+Two pieces of this kit look simple but trip up real servers: the logs webhook and the ticket thread. Both are about treating community ops like infrastructure, not chat.
+
+### Why the logs webhook URL is a secret
+
+To get server events into your private logs channel, you create a Discord webhook on that channel and Discord gives you a URL that looks like this:
+
+```text
+https://discord.com/api/webhooks/123456789012345678/AbCdEf...your-token...
+```
+
+That URL is a credential, not a link. Anyone who has it can POST a message to your logs channel as your server, with no login and no permission check. There is no separate password. Possession of the URL is the permission. If it leaks, someone can spam your staff channel, impersonate your bot, or bury a real incident under noise, and your only fix is to delete the webhook and issue a new URL.
+
+So treat it exactly like any other secret. Do not paste it in a public channel, a screenshot, or a commit. It belongs in your `server.cfg` as a convar, read by your resources, never hard coded into a script you might share:
+
+```cfg
+set discord_log_webhook "https://discord.com/api/webhooks/.../..."
+```
+
+This is the same rule code review enforces on every other secret: keys and tokens live in config the server reads, not in the source. A webhook URL is no different.
+
+### How a ticket maps to the incident runbook
+
+A ticket bot that opens a private thread is doing more than starting a chat. The thread is a per-incident container: one issue, one place, only the player and staff inside. That maps directly onto the incident runbook, where each incident is its own tracked item with a clear owner.
+
+The fields you make the panel collect (what broke, when, in-game name or license ID, the error text) are the inputs the runbook needs first: who and where to reproduce it, what the symptom was, and the raw error to search the logs for. Capturing them up front in the thread means staff are not chasing the player for basics before they can even start. The thread title becomes the incident, the fields become the report, and your escalation path decides who picks it up. That is why the ticket flow and the runbook share the same shape: the ticket is where an incident is born.
 
 ## Common mistakes
 
@@ -81,7 +109,9 @@
 
 <Refs
   items={[
-    { label: "Discord · Community server setup", href: "https://discord.com/" },
+    { label: "Discord · Enabling your Community server", href: "https://support.discord.com/hc/en-us/articles/360047132851-Enabling-Your-Community-Server" },
+    { label: "Discord · Intro to webhooks", href: "https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks" },
+    { label: "Ticket Tool · Ticket bot docs", href: "https://tickettool.xyz/" },
     { label: "Cfx.re docs · txAdmin Discord integration", href: "https://docs.fivem.net/docs/resources/txAdmin/" }
   ]}
 />
