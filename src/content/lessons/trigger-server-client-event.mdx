@@ -5,10 +5,10 @@
     { label: "You'll learn", value: "TriggerServerEvent -> TriggerClientEvent -> RegisterNetEvent -> the source variable -> one client vs all clients" },
     { label: "Time", value: "~28 minutes" },
     { label: "Prereqs", value: "Lesson 13 (TriggerEvent) and Lesson 12 (trust & authority)." },
-    { label: "Outcome", value: "A working ping-pong feature: client asks, server answers, client reacts, with validation and authority intact." },
+    { label: "Outcome", value: "A working ping-pong feature: client asks, server answers the one player who asked, and broadcasts a notice to everyone, with validation and authority intact." },
   ]}
 >
-  Last lesson was about events on one side. This lesson is about sending a message across the wall. The client asks. The server checks. The server answers or reacts. That small pattern sits underneath many real FiveM features.
+  Last lesson was about events on one side. This lesson is about sending a message across the wall. The client asks. The server checks. The server answers the player who asked, and can also tell everyone else. That small pattern sits underneath many real FiveM features.
 </LessonHero>
 
 <Prereq
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds TriggerServerEvent, RegisterNetEvent, source, and TriggerClientEvent as a working FiveM resource named `qu_trigger_server_client_event`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds TriggerServerEvent, RegisterNetEvent, source, and TriggerClientEvent as a working FiveM resource named `qu_trigger_server_client_event`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the round trip apart so you know why each line is there.
 </Callout>
 
 ## Build it
@@ -55,6 +55,8 @@ game 'gta5'
 client_script 'client.lua'
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -64,16 +66,31 @@ server_script 'server.lua'
 RegisterNetEvent('qu_trigger_server_client_event:ping', function(message)
     local src = source
     if type(message) ~= 'string' or #message > 40 then return end
+
     print('[qu_trigger_server_client_event] server got ' .. message .. ' from ' .. GetPlayerName(src))
+
+    -- Answer only the player who asked (a single server id targets one client).
     TriggerClientEvent('qu_trigger_server_client_event:pong', src, 'server received ' .. message)
+
+    -- Tell everyone on the server (-1 broadcasts to all clients).
+    TriggerClientEvent('qu_trigger_server_client_event:notice', -1, GetPlayerName(src) .. ' pinged the server')
 end)
     ```
 
     Open `client.lua` and paste this:
 
     ```lua
-RegisterCommand('pingserver', function(_, args) TriggerServerEvent('qu_trigger_server_client_event:ping', table.concat(args, ' ')) end, false)
-RegisterNetEvent('qu_trigger_server_client_event:pong', function(reply) print('[qu_trigger_server_client_event] ' .. reply) end)
+RegisterCommand('pingserver', function(_, args)
+    TriggerServerEvent('qu_trigger_server_client_event:ping', table.concat(args, ' '))
+end, false)
+
+RegisterNetEvent('qu_trigger_server_client_event:pong', function(reply)
+    print('[qu_trigger_server_client_event] pong: ' .. reply)
+end)
+
+RegisterNetEvent('qu_trigger_server_client_event:notice', function(text)
+    print('[qu_trigger_server_client_event] notice: ' .. text)
+end)
     ```
   </Step>
 
@@ -90,7 +107,7 @@ RegisterNetEvent('qu_trigger_server_client_event:pong', function(reply) print('[
     restart qu_trigger_server_client_event
     ```
 
-    Run this test:
+    Join the server, open F8, and run this test:
 
     ```text
     /pingserver hello
@@ -98,19 +115,104 @@ RegisterNetEvent('qu_trigger_server_client_event:pong', function(reply) print('[
 
     <ExpectedOutput>
       Server: [qu_trigger_server_client_event] server got hello from yourName
-F8: [qu_trigger_server_client_event] server received hello
+F8 pong (only you): [qu_trigger_server_client_event] pong: server received hello
+F8 notice (every player): [qu_trigger_server_client_event] notice: yourName pinged the server
     </ExpectedOutput>
+
+    The pong line lands only in your F8 because the server targeted your server id. The notice line lands in every connected player's F8 because the server passed `-1`. That difference is the whole point of this lesson, and the next section explains exactly how the server knows who to send to.
   </Step>
 </StepGroup>
+
+## How it works
+
+You typed `/pingserver hello` on the client and three lines appeared in two different places. A value crossed the wall to the server, the server checked it, and the server sent two replies back across the wall: one private, one public. That round trip is the single most reused pattern in FiveM. Take it apart once, slowly, and you will recognize it inside almost every script you ever open.
+
+### The round trip, in order
+
+Here is the full path the word `hello` travels. Read it top to bottom, because every later subsection is just a zoom-in on one of these arrows.
+
+1. Client: `/pingserver hello` runs the command handler, which calls `TriggerServerEvent('...:ping', 'hello')`. The value leaves the player's machine and goes to the server.
+2. Server: `RegisterNetEvent('...:ping', ...)` is listening for that name. Its handler runs, with `source` set to the player who sent it and `message` set to `'hello'`.
+3. Server: after the check passes, `TriggerClientEvent('...:pong', src, ...)` sends a reply back to that one player, and `TriggerClientEvent('...:notice', -1, ...)` sends a separate reply to everyone.
+4. Client: `RegisterNetEvent('...:pong', ...)` and `RegisterNetEvent('...:notice', ...)` are listening on every player's machine. The matching handlers fire and print.
+
+Two machines, four registrations, one value making a there-and-back journey. Nothing here is magic. Each piece is a named listener waiting for a named message.
+
+### TriggerServerEvent and the network boundary
+
+```lua
+TriggerServerEvent('qu_trigger_server_client_event:ping', table.concat(args, ' '))
+```
+
+`TriggerServerEvent` is the client saying: fire an event named `...:ping` over there, on the server, and hand it this value. The first argument is the event name. Everything after it is payload, copied across the network to the server. This is fire-and-forget. The client does not wait for an answer and gets no return value. If you want an answer, the server has to send one back as its own event, which is exactly what the pong and notice lines do. When you need a true request-then-response in one call, you reach for a callback instead, which is the next lesson.
+
+`table.concat(args, ' ')` is just glue. FiveM hands the command handler the typed arguments as a table, so `/pingserver hello there` arrives as `{ 'hello', 'there' }`. Joining them with a space rebuilds the sentence `hello there` before sending it. That detail is not the lesson; it is here so the payload is a single readable string.
+
+### RegisterNetEvent: the listener that allows network traffic
+
+```lua
+RegisterNetEvent('qu_trigger_server_client_event:ping', function(message)
+```
+
+This is the line that makes the wall passable. `RegisterNetEvent` declares that an event with this name is allowed to be triggered across the network, and attaches a handler to run when it arrives. You must declare it on the side that receives. The server registers `...:ping` because the server receives the ping. Each client registers `...:pong` and `...:notice` because clients receive those.
+
+Here is the distinction that trips people up. `AddEventHandler` also attaches a handler to an event name, but it does not open the network gate. An event handled only with `AddEventHandler` can be fired locally with `TriggerEvent`, but a remote `TriggerServerEvent` or `TriggerClientEvent` aimed at it is rejected for safety. `RegisterNetEvent` is the one that says: this name is allowed to arrive from the other side. In current FiveM, `RegisterNetEvent` both opens the gate and registers the handler in one call, which is why you do not see a separate `AddEventHandler` line here. The rule to keep: if a value has to cross the wall to reach a handler, that handler's name was registered with `RegisterNetEvent` on the receiving side. Forget it on one side and that side simply never hears the event, with no error to point at it.
+
+### local src = source, captured before anything else
+
+```lua
+local src = source
+```
+
+This is the most important line in the file and the easiest to write wrong. On the server, `source` is a special value that holds the server id of the player who triggered the current net event. It tells you who sent the ping, which is how the server knows who to answer privately.
+
+The catch: `source` is only reliable on the very first line of the handler, before the code yields. Anything that pauses the handler, a `Citizen.Wait`, a database query you await, a callback, can let another event run in between and overwrite `source` with a different player. By the time your paused code resumes, `source` may now point at someone else, and you reply to the wrong player or write to the wrong account. Capturing it into a plain local the instant the handler starts freezes the correct id in a variable that nothing else can touch. From then on you use `src`, never the raw `source`. Even when a handler has no yield today, you capture `src` first out of habit, because the day you add a database call is the day the bug appears, and it is a brutal one to find.
+
+<Checkpoint question="The handler runs print, which does not yield. So why bother capturing local src = source instead of just using source everywhere?">
+  Because the habit has to survive the next edit, not just today's code. Right now the handler is synchronous, so `source` would still be correct on every line. But the moment you add a yield, a `Citizen.Wait`, an `oxmysql` query you await, a callback, another player's net event can run during the pause and overwrite `source`. Code that read `source` after the pause would then act on the wrong player. Writing `local src = source` on line one freezes the right id immediately, so when you later add the database call you do not have to remember to fix it, and you never ship the silent wrong-player bug.
+</Checkpoint>
+
+### TriggerClientEvent and the target argument
+
+```lua
+TriggerClientEvent('qu_trigger_server_client_event:pong', src, 'server received ' .. message)
+TriggerClientEvent('qu_trigger_server_client_event:notice', -1, GetPlayerName(src) .. ' pinged the server')
+```
+
+`TriggerClientEvent` is the server sending an event back across the wall to clients. Its shape is the mirror of `TriggerServerEvent`, with one extra argument wedged in second: the target. That target argument is the entire reason there are two lines here instead of one.
+
+- A real server id, like `src`, sends the event to exactly that one client. The pong reply uses `src`, so only the player who pinged sees `pong:`. This is how you answer a request privately, or send a player their own inventory, their own money, their own menu.
+- The number `-1` is the broadcast target. It sends the event to every connected client at once. The notice line uses `-1`, so every player on the server sees `notice:`. This is how you announce a restart, push a server-wide alert, or sync a shared world state change to the room.
+
+Read it as: who is this for. One person, pass their id. Everyone, pass `-1`. The original version of this lesson only ever answered the one player and never showed the broadcast, which is why the second `TriggerClientEvent` line is here now. Seeing both in the same handler, side by side, is the clearest way to feel the difference.
+
+### Why the server checks the payload
+
+```lua
+if type(message) ~= 'string' or #message > 40 then return end
+```
+
+The client sent this value, and the client cannot be trusted. A normal player typing `/pingserver hello` sends a short string. A malicious or modified client can call `TriggerServerEvent('...:ping', ...)` directly with anything: a number, a table, a forty-thousand-character string built to bloat your logs or break the code that concatenates it. The handler runs on your server with your server's authority, so whatever it does with the payload, it does for real.
+
+So before the server uses the value, it states what it requires and bails out otherwise. `type(message) ~= 'string'` rejects anything that is not text. `#message > 40` rejects text longer than a sane ping. If either is true, `return` ends the handler immediately, no print, no reply, no harm. This is the trust-and-authority idea from Lesson 12 made concrete: the boundary between client and server is exactly where you validate, because it is the last point you still control. Every net event handler you write on the server should open by checking that its inputs are the shape and size you expected.
+
+### When you reach for this pattern
+
+Client asks, server checks, server answers, sits under a huge slice of real FiveM features. Three concrete cases:
+
+- **A player action with a server-side effect.** Buy an item, pay a bill, accept a job. The client fires the request, the server validates and updates the truth, then sends the result back to that one player with a single server id.
+- **A server-wide announcement.** A restart warning, an event start, a heist going live. The server fires `TriggerClientEvent('...', -1, ...)` and every client reacts at once.
+- **The first half of a callback.** When you need the server's reply in the same breath as the question, you wrap this exact round trip in a callback helper. Knowing the raw events underneath is what makes the callback lesson click instead of feeling like magic.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_trigger_server_client_event does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_trigger_server_client_event", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_trigger_server_client_event, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The server prints nothing when you run /pingserver", fix: "The ping name is not registered as a net event on the server, so the cross-wall trigger is rejected silently. Confirm server.lua uses RegisterNetEvent (not AddEventHandler) and that the event name matches the client's TriggerServerEvent name character for character." },
+    { symptom: "Server prints, but no pong or notice appears in F8", fix: "The reply names are not registered on the client. Each TriggerClientEvent name must have a matching RegisterNetEvent in client.lua. A name typo on either side means that side never hears the event." },
+    { symptom: "attempt to concatenate a nil value (local 'src')", fix: "source was read after a yield or assigned wrong. Capture local src = source on the first line of the handler, before anything else, and use src from then on." },
+    { symptom: "Only you see the message and never the rest of the server", fix: "Both replies are going to a single id. The broadcast must pass -1 as the target: TriggerClientEvent('...:notice', -1, ...). A server id sends to one client, -1 sends to all." },
+    { symptom: "Nothing happens and there is no error at all", fix: "The payload check returned early. You sent a value that is not a string or is longer than 40 characters, so the handler bailed by design. Send a short text ping like /pingserver hello." },
   ]}
 />
 
@@ -118,23 +220,40 @@ F8: [qu_trigger_server_client_event] server received hello
 
 <Recap
   items={[
-    "Make the qu_trigger_server_client_event folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for TriggerServerEvent, RegisterNetEvent, source, and TriggerClientEvent.",
-    "Add ensure qu_trigger_server_client_event to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Trace a full client-to-server-to-client round trip and name what each arrow does: TriggerServerEvent, RegisterNetEvent, TriggerClientEvent.",
+    "Register a net event with RegisterNetEvent on the receiving side, and explain why AddEventHandler alone will not accept cross-wall traffic.",
+    "Capture local src = source on line one of a server handler and say why reading source after a yield is a wrong-player bug.",
+    "Choose the TriggerClientEvent target: a server id sends to one client, -1 broadcasts to all.",
+    "Validate a client payload at the server boundary with a type and length check before trusting it.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_trigger_server_client_event`, rerun the test, and confirm the output changed.
+  Right now the server trusts that any text under 40 characters is fine. Add a rule the server enforces, and prove the broadcast obeys it. Extend the ping handler so that if the message is exactly the word `shout`, the server broadcasts an all-caps alert to everyone with `-1`, but for any other word it stays private and only pongs the sender.
+
+  ```lua
+  RegisterNetEvent('qu_trigger_server_client_event:ping', function(message)
+      local src = source
+      if type(message) ~= 'string' or #message > 40 then return end
+
+      TriggerClientEvent('qu_trigger_server_client_event:pong', src, 'server received ' .. message)
+
+      if message == 'shout' then
+          TriggerClientEvent('qu_trigger_server_client_event:notice', -1, string.upper(GetPlayerName(src) .. ' is shouting'))
+      end
+  end)
+  ```
+
+  Restart `qu_trigger_server_client_event`, then run `/pingserver shout` and watch the notice reach every player in all caps. Run `/pingserver hello` and confirm only your own F8 gets a pong with no broadcast. You just moved the decision of who hears a message from a fixed rule into server-side logic, which is how real features gate public versus private replies.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM TriggerServerEvent reference", href: "https://docs.fivem.net/natives/?_0x7714823F" },
+    { label: "FiveM TriggerClientEvent reference", href: "https://docs.fivem.net/natives/?_0x2F7A49E6" },
+    { label: "FiveM events scripting manual", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

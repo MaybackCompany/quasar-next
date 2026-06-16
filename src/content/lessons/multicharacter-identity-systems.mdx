@@ -2,59 +2,279 @@
   crumbs="Module B9 · Migrations & identity"
   title="Multi-character and identity systems"
   meta={[
-    { label: "You'll learn", value: "How player identity and multi-character systems work across frameworks, and how to choose and wire one." },
+    { label: "You'll build", value: "A server resource named qu_identity that maps one license to two characters and proves money belongs to the character, not the account." },
     { label: "Time", value: "~25 minutes." },
-    { label: "You need", value: "A framework server and the database lessons." },
-    { label: "You'll learn", value: "What identity means -> how characters map to a license -> multichar resources -> how it touches every other script" },
+    { label: "You need", value: "A framework server, MariaDB wired to oxmysql, and the database lessons." },
+    { label: "You'll learn", value: "FiveM identifiers and why license: is the anchor -> the two-table account/character model -> how a framework loads a character on selection -> why keying money on the wrong column shares it across characters." },
   ]}
 >
-  Identity is the spine of a roleplay server: who is this player, which character are they on, and what belongs to that character. Most framework installs hinge on getting this right, because every other script (money, inventory, jobs) keys off the character identifier. This lesson explains the model and how to choose a system.
+  Identity is the spine of a roleplay server: who is this player, which character are they on, and what belongs to that character. Every other script, money, inventory, jobs, keys off the character identifier, so if the identity layer is wrong, everything downstream is wrong. This lesson builds a tiny identity store you can run, then takes it apart so you understand the model instead of trusting a framework blindly.
 </LessonHero>
 
 <Prereq
   items={[
-    "I have a framework running (ESX, QBCore, or Qbox).",
-    "I understand oxmysql and how data persists.",
-    "I know money/inventory/jobs are stored per character."
+    "I have a framework running (ESX Legacy, QBCore, or Qbox).",
+    "I have MariaDB wired to oxmysql and can run SQL against it.",
+    "I understand oxmysql insert, single, and the ? placeholder.",
+    "I know money, inventory, and jobs are stored per character."
   ]}
 />
 
 <Callout variant="fivem" title="The identifier that everything hangs on">
-  A player connects with a stable license identifier. A multi-character system maps that one license to several characters, each with its own citizenid/charid. Every other resource stores data against that character id, so if the identity layer is wrong, everything downstream is wrong.
+  A player connects with a stable `license:` identifier that names the account. A multi-character system maps that one license to several characters, each with its own generated `citizenid`. Every other resource must store data against the `citizenid`, not the license, or two characters on the same account will share money, items, and jobs.
 </Callout>
 
-## How identity works
+## Build it
+
+This is a server-only resource. There is no client file and no F8 output: identity lives entirely on the server, against the database, which is the whole point. You will run one command in the server console and read the proof there.
 
 <StepGroup>
-  <Step num={1} title="Separate the player from the character" outcome="You can explain license vs character id.">
-    The **license** identifies the human/account; the **character id** identifies one of their characters. Money, inventory, and jobs belong to the character id, not the license. Multi-character means many character ids per license.
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_identity
+    ```
   </Step>
 
-  <Step num={2} title="Pick the system your framework expects" outcome="The multichar resource matches your framework.">
-    Each framework has its conventional multichar resource and character-id field. Use the one your framework documents; bolting a foreign system on is where the pain starts. Qbox/QBCore use a citizenid; ESX uses its identifier scheme.
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_identity/
+  fxmanifest.lua
+  server.lua
+    ```
   </Step>
 
-  <Step num={3} title="Confirm downstream scripts use the right id" outcome="Other resources store data against the character, not the license.">
-    Audit your key scripts (banking, inventory, jobs): do they key off the character id? A script that stores money against the license will share money across all characters, a classic bug.
+  <Step num={3} title="Write fxmanifest.lua and the tables" outcome="FiveM loads oxmysql first, and the database has the account/character shape.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script '@oxmysql/lib/MySQL.lua'
+server_script 'server.lua'
+
+dependencies {
+    'oxmysql'
+}
+    ```
+
+    Then run this SQL against your MariaDB before starting the resource. These two tables are the entire identity model in miniature:
+
+    ```sql
+CREATE TABLE IF NOT EXISTS qu_accounts (
+  license VARCHAR(64) NOT NULL,
+  PRIMARY KEY (license)
+);
+
+CREATE TABLE IF NOT EXISTS qu_characters (
+  citizenid  VARCHAR(16) NOT NULL,
+  license    VARCHAR(64) NOT NULL,
+  first_name VARCHAR(40) NOT NULL,
+  money      INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (citizenid),
+  UNIQUE KEY uniq_license_name (license, first_name),
+  FOREIGN KEY (license) REFERENCES qu_accounts (license)
+);
+    ```
   </Step>
 
-  <Step num={4} title="Test creating and switching characters" outcome="Data follows the correct character.">
-    Make two characters, give one money/items, switch, and confirm the second does not see them. This single test catches most identity wiring mistakes.
+  <Step num={4} title="Write the lesson code" outcome="The license-to-character mapping and the per-character money rule are runnable.">
+    Open `server.lua` and paste this:
+
+    ```lua
+local function makeCitizenId()
+    return ('QU%07d'):format(math.random(0, 9999999))
+end
+
+local function ensureCharacter(license, firstName)
+    local existing = MySQL.scalar.await(
+        'SELECT citizenid FROM qu_characters WHERE license = ? AND first_name = ?',
+        { license, firstName }
+    )
+    if existing then return existing end
+
+    local citizenid = makeCitizenId()
+    MySQL.insert.await('INSERT INTO qu_characters (citizenid, license, first_name) VALUES (?, ?, ?)',
+        { citizenid, license, firstName })
+    return citizenid
+end
+
+RegisterCommand('identitytest', function()
+    local license = 'license:qu000000000000000000000000000000demo'
+
+    MySQL.insert.await('INSERT IGNORE INTO qu_accounts (license) VALUES (?)', { license })
+
+    local charA = ensureCharacter(license, 'Avery')
+    local charB = ensureCharacter(license, 'Blake')
+
+    MySQL.update.await('UPDATE qu_characters SET money = ? WHERE citizenid = ?', { 5000, charA })
+
+    local moneyA = MySQL.scalar.await('SELECT money FROM qu_characters WHERE citizenid = ?', { charA })
+    local moneyB = MySQL.scalar.await('SELECT money FROM qu_characters WHERE citizenid = ?', { charB })
+
+    print(('[qu_identity] one license: %s'):format(license))
+    print(('[qu_identity] character A %s money %d'):format(charA, moneyA))
+    print(('[qu_identity] character B %s money %d'):format(charB, moneyB))
+end, true)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="Two characters share one license, but only one has the money.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_identity
+    ```
+
+    Save, then run this in the server console (txAdmin Live Console):
+
+    ```text
+    restart qu_identity
+    ```
+
+    Now run the test command in the same console:
+
+    ```text
+    identitytest
+    ```
 
     <ExpectedOutput>
-      Character A's money and items do not appear on Character B after switching.
+      [qu_identity] one license: license:qu000000000000000000000000000000demo
+[qu_identity] character A QU0431785 money 5000
+[qu_identity] character B QU2980014 money 0
     </ExpectedOutput>
+
+    The two `QU` ids are random, so yours will differ. What must match is the shape: both characters hang off the same license line, character A holds 5000, and character B holds 0. You just stored money against a character, and the other character on the same account never saw it.
   </Step>
 </StepGroup>
 
-## Common mistakes
+## How it works
+
+You ran one command and watched two characters on a single account hold different balances. That is the entire job of an identity system, and it lives in three places: the identifier you anchor on, the two tables that map one account to many characters, and the column you key downstream data against. We will go through each, then connect it back to what your real framework does on character selection.
+
+### The identifier you anchor on
+
+A connecting player does not arrive with one id. FiveM hands you a list of identifiers, and you can read them on the server with `GetPlayerIdentifiers(src)` or pull a single type with `GetPlayerIdentifierByType(src, 'license')`. A typical list looks like this:
+
+```text
+license:qu1a2b3c4d5e6f7a8b...
+license2:1a2b3c...
+steam:110000112345678
+discord:281234567890123456
+fivem:1234567
+ip:203.0.113.42
+```
+
+Each one names the player from a different angle. `steam:` only exists if they launched through Steam. `discord:` only exists if they linked Discord. `ip:` changes the moment they move house. The one identifier every player always has, that does not change between sessions, and that is not trivially spoofed, is `license:`. That is why frameworks anchor the account on `license:` and why this lesson does too. In production you would write `local license = GetPlayerIdentifierByType(src, 'license')`; the build above uses a fixed demo license so the command runs deterministically from the console, where `source` is `0` and there is no real player to read identifiers from.
+
+<Checkpoint question="Why anchor the account on license: instead of steam: or ip:?">
+  Because `license:` is the one identifier that is always present, stable across sessions, and tied to the player's Rockstar account rather than a launcher or a network connection. `steam:` is missing for anyone who did not launch through Steam, `discord:` is missing unless they linked it, and `ip:` changes whenever the player's network changes, which would orphan their account and characters. Anchoring on a value that can vanish or change means a returning player can fail to match their own data. `license:` is the conventional anchor precisely because it does not have those failure modes.
+</Checkpoint>
+
+### The two-table model
+
+The schema is the lesson in miniature. There are two tables and the relationship between them is the whole idea.
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_accounts (
+  license VARCHAR(64) NOT NULL,
+  PRIMARY KEY (license)
+);
+```
+
+`qu_accounts` is one row per human. Its primary key is the `license`, so the database guarantees a license appears at most once. This is the account layer: it knows the person exists, nothing more.
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_characters (
+  citizenid  VARCHAR(16) NOT NULL,
+  license    VARCHAR(64) NOT NULL,
+  first_name VARCHAR(40) NOT NULL,
+  money      INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (citizenid),
+  UNIQUE KEY uniq_license_name (license, first_name),
+  FOREIGN KEY (license) REFERENCES qu_accounts (license)
+);
+```
+
+`qu_characters` is one row per character, and a single license can own many rows here. Read the keys in order:
+
+- `citizenid` is the **primary key**: a generated id, unique per character, that everything downstream will reference. It is deliberately separate from the license, because one license owns several citizenids.
+- `license` is a plain column plus a **foreign key** back to `qu_accounts`. The foreign key means you cannot create a character for an account that does not exist, which keeps orphan characters out of the table.
+- `UNIQUE KEY uniq_license_name (license, first_name)` stops the same account creating two characters with the same name, and it is what makes the build idempotent: re-running the test cannot duplicate Avery. Without a unique key, an upsert has nothing to collide on, so every run inserts again.
+
+The `citizenid` is generated, never the license. That separation is the point: the account is one thing, a character is another, and the link is the `license` column on the character row.
+
+### Generating and reusing the character id
+
+```lua
+local function makeCitizenId()
+    return ('QU%07d'):format(math.random(0, 9999999))
+end
+```
+
+A character id has to be unique and stable. Real frameworks generate a longer alphanumeric id; this is a teaching-sized version that pads a random number to seven digits, like `QU0431785`. The exact format does not matter. What matters is that it is generated once and then stored, so the character keeps the same id forever.
+
+```lua
+local function ensureCharacter(license, firstName)
+    local existing = MySQL.scalar.await(
+        'SELECT citizenid FROM qu_characters WHERE license = ? AND first_name = ?',
+        { license, firstName }
+    )
+    if existing then return existing end
+
+    local citizenid = makeCitizenId()
+    MySQL.insert.await('INSERT INTO qu_characters (citizenid, license, first_name) VALUES (?, ?, ?)',
+        { citizenid, license, firstName })
+    return citizenid
+end
+```
+
+This is read-then-create. First it asks the database whether this account already has a character with that name, using `MySQL.scalar` to pull back a single value. If a `citizenid` comes back, the character exists and you reuse it. If not, you generate a fresh id and insert the row. That guard is why running `identitytest` twice does not create four characters: the second run finds Avery and Blake already there and returns their existing ids. The `(license, first_name)` unique key is the database-level backstop for the same rule.
+
+### The column that decides everything
+
+```lua
+MySQL.update.await('UPDATE qu_characters SET money = ? WHERE citizenid = ?', { 5000, charA })
+```
+
+Here is the single most important line in the lesson. The money is set `WHERE citizenid = ?`, keyed to character A's id. Character B has a different `citizenid`, so this update does not touch B's row. When you read both back, A has 5000 and B has 0. That is correct multi-character behavior, and it falls out of one decision: keying money on `citizenid`.
+
+Now picture the bug the audit and every shared-money report come from. Suppose a banking script stored balances against the account instead:
+
+```lua
+-- The bug: money keyed on the license (the account), not the character
+MySQL.update.await('UPDATE qu_balances SET money = ? WHERE license = ?', { 5000, license })
+```
+
+Both of your characters share that one license. A row keyed on `license` is shared by every character on the account, so depositing 5000 as Avery means Blake logs in to find 5000 too. Switch characters, the money follows, because there was only ever one balance row for the whole account. The fix is never some clever sync; it is to key the balance on `citizenid` so each character owns its own row. One wrong column in one query is the difference between a working economy and "all my characters share money" in your bug channel.
+
+<Checkpoint question="A player reports that money on one character shows up on all their characters. Where do you look first?">
+  The query that writes money. Find the `UPDATE` or `INSERT` that stores the balance and look at its `WHERE` clause and the column it keys on. If it keys on `license`, `identifier`, or any account-level id instead of the character's `citizenid`, that is the bug: one row is shared by every character on the account. Change the key to `citizenid` (and migrate the existing rows so each character gets its own). The same audit applies to inventory and jobs: anything that should be per-character must key on the character id, not the account.
+</Checkpoint>
+
+### What your framework does on selection
+
+The build is a hand-cranked version of what a real multichar resource does for you. When a player picks a slot in a character menu, the framework runs the same shape: it has the player's `license`, it loads or creates the matching character row, and then it sets that `citizenid` as the active character for the session so every other resource reads the right one.
+
+- **Qbox** uses `qbx_multicharacter`, generates a `citizenid`, and on selection populates `QBX.GetPlayer(src)` whose `PlayerData.citizenid` is the active character. Qbox is the actively maintained QBCore successor, so a new 2026 server should reach for it over QBCore, whose development has stalled.
+- **QBCore** uses `qb-multicharacter` with the same `citizenid` concept and `QBCore.Functions.GetPlayer(src)`.
+- **ESX Legacy** uses `esx_multicharacter` and keys characters by the `identifier` (the license) plus a character slot, exposed through `ESX.GetPlayerFromId(src)`. ESX does not generate a separate citizenid the way QBCore and Qbox do; it leans on the identifier plus slot.
+
+The practical rule when you add any new script: find where it stores per-player data and confirm it keys on the framework's active character id, not the raw license. If it keys on the license, you have just reintroduced the shared-money bug for every player with more than one character.
+
+## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "All characters share money or items", fix: "A downstream script keys off the license, not the character id. Fix it to use the character id." },
-    { symptom: "Multichar resource fights the framework", fix: "Use the multichar system your framework documents; do not mix schemes." },
-    { symptom: "Characters do not save", fix: "The character id is not persisting to the database. Check the multichar resource's tables and oxmysql connection." },
-    { symptom: "New scripts break identity", fix: "Audit each new script for which id it stores data against before trusting it." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing from fxmanifest.lua, or oxmysql is not started. Add the server_script line and the dependencies block, and ensure oxmysql loads first." },
+    { symptom: "Cannot add or update a child row: a foreign key constraint fails", fix: "You inserted into qu_characters before qu_accounts. The account row must exist first, which is why the build runs INSERT IGNORE INTO qu_accounts before any character insert." },
+    { symptom: "Both characters print the same money", fix: "The update is keyed on license instead of citizenid, so one shared row backs both characters. Key the money update on citizenid so each character owns its own value." },
+    { symptom: "Running identitytest twice creates duplicate characters", fix: "The (license, first_name) unique key is missing, so the upsert has nothing to collide on. Add UNIQUE KEY uniq_license_name and keep the read-before-insert guard." },
+    { symptom: "GetPlayerIdentifierByType returns nil", fix: "You called it for source 0 (the console) or a player who already dropped. Identifiers only exist for a connected player, which is why the demo uses a fixed license string from the console." },
   ]}
 />
 
@@ -62,17 +282,42 @@
 
 <Recap
   items={[
-    "Separate the player (license) from the character (character id).",
-    "Pick the multichar system your framework expects.",
-    "Confirm downstream scripts store data against the character id.",
-    "Test character creation and switching so data follows the right character."
+    "List FiveM's identifiers and explain why license: is the stable anchor for an account.",
+    "Model identity as two tables: one account row per license, many character rows each with a generated citizenid.",
+    "Use a unique key plus a read-before-insert guard so creating the same character twice is a no-op.",
+    "Key per-character data (money, inventory, jobs) on citizenid, never on the license, and spot the shared-money bug when a query keys on the wrong column.",
+    "Name the multichar resource and active-character object for Qbox, QBCore, and ESX Legacy, and audit a new script for which id it stores against."
   ]}
 />
 
+## Try it yourself
+
+<Exercise>
+  Add a third character and a per-character inventory so you prove the same rule on a second data type. Extend `server.lua`: after the existing characters, create a third with `ensureCharacter(license, 'Casey')`, then give character A a single item keyed on its `citizenid` and read it back for both A and Casey.
+
+  ```lua
+  local charC = ensureCharacter(license, 'Casey')
+
+  MySQL.insert.await(
+      'INSERT INTO qu_inventory (citizenid, item, count) VALUES (?, ?, ?) ' ..
+      'ON DUPLICATE KEY UPDATE count = VALUES(count)',
+      { charA, 'water', 3 }
+  )
+
+  local itemsA = MySQL.scalar.await('SELECT count FROM qu_inventory WHERE citizenid = ? AND item = ?', { charA, 'water' })
+  local itemsC = MySQL.scalar.await('SELECT count FROM qu_inventory WHERE citizenid = ? AND item = ?', { charC, 'water' })
+  print(('[qu_identity] A water %d, C water %s'):format(itemsA or 0, tostring(itemsC)))
+  ```
+
+  First create the table with a `UNIQUE KEY (citizenid, item)` so the upsert has a key to collide on. Restart `qu_identity`, run `identitytest`, and confirm A shows `3` while C shows `nil`. You have now proven the citizenid rule on inventory as well as money, which is exactly the audit you run on every new script before you trust it.
+</Exercise>
+
 <Refs
   items={[
+    { label: "FiveM identifiers (GetPlayerIdentifiers)", href: "https://docs.fivem.net/natives/?_0xFF7F66AB" },
     { label: "Qbox documentation", href: "https://docs.qbox.re/" },
     { label: "ESX Legacy documentation", href: "https://docs.esx-framework.org/" },
-    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" }
+    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
+    { label: "MariaDB foreign keys reference", href: "https://mariadb.com/kb/en/foreign-keys/" }
   ]}
 />

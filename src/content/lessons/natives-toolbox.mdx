@@ -2,13 +2,13 @@
   crumbs="Module 03 · Lesson 11"
   title="FiveM natives: the toolbox"
   meta={[
-    { label: "You'll build", value: "A reusable native practice script: print your own coordinates, read your health, and teleport yourself safely." },
+    { label: "You'll build", value: "A reusable native practice script: print your own coordinates and health, then teleport yourself to a coordinate and land safely on the ground." },
     { label: "Time", value: "~22 minutes" },
     { label: "You need", value: "Your qu_hello mental model from Module 02, plus the FiveM native docs and cfxnatives.dev open in your browser." },
-    { label: "You'll learn", value: "What a native is -> how to find one -> how to check the side badge -> how to turn the docs into one small working script" },
+    { label: "You'll learn", value: "What a native is -> how to find one -> how to read the CLIENT/SERVER badge -> how to turn the docs into one small working script, line by line" },
   ]}
 >
-  You already know some Lua. You already know there is a client side and a server side. Now you need the *toolbox*. FiveM gives you lots of built-in functions called natives. They let you do real game things like move a ped, draw text, spawn a vehicle, or read health. Nobody memorizes them all. Good developers look them up. This lesson teaches you how to do that calmly.
+  You already know some Lua. You already know there is a client side and a server side. Now you need the *toolbox*. FiveM gives you thousands of built-in functions called natives. They let you do real game things like move a ped, draw text, spawn a vehicle, or read health. Nobody memorizes them all. Good developers look them up. This lesson teaches you how to read a native in the docs, then proves it by building a script that reads your position and health and teleports you cleanly onto the ground.
 </LessonHero>
 
 <LessonVideo loomId="d8ce78503fcc4fbcaf36d6ff15cbe7b6" title="FiveM scripting fundamentals" caption="Scripting fundamentals: natives, vectors, and debugging." />
@@ -21,8 +21,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds PlayerPedId, GetEntityCoords, GetEntityHealth, and teleport as a working FiveM resource named `qu_natives_toolbox`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds `PlayerPedId`, `GetEntityCoords`, `GetEntityHealth`, and a real safe teleport as a working FiveM resource named `qu_natives_toolbox`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes every line apart so you can read any native and use it without copying.
 </Callout>
 
 ## Find a native
@@ -38,7 +38,7 @@ When you open a native, read three things before you use it:
 - **The return value.** Some natives hand you something back (coords, health, a handle); some just do a thing and return nothing.
 
 <Checkpoint question="A native is marked CLIENT. Can you call it from your server.lua?">
-  No. Client natives only run in client scripts (loaded with `client_script`), and server natives only run in server scripts. The side badge in the docs tells you which file the call belongs in. Calling across the line is the single most common beginner native error.
+  No. Client natives only run in client scripts (loaded with `client_script`), and server natives only run in server scripts. The side badge in the docs tells you which file the call belongs in. Calling across the line is the single most common beginner native error. Every native you use in this lesson is a CLIENT native, which is exactly why the file you build is a `client_script` and not a `server_script`.
 </Checkpoint>
 
 ## Build it
@@ -71,6 +71,8 @@ game 'gta5'
 
 client_script 'client.lua'
     ```
+
+    Every native this lesson uses reads or moves your local ped, so all the code lives in one `client_script`. There is no `server_script` here on purpose: the ped exists only on your own game instance, not on the server.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -80,14 +82,36 @@ client_script 'client.lua'
 RegisterCommand('whereami', function()
     local ped = PlayerPedId()
     local coords = GetEntityCoords(ped)
-    print(('[qu_natives_toolbox] %.2f %.2f %.2f health %d'):format(coords.x, coords.y, coords.z, GetEntityHealth(ped)))
+    local health = GetEntityHealth(ped)
+    print(('[qu_natives_toolbox] x %.2f y %.2f z %.2f health %d'):format(coords.x, coords.y, coords.z, health))
 end, false)
 
-RegisterCommand('stepforward', function()
+RegisterCommand('tpsafe', function()
     local ped = PlayerPedId()
-    local coords = GetEntityCoords(ped)
-    SetEntityCoords(ped, coords.x + 2.0, coords.y, coords.z, false, false, false, false)
-    print('[qu_natives_toolbox] moved')
+    local x, y = 215.0, -810.0
+
+    -- Stream in collision at the destination so we have ground to stand on.
+    RequestCollisionAtCoord(x, y, 100.0)
+
+    -- Drop the ped at a high z first so the world below has a chance to load.
+    SetEntityCoords(ped, x, y, 100.0, false, false, false, false)
+
+    -- Wait until the ground under that x,y is known, then snap down onto it.
+    local groundZ = 0.0
+    local found = false
+    local tries = 0
+    while not found and tries < 20 do
+        Wait(50)
+        found, groundZ = GetGroundZFor_3dCoord(x, y, 100.0, false)
+        tries = tries + 1
+    end
+
+    if found then
+        SetEntityCoords(ped, x, y, groundZ, false, false, false, false)
+        print(('[qu_natives_toolbox] teleported to %.2f %.2f %.2f'):format(x, y, groundZ))
+    else
+        print('[qu_natives_toolbox] ground not found, staying at safe height')
+    end
 end, false)
     ```
   </Step>
@@ -105,27 +129,112 @@ end, false)
     restart qu_natives_toolbox
     ```
 
-    Run this test:
+    Join the server so your ped exists, then run these tests from the F8 console:
 
     ```text
-    /whereami then /stepforward
+    /whereami then /tpsafe
     ```
 
     <ExpectedOutput>
-      [qu_natives_toolbox] coords and health line
-[qu_natives_toolbox] moved
+      [qu_natives_toolbox] x -1037.62 y -2737.84 z 20.17 health 200
+[qu_natives_toolbox] teleported to 215.00 -810.00 30.29
     </ExpectedOutput>
+
+    Your `/whereami` numbers depend on where you are standing, but the `/tpsafe` line should always land on the ground at `215.00 -810.00` near the Legion Square area, with a z close to `30.29`.
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and the lines appeared. Now take the code apart so the next time you open the native docs you are deciding, not copying. Every line below is a native you looked up, used, and can now read on your own.
+
+### Reading your ped: PlayerPedId and GetEntityCoords
+
+```lua
+local ped = PlayerPedId()
+local coords = GetEntityCoords(ped)
+local health = GetEntityHealth(ped)
+```
+
+`PlayerPedId()` is a CLIENT native that returns a **handle** to your own character, the ped you are currently controlling. A handle is just a number the game uses internally to point at one entity. You almost never read the number itself; you pass it to other natives that need to know which entity you mean. That is why the very first line of nearly every client script that touches your character starts with this call. It takes no arguments and hands you back one value.
+
+`GetEntityCoords(ped)` takes that handle and returns the entity's position. Look at the docs and the return type is a **vector3**: a single value bundling three numbers, an x, a y, and a z. You pull each one out with `coords.x`, `coords.y`, and `coords.z`. In GTA V, x and y are the flat map position and z is height above sea level. So `coords.z` going up means you are climbing a hill or standing on a roof.
+
+`GetEntityHealth(ped)` returns a plain number, not a vector. A healthy player ped reads `200`, and `0` means dead. Notice the shape of the pattern: you got a handle from one native, then fed that handle into two more natives to read facts about the same entity. That hand-off, one native produces a handle and others consume it, is the core rhythm of every FiveM client script you will ever write.
+
+### Building the output line: the :format method
+
+```lua
+print(('[qu_natives_toolbox] x %.2f y %.2f z %.2f health %d'):format(coords.x, coords.y, coords.z, health))
+```
+
+The string here has placeholders in it. `%.2f` means insert a floating point number rounded to two decimal places. `%d` means insert a whole integer. `:format(...)` is a **method** you call directly on the string: it walks left to right, replacing the first `%.2f` with `coords.x`, the second with `coords.y`, the third with `coords.z`, and the `%d` with `health`. The result is one clean line instead of a string glued together with lots of `..` joins.
+
+Why bother rounding? `GetEntityCoords` returns coordinates with many decimal places, which is noise when you are reading the console. `%.2f` trims each one to two places so the line stays scannable. The leading `[qu_natives_toolbox]` tag is text you typed on purpose, so you can pick your own output out of a console where twenty resources are all printing at once.
+
+### A real safe teleport, not a nudge
+
+This is the part most beginner tutorials get wrong. Moving a ped is not as simple as setting its coordinates, because the world around those coordinates may not be loaded yet. Set the position blindly and you fall through an unloaded map into the water, or land inside a hill. A *safe* teleport loads the ground first, then places you on it.
+
+```lua
+local x, y = 215.0, -810.0
+RequestCollisionAtCoord(x, y, 100.0)
+SetEntityCoords(ped, x, y, 100.0, false, false, false, false)
+```
+
+`RequestCollisionAtCoord(x, y, z)` is a CLIENT native that tells the game to stream in the physical collision mesh at that map position. Without collision there is literally no floor at the destination. Then `SetEntityCoords` drops you in at a deliberately high z of `100.0`, well above any building, so you are hanging in the air over the spot while the world below finishes loading.
+
+Now look at `SetEntityCoords`' arguments. The first is the ped handle and the next three are the x, y, z you are moving it to. The four `false` values at the end are boolean flags the docs spell out:
+
+- **xAxis, yAxis, zAxis** (the first three booleans): whether to keep the entity's existing alignment on each axis. `false` means just place it, do not preserve the old orientation.
+- **clearArea** (the last boolean): whether to clear nearby objects and peds around the destination. `false` leaves the area as it is.
+
+You do not need to memorize those four; you need to know they exist and where to read them, because a native with trailing booleans is exactly the kind of signature you must look up rather than guess.
+
+```lua
+local groundZ = 0.0
+local found = false
+local tries = 0
+while not found and tries < 20 do
+    Wait(50)
+    found, groundZ = GetGroundZFor_3dCoord(x, y, 100.0, false)
+    tries = tries + 1
+end
+```
+
+`GetGroundZFor_3dCoord(x, y, z, ignoreWater)` returns **two values**: a boolean saying whether the ground was found, and the z height of that ground. Right after a teleport the answer is often `false` for a frame or two, because the collision you requested has not finished streaming. So you loop: `Wait(50)` yields for fifty milliseconds, you ask again, and you stop the moment `found` becomes `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
+
+```lua
+if found then
+    SetEntityCoords(ped, x, y, groundZ, false, false, false, false)
+    print(('[qu_natives_toolbox] teleported to %.2f %.2f %.2f'):format(x, y, groundZ))
+else
+    print('[qu_natives_toolbox] ground not found, staying at safe height')
+end
+```
+
+Once you know the real ground height, you call `SetEntityCoords` one final time to snap the ped down onto it. That is the whole trick: drop high, wait for the ground to be known, then place onto the ground. Compare this with a naive `SetEntityCoords(ped, x, y, z, ...)` to a guessed z. A guessed z that is too low buries you in terrain; too high drops you from the sky. The two-step pattern is why this teleport is called *safe*.
+
+<Checkpoint question="Why teleport to z 100.0 first and only then snap to the ground, instead of going straight to the final z?">
+  Because the destination's collision mesh has to stream in before the game can tell you where the ground actually is. `RequestCollisionAtCoord` starts that load, the high drop at z 100.0 parks you safely above everything while it finishes, and `GetGroundZFor_3dCoord` keeps returning `false` until the ground exists. Once it returns `true` with a real height, you snap down onto it. Skip the wait and `GetGroundZFor_3dCoord` hands you a stale or zero height, so you teleport into terrain or under the map. The loop is not busywork; it is you waiting for the world to be real before you stand on it.
+</Checkpoint>
+
+### When you reach for this pattern
+
+Reading a ped and moving it safely are the two most common things a client script does, and the workflow you just used is the one you repeat for every new native:
+
+- **Reading state for a feature.** Any job, robbery, or interaction script starts by reading where the player is and what condition they are in. `PlayerPedId` plus `GetEntityCoords` is the opening move every single time.
+- **Admin and respawn teleports.** A `/tp` command, a "return to last position" feature, or a respawn point all need the safe-teleport pattern, or players fall through the map the first time the destination has not loaded.
+- **Capturing coordinates while building.** Run `/whereami`, stand somewhere, read the line, and you have the exact x, y, z to hard code into a spawn point or a blip. That is how developers harvest the coordinates you see baked into scripts.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_natives_toolbox does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_natives_toolbox", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_natives_toolbox, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (field 'x')", fix: "GetEntityCoords returned nil, usually because PlayerPedId() ran before your ped existed. Join the server and spawn in before running the command, then read coords.x." },
+    { symptom: "The command prints nothing in F8", fix: "This is a client_script, so output lands in the F8 console, not txAdmin. Open F8 in game after joining and run /whereami there." },
+    { symptom: "tpsafe says 'ground not found, staying at safe height'", fix: "Collision did not stream in within one second, often a network or distance issue. Re-run /tpsafe once you are loaded, or raise the tries cap above 20." },
+    { symptom: "After /tpsafe you fall through the map or land in terrain", fix: "You skipped the wait loop or guessed the z. Keep the RequestCollisionAtCoord call and only snap to groundZ after GetGroundZFor_3dCoord returns found = true." },
   ]}
 />
 
@@ -133,17 +242,32 @@ end, false)
 
 <Recap
   items={[
-    "Make the qu_natives_toolbox folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for PlayerPedId, GetEntityCoords, GetEntityHealth, and teleport.",
-    "Add ensure qu_natives_toolbox to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Read a native in the docs by its three parts: the CLIENT/SERVER side badge, the argument list, and the return value.",
+    "Get a handle to your own ped with PlayerPedId() and feed it into other natives like GetEntityCoords and GetEntityHealth.",
+    "Pull x, y, z out of the vector3 that GetEntityCoords returns, and format numbers cleanly with %.2f and %d.",
+    "Explain why GetEntityCoords and PlayerPedId being CLIENT natives is the reason this resource is a client_script.",
+    "Teleport a ped safely: request collision, drop high, wait for GetGroundZFor_3dCoord to return a real ground height, then snap down onto it.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_natives_toolbox`, rerun the test, and confirm the output changed.
+  Turn `tpsafe` into a `/tpto` command that teleports you to coordinates you type, instead of the hard coded Legion Square spot. FiveM passes the typed words into the handler as the second argument, a table called `args`, where each word arrives as a string.
+
+  ```lua
+  RegisterCommand('tpto', function(source, args)
+      local x = tonumber(args[1])
+      local y = tonumber(args[2])
+      if not x or not y then
+          print('[qu_natives_toolbox] usage: /tpto x y')
+          return
+      end
+      -- Reuse the same safe-teleport steps from tpsafe, but with this x and y.
+  end, false)
+  ```
+
+  Fill in the body with the request-collision, drop-high, wait-for-ground, snap-down pattern you just learned. `tonumber` converts the typed strings into numbers, and the `if not x or not y` guard prints a usage line and bails when someone forgets an argument. Test it with `/tpto 215.0 -810.0` and confirm you land on the ground at the same spot the original command used. Then try a coordinate you captured earlier with `/whereami`.
 </Exercise>
 
 <Refs

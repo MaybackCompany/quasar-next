@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds client request with server-decided reward amount as a working FiveM resource named `qu_trust_and_authority`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a client request with a server-decided reward as a working FiveM resource named `qu_trust_and_authority`. The client begs for 999999. The server ignores that number and pays a fixed 100. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart and shows you why this single pattern is the foundation of every safe feature you will ever write.
 </Callout>
 
 ## Build it
@@ -55,6 +55,8 @@ game 'gta5'
 client_script 'client.lua'
 server_script 'server.lua'
     ```
+
+    There is no `lua54 'yes'` line here. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out. This resource has a client file and a server file because the whole lesson is about the line between them.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -62,16 +64,24 @@ server_script 'server.lua'
 
     ```lua
 RegisterNetEvent('qu_trust_and_authority:claim', function(clientAmount)
-    print('[qu_trust_and_authority] ignored client amount ' .. tostring(clientAmount))
-    TriggerClientEvent('qu_trust_and_authority:paid', source, 100)
+    local src = source
+    print('[qu_trust_and_authority] player ' .. src .. ' asked for ' .. tostring(clientAmount) .. ', ignoring it')
+
+    local reward = 100
+    TriggerClientEvent('qu_trust_and_authority:paid', src, reward)
 end)
     ```
 
     Open `client.lua` and paste this:
 
     ```lua
-RegisterCommand('claimreward', function() TriggerServerEvent('qu_trust_and_authority:claim', 999999) end, false)
-RegisterNetEvent('qu_trust_and_authority:paid', function(amount) print('[qu_trust_and_authority] approved ' .. amount) end)
+RegisterCommand('claimreward', function()
+    TriggerServerEvent('qu_trust_and_authority:claim', 999999)
+end, false)
+
+RegisterNetEvent('qu_trust_and_authority:paid', function(amount)
+    print('[qu_trust_and_authority] server paid ' .. amount)
+end)
     ```
   </Step>
 
@@ -88,27 +98,101 @@ RegisterNetEvent('qu_trust_and_authority:paid', function(amount) print('[qu_trus
     restart qu_trust_and_authority
     ```
 
-    Run this test:
+    Join the server, then run this in the F8 chat box:
 
     ```text
     /claimreward
     ```
 
     <ExpectedOutput>
-      Server: [qu_trust_and_authority] ignored client amount 999999
-F8: [qu_trust_and_authority] approved 100
+      Server: [qu_trust_and_authority] player 1 asked for 999999, ignoring it
+F8: [qu_trust_and_authority] server paid 100
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You just watched the client demand 999999 and the server hand back exactly 100. That gap, between what the client asked for and what it actually got, is the entire lesson. Everything below explains why that gap is the most valuable line of defense you have, and how to build it on purpose in every feature you write.
+
+### The round trip, line by line
+
+The proof crossed the network twice. Walk it in the order the values travel.
+
+```lua
+RegisterCommand('claimreward', function()
+    TriggerServerEvent('qu_trust_and_authority:claim', 999999)
+end, false)
+```
+
+On the client, `RegisterCommand` wires the typed `/claimreward` to a handler. The `false` restricted flag means any connected player may run it, which is correct here: claiming a reward is a player action, not an admin one. Inside the handler, `TriggerServerEvent` is the jump from the player's machine to the server. It names an event, `qu_trust_and_authority:claim`, and ships one argument across the wire: the number `999999`. That number is the client's *request*. It is not a fact. It is a wish.
+
+```lua
+RegisterNetEvent('qu_trust_and_authority:claim', function(clientAmount)
+    local src = source
+```
+
+On the server, `RegisterNetEvent` listens for that named event. The word **Net** is the important part. A plain `RegisterEvent` only hears events fired on the same side. `RegisterNetEvent` opts in to hearing events fired *across the network* by clients. The argument the client shipped arrives as `clientAmount`. The first thing the handler does is copy `source` into a local named `src`. On the server, `source` is the server ID of the player who triggered the event, and it is the one value here you can actually trust, because the FiveM server stamps it, not the client. Capture it into a local immediately, because `source` can be overwritten if the handler ever yields with `Wait`.
+
+```lua
+    local reward = 100
+    TriggerClientEvent('qu_trust_and_authority:paid', src, reward)
+end)
+```
+
+Here is the whole point of the lesson in two lines. The server does not add `clientAmount` to anything. It does not trust it. It computes the reward itself, a flat 100, and sends that back with `TriggerClientEvent`. The second argument, `src`, is the target: send this only to the player who asked. The print line above logs the gap so you can see the attack and the defense in one screen.
+
+```lua
+RegisterNetEvent('qu_trust_and_authority:paid', function(amount)
+    print('[qu_trust_and_authority] server paid ' .. amount)
+end)
+```
+
+Back on the client, a second `RegisterNetEvent` catches the server's reply and prints it. The client never got to decide the payout. It only got to ask, and then find out the answer.
+
+### Why every client argument is attacker-controlled
+
+The number `999999` was hardcoded in the file you wrote, so it feels harmless. It is not. Picture a real player. They have full control of their own game and their own files. They can edit `client.lua`, or run an injected script, and replace `999999` with any value they like. They can call `TriggerServerEvent('qu_trust_and_authority:claim', 50000000)` from a menu they built. Nothing on their machine stops them, because their machine is theirs.
+
+So the rule to burn in: **every argument that arrives in a `RegisterNetEvent` handler is attacker-controlled.** The amount, the item name, the price, the coordinates, the target player ID, all of it. A client can send any value, any type, at any time, as often as it wants. The server is the only place that runs code the player cannot touch. That is what makes the server, and only the server, an authority.
+
+This is why the demo prints the client's number before throwing it away. You are looking at a forged request, `999999`, sitting right next to the server's honest answer, `100`. The server read the request, logged it, and refused it. That refusal is the feature.
+
+<Checkpoint question="A player edits their client to send 50000000 instead of 999999. How much does this server pay, and why?">
+  Still 100. The server handler never reads `clientAmount` to decide the payout. It computes `local reward = 100` itself and sends that. The client's number only reaches the `print`, which logs it and discards it. Changing the client value changes the *request* the server logs, never the *reward* the server pays. That is server-authoritative design: the client's input has zero influence on the outcome that matters. The day you do write `TriggerClientEvent(..., src, clientAmount)`, you have handed the player a money printer.
+</Checkpoint>
+
+### The general rule: validate, do not trust
+
+A fixed 100 is the simplest possible server decision. Real features need a value that varies, but the principle never changes: the server treats client input as an *untrusted request* and decides the real answer from data only the server holds. There are three moves you will reach for constantly.
+
+- **Allow-lists.** The client sends an item name. Do not act on the string. Check it against a server-side table of valid items first, and reject anything not on the list. The client picks *from* your options. It does not invent them.
+- **Range clamps.** The client sends a quantity. Clamp it to a sane window on the server, for example `math.max(1, math.min(quantity, 10))`, so a request for 999999 of something becomes the maximum you actually allow.
+- **Ownership checks.** The client asks to sell a vehicle by its plate. Before paying, the server looks up whether *that* player owns *that* vehicle in its own database. The client does not get to assert ownership. The server confirms it.
+
+Notice the shape is identical every time. The client names what it wants. The server, holding the real state, decides whether and how much. In this lesson the decision was a constant. In your features it will be a lookup or a calculation. The trust boundary is exactly the same.
+
+### Server-authoritative vs client-authoritative
+
+A piece of game state is **server-authoritative** when the server holds the true value and the client only displays it. It is **client-authoritative** when the client holds the true value and the server believes whatever it reports. Anything a player can gain by lying must be server-authoritative. Money, inventory, job, position for anti-teleport checks, owned property, admin status. If the client is the source of truth for any of those, the server is one edited file away from being drained.
+
+Some state can safely live on the client, the things a player gains nothing by faking: which animation is playing on their own ped, a local camera angle, a UI preference. The test is simple. Ask, what does a cheater win if they lie about this? If the answer is anything of value, that state belongs on the server, and the server must compute it from its own data, exactly as you just did with the reward.
+
+### When you reach for this pattern
+
+You reach for client-asks-server-decides any time a player action changes shared state that other players or the economy depend on. Selling an item, completing a job, buying from a shop, claiming a reward, transferring money. The flow is always the three steps you built: the client fires a net event to request, the server validates against its own truth and computes the outcome, the server fires a net event back with the result. This lesson is the smallest honest version of that loop.
+
+It is also the prereq for the next two lessons. **Trigger a server-to-client event** is this same round trip with a real payload and a target. **Teleport validation** is this rule applied to coordinates: the client asks to move, and the server checks the request is legal, a known location, a reachable distance, before it allows the move. Both lessons assume the reflex you are building right now: when client data arrives, validate it, do not trust it.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_trust_and_authority does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_trust_and_authority", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_trust_and_authority, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "I added clientAmount to the payout to 'help' the player", fix: "That is the exact anti-pattern this lesson exists to prevent. The moment the payout depends on the client number, a player edits their file and pays themselves millions. The server must compute reward from its own data, never from clientAmount." },
+    { symptom: "F8: server paid 999999", fix: "You sent clientAmount instead of reward in TriggerClientEvent. Send the server-decided value: TriggerClientEvent('qu_trust_and_authority:paid', src, reward). If the client's number ever reaches the payout, the trust boundary is broken." },
+    { symptom: "attempt to concatenate a nil value (global 'source')", fix: "You used source outside the net event handler, or after a Wait that cleared it. Capture local src = source on the first line of the handler and use src everywhere after." },
+    { symptom: "The server logs the claim but the F8 line never appears", fix: "The reply event name must match on both sides. The server fires qu_trust_and_authority:paid and the client must RegisterNetEvent the same string. A typo on either side drops the reply silently." },
+    { symptom: "/claimreward does nothing", fix: "The command is registered on the client, so you must run it in the F8 chat box as a connected player, not in the server console. Confirm the resource started with restart qu_trust_and_authority." },
   ]}
 />
 
@@ -116,23 +200,32 @@ F8: [qu_trust_and_authority] approved 100
 
 <Recap
   items={[
-    "Make the qu_trust_and_authority folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for client request with server-decided reward amount.",
-    "Add ensure qu_trust_and_authority to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "State the rule out loud: the client asks, the server decides, and explain why the demo pays 100 while the client begged for 999999.",
+    "Treat every argument arriving in a RegisterNetEvent handler as attacker-controlled, because the player owns the machine that sent it.",
+    "Capture local src = source on the first line of a server net handler, and know that src is the one value the client cannot forge.",
+    "Compute an outcome from server-held data instead of from client input, and name the three tools: allow-lists, range clamps, ownership checks.",
+    "Decide which game state must be server-authoritative by asking what a cheater wins if they lie about it.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_trust_and_authority`, rerun the test, and confirm the output changed.
+  Attack your own resource, then watch it hold. First confirm the defense works as written: open `client.lua`, change `999999` to `50000000`, restart `qu_trust_and_authority`, run `/claimreward`, and confirm the F8 line still reads `server paid 100`. The server did not flinch, because it never read your number.
+
+  Now feel the failure mode so you never ship it. On the server, temporarily change the reply to trust the client:
+
+  ```lua
+  TriggerClientEvent('qu_trust_and_authority:paid', src, clientAmount)
+  ```
+
+  Restart, run `/claimreward`, and watch F8 print `server paid 50000000`. You just paid yourself fifty million by editing a file on your own machine. That is exactly what an exploiter does to a careless script. Revert the server back to `reward`, and add a range clamp so the lesson sticks: `local reward = math.max(1, math.min(clientAmount, 100))`. Now a request for 50000000 is clamped to 100, but a request for 50 pays 50. The client still cannot exceed what the server allows.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM RegisterNetEvent reference", href: "https://docs.fivem.net/natives/?_0x812B01F9F47A4A3F" },
+    { label: "FiveM TriggerClientEvent reference", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

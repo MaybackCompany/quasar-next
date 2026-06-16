@@ -8,19 +8,19 @@
     { label: "Outcome", value: "You can cancel an event from a handler, detect cancellation downstream, and pick the right tool between cancel, return, and defer" },
   ]}
 >
-  Sometimes one handler needs to veto the rest. A spawn-protection script blocks the death-handler chain. An anti-cheat resource cancels `playerConnecting` for a banned UID before any other resource sees the join. `CancelEvent()` is the signal; `WasEventCanceled()` is how downstream handlers know.
+  Sometimes one handler needs to veto the rest. A spawn-protection script blocks the death-handler chain. An anti-cheat resource cancels `playerConnecting` for a banned identifier before any other resource lets the player in. `CancelEvent()` is the signal; `WasEventCanceled()` is how downstream handlers know. The trap most people fall into is assuming `CancelEvent()` is a hard stop. It is not. It is a flag, and this lesson exists to make that distinction obvious.
 </LessonHero>
 
 <Prereq
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds CancelEvent and WasEventCanceled in a server handler chain as a working FiveM resource named `qu_cancelling_events`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a `CancelEvent` and `WasEventCanceled` handler chain as a working server-only FiveM resource named `qu_cancelling_events`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the chain apart line by line so you know why a cancelled event still runs its second handler.
 </Callout>
 
 ## Build it
@@ -53,10 +53,12 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+    Open `server.lua` and paste this. Two handlers listen for the same event, and a command fires it so you can watch the chain run:
 
     ```lua
 AddEventHandler('qu_cancelling_events:check', function(name)
@@ -69,19 +71,21 @@ end)
 
 AddEventHandler('qu_cancelling_events:check', function(name)
     if WasEventCanceled() then
-        print('[qu_cancelling_events] second handler saw cancel')
+        print('[qu_cancelling_events] second handler saw cancel, skipping')
         return
     end
     print('[qu_cancelling_events] second handler allowed ' .. name)
 end)
 
 RegisterCommand('canceltest', function(_, args)
-    TriggerEvent('qu_cancelling_events:check', args[1] or 'allowed')
+    local name = args[1] or 'allowed'
+    print('[qu_cancelling_events] --- firing check for ' .. name .. ' ---')
+    TriggerEvent('qu_cancelling_events:check', name)
 end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
     Open `server.cfg` and add this line:
 
     ```text
@@ -94,18 +98,98 @@ end, true)
     restart qu_cancelling_events
     ```
 
-    Run this test:
+    Run the blocked case first:
 
     ```text
     canceltest blocked
     ```
 
     <ExpectedOutput>
-      [qu_cancelling_events] event cancelled
-[qu_cancelling_events] second handler saw cancel
+      [qu_cancelling_events] --- firing check for blocked ---
+[qu_cancelling_events] first handler checked blocked
+[qu_cancelling_events] event cancelled
+[qu_cancelling_events] second handler saw cancel, skipping
+    </ExpectedOutput>
+
+    Then run the allowed case:
+
+    ```text
+    canceltest open
+    ```
+
+    <ExpectedOutput>
+      [qu_cancelling_events] --- firing check for open ---
+[qu_cancelling_events] first handler checked open
+[qu_cancelling_events] second handler allowed open
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+Read the blocked output again, because it contains the single most counter-intuitive fact in the whole event system. You called `CancelEvent()` in the first handler, yet the second handler still ran. It printed `second handler saw cancel, skipping`. If `CancelEvent()` truly stopped the event, that line could never appear. So what does it actually do?
+
+### CancelEvent() raises a flag, it does not stop the chain
+
+When you trigger `qu_cancelling_events:check`, FiveM does not run one handler. It runs **every** handler registered for that event name, one after another, in the order they were registered. That ordered list is the **handler chain**. `CancelEvent()` does not break out of the chain. It sets a single boolean flag on the event that is currently running, and then the chain keeps going to the next handler exactly as if nothing happened.
+
+So in plain terms, this is the sequence for `canceltest blocked`:
+
+- The command prints the `--- firing check ---` line and calls `TriggerEvent`.
+- FiveM runs the **first** handler. It prints `first handler checked blocked`, sees `name == 'blocked'`, calls `CancelEvent()` (flag now raised), and prints `event cancelled`.
+- The first handler returns. The chain is not done. FiveM runs the **second** handler.
+- The second handler asks `WasEventCanceled()`. The flag is raised, so it returns `true`, and the handler chooses to `return` early.
+
+That last point is the part beginners miss: the second handler skipped its work because **you wrote it to check the flag**, not because the engine forced it to. Delete the `if WasEventCanceled()` guard and the second handler will happily print `second handler allowed blocked` even though the event was cancelled. The cancel did nothing on its own. Cancellation in FiveM is cooperative: every downstream handler has to opt in to respecting it.
+
+### WasEventCanceled() is the downstream check, and order decides who sees it
+
+`WasEventCanceled()` only makes sense inside a handler for an event that can still be running. It reads the flag the engine set when somebody upstream called `CancelEvent()`. The word **upstream** is doing real work here: a handler can only see a cancel that was raised **before** it ran. Registration order is therefore the whole game.
+
+In your code, the cancelling handler is registered first and the checking handler is registered second, so the check sees the flag. Swap the two `AddEventHandler` blocks and the result flips: the handler that prints `allowed` now runs first, before the flag exists, so it prints `allowed blocked` regardless. Then the cancelling handler runs and raises a flag nobody downstream is left to read. The cancel becomes useless. When you need a veto to actually protect something, the protecting handler must be registered **after** the deciders, or it will check a flag that has not been set yet.
+
+<Checkpoint question="You add a third handler to qu_cancelling_events:check that prints 'third handler ran'. Where in the chain does it run, and will it run when the event is cancelled?">
+  It runs last, because it was registered after the other two, and FiveM runs handlers in registration order. And yes, it runs even when the event is cancelled, because `CancelEvent()` never stops the chain. It only raises a flag. The third handler will print `third handler ran` on both `canceltest blocked` and `canceltest open` unless you add your own `if WasEventCanceled() then return end` guard at the top of it. The engine forces nothing; each handler decides for itself whether to honour the cancel.
+</Checkpoint>
+
+### Cancellation is local: it does not cross the network
+
+There is one more boundary that trips people up, and it is the reason this lesson is built server-only. `CancelEvent()` and `WasEventCanceled()` operate on the **local handler chain**, on the side where the event is running. They have no reach across the client and server boundary.
+
+Concretely, you cannot have a server handler `CancelEvent()` a client event, and you cannot stop a `TriggerServerEvent` from the client by cancelling it on the server before the work runs in your own code. When a client does `TriggerServerEvent('something')`, by the time your server handler is executing, the event has already crossed the wire and arrived. Cancelling it only affects the rest of the server-side chain for that event, the same way you saw above. It does not reach back to the client. If you want the server to refuse something a client asked for, you do not cancel; you simply do not perform the action and you keep the authority on the server. Cancellation is for vetoing handlers on the same side, not for blocking a message in flight.
+
+### The pattern that matters: vetoing playerConnecting
+
+The toy chain above teaches the mechanics. Here is the production use the intro promised. `playerConnecting` is a built-in server event that fires while a player is still on the loading screen, before they are in the world. Cancelling it stops the join. This is exactly how ban systems and allowlists kick a player before any other resource even sees them.
+
+```lua
+AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
+    local src = source
+    local license
+
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        if id:find('license:') then
+            license = id
+            break
+        end
+    end
+
+    if BANNED_LICENSES[license] then
+        CancelEvent()
+        setKickReason('You are banned from this server.')
+    end
+end)
+```
+
+Read it against everything above. `playerConnecting` runs a handler chain just like your test event did, and the engine itself checks `WasEventCanceled()` after the chain finishes: if any handler raised the flag, the connection is refused. `CancelEvent()` here raises that flag, and `setKickReason` is the callback FiveM hands you to attach the message the player sees. The `deferrals` argument is the third parameter and lets you hold the player on the loading screen while you run a slow check, for example a database lookup, before deciding; you call `deferrals.defer()` to start, `deferrals.update('message')` to show progress, and `deferrals.done()` or `deferrals.done('reason')` to admit or reject. The mechanics are identical to your two-handler toy: a flag, read downstream. The only difference is that downstream the reader is the engine, and the consequence is a real kick instead of a skipped print.
+
+### When you reach for each tool
+
+You now have three different ways to stop work, and they are not interchangeable:
+
+- **CancelEvent()** when you are one handler in a chain for an event the engine or other resources also listen to, and you want to veto the shared outcome. `playerConnecting`, `populationPedCreating`, and other built-in cancellable events are the real targets.
+- **return** when you simply want to exit your own handler early. It stops your code, nothing else. The second handler in your build used `return` to skip its own work after reading the flag.
+- **deferrals** when you need to pause `playerConnecting` to run an async check before you decide. Cancel is instant; deferrals buy you time.
 
 ## If something went wrong
 
@@ -113,8 +197,9 @@ end, true)
   items={[
     { symptom: "Resource qu_cancelling_events does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
     { symptom: "Could not load resource qu_cancelling_events", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_cancelling_events, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "The command does not print", fix: "Run restart qu_cancelling_events, then run canceltest in the txAdmin Live Console. This resource is server-only, so there is nothing in F8 to read." },
+    { symptom: "Second handler runs even on canceltest blocked", fix: "That is correct behaviour, not a bug. CancelEvent only raises a flag. The second handler still runs; it only skips its work because it checks WasEventCanceled and returns." },
+    { symptom: "Cancel seems to do nothing at all", fix: "Check handler order. The handler that calls CancelEvent must be registered before the handler that reads WasEventCanceled, or the reader checks the flag before it is set." },
   ]}
 />
 
@@ -122,23 +207,28 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_cancelling_events folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for CancelEvent and WasEventCanceled in a server handler chain.",
-    "Add ensure qu_cancelling_events to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain that CancelEvent() raises a flag and does not stop the handler chain, so downstream handlers still run.",
+    "Use WasEventCanceled() in a downstream handler to opt in to honouring a cancel, and return early when it is set.",
+    "Predict how registration order decides which handlers can see a cancel, and place a vetoing handler after the deciders.",
+    "Cancel playerConnecting with setKickReason to reject a banned player before any other resource sees the join.",
+    "Say why CancelEvent() is local to one side and cannot stop a client event from the server, choosing return or server authority instead.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_cancelling_events`, rerun the test, and confirm the output changed.
+  Prove the order rule with your own hands, then wire the real thing.
+
+  First, add a third handler to `qu_cancelling_events:check` that prints `[qu_cancelling_events] third handler ran` with no `WasEventCanceled` guard. Restart, run `canceltest blocked`, and confirm the third line prints even though the event was cancelled. Now move the *cancelling* handler to the bottom of the file so it registers last, restart, run `canceltest blocked` again, and watch the `allowed` line print before the cancel is ever raised. You have just demonstrated that cancellation is a flag and that order is everything.
+
+  Then convert the toy into the production pattern: add a second file `connect.lua`, register it as a `server_script` in the manifest, and write a `playerConnecting` handler that cancels the join and calls `setKickReason('blocked for testing')` when the connecting player's name contains the word `test`. Connect with a test name and confirm you are kicked with your message instead of spawning.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "FiveM CancelEvent reference", href: "https://docs.fivem.net/natives/?_0xFA29D35D" },
+    { label: "playerConnecting and deferrals", href: "https://docs.fivem.net/docs/scripting-reference/events/list/playerConnecting/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

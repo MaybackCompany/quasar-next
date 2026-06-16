@@ -2,7 +2,7 @@
   crumbs="Module 01 · Lesson 03"
   title="If / else / elseif: how code makes decisions"
   meta={[
-    { label: "You'll build", value: "A qu_gate resource that greets players differently based on their level." },
+    { label: "You'll build", value: "A qu_if_else_elseif resource that prints a player's rank based on a level number you pass it." },
     { label: "Time", value: "~15 minutes" },
     { label: "You need", value: "Lessons 01 and 02 complete. A running FiveM server. A text editor." },
     { label: "You'll learn", value: "if -> elseif -> else -> comparison operators -> and / or / not -> truthy vs falsy" },
@@ -19,8 +19,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds if, elseif, else rank gate as a working FiveM resource named `qu_if_else_elseif`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds an if, elseif, else rank gate as a working FiveM resource named `qu_if_else_elseif`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the chain apart so you know why each branch fires when it does.
 </Callout>
 
 ## Build it
@@ -53,6 +53,8 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -62,10 +64,15 @@ server_script 'server.lua'
 RegisterCommand('gate', function(_, args)
     local level = tonumber(args[1]) or 0
     local rank
-    if level >= 20 then rank = 'owner'
-    elseif level >= 10 then rank = 'admin'
-    elseif level >= 1 then rank = 'member'
-    else rank = 'guest' end
+    if level >= 20 then
+        rank = 'owner'
+    elseif level >= 10 then
+        rank = 'admin'
+    elseif level >= 1 then
+        rank = 'member'
+    else
+        rank = 'guest'
+    end
     print(('[qu_if_else_elseif] level %d rank %s'):format(level, rank))
 end, true)
     ```
@@ -96,14 +103,109 @@ end, true)
   </Step>
 </StepGroup>
 
+## How it works
+
+You passed `12` and the gate answered `admin`. It did not say `owner`, and it did not say `member`, even though `12` would pass a couple of those tests. That precision is the whole lesson. An if chain is not magic, it is a strict reading order, and once you can predict which branch wins you can build any decision you want. Take the code apart top to bottom.
+
+### The chain reads top to bottom and stops at the first yes
+
+This is the single most important idea in the lesson. Lua reads an if / elseif / else chain from the top, checks one condition at a time, and the moment a condition is true it runs that branch and skips everything below it. It does not keep checking. It does not pick the best match. It picks the first match.
+
+Walk `gate 12` through it. `level` is `12`.
+
+```lua
+if level >= 20 then        -- 12 >= 20 is false, skip
+elseif level >= 10 then    -- 12 >= 10 is true, run this, stop here
+elseif level >= 1 then     -- never reached
+else                       -- never reached
+end
+```
+
+The chain checks `>= 20`, gets false, drops to the next test, checks `>= 10`, gets true, sets `rank = 'admin'`, and is done. The `>= 1` test and the `else` are never even looked at. That short-circuit is why an if chain is fast and why order is everything.
+
+Now you can see why the conditions are written from highest to lowest. A level of `25` is also greater than `10` and greater than `1`, so all three conditions are true for it. If `>= 1` came first, every level above `1` would print `member` and the higher branches would be dead code. By putting the strictest condition at the top, you let the most specific answer win before the looser ones get a chance.
+
+<Checkpoint question="If you reordered the chain so elseif level >= 1 came first, what would gate 25 print, and why?">
+  It would print `member`. The chain stops at the first true condition. With `>= 1` at the top, `25 >= 1` is true on the very first check, so Lua sets `rank = 'member'` and skips the `>= 20` and `>= 10` branches entirely. They become unreachable. The fix is the order in the lesson: test the strictest, highest threshold first and let it fall through to looser ones only when the higher tests fail.
+</Checkpoint>
+
+### Comparison operators ask the yes-or-no question
+
+Every condition in the chain is a comparison: a question that Lua answers with `true` or `false`. The one you used is `>=`, greater than or equal to. Here is the full set you will reach for constantly:
+
+<Cheatsheet
+  title="Lua comparison operators"
+  rows={[
+    { cmd: ">", desc: "Greater than. level > 10 is true for 11 and up." },
+    { cmd: ">=", desc: "Greater than or equal to. level >= 10 is true for 10 and up." },
+    { cmd: "<", desc: "Less than. level < 10 is true for 9 and down." },
+    { cmd: "<=", desc: "Less than or equal to." },
+    { cmd: "==", desc: "Equal to. Two equals signs. This is a question, not an assignment." },
+    { cmd: "~=", desc: "Not equal to. Lua's not-equal is ~= , not != as in many other languages." },
+  ]}
+/>
+
+The trap that bites every beginner is the difference between `=` and `==`. A single `=` *assigns* a value: `level = 10` puts `10` into the variable `level`. A double `==` *asks* whether two things are equal: `level == 10` is a question that comes back true or false. Inside an `if` you almost always want `==`. Writing `if level = 10 then` is a syntax error in Lua, which is the language doing you a favor by refusing to run it, but the habit of reading `==` as "is equal to" out loud will save you confusion later.
+
+### and / or / not combine conditions
+
+One comparison answers one question. Real decisions usually need more than one, and that is what `and`, `or`, and `not` are for. They glue conditions together into a single true-or-false answer.
+
+- `and` is true only when **both** sides are true. `level >= 1 and level < 10` is true only for levels `1` through `9`.
+- `or` is true when **either** side is true. `rank == 'owner' or rank == 'admin'` is true for staff of either kind.
+- `not` flips a result. `not isBanned` is true when `isBanned` is false.
+
+You could rewrite the `member` branch to spell out an exact band instead of relying on fall-through:
+
+```lua
+if level >= 1 and level < 10 then
+    rank = 'member'
+end
+```
+
+That condition is true only when level is at least `1` and below `10`, so it captures exactly the member band without depending on the branches above it. Both styles are valid. The chain in the lesson leans on ordering; this version states the boundaries outright. Knowing both means you can read anyone's code and pick whichever is clearer for the case in front of you.
+
+### truthy vs falsy: what Lua treats as "yes"
+
+A condition does not have to be a comparison. An `if` will accept any value and decide whether it counts as a yes. This is where Lua surprises people who came from other languages. In Lua the rule is short and absolute:
+
+**Only `false` and `nil` are falsy. Every other value is truthy.**
+
+That includes some values you might expect to be "no". The number `0` is truthy. An empty string `''` is truthy. An empty table `{}` is truthy. Lua does not treat zero or emptiness as false the way C or JavaScript sometimes do. So this is a real bug waiting to happen:
+
+```lua
+if level then
+    -- runs even when level is 0, because 0 is truthy
+end
+```
+
+If you meant "only when the player has a level above zero", `if level then` will not do it, because `0` passes. You have to compare explicitly with `if level > 0 then`. Lock this in now: the only two values that fail an `if` are `false` and `nil`. Everything else, including `0` and `""`, sails through.
+
+<Checkpoint question="A player types gate with no number. What is level, and which branch runs?">
+  With no argument, `args[1]` is `nil`, `tonumber(nil)` is `nil`, and the `or 0` fallback turns it into `0`. So `level` is `0`. None of `0 >= 20`, `0 >= 10`, or `0 >= 1` is true, so the chain falls all the way through to `else` and prints `rank guest`. The gate degrades gracefully to the lowest rank instead of erroring, which is exactly what the `or 0` default was protecting against.
+</Checkpoint>
+
+### tonumber(args[1]) or 0: the line that does the most work
+
+This one line carries the whole input safety of the resource, and it stacks two ideas you just learned.
+
+```lua
+local level = tonumber(args[1]) or 0
+```
+
+Start on the inside. When a player types `gate 12`, FiveM hands your handler an `args` table, and `args[1]` is the string `"12"`, not the number `12`. Command arguments always arrive as text. You cannot compare a string against `>= 20` and get a sensible answer, so `tonumber` converts the text into an actual number. Hand it `"12"` and you get `12`. Hand it something that is not a number, like `gate abc`, and `tonumber` cannot convert it, so it returns `nil`.
+
+Now the `or 0` part. You already know `nil` is falsy. Lua's `or` has a useful trick: it returns the first truthy value it finds. So `tonumber(args[1]) or 0` reads as "use the converted number, but if that came back `nil`, use `0` instead". When the conversion succeeds you get the number; when it fails or no argument was passed, you fall back to `0`. This is the idiomatic Lua way to supply a default, and you will see `something or default` everywhere in real resources. Without it, `gate abc` would put `nil` into `level` and crash the first comparison.
+
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Resource qu_if_else_elseif does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_if_else_elseif", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_if_else_elseif, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "Every level prints the same rank", fix: "Your elseif conditions are in the wrong order. The chain stops at the first true test, so the strictest threshold (>= 20) must come first. If >= 1 is on top it wins for everything." },
+    { symptom: "attempt to compare nil with number", fix: "You removed the or 0 fallback, so a non-numeric argument left level as nil and the >= comparison failed. Keep tonumber(args[1]) or 0 so a missing or bad argument becomes 0." },
+    { symptom: "'=' expected near '=' or unexpected symbol", fix: "You wrote a condition with a single = (assignment) where you meant == (equality). Inside an if, use == to ask whether two values are equal." },
+    { symptom: "'end' expected (near &lt;eof&gt;)", fix: "The if chain needs exactly one closing end, and the function needs its own end before the closing paren. Count: one end closes the chain, one end closes the handler." },
+    { symptom: "A level of 0 still triggers a branch you meant to skip", fix: "You tested if level then expecting 0 to be falsy. In Lua 0 is truthy. Compare explicitly with if level > 0 then." },
   ]}
 />
 
@@ -111,28 +213,57 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_if_else_elseif folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for if, elseif, else rank gate.",
-    "Add ensure qu_if_else_elseif to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Trace an if / elseif / else chain top to bottom and name which branch fires for a given value.",
+    "Explain why the strictest condition must come first, and predict the bug when the order is reversed.",
+    "Use the comparison operators >, >=, <, <=, ==, and ~= , and tell == (a question) apart from = (assignment).",
+    "Combine conditions with and, or, and not to express an exact band like level >= 1 and level < 10.",
+    "State Lua's truthiness rule: only false and nil are falsy, while 0 and the empty string are truthy.",
+    "Read tonumber(args[1]) or 0 as convert-then-default and explain why command arguments need it.",
   ]}
 />
 
 ## Run it live
 
-No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4.
+No server needed for this part. Edit the Lua below and press RUN to execute it in your browser on real Lua 5.4. Change the `level` value and watch which branch wins. Try `20`, then `19`, then `0`, then a negative number, and confirm the chain picks the rank you predicted.
 
-<Sandbox initial={`local cash = 250
-if cash >= 200 then
-  print("you can afford it")
+<Sandbox initial={`local level = 12
+local rank
+if level >= 20 then
+  rank = "owner"
+elseif level >= 10 then
+  rank = "admin"
+elseif level >= 1 then
+  rank = "member"
 else
-  print("not enough cash")
-end`} />
+  rank = "guest"
+end
+print("level " .. level .. " rank " .. rank)`} />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_if_else_elseif`, rerun the test, and confirm the output changed.
+  Add a new top rank, `founder`, for level `30` and above, and prove you placed it correctly. The catch is the order: a founder at level `35` is also greater than `20`, so if you add the branch in the wrong spot it will never fire.
+
+  ```lua
+  RegisterCommand('gate', function(_, args)
+      local level = tonumber(args[1]) or 0
+      local rank
+      if level >= 30 then
+          rank = 'founder'
+      elseif level >= 20 then
+          rank = 'owner'
+      elseif level >= 10 then
+          rank = 'admin'
+      elseif level >= 1 then
+          rank = 'member'
+      else
+          rank = 'guest'
+      end
+      print(('[qu_if_else_elseif] level %d rank %s'):format(level, rank))
+  end, true)
+  ```
+
+  Restart `qu_if_else_elseif`, then run two tests that probe the new boundary: `gate 30` must print `founder`, and `gate 29` must print `owner`. That pair proves the branch sits above `>= 20` and that `30` is the exact cutoff. If `gate 30` ever prints `owner`, your new branch is below the one it should beat. Testing the value on the boundary and the value just under it is how you verify any threshold, not just this one.
 </Exercise>
 
 <Refs

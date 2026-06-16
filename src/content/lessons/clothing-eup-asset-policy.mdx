@@ -2,55 +2,180 @@
   crumbs="Module A3 · Operate & secure"
   title="Clothing, EUP, and asset policy"
   meta={[
-    { label: "You'll learn", value: "How clothing/EUP packs work, how to add them without tanking performance, and the legal/policy lines you do not cross." },
+    { label: "You'll build", value: "A real streamed asset resource that registers on start, prints a confirmation line, and shows a measurable number in resmon." },
     { label: "Time", value: "~20 minutes." },
-    { label: "You need", value: "A framework server and a basic grasp of streamed assets." },
-    { label: "You'll learn", value: "What EUP and clothing packs are -> how streaming works -> optimization basics -> IP and policy limits" },
+    { label: "You need", value: "A framework server you can restart, and the streaming display turned on (resmon)." },
+    { label: "You'll learn", value: "How the stream/ folder auto-registers assets -> how EUP differs from normal clothing -> how component IDs map to menu slots -> how to measure streaming memory instead of guessing -> the IP and policy lines you do not cross." },
   ]}
 >
-  Clothing and EUP (police/medical uniforms and extra outfits) are among the most requested additions, and among the easiest to do badly. Done wrong they balloon your server size, hurt streaming, and can put you on the wrong side of asset licensing. This lesson keeps you fast and clean.
+  Clothing and EUP (police, medical, and other uniform variations) are among the most requested additions, and among the easiest to do badly. Done wrong they balloon your download size, hurt streaming memory, and can put you on the wrong side of asset licensing. This lesson builds one tiny streamed resource so you can see the mechanism for real, then teaches you how to keep packs fast and clean.
 </LessonHero>
 
 <Prereq
   items={[
     "I have a framework server running.",
-    "I can add a streamed resource and restart.",
+    "I can add a resource folder and restart it.",
     "I understand resources are just folders the server loads."
   ]}
 />
 
 <Callout variant="danger" title="The IP line you do not cross">
-  Do not stream ripped real-world brands, leaked paid packs, or assets you have no license to use. It is the fastest way to a takedown, a marketplace ban, or worse. Use assets you created, bought with a server license, or that are explicitly free for FiveM use.
+  Do not stream ripped real-world brands, leaked paid packs, or assets you have no license to use. It is the fastest way to a takedown, a marketplace ban, or worse. Use assets you created, bought with a server license, or that are explicitly free for FiveM use. Keep a written note of where each pack came from. If you cannot point to a license, do not ship it.
 </Callout>
 
-## Add it without breaking the server
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds one streamed asset resource named `qu_stream_proof`. It does not need a real clothing pack to teach the mechanism: the same `stream/` folder and `data_file` line that register a prop pack register your proof. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart so you understand what every clothing and EUP pack is actually doing under the hood.
+</Callout>
+
+## Build it
 
 <StepGroup>
-  <Step num={1} title="Understand what gets streamed" outcome="You know which files cost performance.">
-    Clothing/EUP packs ship as streamed assets (drawables, textures, and metadata). The client downloads them on join, so large packs mean slow joins and bigger memory use. Size discipline is the whole game here.
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this layout. The `stream/` folder name is not optional. FiveM scans a folder with exactly that name and auto-registers whatever asset files it finds inside.
+
+    ```text
+resources/qu_stream_proof/
+  fxmanifest.lua
+  server.lua
+  stream/
+    qu_proof.ytyp
+    ```
+
+    For this proof you do not need a real `.ytyp`. Any placeholder file with that name lets the manifest line resolve and the resource start. When you swap in a real clothing or prop pack later, the real `.ydd`, `.ytd`, and `.ytyp` files go in this same `stream/` folder.
   </Step>
 
-  <Step num={2} title="Add the pack as a resource" outcome="The pack starts and the items appear in your clothing menu.">
-    Place the pack in resources, ensure it, and wire it to your clothing/menu resource per its docs. Restart and confirm the items show up.
+  <Step num={2} title="Write fxmanifest.lua" outcome="FiveM knows the resource and registers the streamed type.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+
+data_file 'DLC_ITYP_REQUEST' 'stream/qu_proof.ytyp'
+    ```
+
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime, so you leave it out. The `data_file` line is the part that matters for streaming. It tells the game to load a prop type definition (a `.ytyp`) from your `stream/` folder. Without it, prop packs register their meshes but the game never knows the prop type exists.
   </Step>
 
-  <Step num={3} title="Optimize: only ship what you use" outcome="Join times and memory stay reasonable.">
-    Cut variants you will never use, keep textures at sane resolutions, and avoid stacking ten overlapping packs. Every megabyte is downloaded by every player on join.
+  <Step num={3} title="Write the proof line" outcome="The resource reports the moment it registers its stream.">
+    Open `server.lua` and paste this. It listens for the resource starting and prints one line confirming the `stream/` folder went live:
+
+    ```lua
+AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+
+    print('[qu_stream_proof] streaming registered, stream/ folder is live')
+end)
+    ```
+
+    The print is what proves the resource loaded and reached the point where its stream is live. The `onResourceStart` event fires once, on the server, the moment this resource finishes starting. We guard it with the `resourceName` check so we only react to our own start, not every other resource on the server.
   </Step>
 
-  <Step num={4} title="Document the license" outcome="You can prove you are allowed to use each asset.">
-    Keep a note of where each pack came from and its license terms. If you cannot point to a license, do not ship it.
+  <Step num={4} title="Start it" outcome="The proof line appears in the server console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_stream_proof
+    ```
+
+    Save, then run this in the txAdmin Live Console:
+
+    ```text
+    restart qu_stream_proof
+    ```
+
+    <ExpectedOutput>
+      [qu_stream_proof] streaming registered, stream/ folder is live
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Measure it in resmon" outcome="Streaming memory becomes a number, not a vibe.">
+    In your own FiveM client connected to the server, open the F8 console and run:
+
+    ```text
+    strdbg 1
+    ```
+
+    That turns on the streaming memory overlay. Each streamed resource shows its current memory use in MB. Your `qu_stream_proof` will sit near zero because the placeholder is tiny. Note the number. When you swap in a real clothing pack, this same overlay is how you tell a 40 MB pack from a 400 MB one before your players have to download it.
   </Step>
 </StepGroup>
 
-## Common mistakes
+## How it works
+
+You restarted the resource and the line appeared. The resource never opened a menu, never spawned a ped, and yet the moment it started, its `stream/` folder was live and downloadable by every connecting client. That is the entire mechanism behind every clothing and EUP pack you will ever install. Take it apart so the next time you add a pack you are reasoning about it, not following someone's README on faith.
+
+### The stream/ folder is the magic, not a config
+
+Most FiveM features need you to wire something up: register an event, call a native, list a file. Streaming is different. There is one rule: any asset file inside a folder named `stream/` is auto-registered when the resource starts. You do not list each `.ydd` or `.ytd` in the manifest. FiveM walks the folder for you.
+
+```text
+stream/
+  qu_proof.ytyp
+```
+
+When a client connects, the server sends it the manifest of streamed files for every started resource. The client downloads them on first join and caches them. This is why a 500 MB clothing pack is felt as a slow first join: every player pulls every byte before they can play. The pack author does not control that cost. You do, by what you choose to put in `stream/`.
+
+There are exactly two kinds of file in that folder. The meshes and textures (`.ydd` drawables, `.ytd` texture dictionaries) auto-register with no help. The type definitions (`.ytyp`, used by prop packs to declare new object types) are the exception that needs the manifest line you wrote.
+
+### Why the data_file line is required for props
+
+```lua
+data_file 'DLC_ITYP_REQUEST' 'stream/qu_proof.ytyp'
+```
+
+A `.ytyp` is a type archetype: it tells the game a new prop or object class exists, its bounds, its LOD distances. Auto-registration handles the drawables and textures, but the engine will not load a `.ytyp` as an active type request on its own. `data_file 'DLC_ITYP_REQUEST'` is the explicit instruction to do so. The first argument names the data file kind the game expects; the second is the path inside your resource. Leave this line out of a prop pack and you get the classic symptom: the resource starts with no error, but the props are invisible or fall through the world because their type was never requested.
+
+Pure clothing packs (drawables and textures only, no new prop types) often do not need this line. The moment a pack includes accessory props with their own `.ytyp`, it does.
+
+### How EUP differs from a normal clothing swap
+
+This is the distinction the audit flagged, and it is the one most people get wrong. A normal clothing addon adds civilian drawable variations: a new jacket model, a new pants texture. EUP (Emergency Uniform Pack) is not just more drawables. EUP works by patching the game's uniform component and prop variation tables so that emergency-service ped models gain extra outfit slots that vanilla GTA does not expose.
+
+Practically, that means EUP ships two things a plain clothing pack does not: an `eup-stream` resource holding the uniform `.ydd`/`.ytd` files, and a small meta patch that registers those variations against the affected ped models. You install the stream resource the same way you built `qu_stream_proof`, then point your clothing menu at the new component slots. If you drop EUP drawables into a `stream/` folder but skip the meta patch, the files download but no slot ever shows them. The download cost without the payoff. That failure mode is invisible until a player opens the menu and the uniforms are not there.
+
+### How a clothing menu maps slots to your drawables
+
+Your players never type file names. They open a menu (illenium-appearance, qb-clothing, or similar) and pick a number. That menu speaks the game's component model, which you have to understand to wire a pack correctly. Every ped has a fixed set of component slots, each an integer:
+
+<Cheatsheet
+  title="GTA ped component IDs"
+  rows={[
+    { cmd: "0", desc: "Head / face" },
+    { cmd: "1", desc: "Mask" },
+    { cmd: "3", desc: "Torso / upper body and arms" },
+    { cmd: "4", desc: "Legs / pants" },
+    { cmd: "6", desc: "Shoes / feet" },
+    { cmd: "8", desc: "Undershirt / accessory base" },
+    { cmd: "11", desc: "Jacket / top (the slot most clothing packs target)" },
+  ]}
+/>
+
+Within a slot, a **drawable** is which model variation (the jacket shape), and a **texture** is which skin on that drawable (the color or pattern). So a menu selection is three numbers: component ID, drawable index, texture index. When you add a clothing pack, you are appending new drawable indexes onto one of these slots. The menu's config is where you tell it the new indexes exist, which is the concrete version of the old lesson's hand-wavy "wire it to your menu." You are mapping slot 11, drawable 42, texture 0 to a label your players can click.
+
+<Checkpoint question="A new EUP pack downloads fine (you see it in resmon) but the uniforms never appear in your clothing menu. The files are clearly streaming. What is the most likely cause?">
+  The drawables are streaming, but the variations were never registered against the ped models, or the menu was never told the new slot indexes exist. EUP is not a plain drawable swap: it needs its meta patch to add the uniform component/prop variations to the affected ped models, and your menu (illenium-appearance, qb-clothing) needs its config updated so those new component and drawable indexes show up as selectable options. Streaming proves the bytes arrived. It does not prove the game knows what slot they belong to. Check the meta patch loaded and the menu config lists the new indexes.
+</Checkpoint>
+
+### Measuring instead of guessing
+
+"Keep textures at sane resolutions" is useless advice because it has no number attached. Here is the number. With `strdbg 1` running, the streaming overlay shows each resource's memory in MB and the total against your streaming budget. A healthy clothing pack is tens of MB, not hundreds. Most bloat is `.ytd` texture dictionaries saved at 2048x2048 or 4096x4096 when 1024x1024 would look identical at gameplay distance. Open a fat pack's textures, downscale the oversized ones, repack, and watch the resmon number drop. That is the whole optimization loop: change something, restart, read the overlay, compare. You ship the version with the smaller number that still looks right.
+
+### When you reach for this pattern
+
+The `stream/` folder plus an optional `data_file` line is not just for clothing. It is how you add every custom visual asset to FiveM: vehicles, weapons, map props, MLO interiors, and clothing all ride the same mechanism. Once you can build, start, and measure `qu_stream_proof`, you can reason about any of them, because they are all the same folder doing the same job. The only variation is which file types are inside and whether any of them need a `data_file` line to register their type.
+
+## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Joins take forever after adding clothing", fix: "The pack is too big or you stacked several. Trim unused variants and texture sizes; ship only what you use." },
-    { symptom: "Outfits do not appear in the menu", fix: "The pack is not wired to your clothing/menu resource. Follow its integration docs and check load order." },
-    { symptom: "Got a takedown / marketplace warning", fix: "You streamed unlicensed or ripped assets. Remove them and replace with licensed or free-for-FiveM packs." },
-    { symptom: "Memory crashes under player load", fix: "Streamed asset memory adds up per player. Reduce pack size and texture resolution." },
+    { symptom: "Resource starts but the proof line never prints", fix: "The onResourceStart handler is checking the wrong name, or server.lua is not listed as a server_script in the manifest. Confirm the guard uses GetCurrentResourceName() and that the manifest has server_script 'server.lua'." },
+    { symptom: "Props from the pack are invisible or fall through the map", fix: "The .ytyp type was never requested. Add data_file 'DLC_ITYP_REQUEST' 'stream/yourfile.ytyp' to the manifest, one line per .ytyp the pack ships." },
+    { symptom: "Pack downloads (visible in resmon) but no uniforms in the menu", fix: "Streaming works but the slots are not wired. For EUP, confirm the meta patch loaded so the variations register on the ped models, then add the new component and drawable indexes to your clothing menu config." },
+    { symptom: "First join takes forever after adding a pack", fix: "The pack is too big or you stacked several. Read each resource's MB in the strdbg overlay, downscale oversized .ytd textures, and cut variants you will never use." },
+    { symptom: "Memory warning or crash under player load", fix: "Streamed asset memory counts against your streaming budget. Trim pack size and texture resolution until the strdbg total sits comfortably under the limit." },
+    { symptom: "Got a takedown or marketplace warning", fix: "You streamed unlicensed or ripped assets. Remove them and replace with licensed or free-for-FiveM packs, and document the license for each one." },
   ]}
 />
 
@@ -58,16 +183,32 @@
 
 <Recap
   items={[
-    "Explain how clothing/EUP packs stream to clients and why size matters.",
-    "Add a pack as a resource and wire it to your menu.",
-    "Optimize by shipping only used variants at sane texture sizes.",
-    "Use only licensed or free-for-FiveM assets and document each one."
+    "Build a streamed resource and prove it registered with an onResourceStart print.",
+    "Explain why the stream/ folder auto-registers assets while a .ytyp needs data_file 'DLC_ITYP_REQUEST'.",
+    "Say how EUP differs from a normal clothing swap: variation meta patch plus eup-stream, not just drawables.",
+    "Map a menu selection to a component ID, drawable index, and texture index.",
+    "Read streaming memory in resmon with strdbg so pack size is a measured number, not a guess.",
+    "Use only licensed or free-for-FiveM assets and document each one.",
   ]}
 />
 
+## Try it yourself
+
+<Exercise>
+  Turn the proof into a real size test. Find any free-for-FiveM clothing or prop pack you are licensed to use, and drop its `stream/` contents into your `qu_stream_proof/stream/` folder alongside (or instead of) the placeholder. Update the manifest so every `.ytyp` the pack ships has its own `data_file 'DLC_ITYP_REQUEST'` line.
+
+  ```lua
+  data_file 'DLC_ITYP_REQUEST' 'stream/pack_props_a.ytyp'
+  data_file 'DLC_ITYP_REQUEST' 'stream/pack_props_b.ytyp'
+  ```
+
+  Restart the resource, then run `strdbg 1` in F8 and write down the MB the resource reports. Now open the pack's largest `.ytd` in OpenIV or CodeWalker, find any texture saved above 1024x1024, downscale it, repack, and restart again. Read the overlay a second time. Confirm the MB dropped and the asset still looks right in game. You just ran the optimization loop on real numbers: change, restart, measure, compare. That is the difference between shipping a pack and shipping a pack you can defend.
+</Exercise>
+
 <Refs
   items={[
-    { label: "Cfx.re docs · Streaming assets", href: "https://docs.fivem.net/docs/game-references/" },
-    { label: "Cfx.re Platform Server / Terms", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" }
+    { label: "Cfx.re docs · Asset streaming", href: "https://docs.fivem.net/docs/scripting-manual/assetstreaming/" },
+    { label: "Cfx.re docs · Resource manifest (data_file)", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "Cfx.re Platform Server · Terms of Service", href: "https://docs.fivem.net/docs/server-manual/server-commands/" }
   ]}
 />

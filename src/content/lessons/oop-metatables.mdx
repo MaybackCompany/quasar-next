@@ -15,12 +15,12 @@
   items={[
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
-    "I can read txAdmin Live Console and F8 output."
+    "I can read txAdmin Live Console output."
   ]}
 />
 
-<Callout variant="fivem" title="Build the proof, then change it">
-  This lesson builds Lua class table with __index and colon methods as a working FiveM resource named `qu_oop_metatables`. Follow the folder names, file names, code, restart command, and expected output exactly.
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a Lua class with `setmetatable` and `__index`, plus one subclass, as a working FiveM resource named `qu_oop_metatables`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why it works and when to reach for it.
 </Callout>
 
 ## Build it
@@ -53,12 +53,15 @@ game 'gta5'
 
 server_script 'server.lua'
     ```
+
+    There is no `lua54 'yes'` line here on purpose. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out. The metatable features in this lesson are core Lua and work the same on every supported runtime.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `server.lua` and paste this:
+    Open `server.lua` and paste this. It defines a `Vehicle` class, a `PoliceVehicle` subclass that inherits from it, and one command that proves both work:
 
     ```lua
+-- Base class
 local Vehicle = {}
 Vehicle.__index = Vehicle
 
@@ -70,27 +73,45 @@ function Vehicle:label()
     return self.model .. ' [' .. self.plate .. ']'
 end
 
+-- Subclass: PoliceVehicle inherits from Vehicle
+local PoliceVehicle = {}
+PoliceVehicle.__index = PoliceVehicle
+setmetatable(PoliceVehicle, { __index = Vehicle })
+
+function PoliceVehicle.new(model, plate, callsign)
+    local self = Vehicle.new(model, plate)
+    self.callsign = callsign
+    return setmetatable(self, PoliceVehicle)
+end
+
+function PoliceVehicle:label()
+    return 'UNIT ' .. self.callsign .. ' - ' .. self.model .. ' [' .. self.plate .. ']'
+end
+
 RegisterCommand('cartest', function()
     local car = Vehicle.new('sultan', 'QU123')
     print('[qu_oop_metatables] ' .. car:label())
+
+    local cruiser = PoliceVehicle.new('police', 'LSPD01', 'Adam-12')
+    print('[qu_oop_metatables] ' .. cruiser:label())
 end, true)
     ```
   </Step>
 
-  <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
     Open `server.cfg` and add this line:
 
     ```text
     ensure qu_oop_metatables
     ```
 
-    Save, then run:
+    Save, then run this in the txAdmin Live Console:
 
     ```text
     restart qu_oop_metatables
     ```
 
-    Run this test:
+    Run this test from the same console:
 
     ```text
     cartest
@@ -98,18 +119,142 @@ end, true)
 
     <ExpectedOutput>
       [qu_oop_metatables] sultan [QU123]
+      [qu_oop_metatables] UNIT Adam-12 - police [LSPD01]
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## How it works
+
+You ran it and two lines appeared. The first proves a class. The second proves a subclass that reuses the first class and overrides one method. Now take the code apart so the next time you model something in Lua you are deciding, not copying. Everything here rests on one rule that Lua applies when a key is missing from a table, so we start there.
+
+### setmetatable and the constructor
+
+```lua
+local Vehicle = {}
+Vehicle.__index = Vehicle
+
+function Vehicle.new(model, plate)
+    return setmetatable({ model = model, plate = plate }, Vehicle)
+end
+```
+
+`Vehicle` is just an empty table. There is no `class` keyword in Lua, so a class is only ever a regular table that we agree to treat as a blueprint. The methods will live on this table.
+
+`setmetatable(t, mt)` takes two tables and attaches the second one to the first as its **metatable**. A metatable is a side table that holds rules for how Lua should behave when normal table operations on `t` would otherwise fail or need customizing. It does not change what `t` looks like. It changes what Lua does when something is missing from `t`.
+
+Inside `Vehicle.new` we build a fresh table `{ model = model, plate = plate }`. That table holds the data for one specific vehicle and nothing else: no methods, just two fields. We hand it to `setmetatable` with `Vehicle` as its metatable, and `setmetatable` returns that same table back with the metatable now attached. Returning it from a function named `.new` is the constructor convention in Lua. There is no rule forcing the name `new`; it is a habit the whole ecosystem shares so any reader knows "this builds an instance."
+
+So after `Vehicle.new('sultan', 'QU123')`, the variable `car` is a small table with `model` and `plate`, secretly wired to `Vehicle` through its metatable. That wiring is what the next piece cashes in.
+
+### __index = Vehicle: the lookup fallback
+
+This single line is the whole trick:
+
+```lua
+Vehicle.__index = Vehicle
+```
+
+Here is the rule Lua follows. When you read a key from a table and the key is **not** present, Lua does not immediately give up and return `nil`. It checks whether the table has a metatable with an `__index` field. If `__index` points to another table, Lua looks the key up in that table instead.
+
+Walk it through with our instance. `car` holds `model` and `plate`. It does not hold `label`. So when you write `car:label()`, Lua first looks for `label` on `car`, does not find it, then follows the metatable's `__index` to `Vehicle`, and finds `label` there. The method lives once on `Vehicle`; every instance borrows it through this fallback. That is why `Vehicle.__index = Vehicle` points the table at itself: missing keys on an instance should fall back to the class table where the methods are defined.
+
+This is also why instances stay tiny. A thousand vehicles do not each carry a copy of `label`. They each carry their own `model` and `plate`, and they all share the one `label` method on `Vehicle`. The metatable is the shared spine; the instance is just its own data.
+
+<Checkpoint question="When you call car:label() and car has no label key, where does Lua find the method, and what exact line makes that work?">
+  Lua looks for `label` on `car`, does not find it, then consults `car`'s metatable. The metatable is `Vehicle` (set inside `Vehicle.new` by `setmetatable`), and its `__index` field points back to `Vehicle`. So Lua re-runs the lookup on the `Vehicle` table and finds `label` there. The line that makes it work is `Vehicle.__index = Vehicle`. Remove it and `car:label()` would try to call `nil`, because the fallback would have nowhere to go.
+</Checkpoint>
+
+### Colon versus dot: where self comes from
+
+You defined the method with a colon and you called it with a colon. Both matter.
+
+```lua
+function Vehicle:label()
+    return self.model .. ' [' .. self.plate .. ']'
+end
+```
+
+The colon in `function Vehicle:label()` is pure sugar. Lua expands it to:
+
+```lua
+function Vehicle.label(self)
+    return self.model .. ' [' .. self.plate .. ']'
+end
+```
+
+In other words, defining with `:` silently adds a first parameter named `self`. That is where the `self` inside the body comes from; you never declared it, the colon did. `self` is just the instance the method was called on, so `self.model` reads that specific vehicle's model.
+
+The call side mirrors it. When you write `car:label()`, the colon passes `car` in as that hidden first argument. So `car:label()` is shorthand for `Vehicle.label(car)`, and inside the method `self` is `car`.
+
+This is the part that trips everyone at the start: calling with a dot breaks it. `car.label()` calls the method with **no** first argument, so `self` is `nil`, and `self.model` throws an attempt-to-index-nil error. Rule of thumb: define instance methods with `:` and call them with `:`. Reach for `.` only when a function genuinely does not need an instance, the way `Vehicle.new` does not (it builds the instance, it does not operate on one).
+
+### Single-level inheritance: the PoliceVehicle subclass
+
+The subclass is the same trick applied one level up. The instance falls back to its class; now the class falls back to a parent class.
+
+```lua
+local PoliceVehicle = {}
+PoliceVehicle.__index = PoliceVehicle
+setmetatable(PoliceVehicle, { __index = Vehicle })
+```
+
+Read it in two halves. `PoliceVehicle.__index = PoliceVehicle` is the same instance fallback as before: a police instance with a missing key should fall back to the `PoliceVehicle` table. Then `setmetatable(PoliceVehicle, { __index = Vehicle })` gives the `PoliceVehicle` table itself a metatable whose `__index` is `Vehicle`. So when a key is missing on `PoliceVehicle` too, Lua falls back one more step to `Vehicle`. That is the inheritance chain: instance then `PoliceVehicle` then `Vehicle`.
+
+```lua
+function PoliceVehicle.new(model, plate, callsign)
+    local self = Vehicle.new(model, plate)
+    self.callsign = callsign
+    return setmetatable(self, PoliceVehicle)
+end
+```
+
+The subclass constructor reuses the parent. It calls `Vehicle.new` to get a table that already has `model` and `plate`, adds its own `callsign` field, then re-points that table's metatable to `PoliceVehicle` so police instances resolve methods against the subclass first. You build on the parent's data instead of repeating it.
+
+```lua
+function PoliceVehicle:label()
+    return 'UNIT ' .. self.callsign .. ' - ' .. self.model .. ' [' .. self.plate .. ']'
+end
+```
+
+This is an **override**. `PoliceVehicle` defines its own `label`, so a police instance finds `label` on `PoliceVehicle` and stops there; it never falls through to `Vehicle.label`. That is why the second printed line is formatted differently from the first. If you deleted this method, `cruiser:label()` would fall back through `PoliceVehicle` to `Vehicle.label` and print in the plain `model [plate]` shape instead. Override only what differs; inherit the rest.
+
+### Why the command uses the restricted flag
+
+```lua
+RegisterCommand('cartest', function()
+    -- ...
+end, true)
+```
+
+The third argument to `RegisterCommand` is the restricted flag, and here it is `true`. A restricted command can only be run by a principal that holds the matching `command.cartest` ace permission. The server console holds every ace, which is exactly why `cartest` runs cleanly when you type it in the txAdmin Live Console. An ordinary connected player typing `cartest` in chat would get nothing, because they do not hold that ace.
+
+That is the right default for a server-side proof you do not want players triggering. But you must know the two ways to change it, or the silent-failure will bite you later:
+
+- **Open it to everyone** by passing `false` as the third argument. Then any player can run it from chat. Fine for a harmless demo, wrong for anything privileged.
+- **Keep it restricted but grant a player** by adding an ace in `server.cfg`, for example `add_ace identifier.fivem:1 command.cartest allow`. Now that specific player can run the restricted command and everyone else still cannot.
+
+For this lesson, leave it `true` and run the test from the server console. The mental model to keep: `true` does not mean "broken for players," it means "gated behind an ace, and the console always has the ace."
+
+### When to throw this whole pattern away
+
+Metatable OOP earns its keep when you have many instances that share behavior, or a genuine is-a relationship like police-car is-a vehicle. It is the wrong tool more often than beginners think. Reach for a plain table instead when:
+
+- **You have exactly one of the thing.** A single config object or one manager does not need a constructor and a metatable. A plain `{ }` literal with fields is clearer and shorter.
+- **The data has no behavior.** If you are only storing values and never attaching methods, a plain table is the data. Wrapping it in a class adds ceremony with no payoff.
+- **You would only ever make one instance.** A class you instantiate once is a plain table wearing a costume.
+
+If you find yourself writing `__index` and a `.new` for something you build once and never give methods to, delete the class and use the table directly. Knowing when not to reach for this is as much a part of the skill as the pattern itself.
 
 ## If something went wrong
 
 <FailureList
   items={[
     { symptom: "Resource qu_oop_metatables does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Could not load resource qu_oop_metatables", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
-    { symptom: "The command does not print", fix: "Run restart qu_oop_metatables, then run the test command in the console named in the step." },
-    { symptom: "Client output is missing", fix: "Join the server first and read F8. Server output stays in txAdmin Live Console." },
+    { symptom: "attempt to index a nil value (local 'self')", fix: "You called a method with a dot instead of a colon, for example car.label() instead of car:label(). The dot passes no instance, so self is nil. Call instance methods with the colon." },
+    { symptom: "attempt to call a nil value (method 'label')", fix: "The __index line is missing or wrong. Confirm Vehicle.__index = Vehicle is present so missing keys on an instance fall back to the class where label is defined." },
+    { symptom: "Police line prints in the plain model [plate] shape", fix: "PoliceVehicle.new did not re-point the metatable, or the override is missing. Confirm it returns setmetatable(self, PoliceVehicle) and that PoliceVehicle:label is defined." },
+    { symptom: "cartest does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and granted aces may run it. Run cartest from the txAdmin Live Console, or add an ace as shown in the How it works section." },
   ]}
 />
 
@@ -117,23 +262,46 @@ end, true)
 
 <Recap
   items={[
-    "Make the qu_oop_metatables folder and every file by hand.",
-    "Use fxmanifest.lua to load the exact files for Lua class table with __index and colon methods.",
-    "Add ensure qu_oop_metatables to server.cfg and restart only that resource.",
-    "Read the expected console output before changing the code."
+    "Explain that setmetatable(t, mt) attaches a side table of rules, and that returning it from .new is the constructor convention.",
+    "State the __index rule: a missing key on a table falls back to the table named by its metatable's __index, which is why Vehicle.__index = Vehicle wires instances to their methods.",
+    "Show why defining with : adds a hidden self parameter and calling with : passes the instance, and why calling with . sets self to nil.",
+    "Build single-level inheritance by pointing PoliceVehicle.__index at itself and giving PoliceVehicle a metatable whose __index is Vehicle, then overriding one method.",
+    "Decide when a plain table beats a class, and explain why the demo command uses the restricted flag and how to grant the ace.",
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  Change one printed value, restart `qu_oop_metatables`, rerun the test, and confirm the output changed.
+  Add a second subclass and a shared method to prove the inheritance chain, then watch one instance use the parent's method while another overrides it.
+
+  Add an `EmergencyVehicle` method on the base class and a new `Ambulance` subclass:
+
+  ```lua
+  function Vehicle:isEmergency()
+      return false
+  end
+
+  local Ambulance = {}
+  Ambulance.__index = Ambulance
+  setmetatable(Ambulance, { __index = Vehicle })
+
+  function Ambulance.new(model, plate)
+      return setmetatable(Vehicle.new(model, plate), Ambulance)
+  end
+
+  function Ambulance:isEmergency()
+      return true
+  end
+  ```
+
+  Inside the `cartest` handler, make a `Vehicle` and an `Ambulance`, then print `tostring(car:isEmergency())` and `tostring(amb:isEmergency())`. Restart `qu_oop_metatables` and rerun `cartest`. Confirm the plain vehicle prints `false` (it falls back to `Vehicle:isEmergency`) and the ambulance prints `true` (it finds its own override first). You have now traced the same `__index` fallback through two different classes and seen override versus inherit decide the result.
 </Exercise>
 
 <Refs
   items={[
+    { label: "FiveM RegisterCommand reference", href: "https://docs.fivem.net/natives/?_0x5FA79B0F" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "Lua 5.4 metatables reference", href: "https://www.lua.org/manual/5.4/manual.html#2.4" }
   ]}
 />
