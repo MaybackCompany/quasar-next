@@ -52,8 +52,9 @@ export function SiteNav({ active }: SiteNavProps) {
     <header className="nav fqs">
       <div className="nav-inner">
         <Link href="/" className="nav-logo" onClick={() => setOpen(false)}>
-          <span className="mark">FS</span>
-          <span>FiveM School</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/headlogo.png" alt="Quasar School" className="nav-logo-img" width={44} height={28} />
+          <span>Quasar School</span>
         </Link>
         <nav className="nav-links" aria-label="Primary">
           <div className="dropdown" ref={ref}>
@@ -89,6 +90,9 @@ export function SiteNav({ active }: SiteNavProps) {
           </Link>
           <Link className="nav-link hide-m" href="/toolbox">
             Toolbox
+          </Link>
+          <Link className="nav-link hide-m" href="/blog">
+            Blog
           </Link>
         </nav>
         <div className="nav-right">

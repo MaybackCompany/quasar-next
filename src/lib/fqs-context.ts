@@ -5,7 +5,7 @@ const TRACK_LETTER: Record<string, string> = { server: "A", scripts: "B", gamewo
 // Preamble shipped with every "copy for AI" payload — pins the 2026 ground rules
 // so the user's assistant tutors against current facts, not stale training data.
 export const AI_PREAMBLE = [
-  "# Context for an AI assistant — from FiveM School",
+  "# Context for an AI assistant — from Quasar School",
   "",
   "You are an expert FiveM and Lua 5.4 mentor. I am a beginner working through the material below. Tutor me against THIS material.",
   "",

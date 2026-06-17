@@ -41,8 +41,8 @@ export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const item = await getManifestItem(slug);
-  if (!item) return { title: "Lesson not found · FiveM School" };
-  return { title: `${item.title} · FiveM School` };
+  if (!item) return { title: "Lesson not found · Quasar School" };
+  return { title: `${item.title} · Quasar School` };
 }
 
 export default async function LessonPage({ params }: PageProps) {

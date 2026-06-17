@@ -1,0 +1,125 @@
+You want to make a FiveM server and actually run it, not just read about it. This guide walks a first-time owner through every step in 2026: the files you need, the license key, a working server.cfg, picking a framework, adding scripts safely, and going live. Follow it in order and you will have a server you can join by the end.
+
+## What do you need to make a FiveM server?
+
+Before you touch anything, line up three things. Skip one and you will get stuck halfway, so handle all three first.
+
+### A machine to run it on
+
+You can run FXServer on a Windows PC for testing, but a public server should live on a Linux or Windows VPS so it stays online when your computer is off. A small server hosting a few friends is happy with 2 vCPUs and 4 GB of RAM. Once you add heavy frameworks and scripts, plan for 4 vCPUs and 8 GB or more, because FiveM is single-threaded per resource and CPU clock speed matters more than core count.
+
+### The server artifact
+
+FiveM runs on FXServer, which Cfx.re publishes as a numbered build called an artifact. You download the latest recommended artifact rather than installing a program. Good news for 2026: txAdmin, the web panel you use to manage everything, now ships inside the artifact, so you do not install it separately.
+
+### A database
+
+Most serious scripts store data in MySQL. Install MariaDB, the open-source MySQL drop-in that the FiveM community standardizes on, then create one empty database for your server. You will connect to it later with the oxmysql resource.
+
+## How do you get the server files and a license key?
+
+This is the part new owners overcomplicate. It is two downloads and one key.
+
+### Download the FXServer artifact
+
+Go to the Cfx.re artifacts page and grab the latest recommended build for your operating system. Unzip it into a clean, empty folder, for example C:\FXServer\server on Windows or /home/fivem/server on Linux. Keep your server data in a separate folder so updating the artifact never wipes your config.
+
+### Get your license key at portal.cfx.re
+
+You need a server key to boot. In 2026 you generate it at portal.cfx.re. The old keymaster.fivem.net flow is gone, so do not look for it. Log in with your Cfx.re account, register a new server key, and copy the long string it gives you. Treat that key like a password and never paste it in a public Discord or commit it to a public repo.
+
+## What goes in a FiveM server.cfg?
+
+Your server.cfg is the boot script. It sets endpoints, identity, the game build, and which resources load. Here are the essentials every server needs.
+
+### Endpoints and core settings
+
+Set the ports FiveM listens on and the basics players see in the server browser:
+
+```cfg
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+
+sv_hostname "My Quasar-Powered Server"
+sv_maxclients 48
+```
+
+### Game build and OneSync
+
+Pin a current game build so your map and DLC content matches what scripts expect, and turn on OneSync so you can run more than 32 players with proper server-side sync:
+
+```cfg
+sv_enforceGameBuild 3407
+set onesync on
+```
+
+Use a build your scripts actually support. Newer is not always better if a resource you depend on has not been updated for it.
+
+### License key and resources
+
+Paste your key, then start your resources in dependency order. Database and core libraries load before the framework, and the framework loads before anything that depends on it:
+
+```cfg
+sv_licenseKey "your_key_from_portal_cfx_re"
+
+ensure oxmysql
+ensure es_extended
+```
+
+Set your oxmysql connection string as a convar that points at the MariaDB database you created earlier. Add an admin principal for yourself so you can use admin commands in game.
+
+## Which FiveM framework should a beginner pick?
+
+A framework gives you jobs, money, inventory, and identity so you are not writing core systems from scratch. In 2026 there are three real choices.
+
+### ESX
+
+ESX is the long-standing, widely documented option. There are thousands of ready-made scripts built for it and endless tutorials, which makes it the gentlest on-ramp for a first server. If you want the most help available when you get stuck, start here.
+
+### QBCore and Qbox
+
+QBCore powers a huge number of roleplay servers but its development has stalled, so it gets fewer updates than it used to. Qbox is an active, community-driven continuation of that ecosystem that stays current and leans on modern ox libraries. If you want a QB-style server with momentum behind it, choose Qbox over base QBCore.
+
+Pick one framework and commit. The most common beginner mistake is mixing resources built for different frameworks and then wondering why nothing works.
+
+## How do you add scripts to a FiveM server safely?
+
+Scripts are where your server gets its identity. They are also where most servers break. Add them with discipline.
+
+### Install one resource at a time
+
+Drop the resource folder into your resources directory, read its README, run any SQL it ships, and add a single ensure line for it in server.cfg. Then start the server and confirm it loads with zero errors before you touch the next one. Adding ten scripts at once means you have no idea which one broke the boot.
+
+### Watch the console and keep backups
+
+The server console and the txAdmin live console tell you exactly what failed and on which resource. Read the error, fix that one thing, restart. Keep encrypted or escrow-protected paid resources intact, never edit files you are told not to, and back up your database and server data folder before any big change so a bad script is a five-minute rollback, not a lost weekend.
+
+## How do you take a FiveM server live?
+
+Going live means opening the door to the internet and inviting players in.
+
+### Open ports and connect
+
+Forward TCP and UDP port 30120 on your router or open it in your VPS firewall. Players connect by pressing F8 in FiveM and typing connect followed by your server IP, or by finding you in the server list once your key is registered. Boot the server, join it yourself first, and confirm the framework, database, and your scripts all work before you share the address.
+
+### Manage with txAdmin
+
+Open txAdmin in your browser, link it to your server on first run, and use it to start and stop the server, schedule restarts, read live logs, manage admins, and apply updates. It is the control panel that turns a folder of files into something you can actually operate day to day.
+
+## Frequently asked questions
+
+### Do I need to know how to code to make a FiveM server?
+
+No, not to get a server running. Setting up the artifact, server.cfg, a framework, and prebuilt scripts is configuration, not programming. You will want to learn basic Lua eventually so you can fix small issues, tweak configs, and stop depending on others for every change, which is exactly what we teach by shipping at Quasar School.
+
+### How much does it cost to run a FiveM server?
+
+The FiveM server software and your license key are free. Your real costs are VPS hosting, which runs roughly 10 to 40 dollars a month for a starter setup, and any paid scripts you choose to buy. You can build a complete, playable server on free and open-source resources before you spend a cent on premium content.
+
+### Why does my FiveM server crash or fail to start?
+
+The most common causes are a wrong or missing license key, a sv_enforceGameBuild value your scripts do not support, a broken database connection in your oxmysql convar, or a single bad resource. The console almost always names the failing resource, so add scripts one at a time and read the error instead of guessing. Fix the named resource, restart, repeat.
+
+## Get your server live faster
+
+You now have the full path to make a FiveM server, from artifact to going live. If you want it spelled out click by click with real Lua, walk through our step-by-step guide at /lessons/first-line-of-lua. And if you want a second set of eyes from the team behind 60,000+ scripts sold and 6 Tebex Legends Awards, book a free 1:1 FiveM audit at fivemcoach.com. We will look at your setup, find what is holding you back, and show you exactly what to ship next.

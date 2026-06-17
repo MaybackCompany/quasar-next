@@ -21,8 +21,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const t = PATHS.find((p) => p.id === id);
-  if (!t) return { title: "Track not found · FiveM School" };
-  return { title: `${t.title} · Track ${TRACK_LETTER[t.id]} · FiveM School`, description: t.desc };
+  if (!t) return { title: "Track not found · Quasar School" };
+  return { title: `${t.title} · Track ${TRACK_LETTER[t.id]} · Quasar School`, description: t.desc };
 }
 
 export default async function TrackPage({ params }: { params: Promise<{ id: string }> }) {

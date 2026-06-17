@@ -1,0 +1,92 @@
+Adding your first scripts to a FiveM server should feel exciting, not terrifying. You can install FiveM scripts that actually work, in the right order, without a single crash, as long as you follow a repeatable process. This guide covers where scripts go, how load order works, how to handle dependencies and SQL, and how to start everything cleanly so your server boots the first time you hit play.
+
+## Where do FiveM scripts go on your server?
+
+Every script you buy or download is called a resource. A resource is just a folder that contains a manifest file (`fxmanifest.lua`) plus the client, server, and shared files that make it run. To install one, you place that folder inside your server's `resources/` directory.
+
+Open your server data folder. You should see `server.cfg` and a `resources/` folder next to it. That `resources/` folder is the only place FiveM looks for installed scripts. If a download arrives as a `.zip`, extract it first so you end up with a real folder. The folder name matters because it becomes the resource name you reference later, so keep it clean with no spaces.
+
+### Read the README and the fxmanifest first
+
+Before you move anything, open the script's README and its `fxmanifest.lua`. These two files tell you almost everything: which dependencies the script expects, whether it ships SQL you have to import, and what the resource is named. Two minutes of reading here saves you an hour of guessing why nothing loads.
+
+## How does load order work with [bracket] folders?
+
+FiveM loads resources roughly in the order they are started, and some scripts must exist before others can use them. Frameworks and libraries need to load early. To control this, server owners group resources inside folders wrapped in square brackets, like `[core]`, `[standalone]`, or `[scripts]`.
+
+A bracketed folder is not a resource itself. It is a container that tells the server to load everything inside it as a group. So a path like `resources/[scripts]/my_garage/fxmanifest.lua` is perfectly valid. You can nest brackets, for example `resources/[qb]/[qb-core]/`. The practical rule: put libraries and your framework in an early bracket such as `[core]`, and put individual gameplay scripts in something like `[scripts]`. This keeps dependencies grouped and easier to reason about.
+
+## What dependencies do FiveM scripts need?
+
+Most modern FiveM scripts depend on two resources: `ox_lib` and `oxmysql`. `ox_lib` provides shared UI, notifications, and helper functions that scripts call constantly. `oxmysql` is the database connector that lets a script read and write to your MariaDB database. If a script saves anything, such as garages, inventories, or player data, it almost certainly needs `oxmysql`.
+
+Dependencies must load before the script that needs them. Inside the script's `fxmanifest.lua`, you will usually see a block declaring this. Note that the manifest key is plural:
+
+```lua
+dependencies {
+    'ox_lib',
+    'oxmysql',
+}
+```
+
+This tells the server those resources must be running first. Make sure `ox_lib` and `oxmysql` are installed in `resources/` and started ahead of the scripts that rely on them. The cleanest pattern is to keep them in your early `[core]` or `[standalone]` bracket so they are always up before gameplay scripts.
+
+## How do you import a script's SQL into the database?
+
+If a script stores data, it ships a `.sql` file, often in its root or in a `sql/` subfolder. You must run that SQL against your database before the script will work. Skip this and the script will load but throw errors the moment it tries to query a table that does not exist.
+
+### Run the SQL against MariaDB with HeidiSQL
+
+Modern FiveM servers use MariaDB. Open a database tool like HeidiSQL, connect to your server's database, select the correct schema, and run the script's `.sql` file. In HeidiSQL you can open it with File then Load SQL file, confirm the right database is selected on the left, then execute. This creates the tables the script expects. Do this once per script, before the first start. If you update a script later, re-read its README because updates sometimes ship additional SQL.
+
+## How do you configure config.lua?
+
+Almost every script includes a `config.lua` (sometimes `config/config.lua`). This is where you set prices, locations, framework choices, language, and feature toggles. Open it in a code editor and read the comments. They tell you what each value does.
+
+Change only what you understand, and change one thing at a time. A common beginner mistake is rewriting half the config, breaking a setting, then not knowing which change caused it. Save the file with valid Lua syntax. A missing comma or unclosed quote in `config.lua` will stop the whole resource from starting, so if a script refuses to boot right after you edited it, suspect the config first.
+
+## Should you use ensure or start in server.cfg?
+
+To turn a resource on, you add a line to `server.cfg`. Use `ensure`, not `start`. The command looks like this:
+
+```
+ensure ox_lib
+ensure oxmysql
+ensure my_garage
+```
+
+`ensure` starts the resource if it is stopped and restarts it if it is already running, which makes your config safe to reload. Order matters here too: list dependencies before the scripts that use them, so `ox_lib` and `oxmysql` come before `my_garage`. If you organize with brackets, you can `ensure` the whole framework group early and individual scripts later.
+
+Do not add a `lua54` line to your manifest. That setting was deprecated in June 2025. Lua 5.4 is the only runtime now, so the line does nothing useful. If an old tutorial tells you to add it, ignore that step.
+
+## How do you restart or refresh a script?
+
+While testing, you do not need to reboot the whole server for every change. From the live server console or txAdmin, run `refresh` to make the server notice newly added resource folders, then `ensure my_garage` to start or restart that one resource. If you only changed a script's files and it is already in `server.cfg`, `restart my_garage` reloads just that resource. This tight loop, edit then `restart`, is how you iterate fast without long boot times.
+
+## Troubleshooting common install problems
+
+When something breaks, your best friends are the txAdmin console and the in-game F8 console. Both print the real error. Read the actual message instead of guessing.
+
+- **Resource will not start.** Usually a syntax error in `config.lua` or `fxmanifest.lua`, or the folder is named wrong, or it is buried in a bracket the server never loads. Check the console line where it failed and confirm the resource name matches your `ensure` line exactly.
+- **"Failed to load script because it depends on X" errors.** The dependency is missing or starts too late. Confirm `ox_lib` and `oxmysql` are installed and that their `ensure` lines come before this script in `server.cfg`.
+- **SQL table missing or database errors.** You forgot to import the script's `.sql` file, or you ran it against the wrong schema. Open HeidiSQL, select the correct database, and execute the included SQL, then `restart` the resource.
+
+## Frequently asked questions
+
+### Do I need ox_lib and oxmysql for every script?
+
+No, but you will for most. Standalone scripts that do not save data and do not use shared UI can run without them. Anything that stores player data or shows modern menus almost always lists `ox_lib`, `oxmysql`, or both in its `dependencies`. Always check the `fxmanifest.lua` to be sure.
+
+### Why does my script load but nothing happens in game?
+
+This usually means a config or dependency mismatch rather than an install error. Check that you set the correct framework in `config.lua`, that you imported any required SQL, and that there are no red errors in the F8 console when you trigger the feature. A script can start cleanly and still do nothing if it is pointed at the wrong framework or a missing table.
+
+### What is the difference between ensure, start, and restart?
+
+`ensure` starts a resource and restarts it if already running, which is the safe default for `server.cfg`. `start` only turns it on and is the older, less forgiving command. `restart` stops and starts a resource that is already running, which is what you use while testing changes to one script.
+
+## Get your install reviewed by people who ship
+
+You now have the full loop: drop the resource in `resources/`, group it with brackets for load order, install `ox_lib` and `oxmysql`, import the SQL into MariaDB, configure `config.lua`, then `ensure` everything in the right order and watch the console. For a hands-on walkthrough with screenshots and a checklist, work through the Quasar School lesson on [installing and managing scripts](/lessons/installing-managing-scripts).
+
+If your server still will not boot or a script keeps throwing errors, do not spend another night fighting it alone. Quasar School teaches FiveM by shipping, and we come from the team behind 60,000+ scripts sold and 6 Tebex Legends Awards. Grab a free 1:1 FiveM audit at [fivemcoach.com](https://fivemcoach.com) and we will look at your setup with you, find what is breaking, and get your scripts running the right way.

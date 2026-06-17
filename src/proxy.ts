@@ -17,7 +17,7 @@ const sessionPassword = process.env.SESSION_SECRET || "public-mode-placeholder-s
 // /api/cron is public to the proxy because Vercel Cron calls it with no session
 // cookie; it secures itself with CRON_SECRET. /expired is the trial win-back
 // offer screen, so it must be reachable by a locked-out (or de-roled) member.
-const PUBLIC_PREFIXES = ["/auth/", "/_next/", "/api/me", "/api/cron", "/track"];
+const PUBLIC_PREFIXES = ["/auth/", "/_next/", "/api/me", "/api/cron", "/track", "/blog"];
 const PUBLIC_PATHS = new Set([
   "/",
   "/toolbox",

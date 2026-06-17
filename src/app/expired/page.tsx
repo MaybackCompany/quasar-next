@@ -8,7 +8,7 @@ import { getMember, isExpired, markStatus } from "@/lib/trials/store";
 import { PRICING_URL } from "@/lib/links";
 
 export const metadata: Metadata = {
-  title: "Your access has ended · FiveM School",
+  title: "Your access has ended · Quasar School",
   robots: { index: false, follow: false },
 };
 

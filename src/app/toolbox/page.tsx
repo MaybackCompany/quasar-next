@@ -4,7 +4,7 @@ import { SiteNav } from "@/components/fqs/site-nav";
 import { SiteFooter } from "@/components/fqs/site-footer";
 
 export const metadata: Metadata = {
-  title: "Toolbox · Resources & Links · FiveM School",
+  title: "Toolbox · Resources & Links · Quasar School",
   description:
     "Every tool, doc, and resource worth bookmarking, sorted for server owners, developers, and mappers, with a note on what each one is actually for.",
 };

@@ -1,0 +1,89 @@
+Server errors are normal. Every FiveM server owner sees red text in the console, and almost every error has a specific cause and a one-line fix once you know what you are looking at. Below are the 12 FiveM server errors you will hit most often, what each one actually means, and exactly how to fix it.
+
+## "attempt to index a nil value"
+
+**What it means:** Your script tried to read a field on something that does not exist yet. The most common cause is your framework object being nil, usually because your resource started before the framework did. So `Framework.Functions` or `ESX.GetPlayerData()` returns nil and the next `.something` blows up.
+
+**How to fix it:** Fix the load order. In your `server.cfg`, `ensure` your framework (`es_extended`, `qb-core`, or `qbx_core`) before any resource that depends on it. If you grab the object on the client, wait for it instead of grabbing it at file scope. Print the variable right before the failing line to confirm it is nil, then trace back to where it should have been set.
+
+## "attempt to call a nil value"
+
+**What it means:** You called a function that does not exist under that name. Nine times out of ten this is a wrong export name or a function that was renamed between framework versions. A classic example: code copied from old QBCore calls `exports['qb-core']:GetCoreObject()`, but on Qbox the correct export is `exports.qbx_core:GetPlayer(source)`. The old name simply is not there, so the call hits nil.
+
+**How to fix it:** Open the resource you are calling and confirm the exact export name and function signature it actually publishes. Match your call to it character for character. When migrating between QBCore, Qbox, and ESX, check each framework's current docs because export names and getters differ.
+
+## "Could not load resource"
+
+**What it means:** The server found your resource folder but could not parse it. This is almost always a syntax error in your `fxmanifest.lua`, like a missing comma, an unclosed quote, or a `client_script` line that points at a file that is not there.
+
+**How to fix it:** Open `fxmanifest.lua` and read it top to bottom. Every list entry needs correct Lua syntax, every filename must match a file that exists, and you need a valid `fx_version` and `game` line. Fix the typo, save, and `restart` the resource. The console usually prints the line number near the failure.
+
+## "script timeout" / "took too long to execute"
+
+**What it means:** A script ran a blocking loop or a long operation on the main thread without yielding, so the server killed it to protect everyone else. Usually it is a `while true do end` loop with no `Wait`, or a heavy synchronous database call inside a tight loop.
+
+**How to fix it:** Add a `Citizen.Wait(0)` (or higher) inside every infinite loop so the thread yields. Move heavy work off the hot path. If a database query is the culprit, batch it or cache the result instead of querying every frame.
+
+## "no script environment for ..."
+
+**What it means:** You triggered an event or export against a resource that is not currently running. The runtime has no environment to deliver the call to, because that resource is stopped, errored on start, or never got `ensure`d.
+
+**How to fix it:** Confirm the target resource is actually started. Run `ensure resourcename` in the console and watch for it to come up green. If it errors on start, fix that error first. Also check the resource name you are referencing matches its folder name exactly.
+
+## "Table 'database.x' doesn't exist"
+
+**What it means:** Your script is querying a SQL table that was never created. The script ships with a `.sql` file you were supposed to import, and you skipped that step. This shows up through `oxmysql` on a MariaDB or MySQL setup as soon as the first query runs.
+
+**How to fix it:** Import the resource's `.sql` file into your database before starting the resource. Open your database tool (HeidiSQL, phpMyAdmin, or the CLI), select the correct database, and run the script's SQL file. Confirm `oxmysql` is configured with the right connection string in `server.cfg`, then restart.
+
+## "couldn't load resource" (dependency missing)
+
+**What it means:** The resource started but a dependency it declared is not present or not running. The `fxmanifest.lua` lists a `dependency` (like `oxmysql`, `ox_lib`, or a framework) that the server cannot find, so it refuses to load.
+
+**How to fix it:** Read the error line, it names the missing dependency. Install that resource, place it in your resources folder, and `ensure` it before the resource that needs it. Dependencies always load first in `server.cfg`.
+
+## "Invalid license key" / sv_licenseKey
+
+**What it means:** Your server key is missing, malformed, or has been revoked, so the server cannot authenticate with Cfx.re and will not start. This blocks the entire server, not just one resource.
+
+**How to fix it:** Generate a fresh key at portal.cfx.re, tied to the correct IP or set to localhost for a test box. Paste it into `server.cfg` as `sv_licenseKey yourkeyhere`. If an old key was revoked because the IP changed, just issue a new one. Never share or commit this key.
+
+## Wrong sv_enforceGameBuild
+
+**What it means:** Your server is set to a game build that does not match what your DLC content, maps, or vehicles expect. Mismatched builds cause missing models, crashes on join, or content that simply will not stream.
+
+**How to fix it:** Set `sv_enforceGameBuild` to the build your content targets (for example a recent build for current DLC vehicles and weapons). Check the resource or map documentation for the build it was made for, set that exact number in `server.cfg`, and restart. If you are unsure, start with the build your newest paid asset requires.
+
+## OneSync is off
+
+**What it means:** Many modern scripts need OneSync for entity state, player slots above 32, and state bags. With it off you get nil state, desync, or features that silently do nothing.
+
+**How to fix it:** Add `set onesync on` to your `server.cfg` and restart the server. Confirm your slot count and txAdmin settings match. Most current frameworks and inventory systems assume OneSync is on, so leave it on unless you have a specific reason not to.
+
+## Resource name mismatch with ensure
+
+**What it means:** You wrote `ensure qb-banking` in `server.cfg` but the folder on disk is named `qb_banking` or `qb-banking-v2`. The server cannot find a resource by that name, so it never starts, and everything that depends on it then errors too.
+
+**How to fix it:** Match the `ensure` line to the exact folder name, including dashes, underscores, and capitalization. Rename either the folder or the line so they agree. Run `refresh` then `ensure name` and confirm it comes up.
+
+## NUI callback not firing
+
+**What it means:** Your UI button click is not reaching Lua. The callback is registered, but the fetch URL in your HTML or JavaScript does not use the `https://cfx-nui-resourcename/` scheme, so the request never routes to your `RegisterNUICallback`.
+
+**How to fix it:** In your NUI JavaScript, fetch to `https://cfx-nui-yourresourcename/callbackname`, using the real resource name. Confirm the callback name matches your `RegisterNUICallback("callbackname", ...)` on the client exactly. Check the F8 console for failed fetch errors, which point straight at a bad URL.
+
+## Frequently asked questions
+
+### Where do I see FiveM errors?
+
+Server-side errors appear in the txAdmin Live Console, which is the first place to look for resource load failures, SQL errors, and startup problems. Client-side errors, like NUI fetch failures and Lua errors that happen on a player's machine, show up in the F8 client console in-game. Get in the habit of opening both, most fixes start with reading the exact error text and the resource name attached to it.
+
+### Why does my server crash on startup?
+
+Startup crashes almost always trace back to one of three things: an invalid `sv_licenseKey`, a wrong `sv_enforceGameBuild` for your content, or a resource with a broken `fxmanifest.lua` or missing dependency. Read the last few lines printed before the crash in the Live Console, fix the named resource or config line, and restart. Comment out recently added resources one at a time to isolate the culprit.
+
+### How do I read a Lua error correctly?
+
+Start at the bottom. The error line tells you the resource, the file, and the line number, plus the type ("nil value", "call a nil value"). Open that exact line, check what is nil or misnamed, then work backward to where the value should have been set. Most errors are load order, a wrong name, or a missing import, not a deep bug.
+
+At Quasar School we teach FiveM by shipping, the same way the team behind 60,000+ scripts sold and 6 Tebex Legends Awards builds. For a fuller reference, see our /resources/error-catalog with copy-paste fixes for every error above. And if you are stuck on a console error you cannot crack, grab a free 1:1 FiveM audit at fivemcoach.com and we will read your logs with you and get your server running.

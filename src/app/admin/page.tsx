@@ -8,7 +8,7 @@ import { getGrantableRoles } from "@/lib/auth/roles";
 import { AUTH_ENABLED, getSession } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
-  title: "Director admin · FiveM School",
+  title: "Director admin · Quasar School",
   robots: { index: false, follow: false },
 };
 
