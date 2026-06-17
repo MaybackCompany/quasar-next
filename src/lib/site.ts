@@ -8,10 +8,13 @@ export const SITE_TAGLINE = "Learn FiveM by shipping";
 export const SITE_DESCRIPTION =
   "Quasar School teaches you to build a FiveM server by shipping, not just watching: run a server, write Lua resources, and build the game world. Every lesson ends with something that boots, runs, or works, verified for 2026 from the team behind 60,000+ scripts sold and 6 Tebex Legends Awards.";
 
-// 708x452 transparent PNG of the Quasar mark.
-export const OG_IMAGE = "/headlogo.png";
-export const OG_IMAGE_W = 708;
-export const OG_IMAGE_H = 452;
+// Social share image (1200x630, QU logo on a dark card).
+export const OG_IMAGE = "/og.png";
+export const OG_IMAGE_W = 1200;
+export const OG_IMAGE_H = 630;
+
+// Square brand mark (the isolated Q), used for favicons + JSON-LD logo.
+export const LOGO_IMAGE = "/icon-512.png";
 
 // External brand links (used in JSON-LD sameAs + footers).
 export const DISCORD_INVITE = "https://discord.gg/quasaruniversity";

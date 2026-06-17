@@ -8,6 +8,7 @@ import { SiteAnalytics } from "@/components/seo/analytics";
 import {
   COACH_URL,
   DISCORD_INVITE,
+  LOGO_IMAGE,
   OG_IMAGE,
   OG_IMAGE_H,
   OG_IMAGE_W,
@@ -45,7 +46,10 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   alternates: { canonical: "/" },
-  icons: { icon: "/headlogo.png", apple: "/headlogo.png" },
+  icons: {
+    icon: [{ url: "/icon-512.png", type: "image/png", sizes: "512x512" }],
+    apple: "/apple-touch-icon.png",
+  },
   openGraph: {
     type: "website",
     url: SITE_URL,
@@ -70,7 +74,7 @@ const organizationLd = {
   name: SITE_NAME,
   alternateName: "Quasar Store",
   url: SITE_URL,
-  logo: `${SITE_URL}${OG_IMAGE}`,
+  logo: `${SITE_URL}${LOGO_IMAGE}`,
   description: SITE_DESCRIPTION,
   sameAs: [DISCORD_INVITE, COACH_URL],
 };

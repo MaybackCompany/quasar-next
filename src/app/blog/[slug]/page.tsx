@@ -8,7 +8,7 @@ import { SiteFooter } from "@/components/fqs/site-footer";
 import { BookAudit } from "@/components/fqs/book-audit";
 import { JsonLd } from "@/components/seo/json-ld";
 import { allPostSlugs, getPost } from "@/lib/blog";
-import { OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
+import { LOGO_IMAGE, OG_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -83,7 +83,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       publisher: {
         "@type": "Organization",
         name: SITE_NAME,
-        logo: { "@type": "ImageObject", url: `${SITE_URL}${OG_IMAGE}` },
+        logo: { "@type": "ImageObject", url: `${SITE_URL}${LOGO_IMAGE}` },
       },
     },
     {
