@@ -42,7 +42,7 @@ const CONSOLE: ReadonlyArray<ConsoleLine> = [
 
 const TONE: Record<NonNullable<ConsoleLine["tone"]>, string> = {
   ok: "text-emerald-400",
-  brand: "text-[#4cc2cf]",
+  brand: "text-[#3dc9e7]",
   muted: "text-slate-400",
 };
 
