@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/discord";
 import { authErrorResponse } from "@/lib/auth/responses";
 import { AUTH_ENABLED, getMissingAuthEnv, getSession, safeReturnTo } from "@/lib/auth/session";
+import { registerOnAccess } from "@/lib/trials/store";
 import { PRICING_URL } from "@/lib/links";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -51,7 +52,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     session.authorized = access.authorized;
     session.isAdmin = access.isAdmin;
     session.matchedRole = access.matchedRole;
+    session.matchedRoleId = access.matchedRoleId;
     session.inGuild = access.inGuild;
+
+    // Giveaway/trial members get registered with the default clock on first
+    // authorized visit. Directors are exempt (never tracked, never expire).
+    // No-ops without a KV backend, so this never blocks the login redirect.
+    if (access.authorized && !access.isAdmin) {
+      await registerOnAccess({
+        id: discordUser.id,
+        username: session.user.username,
+        avatar: session.user.avatar,
+        tier: access.matchedRole,
+        roleId: access.matchedRoleId,
+      });
+    }
 
     const returnTo = safeReturnTo(session.returnTo);
     delete session.returnTo;

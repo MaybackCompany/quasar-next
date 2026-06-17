@@ -4,6 +4,7 @@ import { CtaCursor } from "@/components/fqs/cta-cursor";
 import { SiteNav } from "@/components/fqs/site-nav";
 import { FreshBadge } from "@/components/fqs/fresh-badge";
 import { SiteFooter } from "@/components/fqs/site-footer";
+import { BookAudit } from "@/components/fqs/book-audit";
 
 const TRACK_LETTER: Record<string, string> = { server: "A", scripts: "B", gameworld: "C" };
 
@@ -137,10 +138,43 @@ export default function HomePage() {
                 ))}
               </div>
               <p style={{ fontSize: 14.5, color: "var(--muted)", marginTop: 18 }}>
-                Tutorials rot. Ours carry a per-lesson verification date — when the ecosystem moves, the badge tells you.
+                Tutorials rot. Ours carry a per-lesson verification date, so when the ecosystem moves, the badge tells you.
               </p>
             </div>
           </div>
+
+          {/* Done-with-you upsell: reading is free, the audit is the fast path. */}
+          <div
+            style={{
+              marginTop: 56,
+              padding: 28,
+              border: "1px solid var(--accent-strong)",
+              borderRadius: 14,
+              background: "var(--surface)",
+            }}
+          >
+            <div className="eyebrow" style={{ color: "var(--accent-strong)", marginBottom: 8 }}>
+              WANT IT DONE WITH YOU
+            </div>
+            <h2 className="fqs-h" style={{ fontSize: 25, margin: "0 0 10px" }}>
+              Skip the trial and error. Get your next step from someone who has shipped.
+            </h2>
+            <p style={{ fontSize: 15.5, color: "var(--fg-2)", margin: "0 0 18px", maxWidth: "64ch", lineHeight: 1.6 }}>
+              Reading is free. But if your server is stuck, or you just want the fastest path from zero to live, book
+              a free one on one FiveM audit. A senior builder looks at your setup and tells you the exact next thing to
+              fix. It comes from the team behind 60,000+ scripts sold and 6 Tebex Legends Awards.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <BookAudit className="btn btn-primary">Book your free FiveM audit</BookAudit>
+              <a className="btn btn-ghost" href="https://fivemcoach.com/en" target="_blank" rel="noopener noreferrer">
+                See membership plans
+              </a>
+            </div>
+            <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "12px 0 0" }}>
+              Free, one on one, no card. Worst case, you leave with a plan.
+            </p>
+          </div>
+
           <SiteFooter />
         </section>
       </main>

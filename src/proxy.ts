@@ -2,6 +2,7 @@ import { unsealData } from "iron-session";
 import { NextResponse, type NextProxy, type NextRequest, type ProxyConfig } from "next/server";
 
 import type { AuthSession } from "@/lib/auth/session";
+import { getMember, isExpired, registerOnAccess } from "@/lib/trials/store";
 import { PRICING_URL } from "@/lib/links";
 
 const accessMode = (process.env.ACCESS_MODE || "public").trim().toLowerCase();
@@ -13,11 +14,15 @@ const sessionPassword = process.env.SESSION_SECRET || "public-mode-placeholder-s
 // prospects can see what they'd buy. Every lesson, cheatsheet, and reference hub
 // requires an allowed Discord role (Builder / Elite / Enterprise / member).
 // Pricing is not in this app; gated-out non-members go to the marketing site.
-const PUBLIC_PREFIXES = ["/auth/", "/_next/", "/api/me", "/track"];
+// /api/cron is public to the proxy because Vercel Cron calls it with no session
+// cookie; it secures itself with CRON_SECRET. /expired is the trial win-back
+// offer screen, so it must be reachable by a locked-out (or de-roled) member.
+const PUBLIC_PREFIXES = ["/auth/", "/_next/", "/api/me", "/api/cron", "/track"];
 const PUBLIC_PATHS = new Set([
   "/",
   "/toolbox",
   "/paywall",
+  "/expired",
   "/favicon.ico",
   "/headlogo.png",
   "/robots.txt",
@@ -61,8 +66,36 @@ export const proxy: NextProxy = async (request: NextRequest): Promise<NextRespon
     return NextResponse.redirect(loginUrl);
   }
 
+  // Directors are never part of the trial system — never tracked, never locked out.
+  if (session.isAdmin) {
+    return NextResponse.next();
+  }
+
+  // Trial-expiry layer. getMember no-ops to null without a KV backend, so a
+  // site with no KV configured falls straight through to the role-only gate.
+  const member = await getMember(session.user.id);
+
   if (!session.authorized) {
-    return NextResponse.redirect(new URL(PRICING_URL));
+    // Someone we've seen before but who no longer holds the role (their trial
+    // role was pulled) gets the win-back offer; a true stranger goes to pricing.
+    return NextResponse.redirect(member ? new URL("/expired", request.url) : new URL(PRICING_URL));
+  }
+
+  // Authorized but the window has elapsed (or was expired/revoked) → upsell screen.
+  if (isExpired(member)) {
+    return NextResponse.redirect(new URL("/expired", request.url));
+  }
+
+  // Authorized + active but not yet tracked (their cookie predates this deploy,
+  // or KV was just turned on): lazily start their default clock.
+  if (!member) {
+    await registerOnAccess({
+      id: session.user.id,
+      username: session.user.username,
+      avatar: session.user.avatar,
+      tier: session.matchedRole ?? null,
+      roleId: session.matchedRoleId ?? null,
+    });
   }
 
   return NextResponse.next();

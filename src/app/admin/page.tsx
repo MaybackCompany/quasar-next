@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { SiteNav } from "@/components/fqs/site-nav";
 import { AdminPanel } from "@/components/fqs/admin-panel";
+import { TrialAdmin } from "@/components/fqs/trial-admin";
 import { getGrantableRoles } from "@/lib/auth/roles";
 import { AUTH_ENABLED, getSession } from "@/lib/auth/session";
 
@@ -31,14 +32,19 @@ export default async function AdminPage() {
             DIRECTOR ADMIN
           </div>
           <h1 className="fqs-h" style={{ fontSize: "clamp(28px, 4vw, 38px)" }}>
-            Grant course access
+            Director admin
           </h1>
           <p style={{ fontSize: 16, color: "var(--fg-2)", margin: "14px 0 0", maxWidth: "60ch" }}>
-            Signed in as <strong style={{ color: "var(--fg)" }}>{session.user.username}</strong>. Look up a Discord
-            user by ID, then grant or revoke a membership role. Granting a role unlocks every course for that user.
+            Signed in as <strong style={{ color: "var(--fg)" }}>{session.user.username}</strong>. Grant a giveaway
+            role below, then set each member&apos;s access window in the Trial members list. New members start on a
+            7-day clock the first time they open the guide; when a window ends their role is pulled and they see the
+            upsell offer.
           </p>
         </div>
-        <AdminPanel roles={roles} />
+        <div style={{ maxWidth: 720 }}>
+          <AdminPanel roles={roles} />
+          <TrialAdmin />
+        </div>
       </main>
     </div>
   );

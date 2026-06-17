@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { SiteNav } from "@/components/fqs/site-nav";
 import { CtaCursor } from "@/components/fqs/cta-cursor";
+import { BookAudit } from "@/components/fqs/book-audit";
 import { AUTH_ENABLED, getSession } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
@@ -38,13 +39,21 @@ export default async function PaywallPage() {
               role. Builder unlocks every course. If you already have access, roles can take a minute to sync.
               Sign in again and you should land back in the course.
             </p>
+            <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-2">
+              Want the fastest path instead of figuring it out alone? Book a free one on one FiveM audit and a
+              senior builder will map your exact next step. It is free, no card, and you leave with a plan. From the
+              team behind 60,000+ scripts sold and 6 Tebex Legends Awards.
+            </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
+              <BookAudit className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-brand-hi hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                Book a free FiveM audit
+              </BookAudit>
               <a
                 href="https://fivemcoach.com/en"
                 target="_blank"
                 rel="noopener"
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-brand-hi hover:text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-5 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
                 See plans
                 <CtaCursor />

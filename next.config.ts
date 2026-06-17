@@ -31,9 +31,9 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       // React dev mode uses eval() for debugging; only relax it outside production.
-      `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' ${process.env.NODE_ENV !== "production" ? "'unsafe-eval' " : ""}https://cdnjs.cloudflare.com https://translate.google.com`,
-      "connect-src 'self' https://discord.com https://translate.googleapis.com https://translate.google.com",
-      "frame-src https://translate.google.com https://translate.googleapis.com https://www.loom.com https://www.youtube-nocookie.com",
+      `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' ${process.env.NODE_ENV !== "production" ? "'unsafe-eval' " : ""}https://cdnjs.cloudflare.com https://translate.google.com https://app.cal.com https://cal.com`,
+      "connect-src 'self' https://discord.com https://translate.googleapis.com https://translate.google.com https://app.cal.com https://cal.com",
+      "frame-src https://translate.google.com https://translate.googleapis.com https://www.loom.com https://www.youtube-nocookie.com https://cal.com https://app.cal.com",
       "frame-ancestors 'none'",
       "form-action 'self' https://discord.com",
       "base-uri 'self'",

@@ -14,6 +14,8 @@ export interface AuthSession {
   authorized?: boolean;
   isAdmin?: boolean;
   matchedRole?: AccessTier | null;
+  /** Role id behind matchedRole — the role the trial system pulls on expiry. */
+  matchedRoleId?: string | null;
   inGuild?: boolean;
   oauthState?: string;
   oauthRedirectUri?: string;

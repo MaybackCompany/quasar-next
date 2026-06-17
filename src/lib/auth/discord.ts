@@ -124,8 +124,8 @@ export async function resolveMemberAccess(accessToken: string, userId: string) {
   const roles = botRoles ?? [];
   const inGuild = oauthRoles !== null || botRoles !== null;
 
-  const { authorized, isAdmin, tier } = summarizeRoles(roles);
-  return { authorized, isAdmin, matchedRole: tier, inGuild };
+  const { authorized, isAdmin, tier, matchedRoleId } = summarizeRoles(roles);
+  return { authorized, isAdmin, matchedRole: tier, matchedRoleId, inGuild };
 }
 
 export function getAvatarUrl(user: DiscordUserResponse): string | null {

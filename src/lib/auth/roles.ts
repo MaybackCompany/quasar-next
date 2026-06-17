@@ -91,18 +91,25 @@ export function summarizeRoles(roleIds: string[]): {
   authorized: boolean;
   isAdmin: boolean;
   tier: AccessTier | null;
+  matchedRoleId: string | null;
 } {
   const accessIds = new Set(getAccessRoleIds());
   const adminIds = new Set(getAdminRoleIds());
   const authorized = roleIds.some((id) => accessIds.has(id));
   const isAdmin = roleIds.some((id) => adminIds.has(id));
 
+  // Highest access tier the member holds, plus the role id behind it (used as
+  // the role the trial system pulls when a window ends).
   let tier: AccessTier | null = null;
+  let matchedRoleId: string | null = null;
   for (const id of roleIds) {
     const def = BY_ID.get(id);
     if (!def || !def.grantsAccess) continue;
-    if (tier === null || TIER_RANK[def.tier] > TIER_RANK[tier]) tier = def.tier;
+    if (tier === null || TIER_RANK[def.tier] > TIER_RANK[tier]) {
+      tier = def.tier;
+      matchedRoleId = def.id;
+    }
   }
 
-  return { authorized, isAdmin, tier };
+  return { authorized, isAdmin, tier, matchedRoleId };
 }
