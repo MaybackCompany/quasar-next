@@ -6,6 +6,7 @@
 
 export type AccessTier =
   | "starterkit"
+  | "basic"
   | "builder"
   | "elite"
   | "enterprise"
@@ -27,6 +28,8 @@ export interface RoleDef {
 export const ROLE_CATALOG: readonly RoleDef[] = [
   // Subscription base roles (the membership markers the admin panel can hand out).
   { id: "1515556790119436339", label: "FiveM Starterkit", tier: "starterkit", grantsAccess: true, grantable: true },
+  { id: "1316410534706548747", label: "Quasar Academy", tier: "basic", grantsAccess: true, grantable: true },
+  { id: "1316410537470464092", label: "Basic Member", tier: "basic", grantsAccess: true, grantable: true },
   { id: "1316410536086339686", label: "Builder Member", tier: "builder", grantsAccess: true, grantable: true },
   { id: "1316410535348273253", label: "Elite Member", tier: "elite", grantsAccess: true, grantable: true },
   { id: "1473436768559829275", label: "Enterprise Member", tier: "enterprise", grantsAccess: true, grantable: true },
@@ -84,7 +87,8 @@ const TIER_RANK: Record<AccessTier, number> = {
   elite: 4,
   builder: 3,
   starterkit: 2,
-  coaching: 1,
+  basic: 1,
+  coaching: 0,
 };
 
 export function summarizeRoles(roleIds: string[]): {
