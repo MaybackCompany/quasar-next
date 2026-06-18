@@ -18,6 +18,17 @@ interface DiscordMemberResponse {
 }
 
 export function getRequestOrigin(request: NextRequest): string {
+  // Prefer the explicitly configured canonical origin. The OAuth redirect_uri
+  // must exactly match the callback registered in the Discord app, so a fixed
+  // env value is more correct (and safer) than trusting forwarded headers - a
+  // reverse proxy / Cloudflare Tunnel may forward the internal Host
+  // (localhost:3002), which would build a broken https://localhost:3002 URI.
+  const configured = (process.env.BASE_URL || process.env.NEXT_PUBLIC_SITE_URL)
+    ?.trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\/$/, "");
+  if (configured) return configured;
+
   const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const host =
     request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
@@ -31,8 +42,7 @@ export function getRequestOrigin(request: NextRequest): string {
     return `${request.nextUrl.protocol}//${host}`.replace(/\/$/, "");
   }
 
-  const baseUrl = process.env.BASE_URL?.trim().replace(/^["']|["']$/g, "").replace(/\/$/, "");
-  return baseUrl || request.nextUrl.origin;
+  return request.nextUrl.origin;
 }
 
 export function getOAuthRedirectUri(request: NextRequest): string {

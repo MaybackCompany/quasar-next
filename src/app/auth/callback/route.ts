@@ -5,6 +5,7 @@ import {
   fetchDiscordUser,
   getAvatarUrl,
   getOAuthRedirectUri,
+  getRequestOrigin,
   resolveMemberAccess,
 } from "@/lib/auth/discord";
 import { authErrorResponse } from "@/lib/auth/responses";
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     await session.save();
 
     return NextResponse.redirect(
-      access.authorized ? new URL(returnTo, request.url) : new URL(PRICING_URL),
+      access.authorized ? new URL(returnTo, getRequestOrigin(request)) : new URL(PRICING_URL),
     );
   } catch (err) {
     const message =
