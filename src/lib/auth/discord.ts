@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 
 import { summarizeRoles } from "@/lib/auth/roles";
+import { getRequestOrigin } from "@/lib/origin";
+
+export { getRequestOrigin };
 
 interface DiscordTokenResponse {
   access_token: string;
@@ -15,34 +18,6 @@ interface DiscordUserResponse {
 
 interface DiscordMemberResponse {
   roles?: string[];
-}
-
-export function getRequestOrigin(request: NextRequest): string {
-  // Prefer the explicitly configured canonical origin. The OAuth redirect_uri
-  // must exactly match the callback registered in the Discord app, so a fixed
-  // env value is more correct (and safer) than trusting forwarded headers - a
-  // reverse proxy / Cloudflare Tunnel may forward the internal Host
-  // (localhost:3002), which would build a broken https://localhost:3002 URI.
-  const configured = (process.env.BASE_URL || process.env.NEXT_PUBLIC_SITE_URL)
-    ?.trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/\/$/, "");
-  if (configured) return configured;
-
-  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const host =
-    request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
-    request.headers.get("host")?.split(",")[0]?.trim();
-
-  if (proto && host) {
-    return `${proto}://${host}`.replace(/\/$/, "");
-  }
-
-  if (host) {
-    return `${request.nextUrl.protocol}//${host}`.replace(/\/$/, "");
-  }
-
-  return request.nextUrl.origin;
 }
 
 export function getOAuthRedirectUri(request: NextRequest): string {

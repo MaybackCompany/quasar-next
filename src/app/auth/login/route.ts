@@ -4,10 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAuthorizeUrl, getOAuthRedirectUri } from "@/lib/auth/discord";
 import { authErrorResponse } from "@/lib/auth/responses";
 import { AUTH_ENABLED, getMissingAuthEnv, getSession, safeReturnTo } from "@/lib/auth/session";
+import { getRequestOrigin } from "@/lib/origin";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!AUTH_ENABLED) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/", getRequestOrigin(request)));
   }
 
   const missing = getMissingAuthEnv();

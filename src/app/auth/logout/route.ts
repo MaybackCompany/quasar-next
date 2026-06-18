@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_ENABLED, getSession } from "@/lib/auth/session";
+import { getRequestOrigin } from "@/lib/origin";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (AUTH_ENABLED) {
@@ -8,5 +9,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     session.destroy();
   }
 
-  return NextResponse.redirect(new URL("/", request.url));
+  return NextResponse.redirect(new URL("/", getRequestOrigin(request)));
 }

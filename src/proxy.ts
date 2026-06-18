@@ -4,6 +4,7 @@ import { NextResponse, type NextProxy, type NextRequest, type ProxyConfig } from
 import type { AuthSession } from "@/lib/auth/session";
 import { getMember, isExpired, registerOnAccess } from "@/lib/trials/store";
 import { PRICING_URL } from "@/lib/links";
+import { getRequestOrigin } from "@/lib/origin";
 
 const accessMode = (process.env.ACCESS_MODE || "public").trim().toLowerCase();
 const authEnabled = accessMode === "discord";
@@ -60,10 +61,11 @@ export const proxy: NextProxy = async (request: NextRequest): Promise<NextRespon
     return NextResponse.next();
   }
 
+  const origin = getRequestOrigin(request);
   const session = await readSession(request);
 
   if (!session?.user) {
-    const loginUrl = new URL("/auth/login", request.url);
+    const loginUrl = new URL("/auth/login", origin);
     loginUrl.searchParams.set("returnTo", returnToFromRequest(request));
     return NextResponse.redirect(loginUrl);
   }
@@ -80,12 +82,12 @@ export const proxy: NextProxy = async (request: NextRequest): Promise<NextRespon
   if (!session.authorized) {
     // Someone we've seen before but who no longer holds the role (their trial
     // role was pulled) gets the win-back offer; a true stranger goes to pricing.
-    return NextResponse.redirect(member ? new URL("/expired", request.url) : new URL(PRICING_URL));
+    return NextResponse.redirect(member ? new URL("/expired", origin) : new URL(PRICING_URL));
   }
 
   // Authorized but the window has elapsed (or was expired/revoked) → upsell screen.
   if (isExpired(member)) {
-    return NextResponse.redirect(new URL("/expired", request.url));
+    return NextResponse.redirect(new URL("/expired", origin));
   }
 
   // Authorized + active but not yet tracked (their cookie predates this deploy,

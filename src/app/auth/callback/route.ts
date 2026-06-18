@@ -15,7 +15,7 @@ import { PRICING_URL } from "@/lib/links";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!AUTH_ENABLED) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/", getRequestOrigin(request)));
   }
 
   const missing = getMissingAuthEnv();
