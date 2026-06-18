@@ -36,6 +36,7 @@ interface LessonShellProps {
   prev: ShellNav | null;
   next: ShellNav | null;
   toc: TocItem[];
+  aiBody?: string;
   children: ReactNode;
 }
 
@@ -181,7 +182,7 @@ export function LessonShell(props: LessonShellProps) {
             <FreshBadge />
           </div>
 
-          <LessonAiCopy slug={slug} />
+          <LessonAiCopy slug={slug} body={props.aiBody} />
 
           <article className="prose">{props.children}</article>
 

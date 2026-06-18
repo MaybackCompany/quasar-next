@@ -25,7 +25,7 @@ export const AI_PREAMBLE = [
   "",
 ].join("\n");
 
-export function buildLessonContext(slug: string): string {
+export function buildLessonContext(slug: string, body?: string): string {
   const entry = LESSON_LOOKUP[slug];
   if (!entry) return AI_PREAMBLE + "\n---\nMy first question is: ";
   const { lesson, module, path } = entry;
@@ -37,13 +37,31 @@ export function buildLessonContext(slug: string): string {
     `## Lesson: ${lesson.title}`,
     `Track ${letter} · Module ${module.num} (${module.title}) · topic: ${lesson.tag}`,
     "",
-    `Summary: ${lesson.blurb}`,
-    "",
-    "Tutor me through this lesson step by step. Start by asking what I've tried so far.",
-    "",
-    "---",
-    "My first question is: ",
   ];
+  const lessonBody = body?.trim();
+  if (lessonBody) {
+    // The full lesson follows, so the assistant tutors against THIS content
+    // (objective, every step, code, exact console errors) rather than guessing.
+    L.push(
+      "The complete lesson is included below. Teach me through it in order: confirm what I already understand, walk each step, and use the listed console errors to diagnose what I hit.",
+      "",
+      "---",
+      "",
+      lessonBody,
+      "",
+      "---",
+      "My first question is: ",
+    );
+  } else {
+    L.push(
+      `Summary: ${lesson.blurb}`,
+      "",
+      "Tutor me through this lesson step by step. Start by asking what I've tried so far.",
+      "",
+      "---",
+      "My first question is: ",
+    );
+  }
   return L.join("\n");
 }
 

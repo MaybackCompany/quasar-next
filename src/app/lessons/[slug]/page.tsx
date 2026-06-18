@@ -17,6 +17,7 @@ interface LessonManifestItem {
   title: string;
   sourcePath: string;
   toc: Array<{ href: string; label: string }>;
+  ai?: string;
 }
 
 const TRACK_LETTER: Record<string, string> = { server: "A", scripts: "B", gameworld: "C" };
@@ -87,6 +88,7 @@ export default async function LessonPage({ params }: PageProps) {
         prev={lookup.prev ? { slug: lookup.prev.slug, title: lookup.prev.title } : null}
         next={lookup.next ? { slug: lookup.next.slug, title: lookup.next.title } : null}
         toc={item.toc}
+        aiBody={item.ai}
       >
         <MdxContent />
       </LessonShell>

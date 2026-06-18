@@ -44,11 +44,13 @@ export function ModuleAiCopy({ trackId, moduleNum }: { trackId: string; moduleNu
   );
 }
 
-// Full "copy lesson for AI" card — used on the lesson page.
-export function LessonAiCopy({ slug }: { slug: string }) {
+// Full "copy lesson for AI" card — used on the lesson page. `body` is this
+// lesson's content distilled to markdown (from the manifest), so the copied
+// prompt teaches THIS specific lesson, not a generic shell.
+export function LessonAiCopy({ slug, body }: { slug: string; body?: string }) {
   const [copied, setCopied] = useState(false);
   const onCopy = () => {
-    copyText(buildLessonContext(slug));
+    copyText(buildLessonContext(slug, body));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -57,8 +59,9 @@ export function LessonAiCopy({ slug }: { slug: string }) {
       <div>
         <div className="t">Learning with an AI assistant?</div>
         <div className="s">
-          Copies this lesson plus 2026 ground rules (no <code>lua54 &apos;yes&apos;</code>, Cfx.re Portal, correct
-          callback signatures) as a ready-to-paste mentor prompt.
+          Copies this whole lesson - every step, code block, and the exact console errors - plus 2026 ground rules
+          (no <code>lua54 &apos;yes&apos;</code>, Cfx.re Portal, correct callback signatures) as a ready-to-paste
+          mentor prompt.
         </div>
       </div>
       <button className={"ai-copy-btn" + (copied ? " copied" : "")} onClick={onCopy}>
