@@ -53,7 +53,7 @@ export default function HomePage() {
               className="eyebrow"
               style={{ marginBottom: 18, display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}
             >
-              FREE TO READ <span className="sep">·</span> BEGINNER-FIRST <span className="sep">·</span> <FreshBadge compact />
+              FOR FIVEMCOACH MEMBERS <span className="sep">·</span> BEGINNER-FIRST <span className="sep">·</span> <FreshBadge compact />
             </div>
             <h1 className="fqs-h" style={{ fontSize: "clamp(40px, 6vw, 68px)", fontWeight: 700 }}>
               Learn FiveM by shipping, not by watching.
@@ -143,7 +143,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Done-with-you upsell: reading is free, the audit is the fast path. */}
+          {/* Done-with-you upsell: lessons come with membership, the audit is the fast path. */}
           <div
             style={{
               marginTop: 56,
@@ -160,9 +160,10 @@ export default function HomePage() {
               Skip the trial and error. Get your next step from someone who has shipped.
             </h2>
             <p style={{ fontSize: 15.5, color: "var(--fg-2)", margin: "0 0 18px", maxWidth: "64ch", lineHeight: 1.6 }}>
-              Reading is free. But if your server is stuck, or you just want the fastest path from zero to live, book
-              a free one on one FiveM audit. A senior builder looks at your setup and tells you the exact next thing to
-              fix. It comes from the team behind 60,000+ scripts sold and 6 Tebex Legends Awards.
+              The lessons come with your FiveMCoach membership. But if your server is stuck, or you just want the
+              fastest path from zero to live, book a free one on one FiveM audit. A senior builder looks at your setup
+              and tells you the exact next thing to fix. It comes from the team behind 60,000+ scripts sold and 6 Tebex
+              Legends Awards.
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <BookAudit className="btn btn-primary">Book your free FiveM audit</BookAudit>
