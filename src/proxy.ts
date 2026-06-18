@@ -26,6 +26,8 @@ const PUBLIC_PATHS = new Set([
   "/favicon.ico",
   "/headlogo.png",
   "/robots.txt",
+  "/sitemap.xml",
+  "/sitemap",
 ]);
 const STATIC_FILE_RE = /\.(?:avif|css|gif|ico|jpeg|jpg|js|json|map|png|svg|txt|webp|woff2?|ttf)$/i;
 
