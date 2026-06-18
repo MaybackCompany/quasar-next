@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Sun, Moon, ChevronDown } from "lucide-react";
+import { Sun, Moon, ChevronDown, ArrowRight } from "lucide-react";
 import { PATHS } from "@/lib/curriculum";
 import { NavUser } from "@/components/fqs/nav-user";
 
@@ -96,17 +96,21 @@ export function SiteNav({ active }: SiteNavProps) {
           </Link>
         </nav>
         <div className="nav-right">
-          <NavUser />
-          <button
-            className="icon-btn"
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            title="Toggle theme"
-          >
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          <div className="nav-util">
+            <NavUser />
+            <button
+              className="icon-btn"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              title="Toggle theme"
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+          <span className="nav-divider" aria-hidden="true" />
           <Link className="btn btn-primary nav-cta" href="/track/scripts">
             Start learning
+            <ArrowRight size={15} className="nav-cta-arrow" aria-hidden="true" />
           </Link>
         </div>
       </div>
