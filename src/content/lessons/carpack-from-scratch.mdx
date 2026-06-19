@@ -1,0 +1,117 @@
+<LessonHero
+  crumbs="Track B · Deep Dives"
+  title="Build a FiveM carpack from scratch"
+  meta={[
+    { label: "You'll build", value: "A complete carpack with proper folder structure, spawn code, and fxmanifest that loads automatically." },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You need", value: "A local FiveM server, a text editor, and the carpack example files." },
+    { label: "You'll learn", value: "The carpack folder structure (data/, stream/, audio/), file types (.meta, .yft, .ytd, .awc, .dat, .rel), spawn codes, and fxmanifest auto-integration." },
+  ]}
+>
+  Adding vehicles to FiveM is the most common first project for server owners. A carpack bundles everything — 3D models, textures, audio, handling data — into one resource. This lesson walks through the full structure using a real working example (Karin 98S), so you can swap in any add-on vehicle.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a local FiveM server with a resources folder.",
+    "I can edit fxmanifest.lua and restart resources.",
+    "I have a downloaded carpack folder (or the example one).",
+  ]}
+/>
+
+<Callout variant="fivem" title="What is a carpack?">
+  A carpack is a FiveM resource that contains one or more add-on vehicles. It bundles all the assets (models, textures, sounds, handling data) into a single folder with a `fxmanifest.lua` that tells FiveM how to load them. The term comes from the community practice of packaging multiple cars together in one download.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Learn the folder structure" outcome="You know what each folder and file type does.">
+    Every carpack follows this structure:
+
+    ```text
+carpack/
+  fxmanifest.lua         <- tells FiveM what to load
+  data/                  <- vehicle metadata
+    handling.meta        <- physics: mass, traction, suspension
+    vehicles.meta        <- vehicle definition: model name, type, plates
+    carvariations.meta   <- color variations and liveries
+    carcols.meta         <- color definitions
+  stream/                <- 3D models and textures (streamed to clients)
+    modelname.yft        <- vehicle 3D model (fragment)
+    modelname_hi.yft     <- high-detail interior model
+    modelname.ytd        <- texture dictionary (paint, interior, details)
+  audio/                 <- engine sounds
+    modelname.awc        <- audio wave container
+    modelname.dat        <- audio configuration (rel files reference)
+    modelname.rel        <- audio relationship data
+    ```
+
+    File types quick reference:
+    - `.yft` — model geometry (3D mesh)
+    - `.ytd` — texture dictionary (images)
+    - `.meta` — XML metadata (handling, vehicle definition)
+    - `.awc` — compressed audio
+    - `.dat` / `.rel` — audio config
+  </Step>
+
+  <Step num={2} title="Write the fxmanifest" outcome="FiveM knows how to load your vehicle.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+description 'Karin 98S/1 Carpack — Quasar University'
+
+files {
+    'data/*.meta',
+    'stream/*.yft',
+    'stream/*.ytd',
+    'audio/*.awc',
+    'audio/*.dat',
+    'audio/*.rel',
+}
+
+data_file 'HANDLING_FILE'        'data/handling.meta'
+data_file 'VEHICLE_METADATA_FILE' 'data/vehicles.meta'
+data_file 'CARCOLS_FILE'          'data/carcols.meta'
+data_file 'VEHICLE_VARIATION_FILE' 'data/carvariations.meta'
+data_file 'AUDIO_WAVEPACK'        'audio'
+    ```
+
+    Key lines: `files {}` lists every asset the client downloads. `data_file` lines tell FiveM to parse those metadata XMLs and integrate the vehicle into the game.
+
+    <ExpectedOutput>
+      After `ensure carpack`, the vehicle appears in your server. Use a spawn command or trainer to test: `/car s98`.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Understand the spawn code" outcome="You know how to spawn the vehicle by its model name.">
+    The model name comes from `vehicles.meta` — look for `<modelName>s98</modelName>`. That string is what you use in code:
+
+    ```lua client.lua
+-- Spawn the vehicle by its model name
+local model = 's98'  -- matches <modelName> in vehicles.meta
+RequestModel(model)
+while not HasModelLoaded(model) do
+    Citizen.Wait(0)
+end
+local coords = GetEntityCoords(PlayerPedId())
+local veh = CreateVehicle(model, coords.x + 2, coords.y, coords.z, 0.0, true, false)
+SetVehicleNumberPlateText(veh, 'QUASAR')
+SetModelAsNoLongerNeeded(model)
+    ```
+
+    <ExpectedOutput>
+      The vehicle spawns in front of you with the QUASAR plate. It drives, sounds correct, and other players can see it.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Vehicle invisible or crashes client | Missing `.ytd` or `.yft` in `files {}` | Check every file in stream/ is listed in fxmanifest |
+| Vehicle has no sound | Audio files not loaded or wrong path | Verify `data_file 'AUDIO_WAVEPACK' 'audio'` points to the correct folder |
+| `RequestModel` hangs forever | Model name doesn't match vehicles.meta | Check `<modelName>` in vehicles.meta — it's case-sensitive |
+| Handling feels wrong or floaty | handling.meta has wrong values or wrong model name | Match `<handlingName>` in vehicles.meta to `<handlingName>` in handling.meta |

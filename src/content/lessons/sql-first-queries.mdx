@@ -1,0 +1,126 @@
+<LessonHero
+  crumbs="Track B · Database"
+  title="What is SQL? Your first queries"
+  meta={[
+    { label: "You'll build", value: "Your first SQL queries: SELECT, INSERT, UPDATE, DELETE — the four commands every database interaction uses." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "HeidiSQL or phpMyAdmin connected to a MySQL database (see the QBCore server lesson)." },
+    { label: "You'll learn", value: "What a relational database is, what tables/rows/columns are, the four SQL command types (CRUD), and how to write safe parameterized queries." },
+  ]}
+>
+  Every FiveM server uses a database — for player data, vehicles, inventory, and money. SQL is the language you talk to it with. This lesson covers the four commands you'll use every day: SELECT to read, INSERT to create, UPDATE to change, and DELETE to remove. Four commands. That's it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a MySQL database running (via XAMPP or standalone).",
+    "I have HeidiSQL or phpMyAdmin open and connected.",
+    "I have read the server setup lesson or know what a database is.",
+  ]}
+/>
+
+<Callout variant="fivem" title="SQL is just asking questions">
+  Think of a database as a spreadsheet. **Tables** are the sheets. **Rows** are the entries. **Columns** are the fields. SQL is how you ask "show me all players with money over 1000" — and it gives you exactly those rows.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="SELECT — read data" outcome="You can fetch any data from any table.">
+    ```sql
+-- Get all players
+SELECT * FROM players;
+
+-- Get only the name and money columns
+SELECT name, money FROM players;
+
+-- Get players with money over 5000
+SELECT name, money FROM players WHERE money > 5000;
+
+-- Get the top 5 richest players
+SELECT name, money FROM players ORDER BY money DESC LIMIT 5;
+    ```
+
+    - `*` means "all columns"
+    - `WHERE` filters rows
+    - `ORDER BY` sorts (DESC = highest first)
+    - `LIMIT` caps the number of results
+
+    <ExpectedOutput>
+      HeidiSQL shows a grid of results matching your query.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="INSERT — create new data" outcome="You can add rows to any table.">
+    ```sql
+-- Add a new player
+INSERT INTO players (name, money, job)
+VALUES ('NewPlayer', 500, 'unemployed');
+
+-- Add multiple rows at once
+INSERT INTO items (name, label, weight)
+VALUES
+    ('bread', 'Bread', 1),
+    ('water', 'Water Bottle', 1),
+    ('medkit', 'Medkit', 2);
+    ```
+
+    Column names in parentheses. Values in the same order. String values need single quotes.
+
+    <ExpectedOutput>
+      `SELECT * FROM players` now shows 'NewPlayer' with 500 money.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="UPDATE — change existing data" outcome="You can modify any row.">
+    ```sql
+-- Give a player more money
+UPDATE players SET money = 1000 WHERE name = 'NewPlayer';
+
+-- Give everyone 100 bonus (be careful with no WHERE!)
+UPDATE players SET money = money + 100;
+    ```
+
+    **Always use WHERE** unless you mean to update every row. Without WHERE, `UPDATE players SET money = 0` wipes everyone's money.
+
+    <ExpectedOutput>
+      'NewPlayer' now has 1000 money instead of 500.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="DELETE — remove data" outcome="You can delete rows (carefully).">
+    ```sql
+-- Remove a specific player
+DELETE FROM players WHERE name = 'NewPlayer';
+
+-- Remove all players with 0 money
+DELETE FROM players WHERE money = 0;
+    ```
+
+    **Never run DELETE without WHERE** unless you want to empty the entire table.
+
+    <ExpectedOutput>
+      'NewPlayer' is gone from the players table.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Security: parameterized queries
+
+Never put user input directly into SQL. Use `?` placeholders:
+
+```lua server.lua
+-- SAFE: parameterized query
+MySQL.query('SELECT * FROM players WHERE name = ?', { playerName })
+
+-- DANGEROUS: string concatenation (SQL injection)
+MySQL.query('SELECT * FROM players WHERE name = \'' .. playerName .. '\'')
+```
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `Table 'qbcore.players' doesn't exist` | Wrong table name or database not selected | Check HeidiSQL — click your database first, then run the query |
+| `Syntax error near 'WHERE'` | Comma, quote, or parenthesis missing | Check every quote is closed and commas are between items |
+| Deleted all rows accidentally | Forgot WHERE clause | Immediately restore from backup. Always backup before DELETE |

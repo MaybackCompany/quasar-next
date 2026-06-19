@@ -1,0 +1,86 @@
+<LessonHero
+  crumbs="Track B · Deep Dives"
+  title="Change vehicle handling like a pro"
+  meta={[
+    { label: "You'll build", value: "A modified handling.meta for any vehicle — tweak mass, traction, suspension, and top speed with real-time testing." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A local FiveM server, a carpack or add-on vehicle, and a text editor." },
+    { label: "You'll learn", value: "What each handling parameter does (mass, traction, suspension, braking, acceleration), how to read handling.meta, how to test changes in real-time, and what changes improve control vs what breaks physics." },
+  ]}
+>
+  Vehicle handling is the difference between a car that feels planted and one that slides into every wall. FiveM lets you tune every physics parameter through `handling.meta`. This lesson uses vehicleDebug to test changes instantly — no restart between tweaks.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a carpack or add-on vehicle resource with a data/handling.meta file.",
+    "I can edit files and restart resources.",
+    "I have read the carpack or add-on vehicles lesson.",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Read the current handling" outcome="You know what each parameter controls.">
+    Open `data/handling.meta` in your carpack. Find the `<handlingName>` for your vehicle:
+
+    ```xml handling.meta
+<handlingName>s98</handlingName>
+<fMass value="1400.000000" />
+<fInitialDragCoeff value="9.500000" />
+<fPercentSubmerged value="60.000000" />
+<vecCentreOfMassOffset x="0.000000" y="0.000000" z="-0.100000" />
+<vecInertiaMultiplier x="1.000000" y="1.000000" z="1.000000" />
+    ```
+
+    Key parameters:
+    - **fMass** — vehicle weight in kg. Higher = heavier, slower acceleration, more stable
+    - **fInitialDragCoeff** — air resistance. Higher = lower top speed
+    - **fPercentSubmerged** — how much of the car is underwater before it floats
+    - **vecCentreOfMassOffset** — shifts center of gravity. Negative Z = lower, more stable
+
+    Traction and suspension are in sub-nodes:
+    ```xml
+<fTractionCurveMax value="2.400000" />
+<fTractionCurveMin value="2.000000" />
+<fSuspensionForce value="1.400000" />
+<fSuspensionReboundDamp value="1.800000" />
+    ```
+  </Step>
+
+  <Step num={2} title="Tune mass and traction" outcome="The car feels heavier or lighter as you intend.">
+    To make a car more stable (less spin-outs):
+    ```xml
+<fMass value="1600.000000" />  <!-- was 1400 — heavier, more planted -->
+<fTractionCurveMax value="2.800000" />  <!-- was 2.4 — more grip -->
+    ```
+
+    To make a car more agile (drifty, responsive):
+    ```xml
+<fMass value="1100.000000" />  <!-- was 1400 — lighter, more nimble -->
+<fTractionCurveMin value="1.500000" />  <!-- was 2.0 — less grip at limit -->
+    ```
+
+    Rule: change one parameter at a time. Test. Then change the next. If you change 5 values at once and the car flips over, you won't know which one caused it.
+  </Step>
+
+  <Step num={3} title="Test changes in real-time with vehicleDebug" outcome="You see handling changes instantly without restarting.">
+    Install vehicleDebug: https://github.com/ItsANoBrainer/vehicleDebug
+
+    Add it to your server and start it. In-game, open the vehicleDebug menu (default: F10). Select your vehicle. Now when you edit handling.meta and save, vehicleDebug reloads the handling data without a resource restart.
+
+    <ExpectedOutput>
+      Edit `fMass` from 1400 to 1800 → save → the car instantly feels heavier. No restart needed.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Handling changes don't take effect | Cached handling data in memory | Use vehicleDebug to force reload, or restart the resource |
+| Car flips over on spawn | Mass too low or center of mass too high | Increase `fMass`, lower `vecCentreOfMassOffset` Z value |
+| Car won't turn at all | Traction values too high | Lower `fTractionCurveMax` — above 3.5 feels like rails |
+| Top speed unchanged despite drag changes | `fInitialDragCoeff` only affects coasting, not powered speed | Adjust `fInitialDriveForce` or `fInitialDriveMaxFlatVel` for top speed |

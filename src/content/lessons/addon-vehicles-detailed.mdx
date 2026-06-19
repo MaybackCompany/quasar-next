@@ -1,0 +1,113 @@
+<LessonHero
+  crumbs="Track C · Assets"
+  title="Add-on vehicles: the complete process"
+  meta={[
+    { label: "You'll build", value: "A fully working add-on vehicle resource with model files, handling, vehicles.meta, carcols, and a spawn command." },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You need", value: "A local FiveM server, a downloaded add-on vehicle (car folder with .yft/.ytd/.meta files)." },
+    { label: "You'll learn", value: "The complete add-on vehicle pipeline: file types, folder structure, data_file lines in fxmanifest, handling.meta and vehicles.meta integration, spawning, and troubleshooting invisible vehicles." },
+  ]}
+>
+  Add-on vehicles are the most common customization on FiveM servers. This is the definitive guide — not just "put files in a folder," but understanding every file type, every data_file line, and why each one matters. After this lesson you can add any vehicle from any source.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a local FiveM server with a resources folder.",
+    "I have a downloaded add-on vehicle (a folder with .yft and .ytd files).",
+    "I can edit fxmanifest.lua and restart resources.",
+  ]}
+/>
+
+<Callout variant="fivem" title="Add-on vs Replace">
+  **Add-on** vehicles keep the original GTA cars and add new ones. They need a unique spawn name and don't conflict with anything. **Replace** vehicles swap a GTA car model. They're simpler (just rename files) but break if two use the same car. Always prefer add-on.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Prepare the folder structure" outcome="Every file is in the right place.">
+    ```text
+resources/my_addon_car/
+  fxmanifest.lua
+  data/
+    handling.meta
+    vehicles.meta
+    carcols.meta
+    carvariations.meta
+  stream/
+    modelname.yft        <- vehicle 3D model
+    modelname_hi.yft     <- high-detail interior
+    modelname.ytd        <- textures
+    modelname+hi.ytd     <- high-detail textures
+    ```
+
+    Most add-on car downloads already have this structure. Verify before proceeding.
+  </Step>
+
+  <Step num={2} title="Write the fxmanifest" outcome="FiveM knows how to load every file.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+description 'My Add-On Vehicle'
+
+files {
+    'data/*.meta',
+    'stream/*.yft',
+    'stream/*.ytd',
+}
+
+data_file 'HANDLING_FILE'         'data/handling.meta'
+data_file 'VEHICLE_METADATA_FILE' 'data/vehicles.meta'
+data_file 'CARCOLS_FILE'          'data/carcols.meta'
+data_file 'VEHICLE_VARIATION_FILE' 'data/carvariations.meta'
+    ```
+
+    The `data_file` lines are critical. Each one tells FiveM: "parse this XML and merge it into the game." Without them, your vehicle exists on disk but the game doesn't know about it.
+  </Step>
+
+  <Step num={3} title="Verify the model name in vehicles.meta" outcome="You know the spawn code.">
+    Open `data/vehicles.meta`. Find `<modelName>`:
+
+    ```xml vehicles.meta
+<modelName>mycar</modelName>
+    ```
+
+    This is your spawn name. It must match the stream file names (e.g., `mycar.yft`, `mycar.ytd`). If they don't match, the vehicle won't spawn.
+
+    Also check:
+    - `<gameName>` — the display name in trainers
+    - `<vehicleClass>` — VC_SPORT, VC_SEDAN, etc.
+    - `<handlingId>` — must match a `<handlingName>` in handling.meta
+  </Step>
+
+  <Step num={4} title="Spawn and test" outcome="The vehicle appears and drives correctly.">
+    ```lua client.lua
+RegisterCommand('spawnmycar', function()
+    local model = 'mycar'  -- must match <modelName> in vehicles.meta
+    RequestModel(model)
+    while not HasModelLoaded(model) do Citizen.Wait(0) end
+    local coords = GetEntityCoords(PlayerPedId())
+    local veh = CreateVehicle(model, coords.x + 2, coords.y, coords.z, 0.0, true, false)
+    SetVehicleNumberPlateText(veh, 'ADDON')
+    SetModelAsNoLongerNeeded(model)
+end, false)
+    ```
+
+    Run `/spawnmycar` in chat. The vehicle appears.
+
+    <ExpectedOutput>
+      The vehicle spawns, is drivable, has correct engine sound, and other players can see it.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Vehicle invisible — no model at all | Model files not in `files {}` or wrong folder | Check every .yft/.ytd is in `stream/` and listed in `files {}` |
+| Vehicle spawns but has no wheels or falls through ground | Missing `handling.meta` or wrong `<handlingId>` | Match `<handlingId>` in vehicles.meta to `<handlingName>` in handling.meta |
+| `Invalid model` or `RequestModel` hangs forever | Spawn name doesn't match `<modelName>` | Case-sensitive. `mycar` ≠ `MyCar` ≠ `MYCAR` |
+| Vehicle is solid white (no textures) | `.ytd` file not loaded or wrong path | Check the .ytd is in `stream/` and listed in `files {}` |

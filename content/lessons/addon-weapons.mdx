@@ -1,0 +1,91 @@
+<LessonHero
+  crumbs="Track C · Assets"
+  title="Stream add-on weapons and custom loadouts"
+  meta={[
+    { label: "You'll build", value: "An add-on weapon resource with custom model, textures, and a give-weapon command." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, an add-on weapon download (folder with .yft/.ytd/weapons.meta)." },
+    { label: "You'll learn", value: "Weapon asset types (.yft, .ytd, .meta), weapons.meta structure, data_file lines, spawning with GiveWeaponToPed, and integrating with inventory scripts." },
+  ]}
+>
+  Custom weapons are second only to custom vehicles in popularity. The process is similar to vehicles but uses different metadata files. This lesson covers the full pipeline and the common mistakes that leave weapons invisible or unshootable.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have read the add-on vehicles lesson — weapons follow the same pattern.",
+    "I have a downloaded add-on weapon folder.",
+    "I can create and restart resources.",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Prepare the resource" outcome="All files are in the right folders.">
+    ```text
+resources/my_weapon/
+  fxmanifest.lua
+  data/
+    weapons.meta
+  stream/
+    w_ar_myrifle.yft
+    w_ar_myrifle.ytd
+    ```
+
+    An add-on weapon needs at minimum: the model (`.yft`), the textures (`.ytd`), and the metadata (`.meta`). Some downloads include sounds (`.awc`/`.dat`) — include those if present.
+  </Step>
+
+  <Step num={2} title="Check weapons.meta" outcome="You know the weapon's spawn name.">
+    ```xml weapons.meta
+<Weapon type="WEAPON_ASSAULTRIFLE">
+    <modelName>w_ar_myrifle</modelName>
+    <animGroup>rifle</animGroup>
+    <ClipSize>30</ClipSize>
+    <Damage>35.000000</Damage>
+    <Recoil>0.350000</Recoil>
+    ...
+</Weapon>
+    ```
+
+    The `<modelName>` is your spawn name. The `<Weapon type>` is a GTA weapon slot — adding to `WEAPON_ASSAULTRIFLE` means it shares ammo and animations with the assault rifle class.
+  </Step>
+
+  <Step num={3} title="Write fxmanifest and spawn" outcome="The weapon appears in hand and fires.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+files {
+    'data/weapons.meta',
+    'stream/*.yft',
+    'stream/*.ytd',
+}
+
+data_file 'WEAPONINFO_FILE' 'data/weapons.meta'
+    ```
+
+    ```lua client.lua
+RegisterCommand('givemygun', function()
+    local ped = PlayerPedId()
+    local weaponHash = GetHashKey('WEAPON_MYRIFLE')
+    GiveWeaponToPed(ped, weaponHash, 999, false, false)
+end, false)
+    ```
+
+    The hash name must match the `<Weapon type>` exactly: `GetHashKey('WEAPON_MYRIFLE')`.
+
+    <ExpectedOutput>
+      `/givemygun` equips the weapon. It renders in the player's hands, fires, and uses correct ammo.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Weapon invisible in hands | `.yft` or `.ytd` not in `files {}` | List every model/texture file in `files {}` |
+| `GiveWeaponToPed` gives default weapon | Hash doesn't match `<Weapon type>` in weapons.meta | Match exactly: `WEAPON_MYRIFLE` must match the XML type |
+| No weapon sounds | Sound files missing or not loaded | Add audio files and `data_file 'AUDIO_WAVEPACK'` line |
+| Weapon clips through ground when dropped | No ground model specified | Add `<modelName2>` with the dropped/pickup model variant |

@@ -1,0 +1,101 @@
+<LessonHero
+  crumbs="Track A · Server Setup"
+  title="QBCore and txAdmin — your first server"
+  meta={[
+    { label: "You'll build", value: "A working FiveM server with QBCore framework, txAdmin panel, XAMPP MySQL, and HeidiSQL — everything a beginner needs to host." },
+    { label: "Time", value: "~45 minutes" },
+    { label: "You need", value: "A Windows PC, internet connection, and a Cfx.re account for the license key." },
+    { label: "You'll learn", value: "Installing XAMPP for MySQL, downloading FiveM artifacts, setting up txAdmin, deploying QBCore via recipe, connecting HeidiSQL, and verifying the server is joinable." },
+  ]}
+>
+  This is the complete beginner path to a running FiveM server — no skipped steps, no assumptions. By the end you have XAMPP running MySQL, txAdmin deployed with a QBCore recipe, HeidiSQL connected to your database, and players able to join. This is the lesson most beginners wish they had on day one.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I am on Windows 10 or 11.",
+    "I have a Cfx.re account at portal.cfx.re.",
+    "I have at least 20GB free disk space.",
+    "I have read the FiveM orientation lesson (fivem-2026-orientation).",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Install XAMPP for MySQL" outcome="MySQL is running on localhost:3306.">
+    Download XAMPP from https://www.apachefriends.org — use the version with PHP 8.x and MariaDB. Run the installer, accept defaults. Open the XAMPP Control Panel and click **Start** next to MySQL.
+
+    After it starts (green indicator), click **Admin** next to MySQL to open phpMyAdmin. This confirms MySQL is working.
+
+    <ExpectedOutput>
+      phpMyAdmin opens at http://localhost/phpmyadmin. MySQL is listening on port 3306.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Download FiveM server artifacts" outcome="The FXServer files are in your server folder.">
+    Go to https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/
+
+    Download the **latest recommended** build (green label, not the top "Latest" which may be unstable). Extract the zip to:
+
+    ```text
+C:\FXServer\
+    ```
+
+    Inside you should see `FXServer.exe`, `citizen/` folder, and other files.
+
+    <ExpectedOutput>
+      C:\FXServer\FXServer.exe exists. Running it starts a bare server.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Get your license key" outcome="You have a Cfx.re license key.">
+    Go to https://portal.cfx.re/ → Servers → Create Server. Give it a name. Copy the license key (starts with `licensekey:`).
+
+    Create a `server.cfg` in `C:\FXServer\`:
+    ```bash server.cfg
+# Your license key from portal.cfx.re
+sv_licenseKey "your_license_key_here"
+
+# Server name
+sv_hostname "My First QBCore Server"
+
+# Enable OneSync
+onesync on
+    ```
+  </Step>
+
+  <Step num={4} title="Start the server and open txAdmin" outcome="txAdmin loads at localhost:40120.">
+    Run `FXServer.exe`. On first boot, txAdmin asks for a username and password — set them. It also asks for a recipe. Search for **QBCore** and select the official QBCore Framework recipe.
+
+    txAdmin auto-downloads QBCore, sets up the database, and starts all resources.
+
+    <ExpectedOutput>
+      txAdmin dashboard shows green status. The server is joinable at `localhost` or your local IP.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Connect HeidiSQL to your database" outcome="You can browse the QBCore database.">
+    Download HeidiSQL from https://www.heidisql.com. Open it, click New Session:
+
+    - Host: `127.0.0.1`
+    - User: `root`
+    - Password: (leave blank unless you set one in XAMPP)
+    - Port: `3306`
+
+    Click Open. You should see the QBCore database with tables like `players`, `vehicles`, `items`.
+
+    <ExpectedOutput>
+      HeidiSQL shows the QBCore database. You can browse player data, items, and server configuration tables.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| MySQL won't start in XAMPP | Port 3306 already in use | Click Config → my.ini → change port, or stop the other MySQL instance |
+| `FXServer.exe` crashes immediately | Missing Visual C++ Redistributable | Install VC_redist.x64.exe from Microsoft |
+| txAdmin recipe fails to download | Firewall blocking or GitHub rate limit | Wait a few minutes and retry. If persistent, download QBCore manually |
+| `ensure` command not found in HeidiSQL console | HeidiSQL doesn't run FiveM commands | Use txAdmin Live Console for FiveM commands, HeidiSQL for SQL only |

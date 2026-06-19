@@ -1,0 +1,164 @@
+<LessonHero
+  crumbs="Track C · NUI"
+  title="Custom loading screen with music"
+  meta={[
+    { label: "You'll build", value: "A branded loading screen with your server logo, background image, music track, and loading tips that display while players connect." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, basic HTML/CSS knowledge, and an audio file (.ogg format)." },
+    { label: "You'll learn", value: "The loading screen architecture, HTML/CSS for the overlay, playing background music, cycling tips, and the correct fxmanifest setup." },
+  ]}
+>
+  The loading screen is the first thing players see. Five seconds of a branded, professional loading screen builds more trust than a hundred forum posts. This lesson builds one from scratch — logo, background, music, rotating tips — and explains every line.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a local FiveM server.",
+    "I know basic HTML and CSS.",
+    "I have a logo image (PNG) and a short audio file (.ogg).",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource" outcome="The folder structure is ready.">
+    ```text
+resources/my_loadingscreen/
+  fxmanifest.lua
+  index.html
+  style.css
+  script.js
+  assets/
+    logo.png
+    background.jpg
+    music.ogg
+    ```
+  </Step>
+
+  <Step num={2} title="Build the HTML page" outcome="The loading screen displays your brand.">
+    ```html index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="overlay">
+        <img src="assets/logo.png" alt="Server Logo" class="logo">
+        <h1>My FiveM Server</h1>
+        <div class="loading-bar">
+            <div class="progress" id="progressBar"></div>
+        </div>
+        <p id="tip">Loading amazing experiences...</p>
+    </div>
+    <audio id="bgMusic" loop>
+        <source src="assets/music.ogg" type="audio/ogg">
+    </audio>
+    <script src="script.js"></script>
+</body>
+</html>
+    ```
+
+    ```css style.css
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: system-ui, sans-serif;
+    background: url('assets/background.jpg') center/cover no-repeat;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+.overlay {
+    background: rgba(0,0,0,0.7);
+    padding: 48px;
+    border-radius: 16px;
+    text-align: center;
+    max-width: 500px;
+}
+.logo { width: 120px; margin-bottom: 16px; }
+h1 { font-size: 28px; margin-bottom: 24px; }
+.loading-bar {
+    background: rgba(255,255,255,0.2);
+    border-radius: 4px;
+    height: 6px;
+    margin: 24px 0;
+    overflow: hidden;
+}
+.progress {
+    background: #0fb6c4;
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s;
+}
+#tip { font-size: 14px; opacity: 0.7; margin-top: 16px; }
+    ```
+
+    ```javascript script.js
+// Rotating tips
+const tips = [
+    'Welcome to the best FiveM experience!',
+    'Join our Discord: discord.gg/yourserver',
+    'Need help? Type /help in chat.',
+    'Check out our custom vehicles and jobs!',
+];
+let tipIndex = 0;
+setInterval(() => {
+    tipIndex = (tipIndex + 1) % tips.length;
+    document.getElementById('tip').textContent = tips[tipIndex];
+}, 4000);
+
+// Start music
+window.addEventListener('load', () => {
+    document.getElementById('bgMusic').play().catch(() => {});
+});
+
+// Loading progress
+let progress = 0;
+const progressBar = document.getElementById('progressBar');
+const interval = setInterval(() => {
+    progress += Math.random() * 15;
+    if (progress > 100) progress = 100;
+    progressBar.style.width = progress + '%';
+    if (progress >= 100) clearInterval(interval);
+}, 300);
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest and test" outcome="The loading screen appears when players connect.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+loadscreen 'index.html'
+
+files {
+    'index.html',
+    'style.css',
+    'script.js',
+    'assets/logo.png',
+    'assets/background.jpg',
+    'assets/music.ogg',
+}
+    ```
+
+    `loadscreen` is a dedicated manifest key — it tells FiveM to show this page during the loading phase and hide it automatically when the player spawns.
+
+    Ensure and reconnect. Your branded screen appears.
+
+    <ExpectedOutput>
+      Reconnecting shows your logo, background, progress bar, rotating tips, and music.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Music doesn't play | Browser autoplay policy blocks audio | Add `play().catch(() => {})` — it silently ignores the autoplay block. Music plays after user interaction or on next load |
+| Loading screen stays stuck | `loadscreen` script doesn't end naturally | FiveM hides the screen after all resources are loaded. If stuck, a resource is failing to start |
+| Images don't appear | Path in HTML doesn't match `files {}` | Paths in HTML are relative to the resource root. Check `assets/logo.png` is listed in `files {}` |
+| CSS doesn't apply | File not listed in `files {}` | Every file referenced in HTML must be listed in `files {}` |

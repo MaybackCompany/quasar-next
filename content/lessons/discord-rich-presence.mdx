@@ -1,0 +1,123 @@
+<LessonHero
+  crumbs="Track B · Deep Dives"
+  title="Add Discord rich presence to your server"
+  meta={[
+    { label: "You'll build", value: "A Discord rich presence integration showing player count, server name, and a custom image in players' Discord profiles." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A Discord application at discord.com/developers, a FiveM server with OneSync, and basic Lua knowledge." },
+    { label: "You'll learn", value: "Creating a Discord application, uploading rich presence art, connecting FiveM to Discord via SetDiscordRichPresence, and displaying live player counts and server info." },
+  ]}
+>
+  Discord rich presence shows your server's name, player count, and a custom image right in Discord when someone is playing on your server. It's free advertising — every player's friends see it. This lesson sets up the full integration from Discord developer portal to Lua script.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a Discord account and can access discord.com/developers.",
+    "I have a local FiveM server with OneSync enabled.",
+    "I can create and edit Lua scripts.",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create a Discord application" outcome="You have a Client ID and uploaded art assets.">
+    Go to https://discord.com/developers/applications → New Application. Name it after your server.
+
+    Go to **Rich Presence** → **Art Assets**. Upload images (512x512 minimum):
+    - `server_logo` — your server's logo
+    - `server_large` — a hero image or screenshot
+
+    Copy your **Client ID** (18-digit number) from the General Information page.
+  </Step>
+
+  <Step num={2} title="Set up the resource" outcome="A resource that talks to Discord.">
+    ```text
+resources/qu_discord_rpc/
+  fxmanifest.lua
+  client.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={3} title="Set the Discord app ID and presence" outcome="Discord shows the small icon and server name.">
+    ```lua client.lua
+local appId = 'YOUR_DISCORD_CLIENT_ID'  -- 18-digit number
+
+Citizen.CreateThread(function()
+    -- Set the Discord application ID once
+    SetDiscordAppId(appId)
+
+    while true do
+        -- Update presence every 15 seconds
+        SetRichPresence('Playing on My Cool Server')
+
+        -- Small image = your logo
+        SetDiscordRichPresenceAssetSmall('server_logo')
+        SetDiscordRichPresenceAssetSmallText('My Cool Server')
+
+        Citizen.Wait(15000)
+    end
+end)
+    ```
+
+    <ExpectedOutput>
+      In Discord, your profile shows "Playing My Cool Server" with your logo.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Add live player count and join button" outcome="Discord shows how many players are online.">
+    ```lua client.lua
+local appId = 'YOUR_DISCORD_CLIENT_ID'
+
+Citizen.CreateThread(function()
+    SetDiscordAppId(appId)
+
+    while true do
+        -- Get player count from the server
+        local playerCount = GetNumResources() -- placeholder; use actual count
+        -- Real count: TriggerServerEvent to get it, or use a shared variable
+
+        SetRichPresence('Players online: ' .. playerCount)
+
+        -- Large image = hero/screenshot
+        SetDiscordRichPresenceAsset('server_large')
+        SetDiscordRichPresenceAssetText('Join now at cfx.re/join/xxxxx')
+
+        -- Add a Join button
+        SetDiscordRichPresenceAction(0, 'Join', 'fivem://connect/localhost:30120')
+        SetDiscordRichPresenceAction(1, 'Discord', 'https://discord.gg/yourserver')
+
+        Citizen.Wait(15000)
+    end
+end)
+    ```
+
+    For a real player count, add this server-side:
+    ```lua server.lua
+RegisterNetEvent('qu_discord:getPlayerCount', function()
+    local src = source
+    TriggerClientEvent('qu_discord:playerCount', src, GetNumPlayerIndices())
+end)
+    ```
+
+    <ExpectedOutput>
+      Discord shows "Players online: 12" with a Join button. Friends can click to join directly.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Rich presence doesn't appear | Client ID is wrong or app not created | Double-check the 18-digit ID at discord.com/developers |
+| Image shows as gray question mark | Asset name doesn't match the uploaded name | Asset names are case-sensitive. Match exactly |
+| Join button doesn't work | `fivem://` link has wrong syntax | Use `fivem://connect/ip:port` — no spaces, correct IP |
+| Player count shows 0 | Not fetching count from server | Use TriggerServerEvent to get `GetNumPlayerIndices()` |

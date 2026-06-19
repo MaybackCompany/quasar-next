@@ -1,0 +1,106 @@
+<LessonHero
+  crumbs="Track B · Deep Dives"
+  title="Build FiveM UIs faster with fivem-ui-lib"
+  meta={[
+    { label: "You'll build", value: "A NUI overlay using fivem-ui-lib — bidirectional Lua↔JS communication with clean .send() and .on() methods, plus in-game notifications." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, basic HTML/JS knowledge, and the fivem-ui-lib from GitHub." },
+    { label: "You'll learn", value: "How fivem-ui-lib simplifies NUI development, the .send()/.on() pattern, built-in notifications, and how to skip boilerplate NUI code." },
+  ]}
+>
+  Writing raw NUI callbacks involves repetitive fetch URLs, manual JSON parsing, and boilerplate event listeners. fivem-ui-lib wraps all of that in a clean API so you focus on your UI logic instead of the plumbing. This lesson sets up fivem-ui-lib and builds a working overlay in half the code of raw NUI.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have read the NUI from scratch lesson (nui-html-css-js).",
+    "I can create a FiveM resource with client.lua and fxmanifest.lua.",
+    "I know basic HTML, CSS, and JavaScript.",
+  ]}
+/>
+
+<Callout variant="fivem" title="fivem-ui-lib vs raw NUI">
+  Raw NUI requires you to: construct fetch URLs with `GetParentResourceName()`, parse JSON manually, set up message event listeners, and build notification UI from scratch. fivem-ui-lib gives you `.send()` to talk to Lua, `.on()` to receive, and `.showNotification()` for instant in-game toasts — all with one import.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Get the library" outcome="fivem-ui-lib is in your resource folder.">
+    Get it from GitHub: https://github.com/Jax-Danger/fivem-ui-lib
+
+    Or clone directly into your resource:
+    ```bash
+cd resources
+git clone https://github.com/Jax-Danger/fivem-ui-lib.git
+    ```
+  </Step>
+
+  <Step num={2} title="Set up the resource" outcome="Your resource loads the library alongside your NUI.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/script.js',
+    'fivem-ui-lib/**/*',
+}
+    ```
+  </Step>
+
+  <Step num={3} title="Use .send() and .on() for communication" outcome="Two-way Lua↔JS with clean method calls.">
+    ```javascript html/script.js
+// Import the library
+import { useNui } from './fivem-ui-lib/index.js';
+
+const nui = useNui();
+
+// Send data to Lua
+document.getElementById('submitBtn').addEventListener('click', () => {
+    nui.send('submitForm', { name: 'Player1', amount: 500 });
+});
+
+// Receive data from Lua
+nui.on('openMenu', (data) => {
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('title').textContent = data.title;
+});
+
+// Show an in-game notification
+nui.showNotification('Welcome back!', 'success');
+    ```
+
+    ```lua client.lua
+-- Receive from NUI
+RegisterNUICallback('submitForm', function(data, cb)
+    print(('Received: name=%s amount=%s'):format(data.name, data.amount))
+    cb('ok')
+end)
+
+-- Send to NUI
+RegisterCommand('openmenu', function()
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        __type = 'openMenu',  -- fivem-ui-lib routes by __type
+        title = 'Player Menu'
+    })
+end, false)
+    ```
+
+    <ExpectedOutput>
+      The menu opens with the title. The notification appears in the corner. Submitting sends data to Lua which prints it.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `import` statement fails | Browser doesn't support ES modules in NUI | Use a bundled build or load as a script tag: `<script src="fivem-ui-lib/index.js"></script>` |
+| `.on()` callback never fires | `__type` name doesn't match between Lua and JS | In Lua `SendNUIMessage` use `__type` key matching the `.on()` event name |
+| Library not found | `files {}` doesn't include the library path | Add `'fivem-ui-lib/**/*'` to `files {}` |

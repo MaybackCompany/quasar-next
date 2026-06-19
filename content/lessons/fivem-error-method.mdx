@@ -1,0 +1,113 @@
+<LessonHero
+  crumbs="Track A · Server Ops"
+  title="Understanding and fixing FiveM errors"
+  meta={[
+    { label: "You'll build", value: "A systematic debugging method: read the error → find the named resource and line → diagnose the cause → apply the fix → test." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A FiveM server with txAdmin Live Console access, and a basic understanding of server.cfg and resource structure." },
+    { label: "You'll learn", value: "How to read a FiveM error (resource name, file path, line number), the difference between server and client errors, common error categories, and a step-by-step debugging workflow." },
+  ]}
+>
+  Errors are not random noise — they are structured reports telling you exactly what broke, which resource, which file, and which line. The skill is learning to read them. This lesson teaches the debugging method, not just a list of fixes, so you can diagnose errors you've never seen before.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can read txAdmin Live Console or the FXServer console window.",
+    "I have at least one resource loaded on my server.",
+    "I can open and edit script files.",
+  ]}
+/>
+
+<Callout variant="fivem" title="The #1 debugging mistake">
+  Beginners see a red error line and immediately start changing code at random. Don't. Read the error first. It names the resource, the file, and the line. Fix that one spot, restart, and test. If it works, stop. If not, read the next error.
+</Callout>
+
+## The debugging method
+
+Every error follows the same structure. Learn to read it:
+
+```text
+[    script:my_resource] SCRIPT ERROR: @my_resource/client.lua:42:
+attempt to index a nil value (global 'MyVariable')
+```
+
+Break it down:
+- `[script:my_resource]` — the resource that crashed
+- `client.lua:42` — the file and line number
+- `attempt to index a nil value` — what went wrong
+- `(global 'MyVariable')` — the specific thing that was nil
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Find where the error happened" outcome="You know the exact resource, file, and line.">
+    Open txAdmin Live Console (or your server console). Scroll to the red error lines. Look for the pattern:
+
+    ```text
+[    script:RESOURCE_NAME] SCRIPT ERROR: @RESOURCE_NAME/FILE:LINENUMBER:
+    ```
+
+    Memorize this pattern. Every FiveM error includes it. If you see `RESOURCE_NAME` but can't find that resource folder, check:
+    - Is the resource actually in `resources/`?
+    - Is it in `server.cfg` with `ensure RESOURCE_NAME`?
+    - Is the folder name spelled exactly as shown?
+  </Step>
+
+  <Step num={2} title="Identify the error type" outcome="You know the category of the problem.">
+    Common error patterns and what they mean:
+
+    | Error text | What it means | What to check |
+    |---|---|---|
+    | `attempt to index a nil value` | A variable is nil when you expected a table/object | Did you define it? Did a function return nil? |
+    | `attempt to call a nil value` | You're calling something as a function that isn't one | Is the function name spelled right? Is the resource that provides it running? |
+    | `SCRIPT ERROR: citizen:/scripting/lua/scheduler.lua` | A thread crashed in the scheduler | An infinite loop or a non-yielding thread — check your `Citizen.Wait()` calls |
+    | `Could not find resource` | The resource folder is missing or spelled wrong | Check `resources/[category]/your_resource` — case matters |
+    | `Invalid FXServer artifact` | Wrong artifact version or corrupt download | Re-download the Recommended build |
+  </Step>
+
+  <Step num={3} title="Client vs server errors" outcome="You know which console to check.">
+    **Server errors** appear in the FXServer console or txAdmin Live Console. They always start with `[script:resource_name]`.
+
+    **Client errors** appear in the player's F8 console. They also start with `[script:resource_name]` but show on the client side only.
+
+    A client crash with no server error → the problem is in `client.lua`. A server crash with no client error → the problem is in `server.lua`. Both crashing → check `shared.lua` or the event that crosses the boundary.
+
+    To see client errors: open F8 in-game and look for red lines. To see server errors: watch the txAdmin Live Console tab.
+  </Step>
+
+  <Step num={4} title="Fix one thing, test, repeat" outcome="The error is gone and nothing new broke.">
+    The method:
+
+    1. Read the error → find the file and line
+    2. Open that file at that line
+    3. Understand what that line does
+    4. Make ONE change
+    5. Restart the resource (`restart my_resource`)
+    6. Check if the error is gone
+    7. If yes → test the feature. If no → read the new error, go to step 1
+
+    Never change five things at once. If you fix the error but break something else, you won't know which change caused it.
+
+    <ExpectedOutput>
+      The console shows no new errors. The feature that was broken works correctly.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## When you're truly stuck
+
+1. **Read the error out loud** — it sounds obvious, but saying "my_resource client.lua line 42 tried to use MyVariable but it was nil" often makes the fix obvious
+2. **Comment out the breaking line** — if the error stops, the problem is that line. If it moves to the next line, the problem is upstream
+3. **Add a print statement** — `print('DEBUG: MyVariable is', MyVariable)` right before the crash line tells you what the value actually is
+4. **Check the official docs** — docs.fivem.net has every native and event documented
+5. **Check txAdmin Logs** — txData/profile/logs/ has detailed server-side logs
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `attempt to index a nil value (global 'ESX')` | ESX framework not started before your resource | Add `ensure es_extended` before your resource in server.cfg |
+| `attempt to index a nil value (global 'QBCore')` | QBCore not started or using wrong export | Use `local QBCore = exports['qb-core']:GetCoreObject()` |
+| Error on line 1, but file has content | File encoding is wrong (UTF-8 BOM) | Save as UTF-8 without BOM in VS Code |
+| Resource runs but nothing happens, no errors | Logic error — code is valid but does the wrong thing | Add print statements to trace execution |

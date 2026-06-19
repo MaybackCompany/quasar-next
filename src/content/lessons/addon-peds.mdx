@@ -1,0 +1,102 @@
+<LessonHero
+  crumbs="Track C · Assets"
+  title="Stream add-on peds and custom characters"
+  meta={[
+    { label: "You'll build", value: "An add-on ped resource with custom model, textures, and a spawn-ped command." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, an add-on ped download (.yft/.ytd files), and basic fxmanifest knowledge." },
+    { label: "You'll learn", value: "Ped asset types, the ped streaming pattern, spawning peds with CreatePed, setting relationships, and integrating custom peds into jobs and NPCs." },
+  ]}
+>
+  Custom peds bring your server to life — police officers, shopkeepers, gang members, unique NPCs. The streaming pattern is simpler than vehicles (fewer metadata files), but there are specific rules about model loading and ped creation that differ from objects and vehicles.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have read the add-on vehicles lesson — peds follow a simpler pattern.",
+    "I have an add-on ped download (folder with .yft/.ytd).",
+    "I can create and restart resources.",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Prepare the resource" outcome="The ped files are in the right place.">
+    ```text
+resources/my_ped/
+  fxmanifest.lua
+  stream/
+    ped_model.yft
+    ped_model.ytd
+    ```
+
+    Unlike vehicles, peds usually only need two files: the model (`.yft`) and textures (`.ytd`). No metadata XML files required unless you're replacing a GTA ped or adding special properties.
+  </Step>
+
+  <Step num={2} title="Write fxmanifest and spawn" outcome="The ped appears in-game.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+files {
+    'stream/*.yft',
+    'stream/*.ytd',
+}
+    ```
+
+    ```lua client.lua
+RegisterCommand('spawnmyped', function()
+    local model = 'ped_model'  -- must match the .yft filename (without extension)
+    RequestModel(model)
+    while not HasModelLoaded(model) do Citizen.Wait(0) end
+
+    local coords = GetEntityCoords(PlayerPedId())
+    local ped = CreatePed(4, model, coords.x + 2, coords.y, coords.z, 0.0, true, false)
+
+    -- Make the ped not attack the player
+    SetPedAsNoLongerNeeded(ped)
+    SetModelAsNoLongerNeeded(model)
+end, false)
+    ```
+
+    `CreatePed(pedType, model, x, y, z, heading, isNetwork, bScriptHostPed)`:
+    - pedType `4` = civilian (won't attack)
+    - pedType `6` = cop (will attack criminals)
+    - isNetwork `true` = other players can see this ped
+
+    <ExpectedOutput>
+      A custom ped spawns in front of you. It stands idle and doesn't attack.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Make the ped do something" outcome="The ped has behavior — animation, scenario, or combat.">
+    ```lua client.lua
+-- Make the ped play a scenario (stand at a counter, lean on wall, etc.)
+TaskStartScenarioInPlace(ped, 'WORLD_HUMAN_STAND_IMPATIENT', 0, true)
+
+-- Give the ped a weapon and make them guard
+GiveWeaponToPed(ped, GetHashKey('WEAPON_PISTOL'), 999, false, true)
+TaskGuardCurrentPosition(ped, 10.0, 10.0, 1)
+
+-- Make the ped a shopkeeper who stays put
+FreezeEntityPosition(ped, true)
+SetBlockingOfNonTemporaryEvents(ped, true)
+    ```
+
+    Full scenario list: https://github.com/DurtyFree/gta-v-data-dumps
+
+    <ExpectedOutput>
+      The ped plays an animation, guards an area, or stands in place depending on the task.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Ped invisible or doesn't spawn | Model name doesn't match .yft file | Use exact filename without extension: `ped_model.yft` → `'ped_model'` |
+| `CreatePed` returns 0 (invalid ped) | Model failed to load or doesn't exist | Check `HasModelLoaded(model)` returns true before CreatePed |
+| Ped attacks player immediately | pedType is a combat type (cop, army) | Use pedType `4` (civilian) or set relationship group |
+| Ped disappears when you look away | `SetPedAsNoLongerNeeded` called too early | Only call after the ped is fully spawned and positioned |

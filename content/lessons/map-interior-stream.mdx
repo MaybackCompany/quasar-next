@@ -1,0 +1,113 @@
+<LessonHero
+  crumbs="Track C · Assets"
+  title="Map an interior and stream it in FiveM"
+  meta={[
+    { label: "You'll build", value: "A custom MLO interior mapped with CodeWalker, exported as a FiveM resource, and streamed into your server." },
+    { label: "Time", value: "~40 minutes" },
+    { label: "You need", value: "CodeWalker (free GTA V mapping tool), a local FiveM server, and basic understanding of YMAP/YBN files." },
+    { label: "You'll learn", value: "What MLOs are, how YMAPs and YTYP files define interiors, using CodeWalker to place and export interiors, writing the correct fxmanifest, and streaming the interior in-game." },
+  ]}
+>
+  Custom interiors turn a generic GTA building into YOUR space — a police station, a gang hideout, a player apartment. This lesson walks the full pipeline from CodeWalker to in-game, covering the file types that confuse every beginner and the exact fxmanifest lines that make it work.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have downloaded and installed CodeWalker (https://github.com/dexyfex/CodeWalker).",
+    "I have a local FiveM server.",
+    "I understand basic folder structure and fxmanifest.lua.",
+  ]}
+/>
+
+<Callout variant="fivem" title="MLO = Map Layer Object">
+  An MLO is a custom interior mapped inside an existing GTA building. It consists of YMAP files (placement data), YTYP files (archetype definitions), and streamed textures/models. Together they tell FiveM: "inside this building, render this custom space instead."
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the interior in CodeWalker" outcome="Your YMAP and YTYP files are exported.">
+    1. Open CodeWalker, load the GTA V world
+    2. Navigate to the building you want to map (e.g., an empty warehouse)
+    3. Use the object browser to place walls, floors, furniture, lighting
+    4. Once satisfied, **Export** → select both YMAP and YTYP formats
+
+    Export names must match. If your interior is called `my_interior`, you get:
+    ```text
+my_interior.ymap
+my_interior.ytyp
+    ```
+  </Step>
+
+  <Step num={2} title="Create the resource structure" outcome="The FiveM resource is ready.">
+    ```text
+resources/my_interior/
+  fxmanifest.lua
+  stream/
+    my_interior.ymap
+    my_interior.ytyp
+    my_interior.ybn       <- any bound files
+    my_interior.ydd       <- any drawable dictionary
+    my_interior.ydr       <- any drawable model
+    my_interior.yft       <- any fragment model
+    my_interior.ytd       <- any texture dictionary
+    ```
+  </Step>
+
+  <Step num={3} title="Write the fxmanifest" outcome="FiveM streams your interior.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+description 'My Custom Interior'
+
+files {
+    'stream/*.ymap',
+    'stream/*.ytyp',
+    'stream/*.ybn',
+    'stream/*.ydd',
+    'stream/*.ydr',
+    'stream/*.yft',
+    'stream/*.ytd',
+}
+
+data_file 'DLC_ITYP_REQUEST' 'stream/my_interior.ytyp'
+
+this_is_a_map 'yes'
+    ```
+
+    Critical lines:
+    - `files {}` — lists every streamed asset
+    - `data_file 'DLC_ITYP_REQUEST'` — loads the YTYP (archetype definitions)
+    - `this_is_a_map 'yes'` — tells FiveM this resource adds map data
+
+    <ExpectedOutput>
+      After `ensure my_interior`, the interior appears when you enter that building.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Verify placement and fix issues" outcome="The interior is correctly positioned with no gaps.">
+    Join the server, go to the building, and check:
+    - Do the walls appear inside the building shell?
+    - Is the lighting correct (not too dark/bright)?
+    - Can you walk through the space without falling through the floor?
+
+    Common fixes:
+    - **Floating objects**: adjust Z position in CodeWalker and re-export
+    - **No collision**: the YBN (bound) file is missing — add it to `files {}`
+    - **Missing textures**: the YTD is missing — add it to `files {}`
+
+    <ExpectedOutput>
+      You can walk through your custom interior. Walls are solid, lighting is correct, and other players see it.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Interior doesn't appear at all | `this_is_a_map 'yes'` is missing or YTYP not loaded | Add both: `data_file 'DLC_ITYP_REQUEST'` and `this_is_a_map 'yes'` |
+| Objects visible but no collision (fall through) | YBN bound file missing | Export YBN from CodeWalker, add to `stream/` and `files {}` |
+| Interior appears but is offset/rotated | Wrong coordinates in CodeWalker | Center the interior at world origin before placing, or adjust YMAP coordinates |
+| `couldn't load resource` after adding interior | File size too large or too many files | Split large interiors into multiple resources |
