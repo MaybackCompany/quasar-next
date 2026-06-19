@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("landing page", () => {
-  test("renders hero, journeys, and Magic UI sections", async ({ page }) => {
+  test("renders the current hero and direct guide entry points", async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -10,15 +10,12 @@ test.describe("landing page", () => {
     await page.goto("/");
     await page.waitForLoadState("load");
 
-    // Hero
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start from 0");
-    // Two from-0 journeys (CTA links appear in hero + cards)
-    await expect(page.getByRole("link", { name: /Write scripts from 0/i }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Run a server from 0/i }).first()).toBeVisible();
-    // Ecosystem (orbiting-circles) section
-    await expect(page.getByRole("heading", { name: /Six APIs you touch every day/i })).toBeVisible();
-    // Work-with (file-tree + terminal) section
-    await expect(page.getByRole("heading", { name: /What you.ll actually work with/i })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Learn FiveM by shipping");
+    await expect(page.getByRole("heading", { name: "Two guided starting points." })).toBeVisible();
+    await expect(page.locator('a[href="/lessons/fivem-2026-orientation"]')).toBeVisible();
+    await expect(page.locator('a[href="/lessons/tebex-store-growth"]')).toBeVisible();
+    await expect(page.locator('.track-card[href="/track/server"]')).toBeVisible();
+    await expect(page.locator('.track-card[href="/track/scripts"]')).toBeVisible();
 
     expect(consoleErrors, `console errors: ${consoleErrors.join("\n")}`).toHaveLength(0);
   });
@@ -44,6 +41,33 @@ test.describe("lesson page", () => {
     // Scroll-progress bar is present
     await expect(page.locator("body")).toBeVisible();
   });
+
+  test("featured guides use the standard lesson shell and relevant videos", async ({ page }) => {
+    const guides = [
+      {
+        path: "/lessons/fivem-2026-orientation",
+        chapters: 20,
+        video: "81886632cbdd481e8f29e48ab88e167f",
+      },
+      {
+        path: "/lessons/tebex-store-growth",
+        chapters: 14,
+        video: "a47221266d86430294186b8304e25104",
+      },
+    ];
+
+    for (const guide of guides) {
+      await page.goto(guide.path);
+      await page.waitForLoadState("load");
+
+      await expect(page.locator(".lesson-grid")).toBeVisible();
+      await expect(page.locator(".editorial-guide-shell")).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "Track roadmap" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "On this page" })).toBeVisible();
+      await expect(page.locator(".guide-toc li")).toHaveCount(guide.chapters);
+      await expect(page.locator(`iframe[src*="${guide.video}"]`)).toBeAttached();
+    }
+  });
 });
 
 test.describe("auth (public mode)", () => {
@@ -62,7 +86,7 @@ test.describe("auth (public mode)", () => {
 });
 
 test.describe("accessibility — reduced motion", () => {
-  test("orbit animation is disabled under prefers-reduced-motion", async ({ page }) => {
+  test("navigation motion is disabled under prefers-reduced-motion", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     await page.waitForLoadState("load");
@@ -72,11 +96,10 @@ test.describe("accessibility — reduced motion", () => {
     );
     expect(reduceActive, "reduced-motion emulation active").toBe(true);
 
-    const orbit = page.locator(".animate-orbit").first();
-    await expect(orbit).toBeAttached();
-    // Poll: the reduced-motion CSS override resolves once styles settle.
+    const arrow = page.locator(".nav-cta-arrow");
+    await expect(arrow).toBeAttached();
     await expect
-      .poll(() => orbit.evaluate((el) => getComputedStyle(el).animationName))
-      .toBe("none");
+      .poll(() => arrow.evaluate((el) => getComputedStyle(el).transitionDuration))
+      .toBe("0s");
   });
 });
