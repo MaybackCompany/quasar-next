@@ -49,7 +49,7 @@ export const PATHS: Path[] = [
         title: "Server setup from zero",
         desc: "Install the client and tools, stand up txAdmin, wire dependencies, and learn the restart loop.",
         lessons: [
-          { num: "00", title: "FiveM in 2026: orientation", blurb: "The four layers every server runs on, and which tool does which job.", slug: "fivem-2026-orientation", tag: "Orientation" },
+          { num: "00", title: "Plan your first FiveM server", blurb: "Choose a hosting route, map the stack and dependencies, and define the first playable test before installing anything.", slug: "fivem-2026-orientation", tag: "Planning" },
           { num: "01", title: "Install the FiveM client", blurb: "Get FiveM installed and launching.", slug: "install-fivem-client", tag: "Setup" },
           { num: "02", title: "Install tools and database", blurb: "Editor, MySQL, and the tools every resource needs.", slug: "tools-and-database", tag: "Setup" },
           { num: "03", title: "Artifacts, txAdmin, recipe", blurb: "Download artifacts, open txAdmin, deploy a base recipe.", slug: "artifacts-txadmin", tag: "Setup" },
@@ -211,7 +211,8 @@ export const PATHS: Path[] = [
           { num: "04", title: "NUI accessibility and performance", blurb: "Focus traps, resolution scaling, render cost, readability.", slug: "nui-accessibility-performance", tag: "NUI", bonus: true },
           { num: "05", title: "Webhooks and privacy", blurb: "Server-side only, redact data, rate-limit, split by severity.", slug: "webhooks-privacy-and-redaction", tag: "Security", bonus: true },
           { num: "06", title: "Resource licensing and escrow", blurb: "Open vs escrowed, buyer editing rights, protect your core.", slug: "resource-licensing-escrow", tag: "Business", bonus: true },
-          { num: "07", title: "Tebex compliance and refunds", blurb: "Refund policy, chargebacks, records, platform rules.", slug: "tebex-compliance-refunds", tag: "Business", bonus: true },
+          { num: "07", title: "Build and grow a trustworthy Tebex store", blurb: "Store setup, package pages, test delivery, offers, growth tools, and a measured launch plan.", slug: "tebex-store-growth", tag: "Business", bonus: true },
+          { num: "08", title: "Tebex compliance and refunds", blurb: "Refund policy, chargebacks, records, platform rules.", slug: "tebex-compliance-refunds", tag: "Business", bonus: true },
         ],
       },
       {
