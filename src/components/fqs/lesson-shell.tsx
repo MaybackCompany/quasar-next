@@ -41,6 +41,10 @@ interface LessonShellProps {
 }
 
 const PROG_KEY = "fqs-progress";
+const EDITORIAL_GUIDES: Record<string, { label: string; time: string }> = {
+  "fivem-2026-orientation": { label: "FiveM server guide", time: "25 min read" },
+  "tebex-store-growth": { label: "Tebex growth guide", time: "30 min read" },
+};
 function readProgress(): Record<string, boolean> {
   try {
     return JSON.parse(localStorage.getItem(PROG_KEY) || "{}") || {};
@@ -112,6 +116,7 @@ export function LessonShell(props: LessonShellProps) {
   const total = modules.reduce((n, m) => n + m.lessons.length, 0);
   const done = modules.reduce((n, m) => n + m.lessons.filter((l) => prog[l.slug]).length, 0);
   const isDone = !!prog[slug];
+  const editorialGuide = EDITORIAL_GUIDES[slug];
 
   const markAndNext = () => {
     setDone(slug, true);
@@ -125,6 +130,66 @@ export function LessonShell(props: LessonShellProps) {
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 90 });
     else window.scrollTo({ top: 0 });
   };
+
+  if (editorialGuide) {
+    return (
+      <main className="editorial-guide-shell">
+        <div className="read-progress editorial-guide-progress" ref={barRef} aria-hidden="true" />
+        <header className="editorial-guide-topbar">
+          <Link href="/" className="editorial-guide-brand">
+            <span className="editorial-guide-mark">QU</span>
+            <span>Quasar University</span>
+          </Link>
+          <span className="editorial-guide-tag">{editorialGuide.label}</span>
+        </header>
+
+        <div className="editorial-guide-wrap">
+          <div className="editorial-guide-meta">
+            <Link href={`/track/${trackId}`}>Track {trackLetter}: {trackTitle}</Link>
+            <span>{editorialGuide.time}</span>
+            <FreshBadge compact />
+          </div>
+
+          <article className="prose editorial-guide-prose">{props.children}</article>
+
+          <section className="editorial-guide-tools" aria-label="Lesson tools">
+            <LessonAiCopy slug={slug} body={props.aiBody} />
+            <div className="editorial-guide-complete">
+              <button className="btn btn-primary btn-big" onClick={markAndNext}>
+                {isDone ? "Completed ✓ - go to next" : "Mark complete and continue"}
+              </button>
+              {isDone ? (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setDone(slug, false);
+                    showToast("Marked incomplete");
+                  }}
+                >
+                  Undo
+                </button>
+              ) : null}
+            </div>
+          </section>
+
+          <div className="pn-cards editorial-guide-nav">
+            {prev ? (
+              <Link className="pn-card" href={`/lessons/${prev.slug}`}>
+                <div className="pk">← PREVIOUS</div>
+                <div className="pt">{prev.title}</div>
+              </Link>
+            ) : <span />}
+            {next ? (
+              <Link className="pn-card next" href={`/lessons/${next.slug}`}>
+                <div className="pk">NEXT →</div>
+                <div className="pt">{next.title}</div>
+              </Link>
+            ) : <span />}
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="wrap" style={{ paddingTop: 48, paddingBottom: 80 }}>

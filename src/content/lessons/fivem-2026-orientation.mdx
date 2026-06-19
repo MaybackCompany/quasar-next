@@ -12,6 +12,31 @@
   Do not start by downloading 30 scripts. Start by deciding what you are building and what each part depends on. This lesson gives a complete beginner the map first, then sends you to the detailed installation lessons in the right order.
 </LessonHero>
 
+<GuideToc
+  items={[
+    { href: "#1-plan-first-or-regret-it-later", label: "Plan first or regret it later" },
+    { href: "#2-what-you-need-before-you-start", label: "What you need before you start" },
+    { href: "#3-installing-server-artifacts", label: "Installing server artifacts" },
+    { href: "#4-setting-up-with-txadmin", label: "Setting up with txAdmin" },
+    { href: "#5-how-it-all-fits-together", label: "How it all fits together" },
+    { href: "#6-servercfg-walkthrough", label: "server.cfg walkthrough" },
+    { href: "#7-keeping-files-organized", label: "Keeping files organized" },
+    { href: "#8-tools-you-will-use", label: "Tools you will use" },
+    { href: "#9-mariadb-heidisql-and-oxmysql", label: "MariaDB, HeidiSQL, oxmysql" },
+    { href: "#10-running-sql-safely", label: "Running SQL safely" },
+    { href: "#11-esx-vs-qbcore-vs-qbox", label: "ESX vs QBCore vs Qbox" },
+    { href: "#12-adding-resources", label: "Adding resources" },
+    { href: "#13-what-is-fxmanifestlua", label: "What is fxmanifest.lua?" },
+    { href: "#14-vectors-and-placing-things", label: "Vectors and placing things" },
+    { href: "#15-script-config-patterns", label: "Script config patterns" },
+    { href: "#16-tracking-changes-with-git", label: "Tracking changes with Git" },
+    { href: "#17-performance", label: "Performance" },
+    { href: "#18-security", label: "Security" },
+    { href: "#19-debugging", label: "Debugging" },
+    { href: "#20-common-mistakes-and-next-steps", label: "Common mistakes and next steps" },
+  ]}
+/>
+
 <Prereq
   items={[
     "I want to own or operate a FiveM server, even if I have never configured one before.",
@@ -24,7 +49,11 @@
   By the end, `server-plan.md` will tell you what to install, why you need it, and what must load first. That small file prevents incompatible framework purchases, missing dependencies, and random `server.cfg` ordering later.
 </Callout>
 
-## The map in plain English
+## 1. Plan first or regret it later
+
+The fastest way to waste a weekend is to install resources before deciding what the server is. Write the promise, hosting route, framework shortlist, must-have systems, and dependency order first. The plan can change later. Its job is to stop random installs today.
+
+### The map in plain English
 
 A roleplay server is a stack of parts. Each part has one job:
 
@@ -39,7 +68,7 @@ A roleplay server is a stack of parts. Each part has one job:
 
 The order matters because upper layers depend on the layers below them. A garage resource cannot save a vehicle if its database tables or connector do not exist. A QBCore job resource cannot run on an ESX server unless the author explicitly supports both.
 
-## Build your server plan
+### Build your server plan
 
 Create a blank file called `server-plan.md`, then complete each step below. The examples are starting points, not decisions made for you.
 
@@ -208,22 +237,156 @@ Create a blank file called `server-plan.md`, then complete each step below. The 
   </Step>
 </StepGroup>
 
-## What happens next
+## 2. What you need before you start
 
-Your plan is the map. Track A now implements it one controlled layer at a time:
+You need a legitimate GTA V installation and FiveM client, a Cfx.re account, a local Windows PC or hosted machine, an editor, archive tool, and a safe place for credentials. Database-backed frameworks also need MariaDB plus a database client such as HeidiSQL.
 
-1. Install the FiveM client.
-2. Install the owner tools and database.
-3. Install and pin FXServer artifacts, then configure txAdmin through an official recipe.
-4. Learn `server.cfg` and dependency order.
-5. Connect, restart one resource, and read the correct console.
-6. Add one script at a time with a backup and a test.
+Create the server license key through [portal.cfx.re](https://portal.cfx.re/). Keymaster instructions are obsolete. Treat the license key, database password, Tebex secrets, and webhooks as credentials. Do not place them in screenshots or public repositories.
 
-<Callout variant="warn" title="Advice from the external tutorial that was deliberately corrected">
-  The current license-key home is the Cfx.re Portal. Do not blindly choose the newest artifact for an existing server: record the working build, test the update, and keep a rollback copy. Do not use copied Steam identifier ACE lines as an admin recipe. The permissions lesson teaches current principals and ACE objects separately.
-</Callout>
+## 3. Installing server artifacts
 
-## If something went wrong
+An artifact is the FXServer program, not a GTA game build and not your resource folder. Download it only from the official Windows or Linux artifact page used by the current Cfx.re setup documentation.
+
+- For a new test server, select a current supported build.
+- For an existing server, record the working build before changing it.
+- Keep server binaries separate from `server-data`, resources, configuration, and database backups.
+- Stop the server, replace the binaries, start it, run `status`, connect once, and roll back if the proof fails.
+
+Do not blindly teach "always install latest." Current is useful only when you can test and return to the last known-good build.
+
+## 4. Setting up with txAdmin
+
+txAdmin ships with FXServer. It is the browser panel for profiles, recipes, console output, resources, players, scheduled restarts, and server settings.
+
+The safe first run is: launch FXServer, open the printed txAdmin URL, link the correct Cfx.re account, create a profile, choose an official recipe or blank template, verify the data path, and let the recipe finish before editing files. Run `status` in the Live Console and save the recipe name and artifact build in your notes.
+
+## 5. How it all fits together
+
+The request path is easier to debug when every layer has one name:
+
+```text
+FiveM client
+  -> FXServer and txAdmin
+  -> framework resources
+  -> oxmysql
+  -> MariaDB
+```
+
+Gameplay resources sit on the framework and shared libraries. MariaDB stores persistent records. HeidiSQL only lets an operator inspect that database; it is not part of the running FiveM request path.
+
+## 6. server.cfg walkthrough
+
+`server.cfg` is the startup plan. It declares endpoints, server identity, convars, the license key, permissions, and resource order. Use the config generated by the current recipe as the starting point.
+
+```cfg
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+sv_hostname "My RP Server"
+sv_maxclients 32
+sv_licenseKey "YOUR_PRIVATE_KEY"
+
+ensure oxmysql
+# framework recipe resources next
+# shared libraries and systems next
+# gameplay resources last
+```
+
+That is a teaching skeleton, not a complete production file. Do not copy old `set onesync on` lines or Steam-based admin examples without checking the current command and permission references. The dedicated `server.cfg` lessons provide the complete version.
+
+## 7. Keeping files organized
+
+Keep disposable server binaries apart from data you own. Inside `resources`, bracket folders such as `[framework]`, `[standalone]`, `[voice]`, `[maps]`, and `[vehicles]` organize related resources. They are category folders, not resources themselves.
+
+Do not rename a downloaded resource until you know its exports, dependencies, or documentation do not expect the original name. Keep one backup outside the live server and record every manual edit.
+
+## 8. Tools you will use
+
+| Tool | Job |
+| --- | --- |
+| VS Code | Edit configs, Lua, JavaScript, and documentation. |
+| 7-Zip or WinRAR | Extract downloaded archives without hiding extensions. |
+| WinSCP or another SFTP client | Move files to a hosted Linux server. |
+| MariaDB | Store persistent server data. |
+| HeidiSQL | Inspect schemas, import SQL, and run controlled queries. |
+| Git and GitHub Desktop | Record changes and restore known-good files. |
+| txAdmin | Operate FXServer and read server console output. |
+
+## 9. MariaDB, HeidiSQL, and oxmysql
+
+MariaDB is the database engine. HeidiSQL is an operator interface. oxmysql is the server resource that executes parameterized queries from scripts. A framework may use tables named `users`, `players`, or something else; never assume one framework's schema applies to another.
+
+Keep the connection string server-side, verify the database host accepts connections from the server, and never expose credentials with a replicated convar.
+
+## 10. Running SQL safely
+
+Back up before importing vendor SQL. Select the correct database, open the file, read it, and stop if it contains destructive statements you do not understand. `CREATE TABLE` is expected during setup. `DROP TABLE`, broad `DELETE`, and schema-changing `ALTER TABLE` statements require a migration and rollback plan.
+
+After running the file, refresh the schema and confirm the exact tables or columns the resource documentation names. Do not ignore every "table already exists" message; compare the expected and installed schema first.
+
+## 11. ESX vs QBCore vs Qbox
+
+- **ESX Legacy** has an established ecosystem and many third-party resources.
+- **QBCore** has its own established conventions, documentation, and package ecosystem.
+- **Qbox** is QBCore-derived, uses the ox ecosystem heavily, and provides an official recipe and migration guidance.
+
+Choose based on maintained recipes, the compatibility of your must-have resources, staff knowledge, and migration cost. Do not install two primary frameworks together unless you are executing a documented migration or bridge plan.
+
+## 12. Adding resources
+
+Read the README first. Confirm framework, dependencies, database changes, config path, and required artifact or game build. Back up, install dependencies, upload one resource, import its reviewed SQL, add it after dependencies, then run `refresh` and `ensure RESOURCE_NAME`.
+
+Check the server console, F8, and the visible feature. Do not install the next resource until this one passes.
+
+## 13. What is fxmanifest.lua?
+
+Every resource uses `fxmanifest.lua` to declare its metadata, scripts, files, and dependencies.
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script 'config.lua'
+client_script 'client/main.lua'
+server_script 'server/main.lua'
+
+dependencies {
+    'ox_lib'
+}
+```
+
+FiveM uses Lua 5.4 by default in 2026. Do not add the retired `lua54 'yes'` directive. A dependency declaration tells FiveM what must be started, but your `server.cfg` should still make the intended order readable.
+
+## 14. Vectors and placing things
+
+`vector3(x, y, z)` stores a position. `vector4(x, y, z, heading)` stores a position plus facing direction. Whether a config needs three or four values depends on the resource. Use a heading when the spawned ped, player, or vehicle must face a direction; do not treat vector4 as universally required for every spawn.
+
+## 15. Script config patterns
+
+A good config exposes safe choices without forcing buyers to edit core logic. Expect tables for jobs, item names, prices, coordinates, framework adapters, webhooks, and feature toggles. Change one group at a time, preserve data types and commas, then restart only the affected resource and test the changed path.
+
+## 16. Tracking changes with Git
+
+Track server configuration and editable resources in Git, but exclude secrets, caches, logs, database dumps, and escrowed or licensed files you are not permitted to publish. A private repository does not make a leaked credential safe. If a secret is committed, rotate it.
+
+Commit before each risky install and after each verified result. That turns "what changed?" into a diff instead of a guessing session.
+
+## 17. Performance
+
+Use `resmon` and the profiler before calling a resource slow. Avoid per-frame work when the player is far away, do not run database queries inside hot loops, and add timeouts to model or network waits. Measure idle and active behavior with the same test conditions, then change one cause at a time.
+
+## 18. Security
+
+The client requests; the server decides. Validate permissions, ownership, item counts, money, distance, state, and rate limits on the server before granting a valuable result. Never place database credentials, license keys, Tebex secrets, or webhook URLs in client or shared files.
+
+ACE uses principals and objects. A valid pattern grants an object to a group, then attaches an identifier to that group. Do not copy the external guide's reversed Steam identifier example.
+
+## 19. Debugging
+
+Read the first real error, not the last symptom. The server console reports server scripts and startup failures. F8 reports client scripts. Check the named resource, file, line, missing dependency, wrong runtime side, database connection, and config syntax in that order.
+
+Use `ensure` for the first start, `restart` after a running resource changes, and `refresh` when a new resource folder was added while the server was already running.
+
+## 20. Common mistakes and next steps
 
 <FailureList
   items={[
@@ -235,7 +398,13 @@ Your plan is the map. Track A now implements it one controlled layer at a time:
   ]}
 />
 
-## What you can do now
+Your plan is the map. Track A implements it one controlled layer at a time: client, tools, artifacts and txAdmin, database, `server.cfg`, console proof, then one resource at a time.
+
+<Callout variant="warn" title="Corrections made from the source tutorial">
+  The current license-key home is the Cfx.re Portal. Artifact updates require a recorded rollback. Qbox belongs in the framework comparison. Steam identifiers are not a general admin recipe. Database tables vary by framework. Lua 5.4 no longer needs a manifest flag.
+</Callout>
+
+### What you can do now
 
 <Recap
   items={[
@@ -248,7 +417,7 @@ Your plan is the map. Track A now implements it one controlled layer at a time:
   ]}
 />
 
-## Try it yourself
+### Try it yourself
 
 <Exercise>
   Give `server-plan.md` to someone who knows nothing about your idea. Ask them these four questions: What kind of server is this? Where will it run first? Which framework choices are still being considered? What must be installed before the first gameplay resource? If the file answers all four without you explaining it, your plan is ready and you can continue to the FiveM client lesson.

@@ -201,6 +201,21 @@ function Refs({ items }: { items: { label: string; href: string }[] }) {
   );
 }
 
+function GuideToc({ items }: { items: ReadonlyArray<{ href: string; label: string }> }) {
+  return (
+    <nav className="editorial-guide-toc" aria-label="Guide contents">
+      <div className="editorial-guide-toc__label">Contents</div>
+      <ol>
+        {items.map((item) => (
+          <li key={item.href}>
+            <a href={item.href}>{item.label}</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
 function Checkpoint({ question, children }: { question: string; children: ReactNode }) {
   return (
     <details className="fqs-details" style={{ margin: "18px 0" }}>
@@ -316,6 +331,7 @@ const components: MDXComponents = {
   Recap,
   Exercise,
   Refs,
+  GuideToc,
   Sandbox: LuaSandbox,
   TechLinks,
   TechLink,
