@@ -1,0 +1,358 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 08</span></div>
+        <h1>How scripts talk to frameworks, exports and callbacks</h1>
+        <p class="lede">Your custom script needs money, job, and inventory data from the framework. Learn exports and callbacks — the two patterns that let scripts share data without copying code.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A resource that reads a player's job from QB-Core or ESX via exports, and a server callback that returns custom data from your own resource to any other script.</dd></div>
+          <div><dt>Time</dt><dd>About 35 minutes.</dd></div>
+          <div><dt>You'll learn</dt><dd>How exports expose functions across resources, how server callbacks work for async data, and why framework wrappers are optional but convenient.</dd></div>
+          <div><dt>Prereqs</dt><dd>A QB-Core or ESX server running, or the willingness to simulate one with a mock export.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will connect your script to a framework so that:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Your /heal command checks if the player has the <code>ambulance</code> job before allowing it.</li>
+            <li>Your resource provides a <code>GetPlayerData</code> export that any other resource can call.</li>
+            <li>You use a server callback to fetch async data from the database and return it to the caller.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 08: How scripts talk to frameworks, exports and callbacks</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>The two patterns that let resources share code: exports (synchronous) and callbacks (asynchronous).<br><span>Example: exports['qb-core']:GetCoreObject() returns the framework object in one call.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Exports are declared in fxmanifest.lua and called with the exports global.<br><span>Example: exports['resource_name'].functionName(args).</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Call a framework export to get data. Provide your own exports to give data to others.<br><span>Example: your heal script calls the framework's GetPlayer, then checks .job.name.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Call one framework export, then create one of your own.<br><span>Example: get a player's job, then export a GetPlayerHealth function.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will type <code>/heal</code> and the command will first ask the framework for your job, then either heal you (if ambulance) or reject you (if not), all without copying any framework code into your resource.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Copying the framework's GetPlayer function into your script means it breaks when the framework updates. Calling it via export means the framework can change its internals and your script still works. Exports are contracts. Callbacks extend that contract to async operations like database reads.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Export</dt><dd>A function one resource makes available to all other resources. Always synchronous — the caller waits for the return value.<br><span>Example: exports['qb-core']:GetCoreObject() returns immediately.</span></dd></div>
+            <div><dt tabindex="0">Server callback</dt><dd>An async request from client to server that returns a value. The client waits without blocking the game.<br><span>Example: TriggerServerCallback to ask the server for database data.</span></dd></div>
+            <div><dt tabindex="0">Framework wrapper</dt><dd>A thin layer in your resource that translates framework calls into your own API, so switching frameworks changes one file.<br><span>Example: local function GetPlayer(src) wraps exports['qb-core']:GetCoreObject().Functions.GetPlayer.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_framework_bridge</code></dd></div>
+            <div><dt>Files</dt><dd><code>fxmanifest.lua, server.lua, client.lua</code></dd></div>
+            <div><dt>Framework</dt><dd><code>QB-Core or ESX running on your server</code></dd></div>
+            <div><dt>Dependencies</dt><dd><code>ensure qu_framework_bridge after the framework</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qu_bridge] job check: ambulance=allowed | [qu_bridge] export called: GetPlayerHealth returned 200">
+            <header><span class="file">qu_framework_bridge/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'bridge'
+
+-- Framework wrapper: swap this block for ESX if you use ESX
+local function GetPlayer(src)
+    local QBCore = exports['qb-core']:GetCoreObject()
+    return QBCore.Functions.GetPlayer(src)
+end
+
+-- Your export: any resource can call this
+local function GetPlayerHealth(src)
+    local Player = GetPlayer(src)
+    if not Player then return 0 end
+    -- Get player's current health via a client callback
+    -- (simplified for example: returns max health from framework data)
+    return Player.PlayerData.metadata.health or 200
+end
+exports('GetPlayerHealth', GetPlayerHealth)
+
+-- The /heal command with a job check
+RegisterCommand('heal_job', function(source, args)
+    local src = source
+    local Player = GetPlayer(src)
+    if not Player then return end
+
+    local job = Player.PlayerData.job.name
+    local allowed = { ambulance = true, doctor = true }
+
+    if not allowed[job] then
+        TriggerClientEvent('chat:addMessage', src, {
+            args = { 'System', 'Only ambulance staff can /heal_job.' }
+        })
+        return
+    end
+
+    TriggerClientEvent('qu:bridge:doHeal', src)
+    print(('[qu_bridge] job check: %s allowed heal for source=%d'):format(job, src))
+end, false)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> An ambulance player typing <code>/heal_job</code> gets healed. A civilian typing it sees "Only ambulance staff can /heal_job." in chat. Another resource calling <code>exports['qu_framework_bridge']:GetPlayerHealth(1)</code> gets a number back.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create the resource with fxmanifest.lua, server.lua, and client.lua.</li>
+            <li>Write the framework wrapper function that calls <code>exports['qb-core']:GetCoreObject()</code>.</li>
+            <li>Write the <code>/heal_job</code> command that checks the player's job before healing.</li>
+            <li>Declare a <code>GetPlayerHealth</code> export with <code>exports('name', fn)</code>.</li>
+            <li>Write a second resource that calls your new export and prints the result.</li>
+            <li>Test both: /heal_job as ambulance and as civilian, and the cross-resource export call.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a server callback to your resource: the client calls <code>qu_bridge:getServerTime</code>, the server responds with <code>os.time()</code>, and the client prints it. Use the framework's callback system (QBCore.Functions.CreateCallback or ESX.RegisterServerCallback).</p>
+          <p class="expected-output"><strong>Expected output:</strong> Client F8 console prints <code>[qu_bridge] Server time: 1718841600</code> after requesting it.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>No such export GetCoreObject in resource qb-core</code> — qb-core is not running or is named differently on your server. Check the resource name with <code>status</code> in the console.</li>
+            <li><code>attempt to index a nil value (field 'job')</code> — <code>GetPlayer(src)</code> returned nil. The player's source does not match a loaded player. Check if the player is fully loaded before accessing data.</li>
+            <li><code>exports: not a function</code> — you used <code>exports.GetPlayerHealth()</code> instead of <code>exports['qu_framework_bridge']:GetPlayerHealth()</code>. The bracket syntax is required for resource names with underscores.</li>
+            <li>Callback times out — the server-side callback registration uses a different event name than the client is calling. Must match exactly, including the colon or underscore separator.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the framework wrapper into a separate <code>bridge.lua</code> file so switching from QB-Core to ESX changes exactly one file, and your server.lua stays untouched.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/server-functions/#exports" target="_blank" rel="noopener">FiveM exports documentation</a></li>
+            <li><a href="https://github.com/qbcore-framework/qb-core" target="_blank" rel="noopener">QB-Core framework and its exports</a></li>
+            <li><a href="https://github.com/esx-framework/esx_core" target="_blank" rel="noopener">ESX framework and its exports</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="exports-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Export and callback patterns</h3>
+        <ul>
+          <li><strong>Declare:</strong> <code>exports('MyFunction', MyFunction)</code> at the bottom of your script.</li>
+          <li><strong>Call:</strong> <code>exports['resource']:MyFunction(args)</code> — note the colon, not a dot.</li>
+          <li><strong>Server callback:</strong> Server registers, client calls, server responds. Async-safe for database reads.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Your server has one framework and thirty custom scripts. The framework owns the player data: money, job, inventory, gang. Every custom script needs to read that data. If each script copied the framework's internal code, updating the framework would break thirty scripts. Exports solve this: the framework says "call this function, I promise it will always return a player table". Your script calls that function. The framework can change its internals and your script still works because the contract is the same.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of an ATM.</p>
+          <p>You do not walk into the bank vault to get your money. You insert your card into the ATM, punch in a PIN, and cash comes out. The ATM is the export. The vault is the framework's internals. You do not need to know how the vault is organised. You just need the ATM to keep working. Similarly, your script just needs <code>GetPlayer(src)</code> to keep returning a player table. It does not matter how the framework builds that table.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="03">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="framework"> I have a QB-Core or ESX server running with at least one player account.</label></li>
+          <li><label><input type="checkbox" data-id="commands"> I have written a RegisterCommand that triggers a server event.</label></li>
+          <li><label><input type="checkbox" data-id="events"> I understand TriggerServerEvent and TriggerClientEvent from previous lessons.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource and manifest</h3>
+        </div>
+        <p class="pin-card__lede">The manifest declares that this resource depends on the framework.</p>
+        <ol>
+          <li>Create <code>resources/qu_framework_bridge/</code>.</li>
+          <li>Create <code>fxmanifest.lua</code>:
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+client_script 'client.lua'
+
+dependencies {
+    'qb-core'  -- or 'es_extended' for ESX
+}</code></pre>
+          </li>
+          <li>The <code>dependencies</code> block ensures your resource only starts after the framework is ready.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the framework wrapper</h3>
+        </div>
+        <p class="pin-card__lede">One small function that calls the framework. Every other function in your script uses this wrapper.</p>
+        <ol>
+          <li>In server.lua, write the <code>GetPlayer</code> wrapper from the Minimal Example.</li>
+          <li>For QB-Core: <code>exports['qb-core']:GetCoreObject().Functions.GetPlayer(src)</code>.</li>
+          <li>For ESX: <code>exports['es_extended']:getSharedObject().GetPlayerFromId(src)</code>.</li>
+          <li>If your framework is different, adjust this one function. Everything else stays the same.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Write the job-restricted heal command</h3>
+        </div>
+        <p class="pin-card__lede">The command reads the player's job from the framework and makes a decision.</p>
+        <ol>
+          <li>Paste the <code>/heal_job</code> command from the Minimal Example.</li>
+          <li>The <code>allowed</code> table is a whitelist of jobs. Add your server's medic job name if it is different.</li>
+          <li>The client event <code>qu:bridge:doHeal</code> needs a matching client handler. Add it to client.lua:
+            <pre><code class="language-lua">RegisterNetEvent('qu:bridge:doHeal', function()
+    local ped = PlayerPedId()
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+end)</code></pre>
+          </li>
+          <li>Save both files.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Provide your own export</h3>
+        </div>
+        <p class="pin-card__lede">Your resource is now a provider, not just a consumer. Any script can call your function.</p>
+        <ol>
+          <li>Add the <code>GetPlayerHealth</code> function and <code>exports('GetPlayerHealth', GetPlayerHealth)</code> line to server.lua.</li>
+          <li>Create a second test resource called <code>qu_export_test</code> with only a server.lua.</li>
+          <li>In that server.lua, add:
+            <pre><code class="language-lua">AddEventHandler('onResourceStart', function(res)
+    if res == 'qu_export_test' then
+        local health = exports['qu_framework_bridge']:GetPlayerHealth(1)
+        print('[qu_export_test] Player 1 health is: ' .. health)
+    end
+end)</code></pre>
+          </li>
+          <li>Ensure both resources. The test resource prints the health value from your resource.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and confirm the framework communication works in both directions.</p>
+        <ol>
+          <li>
+            <strong>Test 1, framework import.</strong>
+            <ul>
+              <li>Action: type <code>/heal_job</code> as a civilian job.</li>
+              <li>Expected: chat says "Only ambulance staff can /heal_job."</li>
+              <li>How to verify: the framework's GetPlayer returned your job name, and the command rejected you.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, allowed job.</strong>
+            <ul>
+              <li>Action: set your job to ambulance (via admin command), type <code>/heal_job</code>.</li>
+              <li>Expected: your health fills up. No rejection message.</li>
+              <li>How to verify: the framework returned 'ambulance', which is in the allowed table.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, cross-resource export.</strong>
+            <ul>
+              <li>Action: start <code>qu_export_test</code>.</li>
+              <li>Expected: its console log prints a health value from your resource.</li>
+              <li>How to verify: the export crossed resource boundaries without any event wiring.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why use a wrapper function instead of calling exports directly everywhere?</summary>
+            <p>If you write <code>exports['qb-core']:GetCoreObject().Functions.GetPlayer(src)</code> in ten places and switch to ESX, you must edit ten places. With a wrapper function like <code>local GetPlayer = ...</code>, you edit one place. Also, wrappers let you add nil-checks, logging, and fallback values in one spot.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is the difference between an export and a server callback?</legend>
+            <label><input type="radio" name="q1" value="a"> Exports are server-only, callbacks are client-only.</label>
+            <label><input type="radio" name="q1" value="b"> Exports return synchronously. Callbacks are asynchronous — the caller sends a request and the server responds later.</label>
+            <label><input type="radio" name="q1" value="c"> There is no difference. They are the same thing.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Why does the dependencies block in fxmanifest.lua matter for exports?</legend>
+            <label><input type="radio" name="q2" value="a"> It makes the resource download faster.</label>
+            <label><input type="radio" name="q2" value="b"> It copies the dependency's files into your resource.</label>
+            <label><input type="radio" name="q2" value="c"> It ensures the framework is started before your resource, so its exports exist when your code runs.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What syntax do you use to call an export from another resource?</legend>
+            <label><input type="radio" name="q3" value="a"> exports['resource_name']:functionName(args) — bracket syntax with colon.</label>
+            <label><input type="radio" name="q3" value="b"> exports.resource_name.functionName(args) — dot syntax.</label>
+            <label><input type="radio" name="q3" value="c"> import functionName from 'resource_name'.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to call framework exports to read player data (job, money, inventory) without copying framework code.</li>
+          <li>How to declare your own exports so other resources can call your functions.</li>
+          <li>Why a framework wrapper function in a single file makes switching frameworks possible.</li>
+          <li>The difference between synchronous exports and asynchronous server callbacks.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a <code>GetPlayerJob</code> export that returns just the job name string. Then create a police-only command <code>/duty</code> that toggles a KVS flag. If the player is not police, the export returns nil and the command rejects them.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>chat box</span></header>
+          <pre><code>[duty] You are now ON duty.   -- if police
+[duty] Police only.            -- if not police</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Create <code>local function GetPlayerJob(src)</code> that extracts <code>.job.name</code>, export it with <code>exports('GetPlayerJob', GetPlayerJob)</code>, then call <code>exports['qu_framework_bridge']:GetPlayerJob(src)</code> inside your /duty command handler.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/server-functions/#exports" target="_blank" rel="noopener">FiveM server exports documentation</a></li>
+          <li><a href="https://github.com/qbcore-framework/qb-core/wiki" target="_blank" rel="noopener">QB-Core exports and callbacks wiki</a></li>
+          <li><a href="https://documentation.esx-framework.org/" target="_blank" rel="noopener">ESX framework documentation</a></li>
+        </ul>
+      </section>

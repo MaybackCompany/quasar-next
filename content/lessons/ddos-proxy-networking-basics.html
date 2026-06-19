@@ -1,0 +1,153 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Track A · Lesson 08</span></div>
+        <h1>Networking, DDoS protection, and proxies</h1>
+        <p class="lede">By the end of this lesson you will understand how your FiveM server talks to the internet, what a DDoS attack looks like, and how to put a proxy in front of your server so attackers never touch your real IP.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A plan for hiding your server IP behind a proxy, plus config changes that make DDoS attacks far less effective.</dd></div>
+          <div><dt>Time</dt><dd>About 25 minutes to understand, longer to implement if you need to buy a proxy service.</dd></div>
+          <div><dt>You'll learn</dt><dd>How UDP vs TCP works in FiveM, what amplification attacks are, and why a reverse proxy is your best defense.</dd></div>
+          <div><dt>Prereqs</dt><dd>You know your server's IP address and port. Basic networking knowledge helps but is not required.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will learn">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will understand networking and DDoS defense like this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>FiveM uses both UDP (for game traffic, fast and connectionless) and TCP (for reliable data like chat and events). Attackers target the UDP port because it is easier to flood.</li>
+            <li>A DDoS attack sends so much garbage traffic that your server cannot hear real players. It is like fifty people shouting into a phone at once.</li>
+            <li>A proxy sits between the internet and your server. Players connect to the proxy, not your real IP. The proxy filters out attack traffic and only forwards clean packets.</li>
+          </ul>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 08: Networking, DDoS protection, and proxies</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Everything between your server process and the players who connect to it.<br><span>Example: your server listens on port 30120. Players send packets to that port.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Networking is configured in server.cfg via <code>endpoint_add_tcp</code> and <code>endpoint_add_udp</code>.<br><span>Example: endpoint_add_udp "0.0.0.0:30120" opens the UDP game port.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Bind the right ports, firewall everything else, and optionally add a proxy.<br><span>Example: only ports 30120 (UDP+TCP) and 40120 (TCP for txAdmin) should be open.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Check which ports are open on your server and close everything that is not FiveM.<br><span>Example: run a port scan on your own server IP to see what is exposed.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will understand your server's network footprint, harden your firewall, and evaluate proxy options to hide your real IP.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A single DDoS attack can knock your server offline for hours. Competitors, angry players, or random attackers target FiveM servers constantly. Knowing your network setup and having a proxy plan is the difference between 30 seconds of downtime and a ruined launch day.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">UDP</dt><dd>User Datagram Protocol. Fast, connectionless. FiveM uses it for game sync, voice, and position updates. Easier to spoof and flood than TCP.<br><span>Example: player movement packets are sent over UDP because speed matters more than perfect delivery.</span></dd></div>
+            <div><dt tabindex="0">TCP</dt><dd>Transmission Control Protocol. Slower but guaranteed delivery. FiveM uses it for chat, events, and server list registration.<br><span>Example: a TriggerServerEvent call uses TCP because the server must receive it exactly once.</span></dd></div>
+            <div><dt tabindex="0">Reverse proxy</dt><dd>A server that sits in front of yours, receives all traffic, filters it, and forwards only clean packets to your real server.<br><span>Example: players connect to proxy.example.com:30120. The proxy sends clean traffic to your real IP at 10.0.0.5:30120.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>none</code></dd></div>
+            <div><dt>Side</dt><dd><code>server (infrastructure)</code></dd></div>
+            <div><dt>File path</dt><dd><code>server.cfg</code> (endpoint configuration)</dd></div>
+            <div><dt>Ensure order</dt><dd>N/A — endpoints are set before resources load.</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Server binds to correct ports with firewall rules documented">
+            <header><span class="file">server.cfg — endpoint hardening</span><span class="lang">CFG</span></header>
+            <pre><code class="language-ini"># --- FIVEM NETWORK ENDPOINTS ---
+# Bind to specific IP if behind a proxy, otherwise 0.0.0.0
+# Port 30120 is the default FiveM game port.
+# Port 40120 is the default txAdmin web panel port.
+
+# Game traffic (UDP for speed, TCP for reliability)
+endpoint_add_udp "0.0.0.0:30120"
+endpoint_add_tcp "0.0.0.0:30120"
+
+# txAdmin web panel (TCP only, limit access if possible)
+endpoint_add_tcp "0.0.0.0:40120"
+
+# --- IF BEHIND A PROXY ---
+# Bind to the INTERNAL interface only. The proxy handles the public side.
+# endpoint_add_udp "10.0.0.5:30120"
+# endpoint_add_tcp "10.0.0.5:30120"
+# endpoint_add_tcp "10.0.0.5:40120"</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">Recommended firewall rules (UFW on Linux)</span><span class="lang">Bash</span></header>
+            <pre><code class="language-bash"># Only allow FiveM ports. Deny everything else.
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 30120/udp
+sudo ufw allow 30120/tcp
+sudo ufw allow 40120/tcp
+# If you use SSH (you probably do)
+sudo ufw allow 22/tcp
+# Enable the firewall
+sudo ufw enable</code></pre>
+          </figure>
+          <picture class="svg">
+            <source srcset="../img/lesson-ddos-proxy-flow.svg" type="image/svg+xml">
+            <img src="../img/lesson-ddos-proxy-flow.svg" alt="Diagram: Players -> Proxy -> Your Server. Attack traffic blocked at proxy." loading="lazy">
+          </picture>
+          <p class="expected-output"><strong>Expected output:</strong> A port scan shows only ports 30120 and 40120 open. Players can still connect normally.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Open <code>server.cfg</code> and confirm your <code>endpoint_add_udp</code> and <code>endpoint_add_tcp</code> are set correctly for your setup.</li>
+            <li>Check your server's firewall. On Linux run <code>sudo ufw status</code>. On Windows check Windows Firewall.</li>
+            <li>Close every port that is not 30120, 40120, and SSH (22). If using RDP, keep 3389 only if needed.</li>
+            <li>If you are on a VPS, check your hosting provider's external firewall panel and apply the same rules there.</li>
+            <li>Research proxy providers: TCPShield, Cosmic Guard, or a generic GRE tunnel. Pick one that fits your budget.</li>
+            <li>Document your current public IP. Plan to change it when you set up the proxy.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Find your server's public IP and run a basic test. From your personal computer, open a terminal and type <code>ping your-server-ip</code>. If you get a reply, your server is visible to the internet. That is what a proxy hides.</p>
+          <p class="expected-output"><strong>Expected output:</strong> The ping command returns a reply with a latency number. This means your server IP is publicly reachable — exactly what attackers scan for.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Players cannot connect after enabling firewall</code> means you blocked port 30120. Run <code>sudo ufw allow 30120/udp</code> and <code>sudo ufw allow 30120/tcp</code>.</li>
+            <li><code>Server shows offline in the browser list</code> means <code>endpoint_add_tcp</code> is missing or blocked. The server list uses TCP on port 30120.</li>
+            <li><code>Proxy blocks legitimate players</code> means the proxy filter is too aggressive. Check its dashboard for false positives and whitelist the affected IPs.</li>
+            <li><code>Proxy adds 100ms of latency</code> means the proxy server is geographically far from your game server. Pick a proxy provider with a node close to your server location.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Write a small server-side resource that logs every new connection's IP and timestamps it to a file. After a week, review the log. You will see the same IPs scanning your server repeatedly — that is your threat baseline. Use this data to tune your proxy or firewall rules.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/#network-configuration" target="_blank" rel="noopener">FiveM network configuration guide</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/security/" target="_blank" rel="noopener">FiveM server security documentation</a></li>
+            <li><a href="https://help.ubuntu.com/community/UFW" target="_blank" rel="noopener">UFW firewall guide (Ubuntu)</a></li>
+            <li><a href="https://tcpshield.com" target="_blank" rel="noopener">TCPShield DDoS protection (popular in FiveM community)</a></li>
+          </ul>
+        </section>
+      </section>

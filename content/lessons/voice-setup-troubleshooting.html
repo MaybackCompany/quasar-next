@@ -1,0 +1,359 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 03 · Lesson 07</span></div>
+        <h1>Voice chat setup and troubleshooting</h1>
+        <p class="lede">Voice is the hardest thing to get right in FiveM. When it works nobody notices. When it breaks, your server is a ghost town. This lesson covers setup, the four things that break voice, and how to fix each one in under five minutes.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>Working proximity voice chat with 3D audio, radio channels, and no popping or echo, running on pma-voice or saltychat.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes to set up, then 5 minutes per problem when it breaks.</dd></div>
+          <div><dt>You'll learn</dt><dd>How voice tokens work, why UDP ports break voice, and the four debug steps that fix 95% of voice issues.</dd></div>
+          <div><dt>Prereqs</dt><dd>Your FiveM server starts and players can join. You have access to your firewall or hosting panel.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>By the end of this lesson your voice chat will do this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Players hear each other when close. Volume fades with distance. Left/right direction is correct.</li>
+            <li>Radio channels work separately from proximity. Players on channel 1 do not hear channel 2.</li>
+            <li>When voice breaks — and it will — you know the four things to check, in order, without guessing.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 07: Voice chat setup and troubleshooting</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Proximity-based voice chat for FiveM.<br><span>Example: players hear each other get quieter as they walk away.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>pma-voice or saltychat on GitHub.<br><span>Example: git clone pma-voice into resources/.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Install the resource, open the UDP port, configure the token.<br><span>Example: one free token from pma-voice's website.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Check that your server host allows UDP traffic.<br><span>Example: ask your host if they block UDP on custom ports.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run proximity voice that works, and you will have a debug checklist that fixes it when it breaks.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A roleplay server without voice is a text chat room. Players join, realize they cannot talk, and leave within 30 seconds. Voice is the first thing they test and the last thing they forgive.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">UDP</dt><dd>The network protocol voice uses. Faster than TCP, but some hosts block it.<br><span>Example: if UDP port 30122 is closed, voice will not work.</span></dd></div>
+            <div><dt tabindex="0">Token</dt><dd>A free key that identifies your server to the voice provider.<br><span>Example: pma-voice gives you a token at their website.</span></dd></div>
+            <div><dt tabindex="0">Proximity</dt><dd>How close you must be to hear someone. Usually three ranges: whisper, normal, shout.<br><span>Example: normal voice has a range of about 15 meters.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>pma-voice or saltychat</code></dd></div>
+            <div><dt>Port</dt><dd><code>UDP 30122 (or custom, must match config)</code></dd></div>
+            <div><dt>Token</dt><dd><code>Get from voice.pma-voice.net or saltychat's site</code></dd></div>
+            <div><dt>Client</dt><dd><code>Players need the voice client enabled on their FiveM</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[pma-voice] Connected to voice server">
+            <header><span class="file">pma-voice config and server.cfg</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- resources/pma-voice/config.lua
+Config = {
+    VoiceEnabled = true,
+    Tokens = {
+        ["default"] = "your-token-here"
+    },
+    ProximityRange = {
+        [1] = { name = "Whisper", distance = 3.0 },
+        [2] = { name = "Normal",  distance = 15.0 },
+        [3] = { name = "Shout",   distance = 40.0 },
+    }
+}
+
+-- server.cfg
+# Voice requires UDP on a separate port
+endpoint_add_udp "0.0.0.0:30122"
+ensure pma-voice</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> F8 console shows <code>[pma-voice] Connected to voice server</code> when a player joins. Two players standing near each other can hear each other.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Clone pma-voice into your resources folder.</li>
+            <li>Get a free token from the pma-voice website.</li>
+            <li>Add <code>endpoint_add_udp "0.0.0.0:30122"</code> to server.cfg.</li>
+            <li>Open UDP port 30122 in your firewall or hosting panel.</li>
+            <li>Add <code>ensure pma-voice</code> to server.cfg.</li>
+            <li>Have two players join and stand near each other. Confirm they can hear each other.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the normal voice distance from 15 meters to 25 meters. Restart the resource. Walk 20 meters away from another player and confirm you can still hear them. Change it back to 15 and confirm the range shrinks.</p>
+          <p class="expected-output"><strong>Expected output:</strong> At 25m range, voice is audible at 20 meters. At 15m range, voice cuts out beyond 15 meters.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Voice not connecting (F8 shows "disconnected")</code> — the UDP port is closed. Check your firewall and hosting panel.</li>
+            <li><code>Players can hear each other but it echoes</code> — one player has their speakers loud enough that their microphone picks up the game audio. Tell them to use headphones.</li>
+            <li><code>Voice works for some players but not others</code> — the affected players have their voice chat disabled in FiveM settings. Tell them to press ESC > Settings > Voice > Enable.</li>
+            <li><code>pma-voice starts but nobody can talk</code> — the token is invalid or expired. Get a new token from the pma-voice website.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Move the voice token to a <code>voice_token.cfg</code> file loaded via <code>exec</code>, so you never accidentally commit it to a public repository.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://github.com/AvarianKnight/pma-voice" target="_blank" rel="noopener">pma-voice GitHub</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server/#server-cfg-reference" target="_blank" rel="noopener">FiveM server.cfg endpoint reference</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">FiveM server console commands</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="voice-troubleshooting-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Voice debug: the four things to check, in order</h3>
+        <ul>
+          <li><strong>1. F8 console.</strong> Does it say "Connected to voice server" or "Disconnected"? If disconnected, the problem is the UDP port or the token.</li>
+          <li><strong>2. UDP port.</strong> Run <code>netstat -tuln | grep 30122</code> on the server. If the port is not listening, your endpoint_add_udp line is wrong or the port is blocked.</li>
+          <li><strong>3. Token.</strong> Did you copy the full token? Did it expire? Get a new one and paste it into the config.</li>
+          <li><strong>4. Client settings.</strong> Have the player press ESC > Settings > Voice. Is "Voice Chat" set to "Enabled"? Is their microphone selected?</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>FiveM voice is not magic. It is a separate UDP connection between each player and a voice server. The game server (your Lua code) tells the voice server who is near whom. The voice server mixes the audio and sends it back. If any link in that chain is broken — the UDP port, the token, the client settings — voice goes silent. The fix is always one of four things.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a walkie-talkie system.</p>
+          <p>Your game server is the dispatcher. The voice server is the radio tower. Each player is a walkie-talkie. The dispatcher tells the tower "player A and player B are 10 meters apart, let them talk." The tower opens a channel between A and B. If the dispatcher cannot reach the tower (UDP port closed), or the tower does not recognize the dispatcher (bad token), or the walkie-talkie's volume knob is at zero (voice disabled in settings) — no sound. Four links. Four fixes.</p>
+          <p>Run the four checks in order. Do not guess. Do not reinstall. Check F8, check the port, check the token, check the client. One of those four is always the answer.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Guessing and systematic debugging, side by side</h2>
+        <p>When voice breaks, most server owners reinstall pma-voice, restart the entire machine, and post in Discord "voice broken help." None of those fix the actual problem.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Guessing</p>
+            <p class="before-after__caption">Voice stops working. You do five random things, none of which address the actual cause.</p>
+            <figure class="code">
+              <header><span>What guessing looks like</span></header>
+              <pre><code class="language-lua">-- Voice is broken.
+-- You: reinstall pma-voice.
+-- You: restart the entire server.
+-- You: restart the VPS.
+-- You: switch to saltychat.
+-- Voice still broken because the UDP port was closed.
+-- You wasted 3 hours on a 30-second fix.</code></pre>
+            </figure>
+            <p>Switching voice systems does not fix a closed port. Restarting the VPS does not fix an expired token. Random actions make you feel busy but solve nothing.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Systematic debugging</p>
+            <p class="before-after__caption">You run the four checks in order. The second check finds the problem. You fix it in 30 seconds.</p>
+            <figure class="code">
+              <header><span>What systematic looks like</span></header>
+              <pre><code class="language-lua">-- Voice is broken.
+-- Check 1: F8 says "Disconnected". Good, we have a lead.
+-- Check 2: netstat shows no UDP listener on :30122.
+--   Fix: add "endpoint_add_udp 0.0.0.0:30122" to server.cfg.
+--   Restart server. Voice works.
+-- Total time: 90 seconds. No reinstalls. No panic.</code></pre>
+            </figure>
+            <p>The four checks cover every common cause. Run them in order. The first check that fails points directly at the fix. No guesswork. No wasted time.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, you will struggle with voice.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="udp"> My server host allows custom UDP ports (ask them if unsure).</label></li>
+          <li><label><input type="checkbox" data-id="microphone"> I have a working microphone and headphones.</label></li>
+          <li><label><input type="checkbox" data-id="friend"> I have at least one other person who can join the server and test voice with me.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Install pma-voice</h3>
+        </div>
+        <p class="pin-card__lede">Clone the resource, get a token, configure it.</p>
+        <ol>
+          <li>Go to <code>https://github.com/AvarianKnight/pma-voice</code> and clone or download the latest release.</li>
+          <li>Place the folder in <code>resources/pma-voice</code>.</li>
+          <li>Visit <code>https://voice.pma-voice.net</code> and create a free account. Generate a token.</li>
+          <li>Open <code>resources/pma-voice/config/config.lua</code>. Paste your token where it says <code>"default"</code>.</li>
+          <li>Do not change anything else in the config yet. The defaults work for most servers.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Open the UDP port</h3>
+        </div>
+        <p class="pin-card__lede">Voice needs its own UDP port. If the port is closed, voice will not connect.</p>
+        <ol>
+          <li>Open <code>server.cfg</code>. Add the line: <code>endpoint_add_udp "0.0.0.0:30122"</code>.</li>
+          <li>If you use a hosting panel (Zap, Iceline, etc.), open UDP port 30122 in the panel's firewall settings.</li>
+          <li>If you run on a VPS, run: <code>sudo ufw allow 30122/udp</code> (UFW) or <code>sudo iptables -A INPUT -p udp --dport 30122 -j ACCEPT</code> (iptables).</li>
+          <li>Add <code>ensure pma-voice</code> to server.cfg.</li>
+          <li>Start the server. In the server console, you should see no errors from pma-voice.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Test with two players</h3>
+        </div>
+        <p class="pin-card__lede">Voice is a two-player feature. You cannot test it alone.</p>
+        <ol>
+          <li>Have a friend join your server. Both of you should press F8 and look for <code>[pma-voice] Connected to voice server</code>.</li>
+          <li>Stand within 15 meters of each other in-game. One person talks. The other listens.</li>
+          <li>If you can hear each other, voice works. Move 20 meters apart — the voice should fade.</li>
+          <li>If you cannot hear each other, run the four debug checks from the cheat sheet, in order.</li>
+          <li>Fix whatever check fails. Test again. Repeat until voice works.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test with two players. Do not test voice alone.</p>
+        <ol>
+          <li>
+            <strong>Test 1, proximity works.</strong>
+            <ul>
+              <li>Action: two players stand 5 meters apart. One talks. Then walk 20 meters apart.</li>
+              <li>Expected: voice is clear at 5m, quiet at 15m, silent at 20m.</li>
+              <li>How to verify: the F8 console shows no voice errors during the test.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, radio channels isolate.</strong>
+            <ul>
+              <li>Action: player A joins radio channel 1. Player B joins radio channel 2. Both talk.</li>
+              <li>Expected: A does not hear B's radio. B does not hear A's radio. Proximity voice still works normally.</li>
+              <li>How to verify: the radio UI shows the correct channel. Voice is only heard on the matching channel.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, reconnect preserves voice.</strong>
+            <ul>
+              <li>Action: player A disconnects and reconnects. Both players test voice again.</li>
+              <li>Expected: voice works immediately after reconnect without any manual action.</li>
+              <li>How to verify: F8 shows "Connected to voice server" on reconnect without delay.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why does voice need UDP instead of TCP?</summary>
+            <p>TCP retransmits lost packets, which adds delay. In voice chat, a lost packet means a tiny gap in audio that you do not notice. A delayed packet arriving 500ms late is worse than a lost packet — it creates echo and jitter. UDP drops the packet instead of waiting. The result is real-time audio with no delay.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Voice needs a separate UDP port. TCP (the game connection) is not enough.</li>
+          <li>The F8 console is your first debug tool. "Connected" or "Disconnected" tells you where to look.</li>
+          <li>Tokens are free but must be valid. An expired token silences your entire server.</li>
+          <li>Test with two players. Voice requires at least one speaker and one listener.</li>
+          <li>Headphones prevent echo. One player with speakers will ruin voice for everyone.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="a">
+            <legend>1. Why does FiveM voice use UDP instead of TCP?</legend>
+            <label><input type="radio" name="q1" value="a"> UDP has lower latency because it does not wait for lost packets to be resent.</label>
+            <label><input type="radio" name="q1" value="b"> UDP is more secure than TCP.</label>
+            <label><input type="radio" name="q1" value="c"> TCP does not support audio.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>2. What is the first thing you should check when voice breaks?</legend>
+            <label><input type="radio" name="q2" value="a"> Reinstall pma-voice.</label>
+            <label><input type="radio" name="q2" value="b"> Open F8 and look for "Connected to voice server" or "Disconnected".</label>
+            <label><input type="radio" name="q2" value="c"> Switch to saltychat.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. Why does voice echo for everyone when one player has speakers?</legend>
+            <label><input type="radio" name="q3" value="a"> The server's audio mixer is misconfigured.</label>
+            <label><input type="radio" name="q3" value="b"> The UDP port is causing audio feedback.</label>
+            <label><input type="radio" name="q3" value="c"> The player's microphone picks up game audio from their speakers and rebroadcasts it.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Voice requires a separate UDP port opened in both server.cfg and your firewall.</li>
+          <li>pma-voice uses a free token to identify your server. An invalid or expired token breaks voice.</li>
+          <li>The four debug checks: F8 console, UDP port, token validity, client voice settings.</li>
+          <li>Echo is always caused by a player using speakers instead of headphones.</li>
+          <li>Test voice with two real players. One person cannot verify voice works.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Break voice on purpose: remove the UDP endpoint line from server.cfg. Restart the server. Observe what the F8 console says. Then add the line back, restart, and confirm voice returns. You just learned to recognize a port issue without anyone telling you.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console, without UDP endpoint</span></header>
+          <pre><code>[pma-voice] Failed to connect to voice server: timeout
+[pma-voice] Voice is not available. Check your token and port.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>After removing <code>endpoint_add_udp</code>, the voice resource starts but cannot open the UDP listener. The F8 console will show a connection failure. This is the exact error your players will see when the port is blocked. Knowing this error message saves you from checking the wrong things.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://github.com/AvarianKnight/pma-voice" target="_blank" rel="noopener">pma-voice GitHub repository</a></li>
+          <li><a href="https://voice.pma-voice.net" target="_blank" rel="noopener">pma-voice token portal</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server/#server-cfg-reference" target="_blank" rel="noopener">FiveM server.cfg reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest</a></li>
+        </ul>
+      </section>

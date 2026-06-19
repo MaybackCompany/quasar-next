@@ -1,0 +1,417 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Track C · Lesson 06</span></div>
+        <h1>MLO and map optimization for server performance</h1>
+        <p class="lede">By the end of this lesson you will analyze an MLO interior for common performance problems — texture budget, draw calls, collision cost, LOD issues — and apply three fixes that measurably improve client FPS.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A performance report on one MLO interior with three concrete fixes applied: reduced texture resolution, merged collision meshes, and removed unseen faces. You will measure FPS before and after.</dd></div>
+          <div><dt>Time</dt><dd>About 35 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How MLO interiors load on the client, what causes FPS drops near custom maps, and which GTA V engine limits you must respect.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a FiveM server with at least one custom MLO installed. Basic knowledge of 3D model concepts (vertices, textures, draw calls) helps.</dd></div>
+        </section>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will optimize one MLO by doing this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Open the MLO in CodeWalker or a 3D tool and count its draw calls, texture memory, and polygon count.</li>
+            <li>Identify the three biggest performance offenders: oversized textures (4K on a wall), high-poly collision meshes, and geometry the player never sees.</li>
+            <li>Apply fixes: resize textures to 1024x1024, simplify collision to a box mesh, and delete faces inside walls and ceilings.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson C06: MLO and map optimization</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>MLO optimization is the process of reducing the performance cost of a custom map interior so it does not tank player FPS.<br><span>Example: this lesson fixes three common problems in one MLO.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Open the MLO in CodeWalker (free GTA V map editor) and look at the polygon count, texture list, and collision mesh.<br><span>Example: CodeWalker's "Info" panel shows draw calls per model.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Measure the FPS drop near the MLO, identify the biggest performance hogs, fix them, and measure again.<br><span>Example: reduce texture size from 4K to 1K and check if visual quality is still acceptable.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Audit one MLO, apply three fixes, and confirm FPS improved.<br><span>Example: measure FPS before and after before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will stand near your custom MLO, check FPS, apply three optimization fixes, restart the server, and see a measurable FPS improvement.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Unoptimized MLOs are the number one cause of client FPS drops on FiveM servers. One bad interior near a spawn point can make every new player think your server runs at 25 FPS.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Draw call</dt><dd>One command from the CPU to the GPU to render a mesh with a specific material. More draw calls = more CPU work.<br><span>Example: a MLO with 500 draw calls is heavy. Under 100 is good.</span></dd></div>
+            <div><dt tabindex="0">Texture budget</dt><dd>The total video memory used by all textures in the scene. GTA V's engine struggles above ~3GB of texture memory on a 4GB GPU.<br><span>Example: five 4K textures consume ~80MB each of VRAM.</span></dd></div>
+            <div><dt tabindex="0">Collision mesh</dt><dd>A simplified 3D shape used for physics and bullet impacts, separate from the visual mesh. High-poly collision is wasteful.<br><span>Example: a detailed chair's collision should be a box, not the chair itself.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Tool</dt><dd><code>CodeWalker</code> (free GTA V map editor)</dd></div>
+            <div><dt>MLO file</dt><dd>Your custom interior <code>.ytyp</code> and <code>.ydr</code> files</dd></div>
+            <div><dt>Measurement</dt><dd>FiveM F8 console <code>+showfps</code> or MSI Afterburner</dd></div>
+            <div><dt>Backup</dt><dd>Required — work on a copy of the MLO files</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="FPS improves by 5-15 frames near the MLO">
+            <header><span class="file">Optimization audit checklist — run this before touching any files</span><span class="lang">Text</span></header>
+            <pre><code class="language-text">=== MLO Optimization Audit ===
+MLO name: [your interior name]
+Base FPS (50m away): ___    FPS near MLO (inside): ___
+FPS drop: ___
+
+1. Texture budget audit
+   - Largest texture resolution: ___ x ___
+   - Total texture count: ___
+   - Estimated VRAM usage: ___ MB
+   - Action: Resize textures > 2048x2048 to 1024x1024
+
+2. Draw call audit
+   - Total draw calls (CodeWalker Info panel): ___
+   - Draw calls per room: ___
+   - Action: Merge objects sharing the same material
+
+3. Collision audit
+   - Collision poly count vs visual poly count: ___ vs ___
+   - Action: Replace detail collision with box primitives
+
+4. Unseen geometry audit
+   - Faces inside walls: YES / NO
+   - Faces below floor: YES / NO
+   - Action: Delete all faces the player can never see</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">Example: texture resize command (using ImageMagick)</span><span class="lang">Bash</span></header>
+            <pre><code class="language-bash"># Create resized copies of all 4K textures
+cd /path/to/mlo/textures
+for f in *_4k.png; do
+    convert "$f" -resize 1024x1024 "${f/_4k/_1k}"
+done
+
+# Verify file size reduction
+ls -lh *_4k.png   # should show ~16MB each
+ls -lh *_1k.png   # should show ~2MB each</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> FPS near the MLO improves by at least 5 frames after applying all three fixes. No visible quality loss from normal gameplay distance.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Measure baseline FPS standing 50m from the MLO and inside it.</li>
+            <li>Open the MLO in CodeWalker and read the draw call count from the Info panel.</li>
+            <li>Check texture resolutions — flag any texture over 2048x2048 for resize.</li>
+            <li>In CodeWalker, toggle collision view and compare collision poly count to visual poly count.</li>
+            <li>Apply three fixes: resize textures, simplify collision, delete unseen faces.</li>
+            <li>Re-measure FPS inside the MLO and confirm improvement.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Pick a second MLO on your server (or a default GTA Online interior you have loaded). Run the same audit checklist. Document the FPS drop, texture budget, draw calls, and collision cost. Apply at least one fix and measure the improvement.</p>
+          <p class="expected-output"><strong>Expected output:</strong> A completed audit checklist for the second MLO with at least one fix applied and FPS measurement before/after within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li>FPS does not improve after texture resize: the bottleneck may be draw calls, not texture memory. Check the draw call count in CodeWalker — if it is above 300, focus on merging objects first.</li>
+            <li>MLO looks blurry after texture resize: you resized too aggressively. 1024x1024 is safe for most surfaces. Only resize textures that are on walls or floors — keep small detail textures like labels at their original resolution.</li>
+            <li>Collision breaks after simplification: your new collision box is the wrong size or position. In CodeWalker, use the collision view to align the box primitive with the visual mesh before exporting.</li>
+            <li>Map fails to load after editing: you broke the <code>.ytyp</code> file's structure. Always work on a copy, and validate the YTYP file with CodeWalker's built-in validator before loading on the server.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Create a <code>mlo-audit.sh</code> script that scans a MLO folder and prints draw call estimates, texture sizes, and file sizes in one command.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://github.com/dexyfex/CodeWalker" target="_blank" rel="noopener">CodeWalker — GTA V map editor on GitHub</a></li>
+            <li><a href="https://gta.fandom.com/wiki/Map_Modding" target="_blank" rel="noopener">GTA V map modding guide</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="mlo-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>MLO optimization targets</h3>
+        <ul>
+          <li><strong>Draw calls.</strong> Under 150 for a small interior (1-2 rooms). Under 300 for a large interior (5+ rooms).</li>
+          <li><strong>Texture resolution.</strong> 1024x1024 for walls and floors. 512x512 for small props. 128x128 for tiny details.</li>
+          <li><strong>Collision polys.</strong> Less than 20% of visual poly count. Box and cylinder primitives wherever possible.</li>
+          <li><strong>Unseen faces.</strong> Zero. Delete any face inside a wall, ceiling, or floor.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>GTA V's engine has limits. When a player walks near your custom MLO, the game loads every texture, draws every face, and calculates collisions for every object — even the ones the player cannot see. <strong>Texture budget</strong> is the total video memory consumed. <strong>Draw calls</strong> are the CPU commands to render each material. <strong>Collision cost</strong> is the physics calculation for every triangle in the collision mesh. Reduce all three and FPS goes up.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a warehouse full of boxes.</p>
+          <p>The warehouse (MLO) has 10,000 boxes (polygons). Every time someone walks in, the system counts all 10,000 boxes — even the ones stacked behind walls where nobody looks. Textures are like wrapping paper: 10 rolls of expensive gold foil (4K textures) cost more than 10 rolls of plain paper (1K textures). Collision is checking whether someone bumped into each box — it is faster to check 10 big boxes (simplified collision) than 10,000 small ones.</p>
+          <p>Your optimization is clearing the boxes nobody sees, using cheaper wrapping paper, and replacing 10,000 small boxes with 10 big ones.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most MLO creators ship 4K textures and full-detail collision because it looks good in screenshots. Players pay the cost in FPS.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Shipping an MLO with 4K textures, full-detail collision, and hidden geometry.</p>
+            <figure class="code">
+              <header><span>Bad MLO — 3 fatal performance sins</span></header>
+              <pre><code class="language-text">Textures:
+  wall_diffuse_4k.png   4096x4096  16 MB
+  floor_tiles_4k.png    4096x4096  16 MB
+  ceiling_wood_4k.png   4096x4096  16 MB
+  -- Total VRAM: ~150 MB for three textures
+
+Draw calls: 487 (separate material per object)
+
+Collision: 8,432 polys (exact match to visual mesh)
+
+Unseen faces: 1,200 polys inside walls and ceiling</code></pre>
+            </figure>
+            <p>Players near this interior lose 15-25 FPS. On a full server, 64 players near spawn all suffer. The server feels laggy even though server CPU is fine — it is every client's GPU struggling with the MLO.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Resize textures, merge materials, simplify collision, and delete unseen faces.</p>
+            <figure class="code">
+              <header><span>Optimized MLO — 3 fixes applied</span></header>
+              <pre><code class="language-text">Textures (resized to 1024x1024):
+  wall_diffuse_1k.png   1024x1024   2 MB
+  floor_tiles_1k.png    1024x1024   2 MB
+  ceiling_wood_1k.png   1024x1024   2 MB
+  -- Total VRAM: ~18 MB (saved 132 MB)
+
+Draw calls: 124 (merged objects by material)
+
+Collision: 42 polys (box primitives only)
+
+Unseen faces: 0 (all deleted)</code></pre>
+            </figure>
+            <p>From normal gameplay distance (3-5 meters), the visual difference is invisible. But FPS near the interior jumps 15-20 frames. Players notice the smoothness, not the texture resolution on a wall they sprint past.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="C05">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="codewalker"> CodeWalker is installed and can open .ytyp files (download from GitHub)</label></li>
+          <li><label><input type="checkbox" data-id="mlo"> I have at least one custom MLO loaded on my server (any interior)</label></li>
+          <li><label><input type="checkbox" data-id="fps"> I know how to show FPS in FiveM: F8 console, type <code>+showfps</code> (any tutorial)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Measure baseline FPS</h3>
+        </div>
+        <p class="pin-card__lede">You cannot improve what you do not measure.</p>
+        <ol>
+          <li>Join your server and enable FPS display: F8 console, type <code>+showfps</code>.</li>
+          <li>Stand at least 50 meters from the MLO. Note the FPS number. This is your "ambient" baseline.</li>
+          <li>Walk directly up to the MLO entrance. Stand still for 5 seconds. Note the FPS number.</li>
+          <li>Enter the MLO. Stand still for 5 seconds. Note the FPS number.</li>
+          <li>Calculate the FPS drop: ambient minus inside. If the drop is less than 5 FPS, your MLO is already well optimized. If 10+ FPS, proceed.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Open the MLO in CodeWalker and audit draw calls</h3>
+        </div>
+        <p class="pin-card__lede">CodeWalker shows exactly what the game engine sees.</p>
+        <ol>
+          <li>Open CodeWalker and load your MLO's <code>.ytyp</code> file.</li>
+          <li>Select the interior archetype and open the Info panel (right-click → Info).</li>
+          <li>Note the total draw call count. Each unique material-texture combo is a draw call.</li>
+          <li>If draw calls exceed 150 for a small interior, look for objects that share textures and can be merged.</li>
+          <li>Export the MLO as a backup before making any changes.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Audit textures and resize oversized ones</h3>
+        </div>
+        <p class="pin-card__lede">4K textures on walls are wasted. Players sprint past them.</p>
+        <ol>
+          <li>In CodeWalker, open the Texture Browser for the MLO. Sort by resolution, largest first.</li>
+          <li>Flag every texture over 2048x2048. These are candidates for resize.</li>
+          <li>For each flagged texture, ask: "Will a player ever stare at this from 10cm away?" If not, resize to 1024x1024.</li>
+          <li>Use ImageMagick, Photoshop, or any image editor to resize. Keep the original files as backup.</li>
+          <li>Re-import the resized textures into the <code>.ytd</code> file and replace the MLO's texture dictionary.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Simplify collision meshes</h3>
+        </div>
+        <p class="pin-card__lede">Collision does not need detail — it needs speed.</p>
+        <ol>
+          <li>In CodeWalker, enable collision view (View → Show Collision).</li>
+          <li>Compare the collision mesh to the visual mesh. If they look identical, the collision is too detailed.</li>
+          <li>For walls and floors: replace detailed collision with a simple box primitive that matches the bounds.</li>
+          <li>For furniture: replace chair/table collision meshes with bounding boxes or cylinders.</li>
+          <li>Save the optimized collision as a new <code>.ybn</code> file and update the MLO's archetype to reference it.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Delete unseen faces and re-measure FPS</h3>
+        </div>
+        <p class="pin-card__lede">Faces inside walls and ceilings are pure waste.</p>
+        <ol>
+          <li>In CodeWalker, orbit the camera inside walls and above ceilings. Look for polygons that face away from the playable area.</li>
+          <li>Select and delete any face the player can never see — backs of wall panels, undersides of floors, tops of ceilings above the playable area.</li>
+          <li>Save the optimized MLO files. Restart the resource on your server.</li>
+          <li>Stand in the same spot as your baseline measurement. Check FPS.</li>
+          <li>Calculate improvement: new inside FPS minus old inside FPS. Document both numbers.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and confirm the expected behavior. If something does not match, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, texture memory reduction.</strong>
+            <ul>
+              <li>Action: after resizing textures, check the <code>.ytd</code> file size.</li>
+              <li>Expected: the <code>.ytd</code> file is at least 50% smaller than before.</li>
+              <li>How to verify: compare file sizes with <code>ls -lh</code> before and after.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, collision still works.</strong>
+            <ul>
+              <li>Action: walk into every wall, jump on every piece of furniture, shoot the walls.</li>
+              <li>Expected: you cannot walk through walls. Bullets hit surfaces. Furniture blocks movement.</li>
+              <li>How to verify: if you fall through the floor, your collision box is too small or misaligned.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, FPS improvement.</strong>
+            <ul>
+              <li>Action: stand in the exact same spot as your baseline measurement, inside the MLO.</li>
+              <li>Expected: FPS is higher than the baseline by at least 5 frames.</li>
+              <li>How to verify: if FPS did not improve, the bottleneck may be something else — check for script loops running inside the MLO, or excessive lighting/shadow casting.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>What if FPS does not improve after all three fixes?</summary>
+            <p>The bottleneck may not be the MLO itself. Check for: (1) script loops running every frame inside the MLO coordinates, (2) excessive dynamic lights or shadow-casting lights, (3) too many props spawned by scripts, (4) the MLO is loaded as multiple separate archetypes instead of one merged interior. Run <code>resmon</code> in the server console to see which resource is using the most CPU time near the MLO location.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Measure FPS before and after every change. Optimization without measurement is guessing.</li>
+          <li>Resize textures to 1024x1024 max for walls and floors. Only use higher resolutions for hero props players inspect closely.</li>
+          <li>Replace detailed collision meshes with box and cylinder primitives. Physics does not care about detail.</li>
+          <li>Delete every face the player cannot see — inside walls, under floors, above ceilings.</li>
+          <li>Always work on a copy of the MLO files. A broken <code>.ytyp</code> file can crash the entire map resource.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is a draw call?</legend>
+            <label><input type="radio" name="q1" value="a"> A function that draws text on the screen.</label>
+            <label><input type="radio" name="q1" value="b"> A command from the CPU to the GPU to render one mesh with one material. More draw calls = more CPU work.</label>
+            <label><input type="radio" name="q1" value="c"> The number of players who can see the MLO at once.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Why does collision mesh not need to match the visual mesh?</legend>
+            <label><input type="radio" name="q2" value="a"> Collision is optional in GTA V.</label>
+            <label><input type="radio" name="q2" value="b"> Visual meshes are not used for physics.</label>
+            <label><input type="radio" name="q2" value="c"> Physics calculations run on the CPU with simpler shapes. A box is 12 triangles; a detailed chair could be 2,000. The box is 160x faster to compute.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What is the safest maximum texture size for FiveM MLO walls?</legend>
+            <label><input type="radio" name="q3" value="a"> 1024x1024. Higher resolutions add VRAM pressure with no visible benefit from normal viewing distance.</label>
+            <label><input type="radio" name="q3" value="b"> 4096x4096. Higher is always better.</label>
+            <label><input type="radio" name="q3" value="c"> 512x512. Anything larger crashes the client.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to measure FPS near an MLO and calculate the performance impact.</li>
+          <li>How to use CodeWalker to audit draw calls, texture resolution, and collision complexity.</li>
+          <li>How to resize oversized textures and re-import them into the MLO's texture dictionary.</li>
+          <li>How to replace detailed collision meshes with box and cylinder primitives.</li>
+          <li>How to identify and delete faces the player can never see.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Run the same audit on a default GTA V interior that is loaded by a script (like the FIB building or a player apartment). Even Rockstar interiors have optimization sins. Document the texture resolutions, draw calls, and collision complexity. Compare the numbers to your custom MLO.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>Audit comparison of custom MLO vs Rockstar interior</span></header>
+          <pre><code>Custom MLO:    487 draw calls, 150MB VRAM, 8,432 collision polys
+Rockstar apt:   92 draw calls, 22MB VRAM,  180 collision polys
+Your optimized: 124 draw calls, 18MB VRAM,   42 collision polys</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Load a default interior using a simple script: <code>SetInteriorActive(interiorId, true)</code>. Use CodeWalker to inspect the default interior's archetypes. Rockstar's interiors are aggressively optimized — aim for similar numbers.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://github.com/dexyfex/CodeWalker" target="_blank" rel="noopener">CodeWalker — free GTA V map editor</a></li>
+          <li><a href="https://gta.fandom.com/wiki/Map_Modding" target="_blank" rel="noopener">GTA V map modding guide (YTYP, YDR, YBN formats)</a></li>
+          <li><a href="https://imagemagick.org/script/command-line-processing.php" target="_blank" rel="noopener">ImageMagick command-line texture resizing</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+        </ul>
+      </section>

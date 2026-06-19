@@ -1,0 +1,381 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 09 · Lesson 06</span></div>
+        <h1>NUI speed and accessibility best practices</h1>
+        <p class="lede">By the end of this lesson you will build a FiveM NUI interface that loads in under 500ms, responds to input in under 16ms, and meets basic accessibility standards so every player can use it.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A NUI HUD element that renders in one frame, handles keyboard navigation, announces state changes to screen readers, and passes a Lighthouse-style audit.</dd></div>
+          <div><dt>Time</dt><dd>About 35 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>Why NUI is just a web page inside the game, how to make it fast enough that players never notice the load, and how to make it usable for players with visual or motor impairments.</dd></div>
+          <div><dt>Prereqs</dt><dd>You can write basic HTML and CSS. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a fast, accessible NUI that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Load in under 500ms by deferring non-critical assets, minimizing DOM size, and avoiding render-blocking scripts.</li>
+            <li>Respond to keyboard, mouse, and gamepad input with focus indicators visible on every interactive element.</li>
+            <li>Use ARIA labels, semantic HTML, and high-contrast color schemes so screen readers and color-blind players can use it.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 06: NUI speed and accessibility</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>NUI is a Chromium browser rendered inside FiveM. It is just HTML/CSS/JS.<br><span>Example: this lesson builds a fast HUD with keyboard nav.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find NUI files in your resource's <code>html/</code> or <code>nui/</code> folder.<br><span>Example: check <code>index.html</code> before adding more files.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Send data from Lua with <code>SendNUIMessage</code>, receive it in JS with <code>window.addEventListener</code>.<br><span>Example: pipe health data from client to NUI.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Build one NUI element that loads fast and passes accessibility checks.<br><span>Example: match the expected timing before adding features.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will render a NUI element and verify it loads in under one second with keyboard navigation working.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A slow NUI freezes the game. An inaccessible NUI locks out players. Both cost you users before they read a single word of your UI.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">SendNUIMessage</dt><dd>A Lua function that sends JSON data from game scripts to the NUI browser.<br><span>Example: <code>SendNUIMessage({type='health', value=100})</code>.</span></dd></div>
+            <div><dt tabindex="0">ARIA</dt><dd>Accessible Rich Internet Applications — HTML attributes that describe UI to screen readers.<br><span>Example: <code>aria-label="Health: 75 percent"</code>.</span></dd></div>
+            <div><dt tabindex="0">Frame Budget</dt><dd>The time available per frame before the game feels laggy — 16ms at 60 FPS.<br><span>Example: your NUI JS must finish in under 10ms per frame.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_nui</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_nui/html/index.html</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_nui</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][nui]">
+            <header><span class="file">qu_nui/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'nui'
+
+Citizen.CreateThread(function()
+    while true do
+        local ped = PlayerPedId()
+        local health = GetEntityHealth(ped) - 100
+        SendNUIMessage({
+            type = 'health',
+            value = health,
+        })
+        print(('[QUIET][%s][tick] health=%d'):format(MODULE, health))
+        Citizen.Wait(1000)
+    end
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][nui][tick] health=XX</code> appears in the console every second with the current health value.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create the NUI resource folder with <code>html/index.html</code>.</li>
+            <li>Write the Lua client that sends health data via <code>SendNUIMessage</code>.</li>
+            <li>Write the HTML/JS that receives the message and updates the DOM.</li>
+            <li>Add ARIA labels to the health bar element.</li>
+            <li>Add keyboard focus styles to interactive elements.</li>
+            <li>Measure load time and confirm it is under 500ms.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a color threshold — the health bar turns red below 25%, yellow below 50%, and green above. Update the ARIA label with the color state.</p>
+          <p class="expected-output"><strong>Expected output:</strong> ARIA label reads <code>"Health: 20 percent, critical"</code> when health is low.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>NUI not showing</code> means <code>ui_page</code> is missing from fxmanifest or the path to index.html is wrong.</li>
+            <li><code>NUI flickers on every update</code> means you are replacing the entire DOM instead of updating only the changed elements.</li>
+            <li><code>keyboard cannot reach buttons</code> means <code>tabindex</code> is missing or set to -1 on interactive elements.</li>
+            <li><code>screen reader says nothing</code> means ARIA labels are missing or the content updates are not announced with <code>aria-live</code> regions.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the DOM update logic into <code>updateElement(id, value)</code> so every NUI message handler uses a single, tested update function instead of inline DOM manipulation.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/nui/" target="_blank" rel="noopener">FiveM NUI documentation</a></li>
+            <li><a href="https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA" target="_blank" rel="noopener">MDN ARIA guide</a></li>
+            <li><a href="https://web.dev/fast/" target="_blank" rel="noopener">Web performance best practices</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="nui-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>NUI performance rules</h3>
+        <ul>
+          <li><strong>Under 500ms load.</strong> No frameworks. Plain HTML/CSS/JS. Defer everything non-critical.</li>
+          <li><strong>Under 10ms per frame.</strong> Do not run JS every frame. Use <code>Citizen.Wait(250)</code> or higher for NUI updates.</li>
+          <li><strong>Update, don't replace.</strong> Target specific elements by ID. Never <code>innerHTML = hugeString</code> on a timer.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>NUI is a web browser running at 60 frames per second inside a game that also needs to run at 60 frames per second. Every millisecond your JavaScript spends recalculating the DOM is a millisecond the game renderer cannot use. A 100ms DOM update drops the game from 60 FPS to 50 FPS. Multiply that by 10 NUI resources from 10 different script authors and your server is a slideshow. Fast NUI is not a nice-to-have — it is the difference between a smooth game and a lag simulator.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a picture-in-picture TV.</p>
+          <p>The big screen is the game. The small inset window is your NUI. Both share the same video processor. If the small window demands all the processor's attention to play a 4K video, the big screen stutters. Your NUI must be the simplest, lightest window possible — a text label and a bar, not a full web app.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most developers drop a full React or Vue app into NUI and wonder why the server FPS tanks.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Heavy framework, full DOM replacement, no accessibility.</p>
+            <figure class="code">
+              <header><span>index.html, the heavyweight version</span></header>
+              <pre><code class="language-html">&lt;!-- BAD: 2MB React bundle, re-renders entire tree --&gt;
+&lt;script src="react.production.min.js"&gt;&lt;/script&gt;
+&lt;div id="root"&gt;&lt;/div&gt;
+&lt;script&gt;
+  // Every health tick rebuilds the entire virtual DOM
+  window.addEventListener('message', (e) =&gt; {
+    ReactDOM.render(&lt;App health={e.data.value} /&gt;,
+      document.getElementById('root'))
+  })
+&lt;/script&gt;
+
+&lt;!-- No ARIA. No tabindex. No focus styles.
+     Screen readers: silence.
+     Keyboard users: stuck. --&gt;</code></pre>
+            </figure>
+            <p>React adds 150ms+ of overhead per update. The entire DOM tree is rebuilt every tick. No player using a keyboard or screen reader can use this UI.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Plain JS, targeted updates, ARIA labels, keyboard navigable.</p>
+            <figure class="code">
+              <header><span>index.html, the fast accessible version</span></header>
+              <pre><code class="language-html">&lt;!-- GOOD: zero dependencies, targeted updates, accessible --&gt;
+&lt;style&gt;
+  .health-bar { width: 200px; height: 20px; background: #333; }
+  .health-fill { height: 100%; transition: width 0.2s; }
+  .health-fill:focus-visible { outline: 3px solid #fff; }
+  .low { background: #e74c3c; }
+  .medium { background: #f1c40f; }
+  .high { background: #2ecc71; }
+&lt;/style&gt;
+
+&lt;div class="health-bar" role="progressbar"
+     aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"
+     aria-label="Health: 100 percent"
+     tabindex="0"&gt;
+  &lt;div id="health-fill" class="health-fill high"&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+  const bar = document.getElementById('health-fill')
+  const container = bar.parentElement
+  window.addEventListener('message', (e) =&gt; {
+    if (e.data.type !== 'health') return
+    const v = e.data.value
+    bar.style.width = v + '%'
+    bar.className = 'health-fill ' +
+      (v &lt; 25 ? 'low' : v &lt; 50 ? 'medium' : 'high')
+    container.setAttribute('aria-valuenow', v)
+    container.setAttribute('aria-label',
+      'Health: ' + v + ' percent' +
+      (v &lt; 25 ? ', critical' : ''))
+  })
+&lt;/script&gt;</code></pre>
+            </figure>
+            <p>Zero frameworks. One DOM element updated per tick. ARIA labels announce changes to screen readers. Keyboard users can Tab to the health bar and see the focus ring. Transitions are CSS, not JS.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="html"> I can write basic HTML and CSS (this lesson)</label></li>
+          <li><label><input type="checkbox" data-id="fivem-resource"> I have created a FiveM resource with a client.lua file (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="sendnumessage"> I have seen <code>SendNUIMessage</code> at least once (this lesson)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the NUI folder and manifest</h3>
+        </div>
+        <p class="pin-card__lede">The NUI lives in an html/ folder and is registered in fxmanifest.lua.</p>
+        <ol>
+          <li>Create <code>resources/qu_nui/html/</code> folder.</li>
+          <li>Inside it, create <code>index.html</code>, <code>style.css</code>, and <code>script.js</code>.</li>
+          <li>In <code>fxmanifest.lua</code>, add <code>ui_page 'html/index.html'</code>.</li>
+          <li>Add <code>client_scripts { 'client.lua' }</code>. No server file needed for NUI.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Wire the Lua to NUI bridge</h3>
+        </div>
+        <p class="pin-card__lede">SendNUIMessage pushes data. window.addEventListener catches it.</p>
+        <ol>
+          <li>In <code>client.lua</code>, create a loop that reads health and calls <code>SendNUIMessage</code>.</li>
+          <li>Use <code>Citizen.Wait(250)</code> not <code>Wait(0)</code> — health updates do not need 60 FPS.</li>
+          <li>In <code>script.js</code>, add <code>window.addEventListener('message', handler)</code>.</li>
+          <li>Filter by <code>e.data.type</code> so different messages do not collide.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Add accessibility and measure speed</h3>
+        </div>
+        <p class="pin-card__lede">Accessibility is not extra work — it is built into semantic HTML.</p>
+        <ol>
+          <li>Add <code>role="progressbar"</code> and ARIA attributes to the health bar.</li>
+          <li>Add <code>tabindex="0"</code> and <code>:focus-visible</code> styles to every interactive element.</li>
+          <li>Use <code>performance.now()</code> to measure DOM update time — it must be under 10ms.</li>
+          <li>Test with a screen reader (VoiceOver on Mac, Narrator on Windows) to confirm labels are announced.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and verify the output before adding more features.</p>
+        <ol>
+          <li>
+            <strong>Test 1, NUI renders.</strong>
+            <ul>
+              <li>Action: start the resource and join the server.</li>
+              <li>Expected: the health bar appears on screen.</li>
+              <li>How to verify: the bar updates as you take damage or heal.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, performance.</strong>
+            <ul>
+              <li>Action: open F8 console, type <code>profiler</code>, watch the NUI frame time.</li>
+              <li>Expected: NUI JS execution is under 10ms per frame.</li>
+              <li>How to verify: the game FPS does not drop when the NUI is visible versus hidden.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, accessibility.</strong>
+            <ul>
+              <li>Action: press Tab. Then enable a screen reader.</li>
+              <li>Expected: the health bar receives focus and the screen reader announces "Health: 75 percent".</li>
+              <li>How to verify: every interactive element is reachable via keyboard and announced by the screen reader.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why use role="progressbar" instead of a plain div?</summary>
+            <p>Because screen readers do not know a div is a health bar. The role tells them, and the ARIA attributes tell them the current value. Without it, the player hears "div" and nothing else.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>NUI uses zero frameworks — plain HTML, CSS, and JavaScript only.</li>
+          <li>DOM updates target specific elements by ID, never using innerHTML on the whole page.</li>
+          <li>NUI update loops use <code>Citizen.Wait(250)</code> or higher — never run every frame.</li>
+          <li>Every interactive element has <code>tabindex</code>, <code>focus-visible</code> styles, and an ARIA label.</li>
+          <li>Performance is measured with <code>performance.now()</code> and must stay under 10ms per update.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why avoid React or Vue in NUI?</legend>
+            <label><input type="radio" name="q1" value="a"> FiveM blocks external JavaScript libraries.</label>
+            <label><input type="radio" name="q1" value="b"> Frameworks add bundle size and per-frame overhead that competes with the game renderer for CPU time.</label>
+            <label><input type="radio" name="q1" value="c"> UI frameworks are not beginner-friendly.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What happens if you use innerHTML to update the entire NUI every 100ms?</legend>
+            <label><input type="radio" name="q2" value="a"> The NUI becomes more responsive because all elements are fresh.</label>
+            <label><input type="radio" name="q2" value="b"> FiveM automatically throttles the updates to prevent lag.</label>
+            <label><input type="radio" name="q2" value="c"> The browser recalculates the entire layout tree, dropping game FPS and causing visible stutter.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What does <code>aria-label</code> do?</legend>
+            <label><input type="radio" name="q3" value="a"> It tells a screen reader what the element represents, so a blind player hears "Health: 75 percent" instead of silence.</label>
+            <label><input type="radio" name="q3" value="b"> It improves the SEO of the NUI page.</label>
+            <label><input type="radio" name="q3" value="c"> It is required by FiveM for NUI to render.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to create a NUI resource with <code>ui_page</code> in the manifest.</li>
+          <li>How to send data from Lua to NUI with <code>SendNUIMessage</code> and receive it in JavaScript.</li>
+          <li>Why plain HTML/CSS/JS outperforms frameworks inside the FiveM Chromium runtime.</li>
+          <li>How to add ARIA labels, tabindex, and focus styles for accessibility.</li>
+          <li>How to measure NUI performance and keep updates under the 16ms frame budget.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add an armor bar next to the health bar. It must have its own ARIA label, color thresholds, and update from the same Lua loop without duplicating code.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>Screen reader announcement</span></header>
+          <pre><code>"Health: 80 percent. Armor: 50 percent."</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Add a second <code>role="progressbar"</code> element. Send <code>{type='status', health=75, armor=50}</code> from Lua instead of separate messages. Use one handler that updates both bars.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/nui/" target="_blank" rel="noopener">FiveM NUI documentation</a></li>
+          <li><a href="https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Roles/progressbar_role" target="_blank" rel="noopener">ARIA progressbar role</a></li>
+          <li><a href="https://web.dev/rendering-performance/" target="_blank" rel="noopener">Rendering performance guide</a></li>
+        </ul>
+      </section>

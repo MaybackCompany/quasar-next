@@ -1,0 +1,423 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Track C · Lesson 02</span></div>
+        <h1>Controls and input: key bindings, control detection, input handling</h1>
+        <p class="lede">By the end of this lesson you will detect when a player presses E, check if they are holding Shift, and block the default GTA input so your script can take over.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A working input handler that detects E press, checks if Shift is held, shows a notification, and blocks the default horn action for five seconds.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How FiveM maps keyboard keys to control IDs, how to read held vs. just-pressed, and how to disable native controls so your script gets priority.</dd></div>
+          <div><dt>Prereqs</dt><dd>You can create a FiveM resource with a client thread. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build an input handler that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>The player presses E. A notification says "E pressed".</li>
+            <li>The player presses E while holding Left Shift. A notification says "Shift+E pressed".</li>
+            <li>For five seconds after pressing E, the horn (E in a vehicle) is disabled so your script controls the outcome.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson C02: Controls and input handling</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>FiveM input handling means reading which keys the player pressed and deciding whether the game or your script acts on them.<br><span>Example: this lesson detects E and blocks the horn.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find the natives in <code>IsControlJustPressed</code>, <code>IsControlPressed</code>, and <code>DisableControlAction</code>.<br><span>Example: check the native docs for control IDs before blocking anything.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Loop every frame, read the control state, decide what to do, and optionally block the game's default behavior.<br><span>Example: run one tiny detection before expanding to a full action system.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Detect one key, one modifier, and block one native action.<br><span>Example: match the expected notification output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will press E, see one notification, press Shift+E, see another notification, and confirm the horn does not work for five seconds.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Every interaction in FiveM — opening doors, picking up items, starting jobs — begins with input detection. If you cannot read and block controls, your scripts will fight the game's native actions and confuse players.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Control ID</dt><dd>A number that maps to a keyboard key or gamepad button inside GTA V.<br><span>Example: 38 is E, 86 is the horn in a vehicle.</span></dd></div>
+            <div><dt tabindex="0">Just pressed</dt><dd>The frame when a key transitions from up to down. Fires once per press.<br><span>Example: <code>IsControlJustPressed(0, 38)</code> returns true for exactly one frame.</span></dd></div>
+            <div><dt tabindex="0">Pressed (held)</dt><dd>The key is currently held down. Fires every frame while held.<br><span>Example: <code>IsControlPressed(0, 21)</code> returns true every frame while Shift is down.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_input</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_input/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_input</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Notifications appear on E press and Shift+E press; horn blocked for 5s">
+            <header><span class="file">qu_input/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'input'
+local blockHorn = false
+local blockTimer = 0
+
+-- Control IDs (GTA V default mappings)
+local CONTROL_E = 38
+local CONTROL_SHIFT = 21
+local CONTROL_VEH_HORN = 86
+
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+
+        -- Check if E was just pressed this frame
+        if IsControlJustPressed(0, CONTROL_E) then
+            if IsControlPressed(0, CONTROL_SHIFT) then
+                -- Shift+E combo
+                print(('[QUIET][%s] Shift+E pressed'):format(MODULE))
+                SetNotificationTextEntry('STRING')
+                AddTextComponentString('~y~Shift+E ~w~pressed — full action triggered')
+                DrawNotification(false, true)
+            else
+                -- E alone
+                print(('[QUIET][%s] E pressed'):format(MODULE))
+                SetNotificationTextEntry('STRING')
+                AddTextComponentString('~g~E ~w~pressed — default action')
+                DrawNotification(false, true)
+            end
+
+            -- Block the horn for 5 seconds
+            blockHorn = true
+            blockTimer = GetGameTimer() + 5000
+        end
+
+        -- Block the horn if the timer is still active
+        if blockHorn and IsControlPressed(0, CONTROL_VEH_HORN) then
+            DisableControlAction(0, CONTROL_VEH_HORN, true)
+        end
+
+        -- Release the block after 5 seconds
+        if blockHorn and GetGameTimer() > blockTimer then
+            blockHorn = false
+            print(('[QUIET][%s] Horn block released'):format(MODULE))
+        end
+    end
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][input] E pressed</code> appears in F8 when E is pressed. <code>[QUIET][input] Horn block released</code> appears five seconds later.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code> with <code>client_scripts { 'client.lua' }</code>.</li>
+            <li>Create <code>client.lua</code> with the minimal example above.</li>
+            <li>Join the server and get in a vehicle.</li>
+            <li>Press E. Confirm the green notification appears and F8 prints <code>[QUIET][input] E pressed</code>.</li>
+            <li>Hold Left Shift, then press E. Confirm the yellow notification appears and F8 prints <code>[QUIET][input] Shift+E pressed</code>.</li>
+            <li>Immediately press E (the horn key) again. The horn should not sound. Wait five seconds, then press E again. The horn should work.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the key to F (control ID 23), the modifier to Left Alt (control ID 19), and block the vehicle headlights (control ID 74) for 10 seconds instead of 5. Test all three conditions.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Notifications for F and Alt+F appear. Headlights are blocked for 10 seconds. <code>[QUIET][input]</code> lines appear in F8 within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value (global 'IsControlJustPressed')</code> means the script is on the server side. Input detection is client-only.</li>
+            <li>Horn still works after blocking it: <code>DisableControlAction</code> must be called every frame while the block is active. A single call is not enough.</li>
+            <li>Shift+E never fires: <code>IsControlJustPressed</code> only returns true for one frame. If you check Shift after E is pressed, the player may have already released Shift. Use <code>IsControlPressed</code> for modifiers.</li>
+            <li>Wrong key fires: control ID 38 is E for keyboard but may be something else on a gamepad. Test with keyboard first, then add gamepad support later.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the key check into <code>isKeyJustPressed(controlId)</code> and the block logic into <code>blockControlFor(controlId, milliseconds)</code> so any key can be wired up with two lines.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/game-references/controls/" target="_blank" rel="noopener">FiveM controls reference (all control IDs)</a></li>
+            <li><a href="https://docs.fivem.net/natives/?_0x3D42B92563939375" target="_blank" rel="noopener">IsControlJustPressed on docs.fivem.net/natives</a></li>
+            <li><a href="https://docs.fivem.net/natives/?_0xE2587F8CBBD87B1D" target="_blank" rel="noopener">DisableControlAction on docs.fivem.net/natives</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="input-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Control detection rules</h3>
+        <ul>
+          <li><strong>IsControlJustPressed.</strong> Use for single-press actions like opening a menu or triggering a command.</li>
+          <li><strong>IsControlPressed.</strong> Use for held checks like sprint modifiers or throttle inputs.</li>
+          <li><strong>DisableControlAction.</strong> Call every frame while blocking. One call = one frame of blocking.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>GTA V processes keyboard input 60 times per second. Every frame, the game asks: "Is E down right now? Did it just go down this frame?" Your script reads those answers and decides whether the game gets the input or your script takes it. <strong>IsControlJustPressed</strong> is the "just this frame" check. <strong>IsControlPressed</strong> is the "still held" check. <strong>DisableControlAction</strong> is the "the game does not get this one" command.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a security guard at a door.</p>
+          <p>Sixty times a second, the guard looks at the door handle. If someone just turned it (<code>IsControlJustPressed</code>), the guard checks their ID and either lets them in or blocks the door (<code>DisableControlAction</code>). If someone is still holding the handle (<code>IsControlPressed</code>), the guard keeps the door blocked until they let go.</p>
+          <p>Your input handler is the security guard. Every frame, it checks, decides, and blocks. If you stop checking for one frame, the game's default behavior sneaks through.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most beginners block a control once and wonder why it still works. The good version calls <code>DisableControlAction</code> every frame.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Blocking a control once does nothing. It must be blocked every frame.</p>
+            <figure class="code">
+              <header><span>client.lua, the broken version</span></header>
+              <pre><code class="language-lua">-- BAD: blocks the horn for exactly one frame
+RegisterCommand('blockhorn', function()
+    DisableControlAction(0, 86, true)
+    -- One frame later, the horn works again
+end, false)</code></pre>
+            </figure>
+            <p>The horn flickers off for 1/60th of a second and then comes back. The player never notices the block.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Block the control inside a loop for a set duration.</p>
+            <figure class="code">
+              <header><span>client.lua, the working version</span></header>
+              <pre><code class="language-lua">-- GOOD: blocks the horn every frame for 5 seconds
+local blockUntil = 0
+
+RegisterCommand('blockhorn', function()
+    blockUntil = GetGameTimer() + 5000
+end, false)
+
+Citizen.CreateThread(function()
+    while true do
+        if GetGameTimer() < blockUntil then
+            DisableControlAction(0, 86, true)  -- called every frame
+        end
+        Wait(0)
+    end
+end)</code></pre>
+            </figure>
+            <p>The <code>DisableControlAction</code> call runs 60 times per second for five full seconds. The horn is completely suppressed. The game never sees the E press during that window.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="C01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="resource"> I can create a resource with <code>client.lua</code> and a per-frame thread (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="notify"> I have used <code>SetNotificationTextEntry</code> to show a notification (Lesson 05)</label></li>
+          <li><label><input type="checkbox" data-id="gametimer"> I know <code>GetGameTimer()</code> returns milliseconds since the game started (Lesson 04)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource and the loop</h3>
+        </div>
+        <p class="pin-card__lede">Every input system starts with a loop that runs every frame.</p>
+        <ol>
+          <li>Create the <code>qu_input</code> resource folder with <code>fxmanifest.lua</code> and <code>client.lua</code>.</li>
+          <li>In <code>client.lua</code>, write a <code>Citizen.CreateThread</code> with <code>while true do ... Wait(0) end</code>.</li>
+          <li>Add a placeholder <code>print</code> inside the loop to confirm it runs.</li>
+          <li>Start the server and check F8. You should see the print line scrolling every frame.</li>
+          <li>Remove the placeholder print. The loop is ready for control checks.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Detect a single key press</h3>
+        </div>
+        <p class="pin-card__lede"><code>IsControlJustPressed</code> fires exactly once per key press.</p>
+        <ol>
+          <li>Inside the loop, add <code>if IsControlJustPressed(0, 38) then</code> (38 is E).</li>
+          <li>Inside the if-block, call <code>SetNotificationTextEntry('STRING')</code> and <code>DrawNotification(false, true)</code>.</li>
+          <li>Join the server and press E. You should see the notification appear exactly once per press.</li>
+          <li>Hold E. The notification appears only once because it is "just pressed", not "held".</li>
+          <li>Save the file. Step 2 is done.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Detect a modifier key (Shift+E)</h3>
+        </div>
+        <p class="pin-card__lede">Use <code>IsControlPressed</code> for modifiers because the player may hold Shift across multiple frames.</p>
+        <ol>
+          <li>Inside the E press block, add a nested <code>if IsControlPressed(0, 21) then</code> (21 is Shift).</li>
+          <li>Show a different notification for the Shift+E combo.</li>
+          <li>Use an <code>else</code> branch for the plain E press.</li>
+          <li>Press E normally, then hold Shift and press E. Both notifications should appear correctly.</li>
+          <li>If both notifications appear at once, double-check that the Shift check is inside the E-just-pressed block, not outside it.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Block a native control for a duration</h3>
+        </div>
+        <p class="pin-card__lede">Blocking requires a timer variable and a per-frame disable call.</p>
+        <ol>
+          <li>Declare <code>local blockHorn = false</code> and <code>local blockTimer = 0</code> at the top of the file.</li>
+          <li>When E is pressed, set <code>blockHorn = true</code> and <code>blockTimer = GetGameTimer() + 5000</code>.</li>
+          <li>After the E-press block, add a separate <code>if blockHorn</code> check that calls <code>DisableControlAction(0, 86, true)</code>.</li>
+          <li>Add a release check: <code>if blockHorn and GetGameTimer() > blockTimer then blockHorn = false end</code>.</li>
+          <li>Get in a vehicle, press E, then immediately try to honk. Nothing happens. Wait five seconds and try again. The horn works.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Test all three paths and verify</h3>
+        </div>
+        <p class="pin-card__lede">Run each input combination and confirm the behavior.</p>
+        <ol>
+          <li>Press E on foot. Notification: "E pressed". F8: <code>[QUIET][input] E pressed</code>.</li>
+          <li>Hold Shift and press E. Notification: "Shift+E pressed". F8 confirms.</li>
+          <li>Get in a vehicle. Press E. Immediately try to honk. No horn. Wait five seconds. Horn returns.</li>
+          <li>Press E while the horn is already blocked. The timer resets to five seconds from the new press.</li>
+          <li>All three paths are verified. The lesson is complete.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test, look at what happens, and confirm the expected behavior. If something does not match, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, plain key press.</strong>
+            <ul>
+              <li>Action: press E while standing on foot.</li>
+              <li>Expected: green notification "E pressed — default action". F8 prints the module line.</li>
+              <li>How to verify: press E three times. Three notifications appear, one per press.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, modifier key combo.</strong>
+            <ul>
+              <li>Action: hold Left Shift, then press E.</li>
+              <li>Expected: yellow notification "Shift+E pressed — full action triggered".</li>
+              <li>How to verify: hold Shift for two seconds before pressing E. The plain-E notification should NOT appear.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, control blocking.</strong>
+            <ul>
+              <li>Action: get in a vehicle, press E, then immediately press E again (try to honk).</li>
+              <li>Expected: the horn does not sound for five seconds. After five seconds, the horn works normally.</li>
+              <li>How to verify: F8 prints <code>[QUIET][input] Horn block released</code> exactly five seconds after the E press.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why does the block timer reset on every E press instead of stacking?</summary>
+            <p>Because <code>blockTimer = GetGameTimer() + 5000</code> overwrites the previous timer value. Each press extends the block by five seconds from that moment. If you want a fixed total duration, check <code>if not blockHorn then</code> before setting the timer.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Input detection runs on the client, inside a per-frame loop. The server never reads keyboard state.</li>
+          <li><code>IsControlJustPressed</code> fires on the frame the key goes down. Use it for single actions.</li>
+          <li><code>IsControlPressed</code> returns true every frame the key is held. Use it for modifiers and continuous actions.</li>
+          <li><code>DisableControlAction</code> must be called every frame while blocking. A single call blocks exactly one frame.</li>
+          <li>Control IDs are numbers. 38 = E, 21 = Shift, 86 = vehicle horn. The full list is in the FiveM controls reference.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why does <code>DisableControlAction</code> need to be called in a loop?</legend>
+            <label><input type="radio" name="q1" value="a"> Because it crashes if called outside a thread.</label>
+            <label><input type="radio" name="q1" value="b"> It blocks the control for exactly one frame. You must re-block every frame.</label>
+            <label><input type="radio" name="q1" value="c"> Because the server needs to approve the block each frame.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What is the difference between <code>IsControlJustPressed</code> and <code>IsControlPressed</code>?</legend>
+            <label><input type="radio" name="q2" value="a"> One works on the client and one on the server.</label>
+            <label><input type="radio" name="q2" value="b"> One checks keyboard and one checks gamepad.</label>
+            <label><input type="radio" name="q2" value="c"> JustPressed returns true for one frame on key-down. Pressed returns true every frame while held.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why check Shift with <code>IsControlPressed</code> inside the <code>IsControlJustPressed(E)</code> block?</legend>
+            <label><input type="radio" name="q3" value="a"> Because the player may have been holding Shift for many frames before pressing E. JustPressed would miss it.</label>
+            <label><input type="radio" name="q3" value="b"> Because Shift cannot be detected with JustPressed.</label>
+            <label><input type="radio" name="q3" value="c"> It is a style choice. Either works the same.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to detect a key press with <code>IsControlJustPressed</code> inside a per-frame loop.</li>
+          <li>How to detect a held modifier key with <code>IsControlPressed</code>.</li>
+          <li>How to block a native control with <code>DisableControlAction</code> for a timed duration.</li>
+          <li>Why blocking must be continuous — one call per frame, not one call total.</li>
+          <li>How control IDs map to keyboard keys and where to find the full reference.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a third key combo: press F (control ID 23) while holding Left Alt (control ID 19). When detected, show a red notification "Alt+F pressed — admin action" and block the vehicle headlights (control ID 74) for 8 seconds. Test that F alone, Alt+F, and E / Shift+E all work independently.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>Notification, after pressing Alt+F in a vehicle</span></header>
+          <pre><code>~r~Alt+F ~w~pressed — admin action</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Add a second <code>if IsControlJustPressed(0, 23)</code> block next to the existing E block. Inside it, check for Alt with <code>IsControlPressed(0, 19)</code>. Use a separate timer variable for the headlight block so it does not interfere with the horn block.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/game-references/controls/" target="_blank" rel="noopener">FiveM controls reference — complete control ID list</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x3D42B92563939375" target="_blank" rel="noopener">IsControlJustPressed on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xE2587F8CBBD87B1D" target="_blank" rel="noopener">DisableControlAction on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x8F7156A3142A6BAD" target="_blank" rel="noopener">IsControlPressed on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/" target="_blank" rel="noopener">FiveM client-side Lua functions</a></li>
+        </ul>
+      </section>

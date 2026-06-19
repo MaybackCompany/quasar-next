@@ -1,0 +1,133 @@
+<section class="lesson-hero">
+  <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module A3 · Lesson 28</span></div>
+  <h1>Anti-cheat evaluation: what to use and what to skip</h1>
+  <p class="lede">By the end of this lesson you will pick the right anti-cheat solution for your server, understand what each option actually protects, and avoid the ones that just waste CPU.</p>
+  <div class="hero-outcome">
+    <div><dt>You'll ship</dt><dd>A one-page anti-cheat decision document with your server's exact protection layers.</dd></div>
+    <div><dt>Time</dt><dd>About 30 minutes.</dd></div>
+    <div><dt>You'll learn</dt><dd>How to evaluate anti-cheat solutions by what they actually protect, not by their marketing.</dd></div>
+    <div><dt>Prereqs</dt><dd>You have a running FiveM server with at least one script installed.</dd></div>
+  </div>
+</section>
+
+<section class="tldr-card" aria-label="What you will build">
+  <span class="tldr-card__chip">In 3 bullets</span>
+  <div class="tldr-card__body">
+    <p><strong>You will create an anti-cheat evaluation matrix:</strong></p>
+    <ul class="tldr-card__points">
+      <li>List every protection layer your server needs — event security, resource integrity, injection prevention, speed/reward validation.</li>
+      <li>For each layer, decide whether server-side code, a free solution, or a paid solution is the right choice.</li>
+      <li>End with a single page that tells you exactly what is protected and what is not — no gaps, no overlaps.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+  <p class="strict-kicker">Step by step</p>
+  <h2 id="strict-template-title">Lesson 28: Anti-cheat evaluation matrix</h2>
+
+  <section class="strict-section beginner-orientation" id="beginner-orientation">
+    <h3>Start here</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">What this is</dt><dd>An anti-cheat is not one tool — it is layers of protection.<br><span>Example: event security stops exploits; resource integrity stops tampering; injection detection stops external tools.</span></dd></div>
+      <div><dt tabindex="0">Where to find it</dt><dd>Start with server.cfg and your own scripts before adding external tools.<br><span>Example: sv_resourceNameWhitelist is free and catches 30% of common attacks.</span></dd></div>
+      <div><dt tabindex="0">How to use it</dt><dd>Add layers one at a time. Test each layer before adding the next.<br><span>Example: enable event security, verify nothing breaks, then add resource integrity.</span></dd></div>
+      <div><dt tabindex="0">What to do now</dt><dd>Build the matrix — list your layers and decide what fills each one.<br><span>Example: one server ended up with 5 layers and spent $0 on anti-cheat.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="outcome" data-section="outcome">
+    <h3>Outcome</h3>
+    <p>You will write one evaluation matrix that shows every protection layer on your server.</p>
+  </section>
+
+  <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+    <h3>Why it matters</h3>
+    <p>A server without a clear anti-cheat plan gets attacked, bans the wrong people, and loses players who did nothing wrong.</p>
+  </section>
+
+  <section class="strict-section" id="vocabulary" data-section="vocabulary">
+    <h3>Vocabulary</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">Event security</dt><dd>Blocking or validating events that clients should never trigger.<br><span>Example: a client should never fire esx:giveMoney to themselves.</span></dd></div>
+      <div><dt tabindex="0">Resource integrity</dt><dd>Making sure the files running on your server are the files you approved.<br><span>Example: checking file hashes against a known-good list.</span></dd></div>
+      <div><dt tabindex="0">Injection detection</dt><dd>Finding external programs that modify the game client.<br><span>Example: detecting a DLL that gives wallhacks or speed boosts.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="setup" data-section="setup">
+    <h3>Setup</h3>
+    <dl class="setup-list">
+      <div><dt>Resource</dt><dd><code>qu_security_audit</code></dd></div>
+      <div><dt>Side</dt><dd><code>server</code></dd></div>
+      <div><dt>File path</dt><dd><code>resources/qu_security_audit/evaluation.txt</code></dd></div>
+      <div><dt>Ensure order</dt><dd>No ensure needed — this is a planning document.</dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="minimal-example" data-section="minimal-example">
+    <h3>Minimal example</h3>
+    <figure class="code" data-expected-output="[SECURITY] Starting audit...">
+      <header><span class="file">qu_security_audit/server.lua</span><span class="lang">Lua</span></header>
+      <pre><code class="language-lua">-- Protection Layer 1: Block dangerous events before they reach your scripts
+local BLOCKED_EVENTS = {
+    'esx:giveInventoryItem', 'esx:giveMoney', 'bank:transfer',
+    'qb-inventory:server:giveItem', 'qb-admin:server:ban',
+}
+
+for _, event in ipairs(BLOCKED_EVENTS) do
+    RegisterNetEvent(event, function()
+        local src = source
+        -- Drop the event silently — never process it from a client
+        if src and src > 0 then
+            CancelEvent()
+        end
+    end)
+end
+
+print('[SECURITY] Layer 1: Event security active — ' .. #BLOCKED_EVENTS .. ' events blocked')</code></pre>
+    </figure>
+    <p class="expected-output"><strong>Expected output:</strong> <code>[SECURITY] Layer 1: Event security active — 5 events blocked</code></p>
+  </section>
+
+  <section class="strict-section" id="checklist" data-section="checklist">
+    <h3>Checklist</h3>
+    <ol>
+      <li>Create <code>evaluation.txt</code> with these headings: Layer, Threat, Solution, Cost, Verified.</li>
+      <li>Fill in Layer 1 (Event Security) with your server's blocked events list.</li>
+      <li>Fill in Layer 2 (Resource Integrity) — are you using <code>sv_resourceNameWhitelist</code>?</li>
+      <li>Fill in Layer 3 (Exploit Prevention) — rate limiting, cooldowns, server-side validation.</li>
+      <li>Fill in Layer 4 (Injection Detection) — evaluate whether you need a paid solution here.</li>
+      <li>Review the matrix — every threat should have at least one protection layer.</li>
+    </ol>
+  </section>
+
+  <section class="strict-section" id="strict-exercise" data-section="exercise">
+    <h3>Exercise</h3>
+    <p>Add two more events to the <code>BLOCKED_EVENTS</code> list that are specific to your framework. Run the server and verify they appear in the console count.</p>
+    <p class="expected-output"><strong>Expected output:</strong> <code>[SECURITY] Layer 1: Event security active — 7 events blocked</code></p>
+  </section>
+
+  <section class="strict-section" id="common-failures" data-section="common-failures">
+    <h3>Common failures</h3>
+    <ul class="failure-list">
+      <li><code>Blocking legitimate events breaks core features</code> means you blocked an event that your framework needs. Test each event one at a time.</li>
+      <li><code>Anti-cheat causes 10-20% CPU increase with no visible benefit</code> means you are running a bloated solution. Remove it and add simpler layers.</li>
+      <li><code>Players report false positives and get banned unfairly</code> means your detection thresholds are too aggressive. Tune them or switch to manual review.</li>
+      <li><code>Cheaters still get through despite multiple layers</code> means your layers are not complementary. Check that each layer covers a different threat.</li>
+    </ul>
+  </section>
+
+  <section class="strict-section" id="refactor" data-section="refactor">
+    <h3>Refactor</h3>
+    <p>Move the <code>BLOCKED_EVENTS</code> table into a separate <code>shared/security_config.lua</code> file so both client and server can reference it.</p>
+  </section>
+
+  <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+    <h3>References</h3>
+    <ul>
+      <li><a href="/lessons/server-security-baseline">Server security baseline lesson</a></li>
+      <li><a href="/lessons/server-cfg-annotated">Annotated server.cfg — security convars explained</a></li>
+    </ul>
+  </section>
+</section>

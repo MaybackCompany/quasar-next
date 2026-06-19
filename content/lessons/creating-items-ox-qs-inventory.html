@@ -1,0 +1,401 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Track C · Lesson 04</span></div>
+        <h1>Creating custom items for ox_inventory and QS inventory</h1>
+        <p class="lede">By the end of this lesson you will add a custom "golden key" item to both ox_inventory and QS inventory, with weight, description, and a usable action — and understand which file controls what.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A custom item defined in the items.lua data file, visible in the inventory UI, with a use action that prints to console when the player clicks "Use".</dd></div>
+          <div><dt>Time</dt><dd>About 35 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>Where items are defined in ox_inventory vs QS inventory, the required fields for each system, and how to attach an item-use callback.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have ox_inventory or QS inventory installed and working. You can edit Lua data files.</dd></div>
+        </section>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will create a "golden key" item that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Appears in the player's inventory with a custom icon, weight of 0.5, and description "A mysterious golden key".</li>
+            <li>Can be given to a player via command <code>/giveitem golden_key 1</code>.</li>
+            <li>When the player clicks "Use" on the item, the server prints <code>[QUIET][item] golden_key used by source=1</code>.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson C04: Creating custom items for ox_inventory and QS inventory</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Custom items are entries in the inventory system's item data file. Each item has a name, label, weight, and optional metadata.<br><span>Example: this lesson creates a "golden key" from scratch.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>ox_inventory: <code>ox_inventory/data/items.lua</code>. QS inventory: <code>qs-inventory/config.lua</code> or <code>qs-inventory/shared/items.lua</code>.<br><span>Example: check the item file path before adding entries.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Add a new entry to the items table, define required fields (name, label, weight), then optionally add a use callback.<br><span>Example: add one item and test with a give command before building ten.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Create one item, give it to yourself, and verify the use action works.<br><span>Example: match the expected console output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will type <code>/giveitem golden_key 1</code>, see the item in your inventory, click "Use", and see a console print.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Every job reward, crafting recipe, loot drop, and shop item starts with an entry in the items file. If you cannot add items, you cannot build content.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Items data file</dt><dd>The Lua table where all item definitions live. Every item in the server must be here.<br><span>Example: ox_inventory's <code>data/items.lua</code> contains hundreds of items.</span></dd></div>
+            <div><dt tabindex="0">Item use callback</dt><dd>A function that runs when the player clicks "Use" on the item in their inventory.<br><span>Example: a bandage item calls a heal function when used.</span></dd></div>
+            <div><dt tabindex="0">Metadata</dt><dd>Extra data attached to a specific instance of an item, like durability or a serial number.<br><span>Example: a weapon instance has a serial: "SN-0042".</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>System</dt><dd><code>ox_inventory</code> or <code>qs-inventory</code></dd></div>
+            <div><dt>File to edit</dt><dd><code>ox_inventory/data/items.lua</code></dd></div>
+            <div><dt>Server callback</dt><dd><code>ox_inventory/modules/items/server.lua</code></dd></div>
+            <div><dt>Restart required</dt><dd>Yes — item data is loaded on resource start</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example (ox_inventory)</h3>
+          <figure class="code" data-expected-output="Item appears in inventory, use callback prints to server console">
+            <header><span class="file">ox_inventory/data/items.lua — add this entry</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- Add this inside the Items table (around line 200, among other items)
+['golden_key'] = {
+    label = 'Golden Key',
+    weight = 500,         -- grams (0.5 kg)
+    stack = true,         -- can stack in inventory
+    close = true,         -- inventory closes on use
+    description = 'A mysterious golden key that glows faintly',
+    client = {
+        image = 'golden_key.png',
+    }
+},</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">ox_inventory/modules/items/server.lua — add use callback</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- Add this inside the Item use callback table (look for other Item(...) calls)
+Item('golden_key', function(source, item, inventory, slot)
+    print(('[QUIET][item] golden_key used by source=%d slot=%d'):format(source, slot))
+    -- Optional: do something with the item here
+    -- RemoveItem(source, 'golden_key', 1, false, slot)
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][item] golden_key used by source=1 slot=3</code> appears in the server console when the player clicks "Use".</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Open <code>ox_inventory/data/items.lua</code>.</li>
+            <li>Add the <code>['golden_key']</code> entry inside the Items table.</li>
+            <li>Open <code>ox_inventory/modules/items/server.lua</code>.</li>
+            <li>Add the <code>Item('golden_key', ...)</code> callback.</li>
+            <li>Restart ox_inventory. Give yourself the item with <code>/giveitem golden_key 1</code>.</li>
+            <li>Open inventory, find the golden key, click "Use". Confirm the server console prints the expected line.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a second item called <code>silver_coin</code> with weight 100 (0.1 kg), description "An old silver coin", and stack disabled (stack = false). Add a use callback that removes the coin and prints <code>[QUIET][item] silver_coin consumed by source=X</code>. Give yourself 5 coins and use one.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Coin appears in inventory, is consumed on use, and <code>[QUIET][item] silver_coin consumed</code> prints within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li>Item does not appear after adding: you must restart ox_inventory. Item data is loaded at resource start and cached in memory.</li>
+            <li><code>attempt to index a nil value (field 'golden_key')</code>: the item name in the use callback must exactly match the key in the Items table, including case and underscores.</li>
+            <li>Item shows as "undefined" or blank label: the <code>label</code> field is missing or misspelled. ox_inventory requires <code>label</code>, not <code>name</code>.</li>
+            <li>Stack does not work: <code>stack = false</code> means one per slot. If you want multiple, set <code>stack = true</code> and check <code>weight</code> is reasonable.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Create an <code>addCustomItem(name, label, weight, useFn)</code> helper that inserts the item into both the Items table and the use callback registry in one call.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://overextended.dev/ox_inventory/Functions/Server/Items" target="_blank" rel="noopener">ox_inventory item API on overextended.dev</a></li>
+            <li><a href="https://overextended.dev/ox_inventory/Guides/Items" target="_blank" rel="noopener">ox_inventory items guide</a></li>
+            <li><a href="https://github.com/overextended/ox_inventory" target="_blank" rel="noopener">ox_inventory GitHub repository</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="item-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Required item fields (ox_inventory)</h3>
+        <ul>
+          <li><strong>label.</strong> Display name in the inventory UI. Human-readable.</li>
+          <li><strong>weight.</strong> In grams. 1000 = 1 kg. Affects carry capacity.</li>
+          <li><strong>stack.</strong> true = items of the same type stack in one slot. false = one per slot.</li>
+          <li><strong>description.</strong> Shown in the item tooltip. Optional but recommended.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>An inventory item is a <strong>definition</strong> plus a <strong>callback</strong>. The definition (in <code>items.lua</code>) tells the inventory UI what the item looks like, how much it weighs, and whether it stacks. The callback (in the server module) tells the server what happens when the player clicks "Use". The definition is loaded once when the resource starts. The callback runs every time a player uses the item. You cannot skip either one.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a restaurant menu.</p>
+          <p>The menu (items.lua) lists every dish with its name, description, and price. The kitchen (use callback) is the actual recipe that runs when a customer orders. If a dish is on the menu but there is no recipe in the kitchen, the order fails. If the recipe exists but is not on the menu, nobody can order it.</p>
+          <p>Your item definition is the menu entry. Your use callback is the kitchen recipe. Both must exist for the item to work.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most beginners add the item definition but forget the use callback, then wonder why "Use" does nothing. The good version adds both.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Adding only the item definition. The "Use" button appears but does nothing.</p>
+            <figure class="code">
+              <header><span>data/items.lua — definition only, no callback</span></header>
+              <pre><code class="language-lua">-- BAD: item is defined, but no server callback exists
+['golden_key'] = {
+    label = 'Golden Key',
+    weight = 500,
+    stack = true,
+    description = 'A mysterious golden key',
+}
+-- The item appears in inventory, but clicking "Use" triggers nothing.</code></pre>
+            </figure>
+            <p>The inventory UI shows the item. The player can move it around. But the "Use" button exists and does nothing. The player clicks it and nothing happens — no feedback, no action, no error. Silent failure.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Add both the definition and the server-side use callback.</p>
+            <figure class="code">
+              <header><span>data/items.lua + modules/items/server.lua</span></header>
+              <pre><code class="language-lua">-- GOOD: definition in items.lua
+['golden_key'] = {
+    label = 'Golden Key',
+    weight = 500,
+    stack = true,
+    description = 'A mysterious golden key',
+}
+
+-- GOOD: callback in server.lua
+Item('golden_key', function(source, item, inventory, slot)
+    print(('[QUIET][item] golden_key used by source=%d'):format(source))
+    -- Action happens here: open a door, give a reward, etc.
+    RemoveItem(source, 'golden_key', 1, false, slot)
+end)</code></pre>
+            </figure>
+            <p>The item appears in inventory. The "Use" button triggers the server callback. The console prints a confirmation. The item is removed. The player sees the item disappear from their inventory — clear feedback.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="02">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="ox"> ox_inventory or qs-inventory is installed and functional on your server (Module 03)</label></li>
+          <li><label><input type="checkbox" data-id="files"> I can navigate to <code>resources/ox_inventory/data/</code> and open Lua files (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="restart"> I know how to restart a single resource without restarting the whole server (Lesson 02)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Locate the items data file</h3>
+        </div>
+        <p class="pin-card__lede">Every inventory system has one file that defines all items. Find it first.</p>
+        <ol>
+          <li>Open your server's <code>resources/</code> folder.</li>
+          <li>Navigate to <code>ox_inventory/data/</code> (or <code>qs-inventory/config/</code> for QS).</li>
+          <li>Open <code>items.lua</code>. You will see a large Lua table starting with <code>Items = {</code> or <code>Config.Items = {</code>.</li>
+          <li>Scroll through to see existing items. Notice the pattern: each item is a key-value pair inside the table.</li>
+          <li>Make a backup copy of this file. If you break the table syntax, the entire inventory will fail to load.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Add the item definition</h3>
+        </div>
+        <p class="pin-card__lede">Copy the structure of an existing item, paste it, and change the values.</p>
+        <ol>
+          <li>Find a simple existing item like <code>['water']</code> or <code>['bandage']</code>.</li>
+          <li>Copy its entire block, from the opening <code>[</code> to the closing <code>},</code>.</li>
+          <li>Paste it at the end of the Items table, just before the closing <code>}</code>.</li>
+          <li>Change the key to <code>['golden_key']</code>, the label to <code>'Golden Key'</code>, weight to <code>500</code>.</li>
+          <li>Add <code>description = 'A mysterious golden key that glows faintly',</code>. Save the file.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Add the use callback (what happens on "Use")</h3>
+        </div>
+        <p class="pin-card__lede">Without a callback, the "Use" button does nothing. This step makes it work.</p>
+        <ol>
+          <li>Navigate to <code>ox_inventory/modules/items/server.lua</code>.</li>
+          <li>Search for <code>Item(</code> to find existing use callbacks. You will see patterns like <code>Item('water', function(source, ...)</code>.</li>
+          <li>Copy an existing callback block and paste it at the end of the callbacks section.</li>
+          <li>Change the item name to <code>'golden_key'</code> and the body to print the expected line.</li>
+          <li>Optionally add <code>RemoveItem(source, 'golden_key', 1, false, slot)</code> if the item should be consumed on use.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Restart and give yourself the item</h3>
+        </div>
+        <p class="pin-card__lede">Item definitions only load on resource start. A restart is required.</p>
+        <ol>
+          <li>In the server console, type <code>ensure ox_inventory</code> (or restart via txAdmin).</li>
+          <li>Watch the console for any Lua syntax errors. If you see <code>unexpected symbol near ','</code>, you have a missing or extra comma in items.lua.</li>
+          <li>Once the resource loads without errors, join the server.</li>
+          <li>Open chat and type <code>/giveitem golden_key 1</code> (or use your framework's give command).</li>
+          <li>Open your inventory. You should see the "Golden Key" item with its weight and description.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Test the "Use" action</h3>
+        </div>
+        <p class="pin-card__lede">Click "Use" and watch the server console for the print line.</p>
+        <ol>
+          <li>With the golden key in your inventory, click on it to select it.</li>
+          <li>Click the "Use" button in the inventory UI.</li>
+          <li>Check the server console. You should see <code>[QUIET][item] golden_key used by source=X slot=Y</code>.</li>
+          <li>If you added <code>RemoveItem</code>, confirm the item is gone from your inventory.</li>
+          <li>If nothing happens, check that the item name in the callback matches exactly the key in items.lua.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and confirm the expected behavior. If something does not match, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, item appears in inventory.</strong>
+            <ul>
+              <li>Action: type <code>/giveitem golden_key 5</code>, open inventory.</li>
+              <li>Expected: five golden keys visible with weight 0.5 each, description showing on hover.</li>
+              <li>How to verify: total weight increases by 2.5 kg. Items stack if stack=true, or occupy 5 slots if stack=false.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, "Use" triggers the callback.</strong>
+            <ul>
+              <li>Action: click "Use" on one golden key.</li>
+              <li>Expected: server console prints <code>[QUIET][item] golden_key used by source=1 slot=3</code>.</li>
+              <li>How to verify: watch the server console. If <code>RemoveItem</code> is in the callback, the count drops from 5 to 4.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, item data persists after restart.</strong>
+            <ul>
+              <li>Action: restart the server, join, check inventory.</li>
+              <li>Expected: the golden key items (if not consumed) are still in your inventory.</li>
+              <li>How to verify: the item data is stored in the database, not in items.lua. The definition file is reference only.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why does the item survive a restart if it is removed from items.lua?</summary>
+            <p>The items.lua file is a reference catalog — it tells the inventory what the item looks like and how it behaves. The actual item instances are stored in the database (in the <code>ox_inventory</code> table). If you remove the definition, the inventory will not know how to display existing items, but they will still exist in the database.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Every item needs a definition in <code>items.lua</code>. Without it, the inventory does not know the item exists.</li>
+          <li>Every usable item needs a server callback registered with <code>Item('name', function(...) end)</code>.</li>
+          <li>The item name string must match exactly in both places — case, underscores, everything.</li>
+          <li>Weight is in grams. 500 = 0.5 kg. Stack controls whether multiples share a slot.</li>
+          <li>Item definitions are loaded at resource start. Restart the inventory resource after any change to items.lua.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why must you restart ox_inventory after editing items.lua?</legend>
+            <label><input type="radio" name="q1" value="a"> Because the file is read-only until restart.</label>
+            <label><input type="radio" name="q1" value="b"> Items are loaded into memory when the resource starts. Edits to the file are not detected live.</label>
+            <label><input type="radio" name="q1" value="c"> Because the database needs to sync with the file.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. What happens if you add an item definition but no use callback?</legend>
+            <label><input type="radio" name="q2" value="a"> The item appears in inventory but the "Use" button does nothing — silent failure.</label>
+            <label><input type="radio" name="q2" value="b"> The item does not appear at all because it is incomplete.</label>
+            <label><input type="radio" name="q2" value="c"> The server crashes with a missing callback error.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. What unit is the <code>weight</code> field in ox_inventory?</legend>
+            <label><input type="radio" name="q3" value="a"> Kilograms. 500 = 500 kg.</label>
+            <label><input type="radio" name="q3" value="b"> Pounds. 500 = 500 lb.</label>
+            <label><input type="radio" name="q3" value="c"> Grams. 500 = 0.5 kg.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Where to find and edit the items data file in ox_inventory and QS inventory.</li>
+          <li>The required fields for an item definition: name, label, weight, stack, and description.</li>
+          <li>How to register a server-side use callback so the "Use" button actually does something.</li>
+          <li>Why item names must match exactly between the definition and the callback.</li>
+          <li>That weight is in grams and items.lua is loaded only at resource start.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a <code>lucky_coin</code> item that, when used, has a 50% chance to print "You win!" and give the player a second lucky_coin, and a 50% chance to print "Bad luck — coin consumed". Use <code>math.random()</code> in the server callback to decide the outcome. Test it by giving yourself 10 coins and using all of them.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>Server console, after using several lucky_coins</span></header>
+          <pre><code>[QUIET][item] lucky_coin used by source=1 — You win!
+[QUIET][item] lucky_coin used by source=1 — Bad luck, coin consumed
+[QUIET][item] lucky_coin used by source=1 — You win!</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Use <code>if math.random() > 0.5 then ... else ... end</code>. On win, call <code>AddItem(source, 'lucky_coin', 1)</code>. On loss, call <code>RemoveItem(source, 'lucky_coin', 1, false, slot)</code>. Both branches should print to console.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://overextended.dev/ox_inventory/Functions/Server/Items" target="_blank" rel="noopener">ox_inventory Item API — AddItem, RemoveItem, GetItem</a></li>
+          <li><a href="https://overextended.dev/ox_inventory/Guides/Items" target="_blank" rel="noopener">ox_inventory Items guide — all fields explained</a></li>
+          <li><a href="https://github.com/overextended/ox_inventory/blob/main/data/items.lua" target="_blank" rel="noopener">Example items.lua from ox_inventory GitHub</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/" target="_blank" rel="noopener">FiveM server-side Lua functions</a></li>
+        </ul>
+      </section>

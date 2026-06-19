@@ -1,0 +1,476 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Track C · Lesson 03</span></div>
+        <h1>DUI 3D surfaces: render HTML on 3D surfaces</h1>
+        <p class="lede">By the end of this lesson you will render a live HTML page onto a 3D rectangle floating in the game world — and click buttons on it while other players see the same surface update.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A 3D screen placed on a wall near the airport that shows a live web page. Players can walk up, click a button on the surface, and see the display update.</dd></div>
+          <div><dt>Time</dt><dd>About 40 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to create a DUI browser, render it to a render target, and draw it as a 3D texture on any surface in the world.</dd></div>
+          <div><dt>Prereqs</dt><dd>You can create a FiveM resource with client and HTML files. Basic HTML knowledge helps but is not required.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a 3D interactive screen that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>An HTML file with a button and a counter loads inside an invisible browser (DUI).</li>
+            <li>The browser content is captured as a texture and drawn onto a 3D rectangle at a fixed world coordinate.</li>
+            <li>The player can walk up, aim at the surface with their crosshair, click the button, and the counter increments — visible to everyone.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson C03: DUI 3D surfaces</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>DUI (Dynamic UI) is an invisible Chromium browser that FiveM runs. You capture its pixels and draw them as a texture on any 3D surface.<br><span>Example: this lesson puts a clickable counter on a wall.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find the natives in <code>CreateDui</code>, <code>CreateRuntimeTxd</code>, <code>CreateRuntimeTextureFromDuiHandle</code>, and <code>DrawSprite</code>.<br><span>Example: check the DUI docs before writing NUI callbacks.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Create the DUI browser, load an HTML page, copy its pixels to a texture every frame, and draw that texture at 3D coordinates.<br><span>Example: run the minimal example and see a web page floating in the air.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Build one DUI surface, one HTML button, and one click counter.<br><span>Example: match the expected F8 output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will walk up to a 3D screen, see a web page with a button, click it, and watch a counter increment on the surface.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>DUI surfaces power every in-game computer, phone screen, billboard, and interactive panel in FiveM. Without DUI, your server screens are static textures that cannot show live data.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">DUI</dt><dd>Dynamic UI. An off-screen Chromium browser instance that renders HTML, CSS, and JavaScript.<br><span>Example: a web page that increments a counter when you click it.</span></dd></div>
+            <div><dt tabindex="0">Render target</dt><dd>A texture created at runtime that the GPU can sample. DUI pixels go into a render target, then the render target is drawn in 3D.<br><span>Example: <code>CreateRuntimeTextureFromDuiHandle</code> makes this connection.</span></dd></div>
+            <div><dt tabindex="0">NUI callback</dt><dd>A message sent from JavaScript inside the DUI browser to Lua. Used to communicate clicks and data.<br><span>Example: <code>SendNUIMessage</code> in Lua sends a JSON object to the browser.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_dui_surface</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code> + <code>ui_page</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_dui_surface/client.lua</code></dd></div>
+            <div><dt>HTML path</dt><dd><code>resources/qu_dui_surface/html/screen.html</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_dui_surface</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="3D screen at LSIA wall shows clickable counter">
+            <header><span class="file">qu_dui_surface/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'dui_surface'
+
+-- World position for the 3D screen (outside LSIA terminal wall)
+local screenPos = vector3(-1038.0, -2734.0, 17.0)
+local screenWidth = 2.0   -- meters wide
+local screenHeight = 1.2  -- meters tall
+
+-- Create the DUI browser
+local dui = CreateDui('https://cfx-nui-qu_dui_surface/html/screen.html',
+    screenWidth * 100, screenHeight * 100)
+-- Create a runtime texture dictionary and texture
+local txd = CreateRuntimeTxd('qu_dui_tex')
+local duiHandle = GetDuiHandle(dui)
+local tex = CreateRuntimeTextureFromDuiHandle(txd, 'dui_tex', duiHandle)
+
+-- Draw the 3D screen every frame
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        local playerCoords = GetEntityCoords(PlayerPedId())
+        local dist = #(playerCoords - screenPos)
+        if dist < 30.0 then
+            -- Draw a 3D sprite using the DUI texture
+            DrawSpritePoly(screenPos.x, screenPos.y, screenPos.z,
+                screenPos.x + screenWidth, screenPos.y, screenPos.z,
+                screenPos.x, screenPos.y + screenHeight, screenPos.z,
+                screenPos.x + screenWidth, screenPos.y + screenHeight, screenPos.z,
+                0.0, 0.0, 0.0, 0.0,
+                255, 255, 255, 255,
+                'qu_dui_tex', 'dui_tex')
+        end
+    end
+end)
+
+-- Handle mouse clicks on the DUI surface
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        -- Right-click to send a mouse event to the DUI
+        if IsControlJustPressed(0, 25) then  -- 25 = INPUT_AIM (right mouse)
+            local hit, hitCoords = GetEntityCoords(PlayerPedId()),
+                screenPos
+            -- Simple distance check - in production use raycasting
+            local dist = #(GetEntityCoords(PlayerPedId()) - screenPos)
+            if dist < 5.0 then
+                -- Send a mouse down event to the DUI at the center of the surface
+                SendDuiMouseDown(dui, 'left')
+                Wait(50)
+                SendDuiMouseUp(dui, 'left')
+                print(('[QUIET][%s] Click sent to DUI surface'):format(MODULE))
+            end
+        end
+    end
+end)</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">html/screen.html</span><span class="lang">HTML</span></header>
+            <pre><code class="language-html"><!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { margin: 0; background: #1a1a2e; color: #fff;
+               font-family: Arial; display: flex; flex-direction: column;
+               align-items: center; justify-content: center; height: 100vh; }
+        button { padding: 12px 28px; font-size: 16px;
+                 background: #e94560; color: white; border: none;
+                 border-radius: 4px; cursor: pointer; margin-top: 12px; }
+        #counter { font-size: 32px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="counter">0</div>
+    <button onclick="increment()">Click Me</button>
+    <script>
+        let count = 0;
+        function increment() {
+            count++;
+            document.getElementById('counter').textContent = count;
+            fetch('https://cfx-nui-qu_dui_surface/increment', {
+                method: 'POST',
+                body: JSON.stringify({ count: count })
+            });
+        }
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'increment') {
+                increment();
+            }
+        });
+    </script>
+</body>
+</html></code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> A dark screen with a counter and red button appears on the LSIA wall. <code>[QUIET][dui_surface] Click sent to DUI surface</code> prints in F8 when you right-click near it.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code> with <code>client_scripts { 'client.lua' }</code> and <code>ui_page 'html/screen.html'</code>.</li>
+            <li>Create the <code>html/</code> folder and <code>screen.html</code> with the HTML example.</li>
+            <li>Create <code>client.lua</code> with the DUI creation and drawing code.</li>
+            <li>Add <code>ensure qu_dui_surface</code> to <code>server.cfg</code> and restart.</li>
+            <li>Travel to LSIA terminal and look at the wall. You should see the HTML screen.</li>
+            <li>Right-click near the screen. The counter should increment. F8 should print the confirmation line.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the screen position to the Sandy Shores airfield (vector3(1744.0, 3286.0, 41.0)), change the background color to dark green, and change the button text to "Increment". Test that the screen appears at the new location and clicks still work.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Green screen at Sandy Shores with "Increment" button. Counter increments on right-click within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value (global 'CreateDui')</code> means the script is on the server. DUI is client-only.</li>
+            <li>Screen does not appear: check that <code>ui_page 'html/screen.html'</code> is in <code>fxmanifest.lua</code>. The DUI loads this file, and without it the browser has no content.</li>
+            <li>Screen is black/blank: the HTML file path in <code>CreateDui</code> must use the full <code>https://cfx-nui-RESOURCENAME/path</code> format. Relative paths do not work inside DUIs.</li>
+            <li>Clicks do nothing: <code>SendDuiMouseDown</code> requires a delay (<code>Wait(50)</code>) before <code>SendDuiMouseUp</code> or the click is too fast for Chromium to register.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the DUI creation into <code>create3DScreen(position, width, height, htmlPath)</code> that returns the DUI handle, texture dict, and texture name.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#create_dui" target="_blank" rel="noopener">CreateDui on FiveM docs</a></li>
+            <li><a href="https://docs.fivem.net/natives/?_0xE7E035450A7948D5" target="_blank" rel="noopener">DrawSpritePoly on docs.fivem.net/natives</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#get_dui_handle" target="_blank" rel="noopener">GetDuiHandle on FiveM docs</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="dui-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>DUI surface pipeline</h3>
+        <ul>
+          <li><strong>CreateDui.</strong> Opens an invisible browser. Give it an HTML URL.</li>
+          <li><strong>CreateRuntimeTextureFromDuiHandle.</strong> Copies browser pixels into a GPU texture.</li>
+          <li><strong>DrawSpritePoly.</strong> Draws that texture at 3D coordinates every frame.</li>
+          <li><strong>SendDuiMouseDown/Up.</strong> Sends clicks into the browser for interactivity.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>A DUI surface is a three-step pipeline: <strong>browser → texture → 3D draw</strong>. First, FiveM opens an invisible Chromium browser (<code>CreateDui</code>) and loads your HTML into it. Second, the browser's pixels are copied into a runtime texture (<code>CreateRuntimeTextureFromDuiHandle</code>). Third, that texture is drawn as a 3D sprite every frame (<code>DrawSpritePoly</code>). The browser is invisible to the player, but the 3D sprite is not. Clicks go backward through the pipeline: player clicks the 3D sprite, Lua sends <code>SendDuiMouseDown</code> to the browser, and the browser's JavaScript responds.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a projector and a screen.</p>
+          <p>The projector (DUI browser) plays a movie (HTML page) in a back room. A camera (render target) films the movie and sends it to a screen on stage (3D sprite). The audience (players) sees the screen, not the projector. When an audience member walks up and touches the screen, a sensor (mouse event) tells the projector to change the movie.</p>
+          <p>Your DUI surface is the screen on stage. The browser is the projector in the back room. The render target is the camera between them.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most beginners create a new DUI every frame. The good version creates it once and reuses the texture.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Creating a DUI inside the draw loop leaks browser instances and crashes the client.</p>
+            <figure class="code">
+              <header><span>client.lua, the memory-leak version</span></header>
+              <pre><code class="language-lua">-- BAD: creates a new DUI and texture every frame
+Citizen.CreateThread(function()
+    while true do
+        local dui = CreateDui('html/screen.html', 200, 120)
+        local txd = CreateRuntimeTxd('tmp_txd')
+        local tex = CreateRuntimeTextureFromDuiHandle(
+            txd, 'tmp', GetDuiHandle(dui))
+        DrawSpritePoly(...) -- uses tmp texture
+        -- dui and txd are never destroyed, leaking memory
+        Wait(0)
+    end
+end)</code></pre>
+            </figure>
+            <p>Each frame creates a new browser process. After 10 seconds (600 frames), 600 Chromium instances are running. The client crashes with an out-of-memory error.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Create the DUI and texture once, outside the loop. Reuse them every frame.</p>
+            <figure class="code">
+              <header><span>client.lua, the correct version</span></header>
+              <pre><code class="language-lua">-- GOOD: DUI and texture created once at load time
+local dui = CreateDui('html/screen.html', 200, 120)
+local txd = CreateRuntimeTxd('qu_dui_tex')
+local tex = CreateRuntimeTextureFromDuiHandle(
+    txd, 'dui_tex', GetDuiHandle(dui))
+
+Citizen.CreateThread(function()
+    while true do
+        DrawSpritePoly(...) -- reuses same texture every frame
+        Wait(0)
+    end
+end)</code></pre>
+            </figure>
+            <p>The DUI browser is created once and lives for the entire session. The draw loop only reads the existing texture. No memory leaks, no crashes.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="C02">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="resource"> I can create a resource with <code>fxmanifest.lua</code> and <code>client.lua</code> (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="html"> I know basic HTML: a <code>&lt;button&gt;</code> tag with an <code>onclick</code> handler (any HTML tutorial)</label></li>
+          <li><label><input type="checkbox" data-id="nui"> I have seen <code>SendNUIMessage</code> or NUI callbacks before (Lesson 10)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource with HTML</h3>
+        </div>
+        <p class="pin-card__lede">DUI needs an HTML file to display. Start there.</p>
+        <ol>
+          <li>Create <code>resources/qu_dui_surface/</code> and inside it create <code>fxmanifest.lua</code>.</li>
+          <li>In the manifest, add <code>client_scripts { 'client.lua' }</code> and <code>ui_page 'html/screen.html'</code>.</li>
+          <li>Create the <code>html/</code> subfolder and inside it create <code>screen.html</code>.</li>
+          <li>Paste the HTML from the minimal example. Save. The HTML is ready.</li>
+          <li>Add <code>ensure qu_dui_surface</code> to <code>server.cfg</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Create the DUI and runtime texture</h3>
+        </div>
+        <p class="pin-card__lede">The DUI browser and texture must be created at the top of the file, outside any loop.</p>
+        <ol>
+          <li>In <code>client.lua</code>, define <code>screenPos</code>, <code>screenWidth</code>, and <code>screenHeight</code>.</li>
+          <li>Call <code>CreateDui</code> with the full <code>https://cfx-nui-qu_dui_surface/html/screen.html</code> URL.</li>
+          <li>Call <code>CreateRuntimeTxd('qu_dui_tex')</code> to create a texture dictionary.</li>
+          <li>Call <code>CreateRuntimeTextureFromDuiHandle(txd, 'dui_tex', GetDuiHandle(dui))</code>.</li>
+          <li>These three lines run once when the resource starts. Do not put them in a loop.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Draw the 3D surface every frame</h3>
+        </div>
+        <p class="pin-card__lede">Use <code>DrawSpritePoly</code> to place the texture at world coordinates.</p>
+        <ol>
+          <li>Create a <code>Citizen.CreateThread</code> with <code>while true do ... Wait(0) end</code>.</li>
+          <li>Add a distance guard: <code>if dist < 30.0 then</code> so the screen only draws when nearby.</li>
+          <li>Call <code>DrawSpritePoly</code> with the four corners of the rectangle: top-left, bottom-left, top-right, bottom-right.</li>
+          <li>The texture dictionary name ('qu_dui_tex') and texture name ('dui_tex') must match what you created in Step 2.</li>
+          <li>Join the server. Travel to LSIA. The HTML screen should be visible on the wall.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Add mouse interaction</h3>
+        </div>
+        <p class="pin-card__lede">Send mouse events from Lua into the DUI browser so HTML buttons respond.</p>
+        <ol>
+          <li>Create a second thread that checks for <code>IsControlJustPressed(0, 25)</code> (right mouse button).</li>
+          <li>Check if the player is within 5 meters of the screen using <code>#(playerCoords - screenPos)</code>.</li>
+          <li>If close enough, call <code>SendDuiMouseDown(dui, 'left')</code> followed by <code>Wait(50)</code> then <code>SendDuiMouseUp(dui, 'left')</code>.</li>
+          <li>Print a confirmation line to F8 so you know the click was sent.</li>
+          <li>Right-click near the screen. The counter should increment on the HTML display.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Verify everything works end-to-end</h3>
+        </div>
+        <p class="pin-card__lede">Walk up, look at the screen, click, and confirm the counter changes.</p>
+        <ol>
+          <li>Travel to LSIA airport. Look at the terminal wall for the dark screen.</li>
+          <li>Confirm the counter starts at 0 and the red "Click Me" button is visible.</li>
+          <li>Right-click while facing the screen. The counter should change to 1.</li>
+          <li>Right-click three more times. The counter should reach 4.</li>
+          <li>Walk 40 meters away. The screen should disappear (distance guard). Walk back. The screen reappears and the counter still shows 4.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test, look at what happens, and confirm the expected behavior. If something does not match, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, the surface appears.</strong>
+            <ul>
+              <li>Action: join the server and travel to LSIA terminal (vector3(-1038, -2734, 17)).</li>
+              <li>Expected: a dark rectangle about 2m wide and 1.2m tall with a counter and button.</li>
+              <li>How to verify: walk around the screen. It should face one direction (the Z-axis of the surface).</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, the click interaction.</strong>
+            <ul>
+              <li>Action: stand within 5 meters, face the screen, right-click.</li>
+              <li>Expected: the counter increments from 0 to 1. F8 prints <code>[QUIET][dui_surface] Click sent to DUI surface</code>.</li>
+              <li>How to verify: right-click five times. Counter reaches 5. Right-click from 10 meters away. Counter does not change.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, the distance guard.</strong>
+            <ul>
+              <li>Action: walk 40 meters away from the screen location.</li>
+              <li>Expected: the screen is no longer drawn. Walk back within 30 meters and it reappears.</li>
+              <li>How to verify: the counter value is preserved because the DUI browser keeps running even when the sprite is not drawn.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why does the counter survive the distance guard?</summary>
+            <p>The DUI browser is a separate process that keeps running as long as the resource is active. The distance guard only controls whether <code>DrawSpritePoly</code> is called — it does not pause or destroy the browser. When you walk back, you see the browser's current state, including any clicks you made earlier.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Create the DUI browser once. Never inside a loop. Each <code>CreateDui</code> spawns a Chromium process.</li>
+          <li>Create the runtime texture once, linked to the DUI handle. The texture updates automatically when the browser renders.</li>
+          <li>Draw the texture every frame with <code>DrawSpritePoly</code> using a distance guard.</li>
+          <li>Send mouse events with a delay (<code>Wait(50)</code>) between down and up so Chromium registers the click.</li>
+          <li>The DUI URL must use the <code>https://cfx-nui-RESOURCENAME/</code> format. Relative paths fail silently.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why must <code>CreateDui</code> be called only once, not in a loop?</legend>
+            <label><input type="radio" name="q1" value="a"> Because the DUI crashes if called too fast.</label>
+            <label><input type="radio" name="q1" value="b"> Each <code>CreateDui</code> spawns a new Chromium process. Calling it every frame leaks hundreds of browser processes.</label>
+            <label><input type="radio" name="q1" value="c"> Because the HTML page can only load once per resource.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What is the correct URL format for <code>CreateDui</code>?</legend>
+            <label><input type="radio" name="q2" value="a"> <code>'html/screen.html'</code> — relative to the resource root.</label>
+            <label><input type="radio" name="q2" value="b"> <code>'file:///html/screen.html'</code> — file protocol.</label>
+            <label><input type="radio" name="q2" value="c"> <code>'https://cfx-nui-qu_dui_surface/html/screen.html'</code> — the full cfx-nui URL.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why add <code>Wait(50)</code> between <code>SendDuiMouseDown</code> and <code>SendDuiMouseUp</code>?</legend>
+            <label><input type="radio" name="q3" value="a"> Chromium needs a noticeable gap between down and up events to register as a click. Zero delay is too fast.</label>
+            <label><input type="radio" name="q3" value="b"> To prevent double-clicking on accident.</label>
+            <label><input type="radio" name="q3" value="c"> Because FiveM enforces a minimum 50ms delay on DUI events.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to create a DUI browser with <code>CreateDui</code> and capture its pixels as a GPU texture.</li>
+          <li>How to draw a 3D sprite with <code>DrawSpritePoly</code> at world coordinates using a runtime texture.</li>
+          <li>How to send mouse events into a DUI browser with <code>SendDuiMouseDown</code> and <code>SendDuiMouseUp</code>.</li>
+          <li>Why DUI creation must happen once — each call spawns a Chromium process.</li>
+          <li>How to use a distance guard to only draw the surface when players are nearby.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a second HTML page that shows the current server time. Create a new DUI surface at the Sandy Shores airfield (vector3(1744.0, 3286.0, 41.0)) using a separate HTML file <code>html/clock.html</code>. The clock should update every second using JavaScript <code>setInterval</code>. Both screens must work independently.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>Second screen at Sandy Shores</span></header>
+          <pre><code>A dark screen showing "Server Time: 14:32:07" updating every second.
+The LSIA counter screen continues to work independently.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Create a second DUI with <code>CreateDui('https://cfx-nui-qu_dui_surface/html/clock.html', ...)</code>, a second texture dictionary with a unique name, and a second draw thread with the new coordinates. The two DUIs are independent Chromium processes.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#create_dui" target="_blank" rel="noopener">CreateDui on FiveM docs</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#create_runtime_texture_from_dui_handle" target="_blank" rel="noopener">CreateRuntimeTextureFromDuiHandle on FiveM docs</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xE7E035450A7948D5" target="_blank" rel="noopener">DrawSpritePoly on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xE369A5783B866016" target="_blank" rel="noopener">SendDuiMouseDown on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+        </ul>
+      </section>

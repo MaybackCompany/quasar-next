@@ -1,0 +1,374 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 04 · Lesson 06</span></div>
+        <h1>QBCore to Qbox migration, step by step</h1>
+        <p class="lede">QBCore was the dominant FiveM framework for years. Qbox is its actively maintained successor. This lesson walks you through the full migration: what changes, what breaks, and how to fix every error along the way.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A Qbox server running your existing QBCore resources, with a migration checklist that catches every rename and API change.</dd></div>
+          <div><dt>Time</dt><dd>About 2-4 hours depending on how many custom resources you have.</dd></div>
+          <div><dt>You'll learn</dt><dd>The exact renames from QBCore to Qbox, how to update your fxmanifest dependencies, and which QBCore patterns are deprecated.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a running QBCore server. You know how to edit fxmanifest.lua and search across files.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will do">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>Your migration will follow this pattern:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Replace the core resource: <code>qb-core</code> becomes <code>qbx_core</code>. The database stays. Player data is untouched.</li>
+            <li>Update every fxmanifest dependency: <code>'qb-core'</code> becomes <code>'qbx_core'</code>. Shared exports like <code>'qb-target'</code> become <code>'ox_target'</code>.</li>
+            <li>Replace renamed functions: <code>QBCore.Functions</code> becomes <code>exports.qbx_core</code>. Event names change from <code>QBCore:Server:</code> to <code>qbx_core:server:</code>.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 06: QBCore to Qbox migration</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A guided migration from QBCore to Qbox.<br><span>Example: your server runs qb-core today, runs qbx_core by the end.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Every Lua file in your resources/ folder.<br><span>Example: search for "QBCore" across all files.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Follow the rename table, update dependencies, test each resource.<br><span>Example: replace "qb-" in fxmanifest with "qbx_" then test.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Clone the Qbox core repository.<br><span>Example: git clone into resources/ alongside qb-core.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run a Qbox server with all your existing QBCore resources working, having replaced only what changed.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>QBCore is no longer actively developed. Bug fixes, security patches, and new Lua 5.4 features only land in Qbox. Staying on QBCore means your server falls further behind every month.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">QBCore</dt><dd>The original framework, now in maintenance mode.<br><span>Example: qb-core, qb-inventory, qb-target.</span></dd></div>
+            <div><dt tabindex="0">Qbox</dt><dd>The community fork that continues development.<br><span>Example: qbx_core, ox_inventory, ox_target.</span></dd></div>
+            <div><dt tabindex="0">Export</dt><dd>A function one resource makes available to others.<br><span>Example: exports.qbx_core:GetPlayer(source).</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Old core</dt><dd><code>resources/[qb]/qb-core</code></dd></div>
+            <div><dt>New core</dt><dd><code>resources/[qbx]/qbx_core</code></dd></div>
+            <div><dt>Search tool</dt><dd><code>rg (ripgrep) or VS Code search</code></dd></div>
+            <div><dt>Backup</dt><dd><code>Git commit or zip your resources/ first</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qbx_core] Server started successfully">
+            <header><span class="file">Before and after in your resource</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- BEFORE (QBCore)
+local QBCore = exports['qb-core']:GetCoreObject()
+QBCore.Functions.CreateUseableItem('bandage', function(source, item)
+    local Player = QBCore.Functions.GetPlayer(source)
+    TriggerClientEvent('QBCore:Client:OnPlayerLoaded', source)
+end)
+
+-- AFTER (Qbox)
+local QBCore = exports.qbx_core:GetCoreObject()  -- note: no brackets
+-- CreateUseableItem is now an export, not a method
+exports.qbx_core:CreateUseableItem('bandage', function(source, item)
+    local Player = exports.qbx_core:GetPlayer(source)
+    TriggerClientEvent('qbx_core:client:onPlayerLoaded', source)
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> The resource starts with no errors. The useable item works exactly as before.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Clone qbx_core into your resources folder.</li>
+            <li>Update server.cfg: change <code>ensure qb-core</code> to <code>ensure qbx_core</code>.</li>
+            <li>In every fxmanifest, change <code>'qb-core'</code> to <code>'qbx_core'</code>.</li>
+            <li>Search all files for <code>exports['qb-</code> and replace with <code>exports.qbx_</code>.</li>
+            <li>Search all files for <code>QBCore:</code> event names and replace with <code>qbx_core:</code>.</li>
+            <li>Start the server. Fix errors one resource at a time until every resource loads.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Take one of your custom QBCore resources and migrate it to Qbox following the rename table. Confirm the resource starts and its commands work. Time yourself — the second resource will take half as long.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Your custom resource starts with zero errors and its commands/items function identically.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>No such export GetCoreObject in resource qbx_core</code> — you wrote <code>exports['qbx_core']</code> with brackets. Qbox exports do not use bracket syntax. Write <code>exports.qbx_core</code>.</li>
+            <li><code>attempt to call a nil value (field 'CreateUseableItem')</code> — you called it on the QBCore table instead of as an export. Use <code>exports.qbx_core:CreateUseableItem(...)</code>.</li>
+            <li><code>Event QBCore:Server:OnPlayerLoaded not found</code> — the event name changed. Use <code>'qbx_core:server:onPlayerLoaded'</code>.</li>
+            <li><code>Resource qb-xxx not found</code> — a dependency in fxmanifest still references an old qb- resource. Update it to the qbx_ equivalent.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>After migration, remove the <code>local QBCore = exports.qbx_core:GetCoreObject()</code> line entirely. Qbox resources should call exports directly instead of caching a reference that might become stale on restart.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://github.com/Qbox-project/qbx_core" target="_blank" rel="noopener">Qbox core repository</a></li>
+            <li><a href="https://docs.qbox.re/" target="_blank" rel="noopener">Qbox documentation</a></li>
+            <li><a href="https://overextended.dev/ox_lib" target="_blank" rel="noopener">ox_lib (used by Qbox)</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="qbcore-to-qbox-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>QBCore → Qbox rename table</h3>
+        <ul>
+          <li><strong>Core resource:</strong> <code>qb-core</code> → <code>qbx_core</code>. Export: <code>exports['qb-core']</code> → <code>exports.qbx_core</code>.</li>
+          <li><strong>Player events:</strong> <code>QBCore:Server:OnPlayerLoaded</code> → <code>qbx_core:server:onPlayerLoaded</code>. Note the lowercase.</li>
+          <li><strong>GetPlayer:</strong> <code>QBCore.Functions.GetPlayer(src)</code> → <code>exports.qbx_core:GetPlayer(src)</code>.</li>
+          <li><strong>CreateUseableItem:</strong> <code>QBCore.Functions.CreateUseableItem(...)</code> → <code>exports.qbx_core:CreateUseableItem(...)</code>.</li>
+          <li><strong>GetCoreObject:</strong> still exists as <code>exports.qbx_core:GetCoreObject()</code> for backwards compat, but prefer direct exports.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Qbox is not a rewrite. It is a rename with cleanup. The database schema is the same. Player data is the same. Event flow is the same. The only thing that changed is what things are called. Your migration is a giant find-and-replace operation, verified resource by resource.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of moving to a new apartment in the same building.</p>
+          <p>Your furniture (your data) stays the same. Your daily routine (your event flow) stays the same. The only thing that changes is your address. QBCore was apartment 4B. Qbox is apartment 5A. Same floor plan, different number on the door. You are updating every envelope (every fxmanifest and export call) to the new address.</p>
+          <p>Nothing is lost. Nothing is rebuilt. You are just changing the labels.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Scattershot migration and systematic migration, side by side</h2>
+        <p>Most people change a few things, start the server, see 50 errors, and give up. The system works.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Scattershot migration</p>
+            <p class="before-after__caption">You change a few files, start the server, see a wall of red, and cannot tell which error is from which resource.</p>
+            <figure class="code">
+              <header><span>What scattershot looks like</span></header>
+              <pre><code class="language-lua">-- You changed 3 out of 47 resources
+-- Server starts. 22 errors.
+-- You fix one, 21 remain.
+-- You fix another, 2 new ones appear.
+-- After 3 hours you are back on QBCore.</code></pre>
+            </figure>
+            <p>Mixing migrated and unmigrated resources creates cascading errors. An unmigrated resource triggers an old event name, the new core does not recognize it, everything downstream fails.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Systematic migration</p>
+            <p class="before-after__caption">You work through the rename table resource by resource. Each resource is fully migrated and tested before you touch the next one.</p>
+            <figure class="code">
+              <header><span>What systematic looks like</span></header>
+              <pre><code class="language-lua">-- 1. Clone qbx_core. Update server.cfg (just qbx_core + chat).
+-- 2. Server starts. Zero errors. Good baseline.
+-- 3. Pick one resource (e.g., qb-radio → qbx_radio).
+-- 4. Update fxmanifest. Search/replace all calls.
+-- 5. Start resource. Check console. Fix any errors.
+-- 6. Test the resource's commands. Working? Move to the next.
+-- 7. After 47 resources, server starts with zero errors.</code></pre>
+            </figure>
+            <p>Each resource is a contained unit. Errors are trapped at the resource level. You never face a wall of red. By resource 10, the pattern is automatic and each one takes 2 minutes.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="05">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, do it before touching a single file.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="git"> I have committed or zipped my entire resources/ folder.</label></li>
+          <li><label><input type="checkbox" data-id="search"> I have rg (ripgrep) or VS Code installed and can search across all files.</label></li>
+          <li><label><input type="checkbox" data-id="clone"> I have cloned qbx_core into a folder separate from qb-core.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Set up the new core alongside the old one</h3>
+        </div>
+        <p class="pin-card__lede">Do not delete qb-core yet. Run both side by side while you migrate.</p>
+        <ol>
+          <li>Clone <code>https://github.com/Qbox-project/qbx_core.git</code> into <code>resources/[qbx]/qbx_core</code>.</li>
+          <li>Clone ox_lib if you do not already have it: <code>resources/[standalone]/ox_lib</code>.</li>
+          <li>Create a test config: comment out all resources in server.cfg except qbx_core, ox_lib, and chat.</li>
+          <li>Start the server. You should see <code>[qbx_core] Server started successfully</code> and no errors.</li>
+          <li>If you see errors, fix the qbx_core setup before touching any custom resources.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Update all fxmanifest dependencies</h3>
+        </div>
+        <p class="pin-card__lede">Every fxmanifest.lua that says <code>'qb-core'</code> must say <code>'qbx_core'</code>.</p>
+        <ol>
+          <li>Run a global search for <code>'qb-core'</code> in all fxmanifest.lua files.</li>
+          <li>Replace with <code>'qbx_core'</code>. Do not change anything else in the manifest yet.</li>
+          <li>Run a second search for <code>'qb-target'</code> and replace with <code>'ox_target'</code>.</li>
+          <li>Run a third search for <code>'qb-menu'</code> and replace with <code>'ox_lib'</code> (ox_lib provides the menu now).</li>
+          <li>Save all files. Do not start the server yet.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Update Lua code in every resource</h3>
+        </div>
+        <p class="pin-card__lede">This is the bulk of the work. Work resource by resource, not file by file.</p>
+        <ol>
+          <li>Search all <code>.lua</code> files for <code>exports['qb-core']</code>. Replace with <code>exports.qbx_core</code>.</li>
+          <li>Search for <code>QBCore.Functions.GetPlayer(</code>. Replace with <code>exports.qbx_core:GetPlayer(</code>.</li>
+          <li>Search for <code>QBCore.Functions.CreateUseableItem(</code>. Replace with <code>exports.qbx_core:CreateUseableItem(</code>.</li>
+          <li>Search for event names: <code>'QBCore:Server:</code> → <code>'qbx_core:server:</code>. <code>'QBCore:Client:</code> → <code>'qbx_core:client:</code>. Note the lowercase after the colon.</li>
+          <li>Search for <code>'qb-</code> exports. Example: <code>exports['qb-inventory']</code> → <code>exports.ox_inventory</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Start resources one at a time</h3>
+        </div>
+        <p class="pin-card__lede">Do not start everything at once. One resource, one test, one pass or fail.</p>
+        <ol>
+          <li>In server.cfg, uncomment one migrated resource. Start the server.</li>
+          <li>Watch the console. If the resource starts clean, test one of its commands or features.</li>
+          <li>If an error appears, read it. The error message almost always names the exact file and line.</li>
+          <li>Fix the error. Restart the resource. Confirm it starts clean. Then move to the next resource.</li>
+          <li>Repeat for all 47+ resources. By the end, your server.cfg has every resource uncommented and the console is clean.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three checkpoints, in order</h3></header>
+        <p>Each checkpoint proves a layer of the migration is complete. Do not skip any.</p>
+        <ol>
+          <li>
+            <strong>Checkpoint 1: bare core starts.</strong>
+            <ul>
+              <li>Action: start server with only qbx_core, ox_lib, and chat.</li>
+              <li>Expected: three resources start clean. No red lines. Chat works.</li>
+              <li>How to verify: type in chat. If the message appears, the core is healthy.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Checkpoint 2: first custom resource migrates.</strong>
+            <ul>
+              <li>Action: pick your simplest custom resource. Migrate it. Start it alongside the core.</li>
+              <li>Expected: the resource starts clean. Its commands or events work.</li>
+              <li>How to verify: use the resource's main feature. If it works, the pattern is correct.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Checkpoint 3: full server starts.</strong>
+            <ul>
+              <li>Action: uncomment all resources. Start the server.</li>
+              <li>Expected: every resource starts. Console has zero SCRIPT ERROR lines.</li>
+              <li>How to verify: count the resources in the console. It should match your old QBCore server's count minus any resources you intentionally removed.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why do event names switch to lowercase after the colon?</summary>
+            <p>Qbox adopted a consistent naming convention: <code>resource:side:camelCaseEventName</code>. The side is always lowercase (server/client). The event name is always camelCase. This makes events predictable and grep-friendly. QBCore used mixed conventions that varied per resource.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Never delete the old core until the new core starts clean with all resources.</li>
+          <li>Migrate one resource at a time. Test each one before touching the next.</li>
+          <li>Use global search-and-replace for the structural renames (exports, events, dependencies).</li>
+          <li>Read every error. The error message tells you exactly which rename you missed.</li>
+          <li>Commit or back up before starting. You will make mistakes. That is normal. Revert and retry.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is the export syntax for Qbox's core?</legend>
+            <label><input type="radio" name="q1" value="a"> exports['qbx_core'] (with brackets).</label>
+            <label><input type="radio" name="q1" value="b"> exports.qbx_core (dot notation, no brackets).</label>
+            <label><input type="radio" name="q1" value="c"> require('qbx_core').</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What is the correct event name for player load in Qbox?</legend>
+            <label><input type="radio" name="q2" value="a"> QBCore:Server:OnPlayerLoaded.</label>
+            <label><input type="radio" name="q2" value="b"> qbx_core:Server:OnPlayerLoaded.</label>
+            <label><input type="radio" name="q2" value="c"> qbx_core:server:onPlayerLoaded.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why migrate one resource at a time instead of all at once?</legend>
+            <label><input type="radio" name="q3" value="a"> Cascading errors from unmigrated resources make it impossible to find the real problem.</label>
+            <label><input type="radio" name="q3" value="b"> The server cannot start more than one resource at a time.</label>
+            <label><input type="radio" name="q3" value="c"> Qbox resources have a cooldown on startup.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Qbox is a rename and cleanup of QBCore. The database, player data, and event flow are unchanged.</li>
+          <li>The three things that change: export syntax (dot notation), event names (lowercase side), and dependency names (qbx_ prefix).</li>
+          <li>Migrate resource by resource, starting with the simplest one, testing each before continuing.</li>
+          <li>Use global search-and-replace for structural renames, then fix per-resource edge cases.</li>
+          <li>A clean Qbox console with all resources started is the only proof of a complete migration.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a search-and-replace script in Lua that reads a file, applies the five most common renames, and writes the file back. Run it on a test file and confirm every rename was applied correctly.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>migrate.lua console output</span></header>
+          <pre><code>[migrate] Processed test_resource/server.lua
+[migrate] 'qb-core' → 'qbx_core' (1 occurrence)
+[migrate] 'exports['qb-core']' → 'exports.qbx_core' (2 occurrences)
+[migrate] 'QBCore:Server:' → 'qbx_core:server:' (3 occurrences)
+[migrate] Done. File updated.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Use <code>io.open(path, 'r')</code> to read, <code>string.gsub</code> to replace, and <code>io.open(path, 'w')</code> to write. Work on a copy of the file, never the original.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://github.com/Qbox-project/qbx_core" target="_blank" rel="noopener">Qbox core repository</a></li>
+          <li><a href="https://docs.qbox.re/" target="_blank" rel="noopener">Qbox official documentation</a></li>
+          <li><a href="https://overextended.dev/ox_lib" target="_blank" rel="noopener">ox_lib documentation</a></li>
+          <li><a href="https://github.com/qbcore-framework/qb-core" target="_blank" rel="noopener">QBCore repository (for reference)</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+        </ul>
+      </section>

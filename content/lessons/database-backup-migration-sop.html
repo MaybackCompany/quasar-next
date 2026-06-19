@@ -1,0 +1,134 @@
+<section class="lesson-hero">
+  <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module A3 · Lesson 29</span></div>
+  <h1>Database backup and migration SOP</h1>
+  <p class="lede">By the end of this lesson you will have an automated backup script, know how to restore from any backup, and be able to migrate your database to a new server without losing a single row.</p>
+  <div class="hero-outcome">
+    <div><dt>You'll ship</dt><dd>A backup script that runs daily and a tested restore procedure you can follow under pressure.</dd></div>
+    <div><dt>Time</dt><dd>About 25 minutes.</dd></div>
+    <div><dt>You'll learn</dt><dd>How to back up, restore, and migrate a MySQL/MariaDB database on a FiveM server.</dd></div>
+    <div><dt>Prereqs</dt><dd>You have MySQL or MariaDB running with at least one database and table.</dd></div>
+  </div>
+</section>
+
+<section class="tldr-card" aria-label="What you will build">
+  <span class="tldr-card__chip">In 3 bullets</span>
+  <div class="tldr-card__body">
+    <p><strong>You will create a backup and migration procedure:</strong></p>
+    <ul class="tldr-card__points">
+      <li>Dump your entire database to a timestamped file with one command.</li>
+      <li>Test that the backup actually restores by loading it into a temporary database.</li>
+      <li>Write a migration checklist so you can move databases between servers without fear.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+  <p class="strict-kicker">Step by step</p>
+  <h2 id="strict-template-title">Lesson 29: Database backup and migration</h2>
+
+  <section class="strict-section beginner-orientation" id="beginner-orientation">
+    <h3>Start here</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">What this is</dt><dd>A backup is a complete copy of your database at a point in time.<br><span>Example: backing up before installing a new script means you can undo any damage.</span></dd></div>
+      <div><dt tabindex="0">Where to find it</dt><dd>Use mysqldump — it is built into MySQL and MariaDB.<br><span>Example: mysqldump -u root mydb > backup.sql creates a full copy.</span></dd></div>
+      <div><dt tabindex="0">How to use it</dt><dd>Dump, verify, store off-server. Never keep your only backup on the same machine.<br><span>Example: copy the backup file to your local PC or cloud storage.</span></dd></div>
+      <div><dt tabindex="0">What to do now</dt><dd>Take a backup of your database right now. Then test restoring it.<br><span>Example: restore to a different database name to verify it works.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="outcome" data-section="outcome">
+    <h3>Outcome</h3>
+    <p>You will back up and restore your database, then write a migration checklist.</p>
+  </section>
+
+  <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+    <h3>Why it matters</h3>
+    <p>A server with no backup is one bad update away from losing every player's progress, inventory, and money.</p>
+  </section>
+
+  <section class="strict-section" id="vocabulary" data-section="vocabulary">
+    <h3>Vocabulary</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">mysqldump</dt><dd>Command-line tool that exports a database to a SQL text file.<br><span>Example: every table, row, and index becomes CREATE and INSERT statements.</span></dd></div>
+      <div><dt tabindex="0">Restore</dt><dd>Running a backup file to recreate the database exactly as it was.<br><span>Example: mysql -u root newdb < backup.sql rebuilds everything.</span></dd></div>
+      <div><dt tabindex="0">Migration</dt><dd>Moving a database from one server to another without data loss.<br><span>Example: dump on old server, transfer file, restore on new server.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="setup" data-section="setup">
+    <h3>Setup</h3>
+    <dl class="setup-list">
+      <div><dt>Resource</dt><dd><code>qu_backup</code></dd></div>
+      <div><dt>Side</dt><dd><code>server</code></dd></div>
+      <div><dt>File path</dt><dd><code>resources/qu_backup/backup.lua</code></dd></div>
+      <div><dt>Ensure order</dt><dd><code>ensure qu_backup</code></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="minimal-example" data-section="minimal-example">
+    <h3>Minimal example</h3>
+    <figure class="code" data-expected-output="[BACKUP] Dump complete: backup_20260619_120000.sql">
+      <header><span class="file">qu_backup/backup.lua</span><span class="lang">Lua</span></header>
+      <pre><code class="language-lua">local MODULE = 'backup'
+
+RegisterCommand('db_backup', function(source)
+    local timestamp = os.date('%Y%m%d_%H%M%S')
+    local filename = ('backups/backup_%s.sql'):format(timestamp)
+
+    -- Run mysqldump via the operating system
+    local dbName = GetConvar('mysql_database', 'essentialmode')
+    local dbUser = GetConvar('mysql_user', 'root')
+    local dbPass = GetConvar('mysql_password', '')
+
+    local cmd = ('mysqldump -u %s -p%s %s > %s'):format(dbUser, dbPass, dbName, filename)
+    os.execute(cmd)
+
+    print(('[BACKUP] Dump complete: %s'):format(filename))
+end, true) -- restricted = true, admin only
+
+print('[BACKUP] Backup system loaded — use /db_backup as admin')</code></pre>
+    </figure>
+    <p class="expected-output"><strong>Expected output:</strong> <code>[BACKUP] Dump complete: backup_20260619_120000.sql</code></p>
+  </section>
+
+  <section class="strict-section" id="checklist" data-section="checklist">
+    <h3>Checklist</h3>
+    <ol>
+      <li>Create <code>backups/</code> folder in your server root.</li>
+      <li>Set MySQL credentials as convars in <code>server.cfg</code>.</li>
+      <li>Run <code>/db_backup</code> and verify the file exists with real data.</li>
+      <li>Restore the backup to a test database: <code>mysql -u root testdb < backup.sql</code>.</li>
+      <li>Query the test database to confirm the data is there.</li>
+      <li>Write your migration checklist: dump, transfer, restore, verify, update connection string.</li>
+    </ol>
+  </section>
+
+  <section class="strict-section" id="strict-exercise" data-section="exercise">
+    <h3>Exercise</h3>
+    <p>Take a backup, intentionally break something in your test database (rename a table), then restore from the backup. Verify the table is back.</p>
+    <p class="expected-output"><strong>Expected output:</strong> After restore, the renamed table returns with its original name and data.</p>
+  </section>
+
+  <section class="strict-section" id="common-failures" data-section="common-failures">
+    <h3>Common failures</h3>
+    <ul class="failure-list">
+      <li><code>mysqldump: command not found</code> means MySQL is not in your system PATH. Use the full path to mysqldump.exe.</li>
+      <li><code>Access denied for user</code> means the MySQL credentials in your convars are wrong or the user lacks dump permissions.</li>
+      <li><code>Backup file is 0 bytes</code> means the database name is wrong or the database is empty. Check with <code>SHOW DATABASES;</code>.</li>
+      <li><code>Restore fails with duplicate entry errors</code> means you are restoring into a database that already has data. Drop the database first.</li>
+    </ul>
+  </section>
+
+  <section class="strict-section" id="refactor" data-section="refactor">
+    <h3>Refactor</h3>
+    <p>Add a seven-day retention policy — delete backup files older than 7 days so your disk does not fill up.</p>
+  </section>
+
+  <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+    <h3>References</h3>
+    <ul>
+      <li><a href="/lessons/heidisql-hands-on">HeidiSQL hands-on lesson</a></li>
+      <li><a href="/lessons/server-cfg-annotated">Server.cfg — setting convars correctly</a></li>
+    </ul>
+  </section>
+</section>

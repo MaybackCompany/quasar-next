@@ -1,0 +1,166 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Track A · Lesson 05</span></div>
+        <h1>Player connection queue and deferrals</h1>
+        <p class="lede">By the end of this lesson you will control exactly what happens when a player connects to your server, delay them until your checks pass, and either let them in or show them a clear reason why they cannot join.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A connection handler that checks a player against a ban list, waits for character data to load, and only then lets them spawn.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes to understand and implement.</dd></div>
+          <div><dt>You'll learn</dt><dd>What deferrals are, why the queue exists, and how to write a connection handler that protects your server.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a running server and understand what RegisterNetEvent does (Lesson 19 of Module 06 helps).</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a connection queue handler that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>A player connects. Your script defers them, meaning they see a loading screen while your checks run.</li>
+            <li>Your script checks a ban table, waits for database data, and verifies the player is allowed to join.</li>
+            <li>If everything passes, the deferral is resolved and the player spawns. If not, they see a message explaining why.</li>
+          </ul>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 05: Player connection queue and deferrals</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A connection gate that runs before a player fully enters your server.<br><span>Example: every FiveM server runs a deferral system. You are writing yours.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>In a server-side script that uses the <code>playerConnecting</code> event.<br><span>Example: resources/[system]/qu_connect/server.lua handles all connections.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Register the <code>playerConnecting</code> event, defer the player, run checks, then allow or drop.<br><span>Example: defer, check ban list, check whitelist, then Deferrals.done().</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Write a minimal deferral script that holds every player for 2 seconds, then lets them in.<br><span>Example: the smallest working deferral is under 20 lines.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will write a connection handler that defers every player, runs a simple check (a table lookup for banned identifiers), and either admits or drops them.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Without a connection gate, banned players reconnect with a new name. Character data loads after the player spawns, causing naked characters and broken inventories. Deferrals fix all of this at the earliest possible moment.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Deferral</dt><dd>A promise to FiveM: "Wait. Do not let this player spawn yet. I have checks to run."<br><span>Example: Deferrals.defer() pauses the connection. Deferrals.done() resumes it.</span></dd></div>
+            <div><dt tabindex="0">Identifier</dt><dd>A unique string that identifies a player across sessions. FiveM provides several.<br><span>Example: license:abc123 is a Rockstar license. steam:1100001 is a Steam ID.</span></dd></div>
+            <div><dt tabindex="0">playerConnecting</dt><dd>The server event that fires before a player fully joins. You hook into it to run checks.<br><span>Example: AddEventHandler('playerConnecting', function(name, setKickReason, deferrals) ... end).</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_connect</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/[system]/qu_connect/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_connect</code> — place this FIRST in server.cfg, before any framework.</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Banned players dropped; clean players admitted after 2-second deferral">
+            <header><span class="file">qu_connect/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- qu_connect: minimal connection gate with ban check
+local MODULE = 'connect'
+
+-- In-memory ban list. In production this would come from a database.
+local BANNED_LICENSES = {
+    ['license:0123456789abcdef'] = 'Banned for cheating on 2024-01-15',
+}
+
+AddEventHandler('playerConnecting', function(playerName, setKickReason, deferrals)
+    local src = source
+    print(('[QUIET][%s] playerConnecting name=%s source=%s'):format(MODULE, playerName, src))
+
+    -- Step 1: defer the connection immediately
+    deferrals.defer()
+
+    -- Step 2: wait a tiny bit so identifiers are available
+    Citizen.Wait(0)
+
+    -- Step 3: grab the license identifier
+    local license = nil
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        if string.sub(id, 1, 7) == 'license' then
+            license = id
+            break
+        end
+    end
+
+    -- Step 4: run your checks
+    if not license then
+        deferrals.done('Could not read your license. Try restarting FiveM.')
+        return
+    end
+
+    if BANNED_LICENSES[license] then
+        local reason = BANNED_LICENSES[license]
+        print(('[QUIET][%s] BLOCKED banned player %s (%s): %s'):format(MODULE, playerName, license, reason))
+        deferrals.done('You are banned from this server.\nReason: ' .. reason)
+        return
+    end
+
+    -- Step 5: simulate a database load (replace with real DB call)
+    deferrals.update('Loading your character data...')
+    Citizen.Wait(2000) -- in production, query your database here
+
+    -- Step 6: all checks passed, let them in
+    print(('[QUIET][%s] ADMITTED %s (%s)'):format(MODULE, playerName, license))
+    deferrals.done()
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> Console prints <code>[QUIET][connect] ADMITTED YourName (license:xxx)</code> when a clean player joins. Banned players see the reason and are dropped.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>resources/[system]/qu_connect/</code> and add <code>fxmanifest.lua</code> with <code>server_script 'server.lua'</code>.</li>
+            <li>Paste the server.lua code above into the resource folder.</li>
+            <li>Add <code>ensure qu_connect</code> as the very first <code>ensure</code> line in your server.cfg.</li>
+            <li>Restart the server and join with a clean account. Confirm the admit message prints.</li>
+            <li>Add your own license to the <code>BANNED_LICENSES</code> table temporarily and confirm you are blocked.</li>
+            <li>Remove yourself from the ban table, restart, and confirm you can join again.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a whitelist check. Create a <code>WHITELISTED_LICENSES</code> table with your own license. Modify the handler so that if the whitelist table is not empty, only whitelisted players are admitted. Test by having a friend try to join.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Your friend sees "You are not whitelisted on this server." You join normally.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Deferrals.defer() was not called</code> means you tried to call <code>deferrals.done()</code> or <code>deferrals.update()</code> before deferring. Always call <code>deferrals.defer()</code> first.</li>
+            <li><code>GetPlayerIdentifiers returned an empty table</code> means you called it too early. Always <code>Citizen.Wait(0)</code> after deferring to give FiveM time to populate identifiers.</li>
+            <li><code>Player stuck on loading screen forever</code> means you never called <code>deferrals.done()</code>. A deferral must always resolve. Add a timeout as a safety net.</li>
+            <li><code>Two deferral scripts conflict</code> — only one resource should handle <code>playerConnecting</code> with deferrals. A framework like QBCore already does this. Consolidate into one connection handler.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the ban and whitelist checks into separate functions: <code>checkBan(license)</code> and <code>checkWhitelist(license)</code>. Add a <code>TIMEOUT_SECONDS</code> config that auto-drops the player if deferrals do not resolve within 30 seconds.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/" target="_blank" rel="noopener">FiveM server-side Lua functions (deferrals)</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/events/player-connecting/" target="_blank" rel="noopener">FiveM playerConnecting event documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/#getplayeridentifiers" target="_blank" rel="noopener">GetPlayerIdentifiers documentation</a></li>
+          </ul>
+        </section>
+      </section>

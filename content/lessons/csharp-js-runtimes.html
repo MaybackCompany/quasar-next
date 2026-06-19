@@ -1,0 +1,318 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 04</span></div>
+        <h1>C# and JavaScript runtimes, when to use which</h1>
+        <p class="lede">FiveM runs code in three languages: Lua, C#, and JavaScript. Learn what each runtime does, when to pick one over another, and why most scripts you will write stay in Lua.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A resource that uses Lua for game logic and a C# server script for a background number-crunching task, proving you can mix runtimes.</dd></div>
+          <div><dt>Time</dt><dd>About 35 minutes.</dd></div>
+          <div><dt>You'll learn</dt><dd>The four FiveM runtimes (Lua server, Lua client, C#, JS), their performance profiles, and the real-world reasons to choose one over another.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have written Lua scripts that run on a FiveM server. C# knowledge is helpful but not required.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will understand the FiveM runtimes so that:</strong></p>
+          <ul class="tldr-card__points">
+            <li>You know Lua handles 95% of game scripts — chat commands, UI, inventory — and is the right default.</li>
+            <li>You know C# is for heavy computation, external APIs, and code you want to protect from casual reading.</li>
+            <li>You know JavaScript exists for NUI (browser-based UI) and nothing else on a FiveM server.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 04: C# and JavaScript runtimes, when to use which</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A guide to the three languages FiveM supports and when each one is the right tool.<br><span>Example: Lua for a heal command, C# for a leaderboard API call, JS for an in-game phone screen.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Runtime selection happens in fxmanifest.lua and in resource folder structure.<br><span>Example: server_script 'main.lua' vs server_script 'Main.cs'.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Pick Lua unless you have a specific reason to use C# or JS.<br><span>Example: start with Lua, profile the performance, and only then consider C# for the bottleneck.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Write one Lua resource and one C# resource that print from the same event.<br><span>Example: both resources listen for playerConnecting and log it.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will start a resource with a C# server script alongside your Lua scripts and see both runtimes produce output in the same server console.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Choosing the wrong runtime wastes hours. C# scripts need compilation and have slower iteration. JavaScript on the server is rarely the right call. Knowing the tradeoffs upfront saves you from rewriting a half-built resource.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Runtime</dt><dd>The engine that executes your code inside the FiveM process.<br><span>Example: the Lua runtime runs RegisterCommand; the C# runtime runs EventHandlers.</span></dd></div>
+            <div><dt tabindex="0">Mono</dt><dd>The open-source .NET framework that FiveM's C# runtime is built on. Not the same as modern .NET.<br><span>Example: C# scripts target .NET Framework 4.5, not .NET 8.</span></dd></div>
+            <div><dt tabindex="0">NUI</dt><dd>Native UI — the Chromium-based browser layer that renders HTML/JS/CSS interfaces in-game.<br><span>Example: the phone screen in qb-phone is an NUI page written in JS.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource 1</dt><dd><code>qu_lua_runtime</code> — Lua-only resource</dd></div>
+            <div><dt>Resource 2</dt><dd><code>qu_csharp_runtime</code> — C# server resource</dd></div>
+            <div><dt>C# tooling</dt><dd><code>Visual Studio or dotnet CLI with .NET Framework 4.5 targeting</code></dd></div>
+            <div><dt>JS note</dt><dd><code>JS on server is niche; we cover NUI JS in a separate lesson</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qu_lua_runtime] Hello from Lua | [qu_csharp_runtime] Hello from C#">
+            <header><span class="file">qu_lua_runtime/server.lua and qu_csharp_runtime/Server.cs</span><span class="lang">Lua / C#</span></header>
+            <pre><code class="language-lua">-- Lua server script: qu_lua_runtime/server.lua
+AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        print('[qu_lua_runtime] Hello from Lua runtime')
+    end
+end)
+
+-- C# server script: qu_csharp_runtime/Server.cs
+using CitizenFX.Core;
+
+namespace QuCSharpRuntime
+{
+    public class Server : BaseScript
+    {
+        public Server()
+        {
+            EventHandlers["onResourceStart"] += new Action&lt;string&gt;(OnResourceStart);
+        }
+
+        private void OnResourceStart(string resourceName)
+        {
+            if (resourceName == "qu_csharp_runtime")
+            {
+                Debug.WriteLine("[qu_csharp_runtime] Hello from C# runtime");
+            }
+        }
+    }
+}</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> Both <code>[qu_lua_runtime] Hello from Lua runtime</code> and <code>[qu_csharp_runtime] Hello from C# runtime</code> appear in the server console on resource start.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create the Lua resource <code>qu_lua_runtime</code> with a standard manifest and server.lua.</li>
+            <li>Ensure it starts and prints its message in the console.</li>
+            <li>Create the C# resource <code>qu_csharp_runtime</code> with the correct folder structure.</li>
+            <li>Write the C# class, compile it into a .dll, and place it in the resource.</li>
+            <li>Configure the manifest to load the C# assembly with <code>server_script 'MyResource.net.dll'</code>.</li>
+            <li>Ensure it and confirm both runtimes print their messages.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a Tick handler in the C# resource that increments a counter every second, and a Lua command that reads that counter via an export. Prove the two runtimes share memory.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Typing <code>/checkcounter</code> in chat prints the C# tick counter value from Lua.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li>C# resource does not start — the .dll targets the wrong .NET version. Must target .NET Framework 4.5, not .NET Core or .NET 8.</li>
+            <li><code>Could not load file or assembly</code> — missing dependencies. All referenced NuGet packages must be bundled in the resource folder.</li>
+            <li>C# debug prints do not appear — use <code>Debug.WriteLine</code> not <code>Console.WriteLine</code>. FiveM captures the debug stream.</li>
+            <li>JavaScript server scripts seem to work but silently fail on native calls — the JS runtime has incomplete native bindings. Stick to Lua or C# for server code.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the C# tick counter into a standalone class with dependency injection so other C# resources can consume it without a Lua bridge.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/" target="_blank" rel="noopener">FiveM scripting runtimes documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/csharp/" target="_blank" rel="noopener">FiveM C# runtime guide</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime guide</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="runtime-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Which runtime for what?</h3>
+        <ul>
+          <li><strong>Lua (server + client).</strong> Chat commands, inventory, admin tools, framework glue. 95% of all scripts.</li>
+          <li><strong>C# (server only).</strong> Database heavy lifting, external HTTP APIs, Discord bots, obfuscation-sensitive paid scripts.</li>
+          <li><strong>JavaScript (NUI only).</strong> Phone screens, HUD overlays, tablet UIs. Runs in a browser, not in the game engine.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>FiveM is a Lua-first platform. The vast majority of community scripts, frameworks, and tutorials are in Lua. The C# runtime exists for developers who need strong typing, compiled performance, or code obfuscation. JavaScript runs inside NUI browsers and has no direct access to game natives. Choosing Lua means choosing the path of least resistance — more examples, more community help, faster iteration. Choosing C# means choosing compile-time safety and raw speed, at the cost of a longer edit-test cycle.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a kitchen.</p>
+          <p>Lua is a chef's knife. You use it for almost everything. C# is a stand mixer — perfect for heavy dough that would tire your arm, but you do not pull it out to chop an onion. JavaScript is the toaster. It does one thing (NUI) and does it well. Bringing the toaster to the counter to stir soup is not going to work.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="03">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="lua-resource"> I have created a Lua resource with server.lua and client.lua.</label></li>
+          <li><label><input type="checkbox" data-id="fxmanifest"> I know how to write an fxmanifest.lua with server_script and client_script entries.</label></li>
+          <li><label><input type="checkbox" data-id="events"> I understand AddEventHandler and the event system from previous lessons.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the Lua resource baseline</h3>
+        </div>
+        <p class="pin-card__lede">The Lua resource is the control group. It proves your server can load a resource.</p>
+        <ol>
+          <li>Create <code>resources/qu_lua_runtime/</code> with <code>fxmanifest.lua</code> and <code>server.lua</code>.</li>
+          <li>The manifest needs only <code>fx_version 'cerulean'</code>, <code>game 'gta5'</code>, and <code>server_script 'server.lua'</code>.</li>
+          <li>Paste the Lua handler from the Minimal Example. Ensure the resource and confirm the print appears.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Set up the C# resource folder</h3>
+        </div>
+        <p class="pin-card__lede">A C# resource needs a specific folder layout: the .dll file, a manifest, and any dependencies.</p>
+        <ol>
+          <li>Create <code>resources/qu_csharp_runtime/</code>.</li>
+          <li>Create <code>fxmanifest.lua</code> with <code>server_script 'QuCSharpRuntime.net.dll'</code>.</li>
+          <li>The .dll goes in the resource root, next to the manifest.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Write and compile the C# script</h3>
+        </div>
+        <p class="pin-card__lede">The C# class inherits from BaseScript. The constructor registers event handlers.</p>
+        <ol>
+          <li>Create a new Class Library project targeting .NET Framework 4.5.</li>
+          <li>Add the CitizenFX.Core NuGet package (the FiveM server API).</li>
+          <li>Paste the C# code from the Minimal Example into your class file.</li>
+          <li>Build the project. Find the output .dll and copy it into <code>resources/qu_csharp_runtime/</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Run and compare</h3>
+        </div>
+        <p class="pin-card__lede">Both resources start and print from the same event, proving the runtimes coexist.</p>
+        <ol>
+          <li>Ensure both resources in server.cfg: <code>ensure qu_lua_runtime</code> and <code>ensure qu_csharp_runtime</code>.</li>
+          <li>Start or restart the server.</li>
+          <li>Look for both hello messages in the console.</li>
+          <li>Now change the print message in the Lua file. Save and <code>ensure qu_lua_runtime</code> — it updates instantly.</li>
+          <li>Change the print in the C# file. You must rebuild the .dll, copy it, and restart the resource. Notice the difference in iteration speed.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Two tests, in order</h3></header>
+        <p>Run each test and confirm before deciding which runtime to use for your next project.</p>
+        <ol>
+          <li>
+            <strong>Test 1, both runtimes alive.</strong>
+            <ul>
+              <li>Action: start the server with both resources ensured.</li>
+              <li>Expected: two hello messages appear in the console, one from Lua, one from C#.</li>
+              <li>How to verify: the messages have different resource names in brackets.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, iteration speed comparison.</strong>
+            <ul>
+              <li>Action: change the print message in each resource and redeploy.</li>
+              <li>Expected: Lua updates in under 3 seconds. C# requires a rebuild and takes 20+ seconds.</li>
+              <li>How to verify: time both from save to console output. This is why Lua is the default.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Can I call C# functions from Lua?</summary>
+            <p>Yes, through server exports. In C# you mark a method with the <code>[Export]</code> attribute, and in Lua you call <code>exports['resource_name'].MethodName()</code>. The reverse (calling Lua from C#) uses <code>TriggerEvent</code> which both runtimes understand.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="c">
+            <legend>1. Which runtime should you use for a simple chat command like /heal?</legend>
+            <label><input type="radio" name="q1" value="a"> C#, because it is faster.</label>
+            <label><input type="radio" name="q1" value="b"> JavaScript, because it is easier.</label>
+            <label><input type="radio" name="q1" value="c"> Lua, because it has the fastest iteration speed and is the community standard.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>2. What is the main use of JavaScript in FiveM?</legend>
+            <label><input type="radio" name="q2" value="a"> Server-side game logic and database operations.</label>
+            <label><input type="radio" name="q2" value="b"> NUI — browser-based interfaces like phone screens and HUDs.</label>
+            <label><input type="radio" name="q2" value="c"> Replacing Lua completely in modern servers.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why is C# slower to iterate on than Lua?</legend>
+            <label><input type="radio" name="q3" value="a"> C# must be compiled into a .dll and the resource restarted; Lua is interpreted and reloads instantly.</label>
+            <label><input type="radio" name="q3" value="b"> C# has more bugs than Lua.</label>
+            <label><input type="radio" name="q3" value="c"> C# files are larger and take longer to upload.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>The three FiveM runtimes: Lua (server + client), C# (server only), and JavaScript (NUI browser).</li>
+          <li>Why Lua is the default for 95% of scripts — instant reload, community size, tutorial coverage.</li>
+          <li>When C# makes sense — heavy computation, external APIs, obfuscation.</li>
+          <li>How Lua and C# resources coexist in the same server and can communicate through exports and events.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a Lua command <code>/runtimetest</code> that calls a C# export and prints the return value. The C# export should return the current server uptime in seconds.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>chat box, after /runtimetest</span></header>
+          <pre><code>[runtime] Server uptime: 1423 seconds</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>In C#, add a method <code>[Export] public int GetUptime() => (int)(DateTime.Now - Process.GetCurrentProcess().StartTime).TotalSeconds;</code>. In Lua, call <code>exports['qu_csharp_runtime'].GetUptime()</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/csharp/" target="_blank" rel="noopener">FiveM C# runtime documentation</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime documentation</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-manual/runtimes/javascript/" target="_blank" rel="noopener">FiveM JavaScript runtime documentation</a></li>
+        </ul>
+      </section>

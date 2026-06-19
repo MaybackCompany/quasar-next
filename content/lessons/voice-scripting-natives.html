@@ -1,0 +1,348 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 09</span></div>
+        <h1>Voice scripting natives, proximity chat explained</h1>
+        <p class="lede">FiveM has built-in voice chat controlled by native functions. Learn how to set voice ranges, mute players, and configure the voice system — whether you use pma-voice, mumble-voip, or write your own solution.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A resource that lets players choose between whisper, normal, and shout voice ranges — and a server-side mute command that silences a toxic player for everyone.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes.</dd></div>
+          <div><dt>You'll learn</dt><dd>The four voice natives (NetworkSetVoiceChannel, NetworkSetTalkerProximity, MumbleIsPlayerMuted, MumbleSetPlayerMuted), the voice config variables, and how voice plugins work on top of these.</dd></div>
+          <div><dt>Prereqs</dt><dd>A FiveM server with voice enabled (it is on by default).</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will control the voice system so that:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Players can switch between whisper (5m), normal (15m), and shout (30m) voice ranges with a keypress.</li>
+            <li>Admins can mute a player server-wide with a command, and the mute persists until manually lifted.</li>
+            <li>You understand why third-party voice resources like pma-voice exist — and what they add on top of the built-in natives.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 09: Voice scripting natives, proximity chat explained</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>The set of FiveM natives that control proximity voice chat — who hears whom and at what distance.<br><span>Example: NetworkSetTalkerProximity(15.0) makes your voice audible up to 15 meters.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Voice natives are client-side. Server commands use client-triggered events.<br><span>Example: MumbleSetPlayerMuted runs on the client, triggered by a server event.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Set proximity on the client. Mute on the client. The server says who and when.<br><span>Example: server decides "player 3 is muted", sends event, client calls the mute native.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Build a proximity switcher with three ranges and one mute command.<br><span>Example: press F1 to cycle whisper → normal → shout, see range in a notification.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will press a key to change your voice range and see a notification confirming the new range. An admin will type <code>/voicemute [id]</code> and the target player will be silenced for everyone immediately.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Voice is the most-used feature on roleplay servers. A broken voice system kills immersion faster than any other bug. Knowing the natives means you can debug voice issues, add custom ranges, and understand why your pma-voice errors say "proximity" in the stack trace.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Proximity</dt><dd>The distance in meters at which your voice is audible to other players.<br><span>Example: NetworkSetTalkerProximity(5.0) = whisper range.</span></dd></div>
+            <div><dt tabindex="0">Mumble</dt><dd>The open-source voice protocol FiveM uses under the hood. Natives that start with "Mumble" control its settings.<br><span>Example: MumbleIsPlayerMuted(playerServerId) returns true or false.</span></dd></div>
+            <div><dt tabindex="0">Voice channel</dt><dd>A numeric channel (0-65535) that groups players. By default everyone is on channel 0.<br><span>Example: NetworkSetVoiceChannel(1) puts you in a private channel.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_voice</code></dd></div>
+            <div><dt>Files</dt><dd><code>fxmanifest.lua, client.lua, server.lua</code></dd></div>
+            <div><dt>Voice config</dt><dd><code>set voice_enable 1 (in server.cfg, on by default)</code></dd></div>
+            <div><dt>Prereq</dt><dd><code>No voice resource like pma-voice active (conflicts with native calls)</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Voice range set to: 15.0m (normal) | Player 3 muted">
+            <header><span class="file">qu_voice/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'voice'
+
+-- Proximity ranges
+local RANGES = {
+    { name = 'whisper', dist = 5.0 },
+    { name = 'normal',  dist = 15.0 },
+    { name = 'shout',   dist = 30.0 }
+}
+local currentRange = 2 -- start at normal
+
+-- Cycle through ranges when F1 is pressed
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(0)
+        if IsControlJustPressed(0, 288) then -- F1 key
+            currentRange = currentRange % #RANGES + 1
+            local range = RANGES[currentRange]
+            NetworkSetTalkerProximity(range.dist)
+            -- Show notification
+            SetNotificationTextEntry('STRING')
+            AddTextComponentString(('Voice range: %s (%.0fm)')
+                :format(range.name, range.dist))
+            DrawNotification(false, true)
+        end
+    end
+end)
+
+-- Handle mute command from server
+RegisterNetEvent('qu:voice:mute', function(targetSrc)
+    -- Mute the target player (we receive the command on the target's client)
+    MumbleSetPlayerMuted(targetSrc, true)
+    print(('[qu_voice] muted player %d'):format(targetSrc))
+end)
+
+RegisterNetEvent('qu:voice:unmute', function(targetSrc)
+    MumbleSetPlayerMuted(targetSrc, false)
+    print(('[qu_voice] unmuted player %d'):format(targetSrc))
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> Pressing F1 cycles the notification through "whisper (5m)", "normal (15m)", "shout (30m)". Walking away from a friend beyond the set range causes their voice to fade and eventually cut out.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create the resource and manifest with client_script and server_script.</li>
+            <li>Paste the proximity cycle code into client.lua.</li>
+            <li>Write the server command <code>/voicemute [id]</code> that triggers the mute event on the target's client.</li>
+            <li>Write the server command <code>/voiceunmute [id]</code> that triggers the unmute event.</li>
+            <li>Join with two players and test proximity: stand close (hear), walk far (fades), walk back (returns).</li>
+            <li>Test mute: player A mutes player B with the command, player C can still hear B but A cannot.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a fourth range called "megaphone" at 100.0 meters that is only available to police job players. Check the player's job via framework export (from Lesson 08) before allowing the megaphone range.</p>
+          <p class="expected-output"><strong>Expected output:</strong> A police player pressing F1 cycles through whisper, normal, shout, megaphone. A civilian pressing F1 cycles only through whisper, normal, shout.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value (global 'NetworkSetTalkerProximity')</code> — this is a client native. You are calling it from server.lua. Move to client.lua.</li>
+            <li>Voice range does not change — you have a third-party voice resource like pma-voice or mumble-voip installed. These override the native proximity settings. Disable them or use their exports instead.</li>
+            <li>Mute command seems to work but player still hears — <code>MumbleSetPlayerMuted</code> must run on the listener's client, not the speaker's client. If A mutes B, the mute command must run on A's machine.</li>
+            <li>Voice does not work at all — check <code>voice_enable 1</code> in server.cfg and ensure no firewall blocks UDP port 30120 (or your configured voice port).</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Replace the static RANGES table with a KVS-backed per-player preference, so each player's last-used range is restored when they reconnect.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#networksettalkerproximity" target="_blank" rel="noopener">FiveM NetworkSetTalkerProximity documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#mumblesetplayermuted" target="_blank" rel="noopener">FiveM MumbleSetPlayerMuted documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/voice-config/" target="_blank" rel="noopener">FiveM voice configuration reference</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="voice-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Voice natives at a glance</h3>
+        <ul>
+          <li><strong>NetworkSetTalkerProximity(value)</strong> — how far your voice carries (in meters). Client-side.</li>
+          <li><strong>NetworkSetVoiceChannel(channel)</strong> — put players on a private channel (0-65535). Client-side.</li>
+          <li><strong>MumbleSetPlayerMuted(serverId, toggle)</strong> — mute or unmute a specific player for the caller. Client-side.</li>
+          <li><strong>MumbleIsPlayerMuted(serverId)</strong> — check if a player is currently muted. Client-side.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Voice in FiveM works through Mumble, an open-source VoIP protocol. Every player has a proximity radius. When two players' radii overlap, they hear each other. The server does not process voice audio — it only tells each client who is in range. The audio travels peer-to-peer. This is why voice commands (mute, proximity) must run on the client: the client is the one doing the listening. The server acts as a coordinator, not an audio mixer.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a crowded room.</p>
+          <p>Each person has a "hearing bubble" around them. You can hear everyone inside your bubble. If you put on earplugs (mute), you hear no one. If someone shouts (megaphone range), their bubble is bigger. The room itself does not process sound — it just tells you who is nearby. FiveM voice works the same way: the server says "player 2 is 10 meters away", and your client decides if that is close enough to hear.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="voice-on"> I can hear other players in-game (voice is working on my server).</label></li>
+          <li><label><input type="checkbox" data-id="keypress"> I have used <code>IsControlJustPressed</code> in a client script before.</label></li>
+          <li><label><input type="checkbox" data-id="events"> I can trigger client events from server commands (from Lesson 01).</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource and proximity cycle</h3>
+        </div>
+        <p class="pin-card__lede">The client is where proximity lives. Start with the F1 cycle.</p>
+        <ol>
+          <li>Create <code>resources/qu_voice/</code> with fxmanifest.lua, client.lua, and server.lua.</li>
+          <li>The manifest needs <code>client_script 'client.lua'</code> and <code>server_script 'server.lua'</code>.</li>
+          <li>Paste the proximity cycle code from the Minimal Example into client.lua.</li>
+          <li>Ensure the resource. Join the server. Press F1. You should see "Voice range: normal (15m)".</li>
+          <li>Press F1 again. It cycles to "shout (30m)". Press again. "whisper (5m)".</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Test proximity with a friend</h3>
+        </div>
+        <p class="pin-card__lede">The proof is walking away until the voice cuts out.</p>
+        <ol>
+          <li>Have a friend join the server and stand next to you.</li>
+          <li>Both set range to "normal (15m)".</li>
+          <li>Talk. You hear each other. Now walk away from each other.</li>
+          <li>At around 15 meters, the voice fades and then cuts out completely.</li>
+          <li>Both switch to "shout (30m)". You can now hear each other from much farther.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Build the server mute command</h3>
+        </div>
+        <p class="pin-card__lede">The server decides who gets muted. The client executes the mute.</p>
+        <ol>
+          <li>In server.lua, add:
+            <pre><code class="language-lua">RegisterCommand('voicemute', function(source, args)
+    local targetId = tonumber(args[1])
+    if not targetId then return end
+    -- Send mute to ALL clients so everyone mutes the target
+    TriggerClientEvent('qu:voice:mute', -1, targetId)
+    print(('[qu_voice] server: muted %d (broadcast to all clients)'):format(targetId))
+end, true) -- restricted = true, admin only
+
+RegisterCommand('voiceunmute', function(source, args)
+    local targetId = tonumber(args[1])
+    if not targetId then return end
+    TriggerClientEvent('qu:voice:unmute', -1, targetId)
+    print(('[qu_voice] server: unmuted %d'):format(targetId))
+end, true)</code></pre>
+          </li>
+          <li><code>-1</code> as the target sends the event to all clients, so everyone mutes the player.</li>
+          <li>Add the <code>qu:voice:mute</code> and <code>qu:voice:unmute</code> handlers to client.lua as shown in the Minimal Example.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Test the mute</h3>
+        </div>
+        <p class="pin-card__lede">Two players, one admin command, immediate silence.</p>
+        <ol>
+          <li>Have two players in the server: player A (admin) and player B (target).</li>
+          <li>Player B talks. Player A can hear them.</li>
+          <li>Player A types <code>/voicemute B'sServerId</code> in console or chat.</li>
+          <li>Player B's voice immediately goes silent for Player A.</li>
+          <li>Type <code>/voiceunmute B'sServerId</code>. Voice returns.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Two tests, in order</h3></header>
+        <p>Run each test and confirm before adding voice features to a production server.</p>
+        <ol>
+          <li>
+            <strong>Test 1, proximity ranges.</strong>
+            <ul>
+              <li>Action: set to whisper (5m), have a friend stand at 3m, then 6m, then 12m.</li>
+              <li>Expected: audible at 3m, very quiet or silent at 6m, silent at 12m.</li>
+              <li>How to verify: the cutoff point matches the configured distance.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, mute broadcast.</strong>
+            <ul>
+              <li>Action: admin mutes player B. Player C (third player) and admin both listen to player B.</li>
+              <li>Expected: neither admin nor player C can hear player B.</li>
+              <li>How to verify: player B's mic indicator still moves, but no one hears them.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why use -1 (all clients) for the mute event instead of just the admin's client?</summary>
+            <p>If you only mute player B on the admin's client, the admin stops hearing B. But player C still hears B. That is a personal mute, not a server mute. Sending the event to all clients (<code>-1</code>) ensures everyone stops hearing the muted player. For a personal mute (one player mutes another), you would send to just the requesting player's source.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why must NetworkSetTalkerProximity run on the client?</legend>
+            <label><input type="radio" name="q1" value="a"> Because the server does not support voice natives.</label>
+            <label><input type="radio" name="q1" value="b"> Because proximity is a per-client setting — each player's machine controls how far their own voice carries.</label>
+            <label><input type="radio" name="q1" value="c"> It can run on either side. It does not matter.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What does TriggerClientEvent('qu:voice:mute', -1, targetId) do?</legend>
+            <label><input type="radio" name="q2" value="a"> It mutes only the admin who typed the command.</label>
+            <label><input type="radio" name="q2" value="b"> It mutes only the target player.</label>
+            <label><input type="radio" name="q2" value="c"> It sends the mute command to every connected client, so everyone stops hearing the target.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What is the default proximity value set by NetworkSetTalkerProximity?</legend>
+            <label><input type="radio" name="q3" value="a"> There is no single default. It starts at whatever was last set, or FiveM's internal default (usually around 10-15m).</label>
+            <label><input type="radio" name="q3" value="b"> 0 meters — everyone is muted by default.</label>
+            <label><input type="radio" name="q3" value="c"> 100 meters — global voice is the default.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to use <code>NetworkSetTalkerProximity</code> to change voice range on the client.</li>
+          <li>How to use <code>MumbleSetPlayerMuted</code> to mute players, and why the server broadcasts mute events to all clients.</li>
+          <li>Why voice natives are client-side and the server only coordinates who hears whom.</li>
+          <li>How third-party voice resources like pma-voice build on these same natives with added UI and radio channels.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a keybind (F2) that toggles self-mute — mutes your own microphone so no one can hear you. Use <code>NetworkSetVoiceActive(false)</code> to disable and <code>NetworkSetVoiceActive(true)</code> to re-enable. Show a notification with the current mute state.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>in-game notification</span></header>
+          <pre><code>Microphone: MUTED   -- after pressing F2
+Microphone: ACTIVE  -- after pressing F2 again</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p><code>NetworkSetVoiceActive(toggle)</code> is a client native. Create a boolean flag <code>local voiceActive = true</code>, flip it on F2 press, call the native with the new value, and show a notification.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/" target="_blank" rel="noopener">FiveM client-side native functions</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/voice-config/" target="_blank" rel="noopener">FiveM voice configuration variables</a></li>
+          <li><a href="https://github.com/AvarianKnight/pma-voice" target="_blank" rel="noopener">pma-voice (popular voice resource for reference)</a></li>
+        </ul>
+      </section>

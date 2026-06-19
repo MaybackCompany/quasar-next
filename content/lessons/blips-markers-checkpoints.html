@@ -1,0 +1,430 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Track C · Lesson 01</span></div>
+        <h1>Blips, markers, and checkpoints on the world map</h1>
+        <p class="lede">By the end of this lesson you will place a map blip, a floating 3D marker, and a checkpoint ring on the ground — and know exactly when to use each one.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>Three map elements: a radar blip, a world marker hovering above a location, and a checkpoint ring that triggers an event when a player enters it.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>The difference between blips, markers, and checkpoints, which natives create each one, and how to clean them up when they are no longer needed.</dd></div>
+          <div><dt>Prereqs</dt><dd>You can create a FiveM resource and run a client script. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build three map elements that do this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>A blip appears on the radar at the Sandy Shores airfield. Players see the icon and can set a GPS waypoint to it.</li>
+            <li>A floating 3D marker hovers above the ground at the same spot, visible from any distance.</li>
+            <li>A checkpoint ring on the road triggers a notification when the player drives through it.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson C01: Blips, markers, and checkpoints</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Blips, markers, and checkpoints are the three ways FiveM draws navigation targets for players.<br><span>Example: this lesson places all three at the same location so you can compare them.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find the natives in <code>AddBlipForCoord</code>, <code>DrawMarker</code>, and <code>CreateCheckpoint</code>.<br><span>Example: check the native docs before copying code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Decide the purpose: radar navigation (blip), visible world target (marker), or trigger zone (checkpoint).<br><span>Example: use a checkpoint when you need an event on arrival.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Place all three at a single coordinate and verify each one works.<br><span>Example: match the expected output before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will walk and drive through one checkpoint, see one blip on the radar, and one floating marker in the world.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Every job marker, delivery point, race checkpoint, and quest target in FiveM uses these three primitives. Get them wrong and players cannot find your content.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Blip</dt><dd>A 2D icon on the radar and pause menu map.<br><span>Example: the green dollar sign for a store.</span></dd></div>
+            <div><dt tabindex="0">Marker</dt><dd>A 3D shape rendered in the world, visible through walls if you choose.<br><span>Example: a floating yellow arrow above a job start.</span></dd></div>
+            <div><dt tabindex="0">Checkpoint</dt><dd>A glowing ring or cylinder that fires a native when the player enters it.<br><span>Example: a red ring on the road for a race finish.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_map_elements</code></dd></div>
+            <div><dt>Side</dt><dd><code>client</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_map_elements/client.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_map_elements</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Blip appears on radar, marker floats in world, checkpoint ring on ground">
+            <header><span class="file">qu_map_elements/client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'map_elements'
+local coords = vector3(1744.0, 3286.0, 41.0) -- Sandy Shores airfield
+
+-- 1. Blip on the radar
+local blip = AddBlipForCoord(coords.x, coords.y, coords.z)
+SetBlipSprite(blip, 38)                     -- 38 = a star
+SetBlipDisplay(blip, 4)                      -- always on radar
+SetBlipScale(blip, 0.8)
+SetBlipColour(blip, 5)                       -- yellow
+SetBlipAsShortRange(blip, false)             -- visible from far away
+BeginTextCommandSetBlipName('STRING')
+AddTextComponentString('Test Spot')
+EndTextCommandSetBlipName(blip)
+
+-- 2. 3D world marker (drawn every frame in a loop)
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        DrawMarker(2, coords.x, coords.y, coords.z + 2.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.5, 0.5, 0.5,                     -- scale
+            255, 255, 0, 200,                  -- yellow, semi-transparent
+            false, false, 2, false, nil, nil, false)
+    end
+end)
+
+-- 3. Checkpoint ring (drawn and checked every frame)
+local checkpointRadius = 3.5
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        local playerPed = PlayerPedId()
+        local playerCoords = GetEntityCoords(playerPed)
+        local dist = #(playerCoords - coords)
+
+        -- Draw the checkpoint ring
+        CreateCheckpoint(47, coords.x, coords.y, coords.z - 1.0,
+            coords.x, coords.y, coords.z + 1.0,
+            checkpointRadius, 255, 0, 0, 200, 0)
+
+        -- Check if player is inside
+        if dist < checkpointRadius then
+            print(('[QUIET][%s] Player entered checkpoint at dist=%.1f'):format(MODULE, dist))
+        end
+    end
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][map_elements]</code> prints in F8 console when you walk into the checkpoint ring.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>fxmanifest.lua</code> with <code>client_scripts { 'client.lua' }</code>.</li>
+            <li>Create <code>client.lua</code> with the minimal example above.</li>
+            <li>Start your server and join.</li>
+            <li>Open the pause menu map and look for the yellow star blip at Sandy Shores.</li>
+            <li>Teleport or drive to the coordinates and confirm you see the floating yellow diamond.</li>
+            <li>Walk or drive into the red checkpoint ring and check F8 for the print line.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the blip sprite to 1 (a white square), the marker color to green (0, 255, 0), and the checkpoint type to 0 (a cylinder instead of a ring). Run all three tests again.</p>
+          <p class="expected-output"><strong>Expected output:</strong> White square on radar, green marker in world, red cylinder checkpoint triggers the print line within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value (global 'AddBlipForCoord')</code> means the script is running on the server side. Blips, markers, and checkpoints are client-only.</li>
+            <li>Marker does not appear: you forgot the infinite loop with <code>Citizen.CreateThread</code> and <code>Wait(0)</code>. Markers are drawn per-frame.</li>
+            <li>Checkpoint never fires: the distance check uses <code>#(playerCoords - coords)</code> which returns a float. Make sure <code>checkpointRadius</code> is large enough (at least 3.0).</li>
+            <li>Blip shows at LSIA instead of Sandy Shores: you swapped X and Y. GTA coordinates are (X east, Y north, Z up).</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the blip creation into <code>createWorldBlip(coords, sprite, color, name)</code> so you can place blips with one line.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/natives/?_0x554D9D53" target="_blank" rel="noopener">AddBlipForCoord on docs.fivem.net/natives</a></li>
+            <li><a href="https://docs.fivem.net/natives/?_0x28477EC23D892089" target="_blank" rel="noopener">DrawMarker on docs.fivem.net/natives</a></li>
+            <li><a href="https://docs.fivem.net/natives/?_0x15D757606D170C3C" target="_blank" rel="noopener">CreateCheckpoint on docs.fivem.net/natives</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="map-elements-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Blip vs Marker vs Checkpoint</h3>
+        <ul>
+          <li><strong>Blip.</strong> Radar and map only. Use for "go here" targets.</li>
+          <li><strong>Marker.</strong> 3D world visual. Use when players need to see a destination from the game world.</li>
+          <li><strong>Checkpoint.</strong> Trigger zone with built-in ring. Use for arrival detection.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>GTA V gives you three tools for the same job: guiding a player to a location. A <strong>blip</strong> works on the 2D radar. A <strong>marker</strong> works in the 3D world. A <strong>checkpoint</strong> works as both a visual and a trigger zone. Each one solves a different problem, and you will use all three in nearly every script you write.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a gas station.</p>
+          <p>The GPS (blip) shows the station on a map. The tall sign (marker) is visible from the highway so you know where to turn. The pressure plate at the pump (checkpoint) detects when your car is in the right spot. Three tools, one location.</p>
+          <p>Your map elements work the same way. Place the blip for navigation, the marker for world visibility, and the checkpoint for interaction. Each one lives on the client and is drawn every frame.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most beginners draw markers without cleaning them up or checking distance. The good version is only a few more lines, and it keeps your server fast.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">A marker drawn every frame from the other side of the map wastes GPU time.</p>
+            <figure class="code">
+              <header><span>client.lua, the wasteful version</span></header>
+              <pre><code class="language-lua">-- BAD: draws the marker even when the player is 10km away
+Citizen.CreateThread(function()
+    while true do
+        Wait(0)
+        DrawMarker(2, 1744.0, 3286.0, 43.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.5, 0.5, 0.5, 255, 255, 0, 200,
+            false, false, 2, false, nil, nil, false)
+    end
+end)</code></pre>
+            </figure>
+            <p>No distance check. The marker is drawn for every player on the server, all the time, even when it is not visible. On a 64-player server, that is 64 useless draw calls every frame.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Add a distance guard. Only draw when the player is close enough to see it.</p>
+            <figure class="code">
+              <header><span>client.lua, the efficient version</span></header>
+              <pre><code class="language-lua">-- GOOD: only draws when the player is within 100 meters
+local markerCoords = vector3(1744.0, 3286.0, 43.0)
+local drawDistance = 100.0
+
+Citizen.CreateThread(function()
+    while true do
+        local playerCoords = GetEntityCoords(PlayerPedId())
+        local dist = #(playerCoords - markerCoords)
+        if dist < drawDistance then
+            DrawMarker(2, markerCoords.x, markerCoords.y, markerCoords.z,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.5, 0.5, 0.5, 255, 255, 0, 200,
+                false, false, 2, false, nil, nil, false)
+        end
+        Wait(0)
+    end
+end)</code></pre>
+            </figure>
+            <p>The <code>if dist < drawDistance</code> guard means the <code>DrawMarker</code> call only runs when the player is within 100 meters. That saves 63 draw calls every frame on a full server.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="B01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="resource"> I can create a resource folder with <code>fxmanifest.lua</code> and <code>client.lua</code> (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="coords"> I know how to find coordinates with <code>/coords</code> or a trainer menu (Lesson 03)</label></li>
+          <li><label><input type="checkbox" data-id="threads"> I have used <code>Citizen.CreateThread</code> for a loop before (Lesson 04)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource</h3>
+        </div>
+        <p class="pin-card__lede">One folder, two files. That is all.</p>
+        <ol>
+          <li>Inside <code>resources/</code>, create a folder named <code>qu_map_elements</code>.</li>
+          <li>Create <code>fxmanifest.lua</code> with the bare minimum manifest.</li>
+          <li>Create an empty <code>client.lua</code>.</li>
+          <li>Add <code>ensure qu_map_elements</code> to <code>server.cfg</code>.</li>
+          <li>Save everything. Step 1 is done.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Place the blip</h3>
+        </div>
+        <p class="pin-card__lede">The blip is the easiest of the three. It only runs once.</p>
+        <ol>
+          <li>Open <code>client.lua</code> and define a <code>coords</code> vector3.</li>
+          <li>Call <code>AddBlipForCoord(coords.x, coords.y, coords.z)</code>. Save the return value in a variable.</li>
+          <li>Set the sprite, color, scale, and name with the four <code>SetBlip*</code> natives.</li>
+          <li>Join the server and open the map. The blip should be visible.</li>
+          <li>A blip does not need a loop. It is created once and the game remembers it.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Draw the 3D marker</h3>
+        </div>
+        <p class="pin-card__lede">Markers need a loop. They are drawn fresh every frame.</p>
+        <ol>
+          <li>Add a <code>Citizen.CreateThread</code> block with <code>while true do ... Wait(0) end</code>.</li>
+          <li>Inside the loop, call <code>DrawMarker</code> with type 2 (a floating diamond).</li>
+          <li>Add a distance guard so it only draws when the player is within 100 meters.</li>
+          <li>If the distance check is missing, try commenting it out. You will still see the marker. The guard is for performance, not visibility.</li>
+          <li>Join the server. Fly or drive to the coordinates. The marker should float above the ground.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Add the checkpoint ring</h3>
+        </div>
+        <p class="pin-card__lede">A checkpoint is a visual ring plus a distance check in one thread.</p>
+        <ol>
+          <li>Add a second <code>Citizen.CreateThread</code> loop for the checkpoint.</li>
+          <li>Call <code>CreateCheckpoint</code> with type 47 (a glowing ring). Type 0 is a cylinder.</li>
+          <li>Use <code>#(playerCoords - coords)</code> to measure distance from the player to the checkpoint center.</li>
+          <li>When <code>dist < checkpointRadius</code>, print a line to F8 and maybe break out of the loop to avoid repeated triggers.</li>
+          <li>Walk into the ring. Check F8 for the print line.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Clean up and verify all three</h3>
+        </div>
+        <p class="pin-card__lede">Run each test once and confirm the behavior.</p>
+        <ol>
+          <li>Open the map. Confirm the blip exists and is the correct sprite and color.</li>
+          <li>Drive to the coordinates. Confirm the 3D marker is visible from at least 50 meters away.</li>
+          <li>Drive through the checkpoint ring. Confirm the F8 console prints the expected line.</li>
+          <li>Remove the blip with <code>RemoveBlip(blip)</code> in a test command to make sure you can clean up.</li>
+          <li>All three elements are verified. The lesson is complete.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test, look at what happens, and confirm the expected behavior. If something does not match, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, the blip.</strong>
+            <ul>
+              <li>Action: open the pause menu map and look for the star icon at Sandy Shores airfield.</li>
+              <li>Expected: a yellow star labeled "Test Spot" at coordinates (1744, 3286).</li>
+              <li>How to verify: set a GPS waypoint to the blip. The purple route line should appear.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, the marker.</strong>
+            <ul>
+              <li>Action: drive or fly to the coordinates and look above the ground.</li>
+              <li>Expected: a yellow floating diamond about 2 meters above the ground.</li>
+              <li>How to verify: walk underneath it. The marker should be visible through walls if <code>checkLoS</code> is false.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, the checkpoint.</strong>
+            <ul>
+              <li>Action: walk or drive into the red ring on the ground. Open F8 console.</li>
+              <li>Expected: <code>[QUIET][map_elements] Player entered checkpoint at dist=...</code></li>
+              <li>How to verify: step out and step back in. The message prints each time you enter.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why do markers need a loop but blips do not?</summary>
+            <p>Blips are managed by the game's radar system. You create them once and the game keeps them. Markers are raw 3D shapes that must be drawn every frame, like a particle effect. If you stop calling <code>DrawMarker</code>, the marker disappears.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Blips are created once and persist until removed. No loop needed.</li>
+          <li>Markers must be drawn every frame inside a <code>Citizen.CreateThread</code> loop.</li>
+          <li>Checkpoints combine a visual ring drawn per-frame with a distance check for triggering events.</li>
+          <li>Always add a distance guard to marker and checkpoint loops. Drawing from 10km away is wasted GPU time.</li>
+          <li>All three — blips, markers, checkpoints — are client-only natives. The server cannot draw them.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why do markers need a <code>Citizen.CreateThread</code> loop?</legend>
+            <label><input type="radio" name="q1" value="a"> To save memory on the server.</label>
+            <label><input type="radio" name="q1" value="b"> Because <code>DrawMarker</code> only renders for one frame. You must call it every frame.</label>
+            <label><input type="radio" name="q1" value="c"> Because blips are 2D and markers are 3D.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What side do blips, markers, and checkpoints run on?</legend>
+            <label><input type="radio" name="q2" value="a"> Server only. All players see the same server-drawn elements.</label>
+            <label><input type="radio" name="q2" value="b"> Both sides. The server draws them and the client shows them.</label>
+            <label><input type="radio" name="q2" value="c"> Client only. The server cannot call <code>DrawMarker</code> or <code>AddBlipForCoord</code>.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What does a distance guard like <code>if dist < 100.0</code> do?</legend>
+            <label><input type="radio" name="q3" value="a"> It skips the draw call when the player is too far away to see the element.</label>
+            <label><input type="radio" name="q3" value="b"> It prevents cheaters from teleporting to the marker.</label>
+            <label><input type="radio" name="q3" value="c"> It makes the marker look smaller when you are far away.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to place a map blip with <code>AddBlipForCoord</code> and configure its sprite, color, scale, and name.</li>
+          <li>How to draw a 3D world marker with <code>DrawMarker</code> inside a per-frame loop.</li>
+          <li>How to create a checkpoint ring with <code>CreateCheckpoint</code> and detect when a player enters it.</li>
+          <li>Why markers and checkpoints need a distance guard to avoid wasted draw calls.</li>
+          <li>That all three natives are client-only. The server cannot draw anything in the game world.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a second location — the Los Santos airport main terminal (vector3(-1035.0, -2735.0, 13.0)) — with all three elements. Use a green blip sprite 90 (a skull), a blue marker, and a yellow checkpoint cylinder. Test that everything works independently from the first location.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>F8 console, after entering the LSIA checkpoint</span></header>
+          <pre><code>[QUIET][map_elements] Player entered LSIA checkpoint at dist=2.1</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Duplicate the blip, marker thread, and checkpoint thread for the new coordinates. Change the sprite, colors, and the print message. The two sets run independently.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/natives/?_0x554D9D53" target="_blank" rel="noopener">AddBlipForCoord on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x1FC200" target="_blank" rel="noopener">SetBlipSprite on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x28477EC23D892089" target="_blank" rel="noopener">DrawMarker on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x15D757606D170C3C" target="_blank" rel="noopener">CreateCheckpoint on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+        </ul>
+      </section>

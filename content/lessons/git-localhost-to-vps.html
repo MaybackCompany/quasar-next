@@ -1,0 +1,302 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 02</span></div>
+        <h1>Git localhost to VPS, move your scripts live</h1>
+        <p class="lede">Take a script that works on your development machine and deploy it to a production VPS using Git — so you never drag-and-drop files over FTP again.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A Git workflow that pushes your local resource changes to a remote VPS in one command.</dd></div>
+          <div><dt>Time</dt><dd>About 45 minutes if you set up SSH keys for the first time.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to initialise a Git repo inside your resources folder, connect it to a bare repo on your VPS, and push without typing a password.</dd></div>
+          <div><dt>Prereqs</dt><dd>A VPS running your FiveM server, and Git installed on both machines.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will set up a Git pipeline that:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Lets you commit changes locally and push them to a bare repo on your VPS.</li>
+            <li>Uses a post-receive hook to auto-copy files into your live server directory.</li>
+            <li>Works over SSH with key authentication so you never type a password again.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 02: Git localhost to VPS, move your scripts live</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A way to send code from your computer to a live server without FTP.<br><span>Example: git push production main deploys your scripts in seconds.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>The commands run in your terminal and on the VPS SSH session.<br><span>Example: open two terminal windows, one local and one SSH.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Commit locally, push to a remote named production, and a hook copies the files.<br><span>Example: after git push you refresh the resource in the server console.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Set up one bare repo and push one Lua file through it.<br><span>Example: push a test.txt and see it appear in resources/ on the VPS.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will type <code>git push production main</code> on your local machine and see the changed files appear in your live FiveM resources folder within three seconds.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>FTP drag-and-drop causes missing files, version confusion, and overwritten work. Git gives you history, rollback, and a single command to deploy. When something breaks at 2 AM you can <code>git revert</code> instead of guessing which file you changed.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Remote</dt><dd>A named pointer to another Git repository, usually on another machine.<br><span>Example: git remote add production user@vps:/path/to/repo.git.</span></dd></div>
+            <div><dt tabindex="0">Bare repo</dt><dd>A Git repository with no working files, only the .git database. Used as a push target.<br><span>Example: git init --bare creates a folder that only stores commits.</span></dd></div>
+            <div><dt tabindex="0">Post-receive hook</dt><dd>A script that runs automatically after a push finishes.<br><span>Example: a hook that copies the latest files into resources/.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Local machine</dt><dd><code>Git installed, resources/ is a Git repo</code></dd></div>
+            <div><dt>VPS</dt><dd><code>Git installed, a bare repo at /home/user/fivem.git</code></dd></div>
+            <div><dt>Auth</dt><dd><code>SSH key pair, public key on VPS in ~/.ssh/authorized_keys</code></dd></div>
+            <div><dt>Server path</dt><dd><code>/home/user/txAdmin/server-data/resources/</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[post-receive] deployed to resources/">
+            <header><span class="file">hooks/post-receive</span><span class="lang">Bash</span></header>
+            <pre><code class="language-bash">#!/bin/bash
+# Run after every git push. Copies files to the live server directory.
+TARGET="/home/user/txAdmin/server-data/resources"
+GIT_DIR="$(pwd)"
+
+while read oldrev newrev refname; do
+    git --work-tree="$TARGET" checkout -f "$refname"
+done
+
+echo "[post-receive] deployed to resources/"</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> After <code>git push production main</code>, the terminal shows <code>[post-receive] deployed to resources/</code> and your files appear in the target folder.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>SSH into your VPS and run <code>git init --bare ~/fivem.git</code>.</li>
+            <li>Create the post-receive hook and make it executable with <code>chmod +x</code>.</li>
+            <li>On your local machine, run <code>git init</code> inside your resources folder.</li>
+            <li>Add the VPS remote: <code>git remote add production user@vps:~/fivem.git</code>.</li>
+            <li>Commit a test file and push with <code>git push production main</code>.</li>
+            <li>SSH back to the VPS and confirm the test file arrived in the target directory.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Push a new resource folder called <code>qu_deploy_test</code> that contains a single <code>fxmanifest.lua</code> and confirm it appears on the VPS with correct ownership.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>ls /home/user/txAdmin/server-data/resources/qu_deploy_test/fxmanifest.lua</code> returns the file path on the VPS.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Permission denied (publickey)</code> — your SSH key is not on the VPS. Run <code>ssh-copy-id user@vps</code> to add it.</li>
+            <li><code>remote: fatal: not a git repository</code> — you ran <code>git init</code> instead of <code>git init --bare</code> on the VPS. Delete and recreate.</li>
+            <li>Files appear but are owned by root — the hook runs as your user but the target folder is owned by someone else. <code>chown</code> the target to match.</li>
+            <li>Hook does not execute — the file is not executable. Run <code>chmod +x hooks/post-receive</code> inside the bare repo.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extend the post-receive hook to also run <code>txAdmin restart</code> or an <code>ensure</code> command so the server picks up changes without manual intervention.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://git-scm.com/book/en/v2/Git-on-the-Server-Setting-Up-the-Server" target="_blank" rel="noopener">Pro Git: Setting Up the Server</a></li>
+            <li><a href="https://git-scm.com/docs/githooks#post-receive" target="_blank" rel="noopener">Git post-receive hook documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server/" target="_blank" rel="noopener">FiveM server setup guide</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="git-deploy-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Git deploy commands</h3>
+        <ul>
+          <li><strong><code>git push production main</code></strong> — deploy everything from main branch to the VPS.</li>
+          <li><strong><code>git push production main --force</code></strong> — overwrite the remote (dangerous, only when you know why).</li>
+          <li><strong><code>ssh user@vps "ls resources/"</code></strong> — check what is on the VPS without opening a full session.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>FiveM development is fast and iterative. You change one line, restart the resource, and test. Doing that over FTP means every change is: save, open FileZilla, drag, wait, restart. Doing it over Git means: save, <code>git push</code>, restart. The overhead drops from thirty seconds to two. Over a hundred changes per session that is the difference between staying in flow and losing it entirely.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a mailroom with a pneumatic tube.</p>
+          <p>FTP is walking a letter to the post office every time you write one. Git is a pneumatic tube. You drop the letter into the tube on your desk, whoosh, it arrives at the mailroom. The tube is the SSH connection. The post-receive hook is the clerk at the other end who opens the canister and puts the letter in the right slot.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="vps"> I can SSH into my VPS and run commands there.</label></li>
+          <li><label><input type="checkbox" data-id="git-local"> I have Git installed on my local machine and can run <code>git --version</code>.</label></li>
+          <li><label><input type="checkbox" data-id="resources"> I know where my FiveM resources folder lives on the VPS.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the bare repo on your VPS</h3>
+        </div>
+        <p class="pin-card__lede">A bare repo has no working files — it only stores commits. That is exactly what we need as a push target.</p>
+        <ol>
+          <li>SSH into your VPS: <code>ssh user@your-vps-ip</code>.</li>
+          <li>Navigate to your home directory: <code>cd ~</code>.</li>
+          <li>Run: <code>git init --bare fivem.git</code>.</li>
+          <li>This creates a folder <code>~/fivem.git/</code> with Git internals but no working tree.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the post-receive hook</h3>
+        </div>
+        <p class="pin-card__lede">The hook runs after every push. It checks out the latest code into your live resources folder.</p>
+        <ol>
+          <li>On the VPS, navigate into the bare repo: <code>cd ~/fivem.git/hooks</code>.</li>
+          <li>Create a file named <code>post-receive</code>: <code>nano post-receive</code>.</li>
+          <li>Paste the script from the Minimal Example above. Update <code>TARGET</code> to point at your actual resources folder.</li>
+          <li>Save and exit. Make it executable: <code>chmod +x post-receive</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Set up your local Git repo</h3>
+        </div>
+        <p class="pin-card__lede">Your local resources folder becomes a Git repository that pushes to the VPS.</p>
+        <ol>
+          <li>On your local machine, open a terminal in your FiveM resources folder.</li>
+          <li>Run <code>git init</code> to create a new repository.</li>
+          <li>Create a <code>.gitignore</code> file and add <code>*.log</code> and <code>cache/</code> to it.</li>
+          <li>Run <code>git add -A</code> to stage everything, then <code>git commit -m "initial commit"</code>.</li>
+          <li>Add the remote: <code>git remote add production user@vps-ip:~/fivem.git</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Push and verify</h3>
+        </div>
+        <p class="pin-card__lede">One push confirms the entire pipeline works.</p>
+        <ol>
+          <li>Run <code>git push production main</code> on your local machine.</li>
+          <li>Watch the terminal output. You should see the hook message: <code>[post-receive] deployed to resources/</code>.</li>
+          <li>SSH back to the VPS and run <code>ls resources/</code>. Your files should be there.</li>
+          <li>If anything is missing, check the hook path and target folder permissions.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Two tests, in order</h3></header>
+        <p>Run each test and confirm the result before considering the setup complete.</p>
+        <ol>
+          <li>
+            <strong>Test 1, first push.</strong>
+            <ul>
+              <li>Action: change one line in any <code>server.lua</code>, commit, and push.</li>
+              <li>Expected: the hook output appears, and the file on the VPS has the new line.</li>
+              <li>How to verify: <code>ssh user@vps "cat resources/my_resource/server.lua"</code> shows your change.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, restart without FTP.</strong>
+            <ul>
+              <li>Action: push a new resource folder, then type <code>ensure my_new_resource</code> in the server console.</li>
+              <li>Expected: the resource starts and shows its startup message.</li>
+              <li>How to verify: server console prints the resource name with no errors.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why a bare repo instead of a normal one?</summary>
+            <p>A normal repo has a working tree — actual files checked out on disk. If you push to a normal repo, the working tree does not update automatically and you get a confusing error. A bare repo has no working tree, so it accepts pushes cleanly. The post-receive hook then manually creates the working tree at your target path.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What does the post-receive hook do?</legend>
+            <label><input type="radio" name="q1" value="a"> It sends an email after every push.</label>
+            <label><input type="radio" name="q1" value="b"> It runs automatically after a push and copies files to the live server directory.</label>
+            <label><input type="radio" name="q1" value="c"> It encrypts the repository after a push completes.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. Why do you use git init --bare instead of git init on the VPS?</legend>
+            <label><input type="radio" name="q2" value="a"> Bare repos are faster to clone.</label>
+            <label><input type="radio" name="q2" value="b"> Bare repos use less disk space.</label>
+            <label><input type="radio" name="q2" value="c"> A bare repo has no working tree, so it can accept pushes without conflicts.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What does git remote add production do?</legend>
+            <label><input type="radio" name="q3" value="a"> It creates a named shortcut called production that points to a remote repository URL.</label>
+            <label><input type="radio" name="q3" value="b"> It starts a production server on the remote machine.</label>
+            <label><input type="radio" name="q3" value="c"> It merges production code into your local branch.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to create a bare Git repository on a VPS that accepts pushes without a working tree.</li>
+          <li>How a post-receive hook automates file deployment after every push.</li>
+          <li>How to set up SSH key authentication so pushes require no password.</li>
+          <li>Why Git-based deployment replaces FTP for any serious FiveM project.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a second line to the post-receive hook that writes the current date and branch name to a <code>deploy.log</code> file on the VPS. Push a change and confirm the log entry appears.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>deploy.log on VPS</span></header>
+          <pre><code>2025-06-19 14:30:00 | refs/heads/main | deployed to resources/</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Add <code>echo "$(date '+%Y-%m-%d %H:%M:%S') | $refname" >> ~/deploy.log</code> inside the while loop in the hook.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://git-scm.com/book/en/v2/Git-on-the-Server-Getting-Git-on-a-Server" target="_blank" rel="noopener">Pro Git: Getting Git on a Server</a></li>
+          <li><a href="https://www.ssh.com/academy/ssh/keygen" target="_blank" rel="noopener">SSH key generation guide</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" target="_blank" rel="noopener">FiveM txAdmin server setup</a></li>
+        </ul>
+      </section>

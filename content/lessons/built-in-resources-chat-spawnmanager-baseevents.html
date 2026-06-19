@@ -1,0 +1,305 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 07</span></div>
+        <h1>Built-in resources, chat, spawnmanager, baseevents</h1>
+        <p class="lede">FiveM ships with hidden resources that power chat, player spawning, and the event system. Learn what they do, where they live, and why breaking them breaks your entire server.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A clear mental map of every built-in FiveM resource, what it provides, and the exact events and exports you already depend on without knowing it.</dd></div>
+          <div><dt>Time</dt><dd>About 20 minutes to read and trace the events.</dd></div>
+          <div><dt>You'll learn</dt><dd>What chat, spawnmanager, baseevents, and seven other built-ins do — and which ones you can safely replace vs which ones you must never touch.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have typed / commands in chat and seen players spawn. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will understand that:</strong></p>
+          <ul class="tldr-card__points">
+            <li><code>chat</code> is a resource that captures your /messages and turns them into events your scripts can listen for.</li>
+            <li><code>spawnmanager</code> is why players appear at the airport on first join — and how you override that location.</li>
+            <li><code>baseevents</code> fires <code>onPlayerDied</code>, <code>onPlayerKilled</code>, and other core events that every death-log script depends on.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 07: Built-in resources, chat, spawnmanager, baseevents</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A tour of the resources FiveM loads automatically before yours, and the events they provide.<br><span>Example: the chat resource gives you chat:addMessage without any script on your part.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Built-in resources live inside the server binaries, not in your resources/ folder.<br><span>Example: you cannot delete chat/ from your resources folder because it is not there.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>You do not ensure them. FiveM starts them before any of your scripts run.<br><span>Example: spawnmanager is always running; you just call its exports.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Trace one event from each built-in resource and confirm it fires.<br><span>Example: listen for onPlayerDied in your own resource and print the killer.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will write a small resource that listens for <code>onPlayerDied</code> (from baseevents), <code>chatMessage</code> (from chat), and <code>playerSpawned</code> (from spawnmanager) — and prints each one to the console as they happen.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Every day, a beginner posts "my death script stopped working" because they accidentally stopped or replaced <code>baseevents</code>. Knowing what the built-ins do and which events they own means you debug server-wide problems in minutes instead of hours.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Built-in resource</dt><dd>A resource embedded in the FiveM server executable, started automatically before any user resources.<br><span>Example: chat, spawnmanager, baseevents, sessionmanager, hardcap, rpc, webadmin, monitor.</span></dd></div>
+            <div><dt tabindex="0">chat:addMessage</dt><dd>The export provided by the chat resource to show text in the chat box.<br><span>Example: exports['chat']:addMessage({ args = { 'Hello', 'world' } }) — no script needed.</span></dd></div>
+            <div><dt tabindex="0">spawnmanager</dt><dd>The resource that decides where and how players appear when they first join.<br><span>Example: by default it spawns you at the airport. You override it with setAutoSpawnCallback.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_builtins_test</code></dd></div>
+            <div><dt>Files</dt><dd><code>fxmanifest.lua, server.lua, client.lua</code></dd></div>
+            <div><dt>Dependencies</dt><dd><code>None — built-in events fire regardless</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_builtins_test</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qu_builtins] playerDied source=1 killer=2 | [qu_builtins] chatMessage | [qu_builtins] playerSpawned">
+            <header><span class="file">qu_builtins_test/server.lua and client.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- server.lua: listen for built-in events that fire on the server
+AddEventHandler('onPlayerDied', function(killer, reason)
+    print(('[qu_builtins] playerDied source=%s killer=%s reason=%s')
+        :format(source, killer, reason))
+end)
+
+AddEventHandler('chatMessage', function(source, name, message)
+    print(('[qu_builtins] chatMessage from %s: %s'):format(name, message))
+end)
+
+-- client.lua: listen for built-in events that fire on the client
+AddEventHandler('playerSpawned', function()
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+    print(('[qu_builtins] playerSpawned at x=%.1f y=%.1f z=%.1f')
+        :format(coords.x, coords.y, coords.z))
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> Typing anything in chat prints the message. Dying prints the death event. Joining prints spawn coordinates. All from built-in resources you never wrote.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>qu_builtins_test</code> with fxmanifest.lua, server.lua, and client.lua.</li>
+            <li>Paste the server event handlers from the example.</li>
+            <li>Paste the client event handler from the example.</li>
+            <li>Ensure the resource and join the server.</li>
+            <li>Type a message in chat. Confirm it appears in the server console.</li>
+            <li>Die in-game (fall damage works). Confirm the death event prints.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a handler for <code>onPlayerKilled</code> (note: different from onPlayerDied) that prints the weapon hash of the killing weapon. Then get yourself killed with a pistol and confirm the hash appears.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[qu_builtins] playerKilled by weapon hash: 453432689</code> (the pistol hash) appears in the console when you shoot yourself or get shot.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>chatMessage</code> handler never fires — you registered it on the client but it fires on the server. Move the handler to server.lua.</li>
+            <li><code>playerSpawned</code> never fires — you registered it on the server but it fires on the client. Move to client.lua.</li>
+            <li>Death events fire twice — both <code>onPlayerDied</code> and <code>onPlayerKilled</code> fire on death. They are different events with different parameters. Pick the one you need.</li>
+            <li>Spawnmanager override does not work — you must call <code>setAutoSpawnCallback</code> before the player finishes loading. Use it in a resource that starts early, or add it to a shared script.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Create a custom spawn point using <code>exports.spawnmanager:setAutoSpawnCallback</code> that reads coordinates from your config.lua, so every new player spawns at your custom location instead of the airport.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/resources/chat/" target="_blank" rel="noopener">FiveM chat resource documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/resources/spawnmanager/" target="_blank" rel="noopener">FiveM spawnmanager documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/resources/baseevents/" target="_blank" rel="noopener">FiveM baseevents documentation</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="builtins-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>All built-in resources at a glance</h3>
+        <ul>
+          <li><strong>chat</strong> — Captures chat input, provides <code>chat:addMessage</code> export and <code>chatMessage</code> event.</li>
+          <li><strong>spawnmanager</strong> — Controls player spawns. Provides <code>spawnPlayer</code>, <code>setAutoSpawn</code>, <code>forceRespawn</code> exports.</li>
+          <li><strong>baseevents</strong> — Fires <code>onPlayerDied</code>, <code>onPlayerKilled</code>, <code>onPlayerWasted</code>, <code>onPlayerActivatedLocally</code>.</li>
+          <li><strong>sessionmanager</strong> — Manages player slots, deferrals, and the connecting screen. Do not touch.</li>
+          <li><strong>hardcap</strong> — Enforces player slot limits. Do not disable unless you know why.</li>
+          <li><strong>webadmin</strong> — The built-in web admin panel at port 30120. Can be disabled.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>When you type <code>/heal</code> and it works, you thank your script. But your script only runs because <code>chat</code> captured the keystrokes, turned them into a <code>chatMessage</code> event, and passed them to <code>RegisterCommand</code>. When a player dies and your death log writes to the database, it works because <code>baseevents</code> fired <code>onPlayerDied</code>. These built-in resources are the platform underneath your platform. They are invisible until they break — and then nothing works.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a house's plumbing.</p>
+          <p>You turn on the tap and water comes out. You do not think about the pipes in the walls. Chat, spawnmanager, and baseevents are the pipes. Your heal command is the tap. If you rip out the pipes, the tap runs dry. Knowing where the pipes run means you know where to look when the water stops.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="events"> I have used <code>AddEventHandler</code> in at least one script.</label></li>
+          <li><label><input type="checkbox" data-id="chat"> I have typed commands in FiveM chat before.</label></li>
+          <li><label><input type="checkbox" data-id="spawn"> I have seen a player spawn at the airport on first join.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the listener resource</h3>
+        </div>
+        <p class="pin-card__lede">This resource does nothing but listen. It is a stethoscope on the built-in event system.</p>
+        <ol>
+          <li>Create <code>resources/qu_builtins_test/</code> with <code>fxmanifest.lua</code>.</li>
+          <li>The manifest needs <code>fx_version 'cerulean'</code>, <code>game 'gta5'</code>, <code>server_script 'server.lua'</code>, <code>client_script 'client.lua'</code>.</li>
+          <li>Create both script files. Leave them empty for now.</li>
+          <li>Ensure the resource: <code>ensure qu_builtins_test</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Listen for chat and death events on the server</h3>
+        </div>
+        <p class="pin-card__lede">These events fire on the server. Registering them on the client does nothing.</p>
+        <ol>
+          <li>Paste the server.lua code from the Minimal Example.</li>
+          <li><code>chatMessage</code> receives the player's server ID, their name, and the raw message string.</li>
+          <li><code>onPlayerDied</code> receives the killer entity (or -1 for environmental), the death reason hash, and sets <code>source</code> to the victim.</li>
+          <li>Save. Type something in chat in-game. The console prints it.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Listen for spawn events on the client</h3>
+        </div>
+        <p class="pin-card__lede">The spawn event fires on the client, because the player's character exists on their machine.</p>
+        <ol>
+          <li>Paste the client.lua code from the Minimal Example.</li>
+          <li><code>playerSpawned</code> fires after the player model is loaded and placed in the world.</li>
+          <li>It is the safest moment to run native calls like <code>GetEntityCoords</code>.</li>
+          <li>Save. Rejoin the server. The console prints your spawn coordinates.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three observations, in order</h3></header>
+        <p>Run each test and watch the console. Every line you see was fired by code you did not write.</p>
+        <ol>
+          <li>
+            <strong>Observation 1: chat.</strong>
+            <ul>
+              <li>Action: type "hello world" in chat.</li>
+              <li>Expected: console prints <code>[qu_builtins] chatMessage from YourName: hello world</code>.</li>
+              <li>What it means: the chat resource intercepted your keystroke and broadcast it as an event.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Observation 2: death.</strong>
+            <ul>
+              <li>Action: die from fall damage or a weapon.</li>
+              <li>Expected: console prints <code>[qu_builtins] playerDied source=1 killer=-1 reason=...</code>.</li>
+              <li>What it means: baseevents detected the death and fired the event for any script to use.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Observation 3: spawn.</strong>
+            <ul>
+              <li>Action: rejoin the server.</li>
+              <li>Expected: console prints <code>[qu_builtins] playerSpawned at x=...</code>.</li>
+              <li>What it means: spawnmanager placed your character and announced it.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Can I disable a built-in resource like chat?</summary>
+            <p>You can, but then <code>chat:addMessage</code> and <code>RegisterCommand</code> stop working. Most servers replace chat with a custom one (like chat-theme resources) but keep the underlying resource running. Disabling it completely breaks command registration. Only disable built-ins if you have a replacement that provides the same events and exports.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="c">
+            <legend>1. Where does the chatMessage event fire?</legend>
+            <label><input type="radio" name="q1" value="a"> On the client only.</label>
+            <label><input type="radio" name="q1" value="b"> On both client and server simultaneously.</label>
+            <label><input type="radio" name="q1" value="c"> On the server only.</label>
+          </fieldset>
+          <fieldset data-answer="b">
+            <legend>2. What built-in resource provides the onPlayerDied event?</legend>
+            <label><input type="radio" name="q2" value="a"> spawnmanager.</label>
+            <label><input type="radio" name="q2" value="b"> baseevents.</label>
+            <label><input type="radio" name="q2" value="c"> sessionmanager.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why does playerSpawned fire on the client and not the server?</legend>
+            <label><input type="radio" name="q3" value="a"> The character model exists on the player's computer. The server only knows about it indirectly.</label>
+            <label><input type="radio" name="q3" value="b"> Because the server does not support events.</label>
+            <label><input type="radio" name="q3" value="c"> It fires on both. The question is wrong.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>The names and roles of the three most important built-in resources: chat, spawnmanager, and baseevents.</li>
+          <li>Which events fire on the server (chatMessage, onPlayerDied) vs the client (playerSpawned).</li>
+          <li>Why you should never disable built-in resources unless you have a drop-in replacement.</li>
+          <li>How to listen for built-in events in your own resources to build features on top of them.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Use <code>exports.spawnmanager:setAutoSpawnCallback</code> in client.lua to move the spawn point to Legion Square (vector3: 215.0, -930.0, 30.0). Force a respawn and confirm you appear there instead of the airport.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>client console after rejoin</span></header>
+          <pre><code>[qu_builtins] playerSpawned at x=215.0 y=-930.0 z=30.0</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>The callback must be set before the player spawns. Put it at the top of client.lua: <code>exports.spawnmanager:setAutoSpawnCallback(function() exports.spawnmanager:spawnPlayer({ x = 215.0, y = -930.0, z = 30.0 }) end)</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/resources/chat/" target="_blank" rel="noopener">FiveM chat resource reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/resources/spawnmanager/" target="_blank" rel="noopener">FiveM spawnmanager reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/resources/baseevents/" target="_blank" rel="noopener">FiveM baseevents reference</a></li>
+        </ul>
+      </section>

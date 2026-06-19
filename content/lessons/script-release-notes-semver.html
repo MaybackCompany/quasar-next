@@ -1,0 +1,363 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 08 · Lesson 04</span></div>
+        <h1>Semantic versioning and release notes for scripts</h1>
+        <p class="lede">By the end of this lesson you will version your FiveM scripts with semantic versioning (semver), write release notes that customers actually read, and stop breaking servers with silent updates.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A versioned script with a <code>version.lua</code> manifest, a <code>CHANGELOG.md</code> that follows semver rules, and a release pipeline that tells customers what changed before they update.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to read and write semantic versions, what each number means, and how to write release notes that reduce support tickets by half.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have shipped or plan to ship a script to paying customers. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a versioning system that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Tag every release with a semantic version like <code>1.2.0</code> where each number has a clear, enforceable meaning.</li>
+            <li>Write release notes in a <code>CHANGELOG.md</code> format that tells customers exactly what is new, what is fixed, and what might break their setup.</li>
+            <li>Add a version check in your script that warns customers when they are running an outdated version.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 04: Semantic versioning and release notes</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Semver is a three-number version format: MAJOR.MINOR.PATCH.<br><span>Example: this lesson versions a script from 0.1.0 to 1.0.0.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find the version in <code>version.lua</code> and <code>CHANGELOG.md</code>.<br><span>Example: check the version before every release.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Bump the right number based on what changed, then write notes.<br><span>Example: a bugfix bumps PATCH, a feature bumps MINOR.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Version one script and write one release note entry.<br><span>Example: match the expected format before shipping.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will version a script at <code>1.0.0</code> and produce a <code>CHANGELOG.md</code> entry that follows semver rules.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Without clear versions, customers cannot know if an update breaks their setup. Without release notes, they open support tickets for every change.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">MAJOR</dt><dd>Incremented when you make incompatible API changes.<br><span>Example: renaming an export from <code>giveItem</code> to <code>addItem</code> is a MAJOR change.</span></dd></div>
+            <div><dt tabindex="0">MINOR</dt><dd>Incremented when you add backward-compatible features.<br><span>Example: adding a new /repair command without changing old commands.</span></dd></div>
+            <div><dt tabindex="0">PATCH</dt><dd>Incremented when you fix bugs without adding features.<br><span>Example: fixing a nil value error in the heal command.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_version</code></dd></div>
+            <div><dt>Side</dt><dd><code>shared</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_version/version.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_version</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][version]">
+            <header><span class="file">qu_version/version.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'version'
+
+local VERSION = {
+    major = 1,
+    minor = 0,
+    patch = 0,
+}
+local VERSION_STRING = ('%d.%d.%d'):format(VERSION.major, VERSION.minor, VERSION.patch)
+
+AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        print(('[QUIET][%s][start] version=%s'):format(MODULE, VERSION_STRING))
+    end
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][version][start] version=1.0.0</code> appears in the console on resource start.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>version.lua</code> with MAJOR, MINOR, PATCH fields.</li>
+            <li>Create <code>CHANGELOG.md</code> in the resource root.</li>
+            <li>Write the first release entry for version <code>1.0.0</code>.</li>
+            <li>Add a startup log that prints the version string.</li>
+            <li>Tag the release in your Git repository with <code>v1.0.0</code>.</li>
+            <li>Confirm the console prints the correct version on startup.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Simulate a bugfix release. Bump the PATCH version to <code>1.0.1</code>, add a changelog entry under "Fixed", and confirm the console prints the new version.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][version][start] version=1.0.1</code> appears within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>version mismatch between files</code> means <code>version.lua</code> and <code>CHANGELOG.md</code> show different numbers. Update both together.</li>
+            <li><code>bumping MAJOR for a bugfix</code> means customers think their setup will break when it will not. They ignore future MAJOR warnings.</li>
+            <li><code>no changelog entry for a breaking change</code> means customers update blind, hit an error, and open angry tickets.</li>
+            <li><code>version not exposed to customers</code> means when they report a bug, you do not know which version they are running.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract version comparison into <code>isOutdated(current, latest)</code> so your script can auto-check against your release server on startup.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://semver.org/" target="_blank" rel="noopener">Semantic Versioning 2.0.0 specification</a></li>
+            <li><a href="https://keepachangelog.com/" target="_blank" rel="noopener">Keep a Changelog format guide</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="semver-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Semver decision table</h3>
+        <ul>
+          <li><strong>Fixed a typo?</strong> Bump PATCH. <code>1.0.0 → 1.0.1</code></li>
+          <li><strong>Added a new command?</strong> Bump MINOR, reset PATCH to 0. <code>1.0.1 → 1.1.0</code></li>
+          <li><strong>Renamed an export?</strong> Bump MAJOR, reset MINOR and PATCH to 0. <code>1.1.0 → 2.0.0</code></li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>A version number is a promise. <code>1.2.3</code> tells the customer: "This is the first major version, with two feature additions, and three bugfixes since those features landed." When you bump MAJOR, you are saying "something you rely on changed — read the notes before updating." When you bump PATCH, you are saying "nothing changed except the bug is gone — update with confidence." If you use version numbers randomly, the numbers mean nothing and customers ignore them.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a car model.</p>
+          <p>The MAJOR version is the model generation — a 2024 model versus a 2023 model. Different body, different features. The MINOR version is the trim level — the same car with a sunroof added. The PATCH version is the recall fix — the same car with a bolt tightened. You would not call a bolt fix a new model year, and you should not call a renamed export a patch.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most developers either do not version at all, or they version randomly. Both confuse customers.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">No version, or a meaningless version. No changelog.</p>
+            <figure class="code">
+              <header><span>server.lua, no versioning</span></header>
+              <pre><code class="language-lua">-- BAD: no version, no changelog, no tracking
+-- Customer: "Is this the latest?"
+-- You: "I don't know, when did you download it?"
+
+-- version = "latest" -- meaningless
+-- version = "v2"       -- what changed from v1?
+-- version = "final"    -- never say final
+
+-- No version.lua. No CHANGELOG.md.
+-- Every update is a surprise.</code></pre>
+            </figure>
+            <p>Customers cannot tell what version they have. You cannot reproduce bugs. Every update is a gamble because no one knows what changed.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Semver in code, changelog in a file, version printed on every startup.</p>
+            <figure class="code">
+              <header><span>version.lua + CHANGELOG.md</span></header>
+              <pre><code class="language-lua">-- GOOD: semver + changelog + startup log
+-- version.lua
+local VERSION = { major = 1, minor = 2, patch = 0 }
+local STR = '1.2.0'
+
+-- CHANGELOG.md example:
+## [1.2.0] - 2025-06-15
+### Added
+- `/repair` command for vehicle repair
+- Config option `RepairCost` to set price
+### Fixed
+- Heal command nil error on empty server
+### Changed
+- Cooldown increased to 90 seconds
+
+-- Startup log verifies the version
+print(('[qu_script] Starting version %s'):format(STR))</code></pre>
+            </figure>
+            <p>The version is machine-readable and human-readable. The changelog is dated and organized by change type. The startup log confirms the version in every console.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="script"> I have a script with at least one <code>server.lua</code> or <code>client.lua</code> file (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="git"> I use Git or another version control system (this lesson)</label></li>
+          <li><label><input type="checkbox" data-id="changelog"> I have seen a changelog before (this lesson)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create version.lua</h3>
+        </div>
+        <p class="pin-card__lede">One file that holds the version. Every other file can read it.</p>
+        <ol>
+          <li>Create <code>version.lua</code> in your resource root.</li>
+          <li>Define <code>VERSION = { major = 1, minor = 0, patch = 0 }</code>.</li>
+          <li>Define <code>VERSION_STRING = '1.0.0'</code> for logging.</li>
+          <li>Add <code>version.lua</code> to <code>fxmanifest.lua</code> as a shared script so both client and server can read it.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write your first changelog entry</h3>
+        </div>
+        <p class="pin-card__lede">A changelog is a dated record of every change, organized by type.</p>
+        <ol>
+          <li>Create <code>CHANGELOG.md</code> in your resource root.</li>
+          <li>Write the header: <code>## [1.0.0] - YYYY-MM-DD</code>.</li>
+          <li>Under it, add sections: <code>### Added</code>, <code>### Fixed</code>, <code>### Changed</code>.</li>
+          <li>Write one bullet per change. Keep each bullet to one line. Customers skim — do not write paragraphs.</li>
+          <li>Save the file. This is now the source of truth for what changed.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Decide when to bump each number</h3>
+        </div>
+        <p class="pin-card__lede">The hardest part of semver is discipline. Use this table every time.</p>
+        <ol>
+          <li><strong>PATCH:</strong> you fixed a bug. Nothing was added, nothing was renamed. Bump <code>1.0.0 → 1.0.1</code>.</li>
+          <li><strong>MINOR:</strong> you added a feature, but old features still work the same way. Bump <code>1.0.1 → 1.1.0</code>, reset PATCH to 0.</li>
+          <li><strong>MAJOR:</strong> you changed or removed something customers depend on. Bump <code>1.1.0 → 2.0.0</code>, reset MINOR and PATCH to 0.</li>
+          <li>If you are not sure, bump the lower number. It is safer to under-bump than over-bump.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and verify the output before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, version log on startup.</strong>
+            <ul>
+              <li>Action: start the resource and check the console.</li>
+              <li>Expected: the console prints <code>[QUIET][version][start] version=1.0.0</code>.</li>
+              <li>How to verify: the version string matches <code>version.lua</code> exactly.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, changelog and version match.</strong>
+            <ul>
+              <li>Action: compare the top entry in <code>CHANGELOG.md</code> to <code>version.lua</code>.</li>
+              <li>Expected: the version number in the changelog header matches <code>VERSION_STRING</code>.</li>
+              <li>How to verify: both say <code>1.0.0</code>. If they differ, update one of them.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, semver discipline.</strong>
+            <ul>
+              <li>Action: look at your last three commits. Classify each as PATCH, MINOR, or MAJOR.</li>
+              <li>Expected: your current version reflects the highest classification among those commits.</li>
+              <li>How to verify: if you added a feature, the MINOR number increased. If you only fixed bugs, only PATCH increased.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>What if I need to bump two numbers at once?</summary>
+            <p>You never do. If you bump MINOR, PATCH resets to 0. If you bump MAJOR, MINOR and PATCH reset to 0. The highest-level change determines the version.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Every release has a semver tag: MAJOR.MINOR.PATCH.</li>
+          <li>MAJOR means breaking changes. MINOR means new features. PATCH means bugfixes.</li>
+          <li>The changelog is dated and organized into Added, Fixed, and Changed sections.</li>
+          <li>The version is printed on every resource start so console logs are always traceable.</li>
+          <li>Git tags match the version string exactly: <code>v1.0.0</code>.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. You rename an export from <code>healPlayer</code> to <code>HealPlayer</code>. Which number do you bump?</legend>
+            <label><input type="radio" name="q1" value="a"> PATCH — it is just a rename.</label>
+            <label><input type="radio" name="q1" value="b"> MAJOR — existing customer code that calls <code>healPlayer</code> will break.</label>
+            <label><input type="radio" name="q1" value="c"> MINOR — it is a new feature that the export name is capitalized.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. You fix a nil-check bug. No features added. What do you bump?</legend>
+            <label><input type="radio" name="q2" value="a"> MAJOR — any nil error is serious.</label>
+            <label><input type="radio" name="q2" value="b"> MINOR — fixing bugs improves the product.</label>
+            <label><input type="radio" name="q2" value="c"> PATCH — only a bug was fixed, nothing new was added.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why put the version in a separate <code>version.lua</code> instead of hardcoding it in every file?</legend>
+            <label><input type="radio" name="q3" value="a"> One file is the single source of truth. Change it once and every file reads the same version.</label>
+            <label><input type="radio" name="q3" value="b"> FiveM requires version.lua for escrow to work.</label>
+            <label><input type="radio" name="q3" value="c"> Hardcoding is faster at runtime.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How semantic versioning works: MAJOR.MINOR.PATCH.</li>
+          <li>How to create a <code>version.lua</code> file as the single source of truth.</li>
+          <li>How to write a <code>CHANGELOG.md</code> with Added, Fixed, and Changed sections.</li>
+          <li>When to bump MAJOR (breaking), MINOR (feature), or PATCH (bugfix).</li>
+          <li>Why printing the version on startup makes every console log traceable.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add an auto-version-check on startup. The script fetches the latest version from your release server and prints a warning if the running version is behind.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>Console, outdated version</span></header>
+          <pre><code>[version] WARNING: running 1.0.0, latest is 1.1.0. Update at yourstore.tebex.io</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Use <code>PerformHttpRequest</code> to fetch a JSON endpoint that returns <code>{"version":"1.1.0"}</code>. Compare it to <code>VERSION_STRING</code> and print the warning if they differ.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://semver.org/" target="_blank" rel="noopener">Semantic Versioning 2.0.0</a></li>
+          <li><a href="https://keepachangelog.com/en/1.1.0/" target="_blank" rel="noopener">Keep a Changelog format</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/#performhttprequest" target="_blank" rel="noopener">PerformHttpRequest documentation</a></li>
+        </ul>
+      </section>

@@ -1,0 +1,372 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 10 · Lesson 08</span></div>
+        <h1>Support workflow for paid and premium scripts</h1>
+        <p class="lede">By the end of this lesson you will have a support workflow that triages tickets into three buckets (self-serve, you-fix, their-fix), responds to paying customers within 24 hours, and protects your development time from becoming free consulting.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A Discord-based support system with a ticket bot, a triage script, and response templates that solve 70% of issues before you read the ticket.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to set boundaries between paid support and custom development, how to write templates that extract the right information, and how to track support load so you know when to raise prices.</dd></div>
+          <div><dt>Prereqs</dt><dd>You sell or plan to sell a paid FiveM script. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a support workflow that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Route every ticket through a bot that asks for the transaction ID, script version, and error message before a human sees it.</li>
+            <li>Apply the three-bucket triage: self-serve (point to docs), your-fix (bug you own), and their-fix (misconfiguration on their server).</li>
+            <li>Track resolution time per ticket so you know when support load exceeds what your price covers.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 08: Paid script support workflow</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A support workflow is a repeatable process for handling customer issues.<br><span>Example: this lesson gives the smallest useful workflow.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find it in your Discord server under a #support channel or forum.<br><span>Example: check the ticket template before responding.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Triage the ticket, respond with the matching template, close when resolved.<br><span>Example: resolve one ticket before building more templates.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Set up one Discord forum channel with the triage template.<br><span>Example: handle one test ticket before going live.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will create a Discord support channel with a bot template that collects transaction IDs and version numbers automatically.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Untriaged support is a time sink that scales with every sale. A workflow makes support scale with templates, not with your hours.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Triage</dt><dd>Sorting tickets into categories based on who is responsible for the fix.<br><span>Example: a config typo is their-fix, a nil error on startup is your-fix.</span></dd></div>
+            <div><dt tabindex="0">SLA</dt><dd>Service Level Agreement — the promised response time for support.<br><span>Example: "All tickets responded to within 24 hours, resolved within 72."</span></dd></div>
+            <div><dt tabindex="0">Ticket Template</dt><dd>A form that captures required information before the conversation starts.<br><span>Example: "Transaction ID: ___ Version: ___ Error message: ___".</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd>Discord Server (not a FiveM resource)</dd></div>
+            <div><dt>Side</dt><dd>N/A</dd></div>
+            <div><dt>File path</dt><dd><code>support/templates.md</code> (in your project repo)</dd></div>
+            <div><dt>Ensure order</dt><dd>N/A</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Ticket triaged to bucket: your-fix">
+            <header><span class="file">support/triage.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'triage'
+
+local BUCKETS = {
+    SELF_SERVE = 'self-serve',
+    YOUR_FIX = 'your-fix',
+    THEIR_FIX = 'their-fix',
+}
+
+local function triageTicket(message)
+    local lowered = message:lower()
+    if lowered:match('how do i') or lowered:match('where is') then
+        return BUCKETS.SELF_SERVE, 'Point to documentation.'
+    elseif lowered:match('error') or lowered:match('crash') or lowered:match('nil') then
+        if lowered:match('server%.cfg') or lowered:match('config') then
+            return BUCKETS.THEIR_FIX, 'Misconfiguration on their server.'
+        end
+        return BUCKETS.YOUR_FIX, 'Potential bug in the script.'
+    end
+    return BUCKETS.YOUR_FIX, 'Needs investigation.'
+end
+
+print(('[QUIET][%s] ready'):format(MODULE))</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][triage] ready</code> and the triage function classifies a test message correctly.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create a Discord forum channel for support tickets.</li>
+            <li>Set up a ticket template that asks for transaction ID, version, and error message.</li>
+            <li>Write the triage function that classifies tickets into three buckets.</li>
+            <li>Write response templates for each bucket.</li>
+            <li>Handle one real or simulated ticket end-to-end.</li>
+            <li>Log the resolution time and bucket.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a fourth bucket: <code>FEATURE_REQUEST</code>. When a ticket contains "can you add" or "I wish it had", route it to a public feature-request board instead of your support queue.</p>
+          <p class="expected-output"><strong>Expected output:</strong> the ticket is auto-closed with a message linking to the feature request board.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>every ticket becomes custom development</code> means you are not enforcing the boundary between "the script is broken" and "can you change the script to do X."</li>
+            <li><code>customer cannot find their transaction ID</code> means your delivery email or Tebex page does not display it prominently. Add it to the welcome message.</li>
+            <li><code>support takes 4 hours per day</code> means your documentation is missing the answers to the top 5 questions. Write those docs.</li>
+            <li><code>angry customer in public channel</code> means you do not have a rule that support happens in tickets, not in #general. Enforce it kindly.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Move the triage patterns into a JSON config file so you can add new patterns without editing Lua code. The triage function reads the config and matches against it.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://support.discord.com/hc/en-us/articles/6208479917079-Forum-Channels-FAQ" target="_blank" rel="noopener">Discord forum channels guide</a></li>
+            <li><a href="https://docs.tebex.io/store/emails" target="_blank" rel="noopener">Tebex email customization</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/manual.html#6.4.1" target="_blank" rel="noopener">Lua pattern matching for triage</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="support-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Support response templates</h3>
+        <ul>
+          <li><strong>Self-serve:</strong> "This is covered in the docs at [link]. Let me know if that page is unclear and I will improve it."</li>
+          <li><strong>Their-fix:</strong> "This looks like a configuration issue on your server. Check [config section]. If it still fails after that, reopen with your server.cfg excerpt."</li>
+          <li><strong>Your-fix:</strong> "Confirmed — this is a bug. I have opened an internal ticket. Expect a fix in the next release. Workaround in the meantime: [workaround]."</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Support is not free. Every minute you spend answering "where do I put the file" is a minute you are not building the next feature that brings in new sales. A workflow protects your time by forcing every ticket through a filter: did they read the docs? Did they provide the transaction ID? Is this a bug or a feature request? Most tickets fail the filter, and a good template resolves them without you typing a single custom reply.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a doctor's office.</p>
+          <p>The patient does not walk directly into the operating room. They check in at the front desk (ticket template). A nurse takes their vitals and asks what is wrong (triage). Only then does the doctor see them. Your support workflow is the front desk and the nurse. You are the doctor. You only see the cases that need you.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most solo developers answer every support ping in DMs, at all hours, with no boundaries. That is a fast track to burnout.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Answer every DM. No template. No triage. No boundaries.</p>
+            <figure class="code">
+              <header><span>The burnout workflow</span></header>
+              <pre><code class="language-lua">-- BAD: free-form DMs, no structure
+-- 2am Discord ping: "hey script no work"
+-- You: "what's the error?"
+-- Them: "idk it just doesn't"
+-- You: "what version?"
+-- Them: "the one i bought"
+-- You: "transaction ID?"
+-- Them: "i lost it"
+-- 45 minutes later: they had the wrong resource name in server.cfg
+-- You just debugged their typo for free at 2am.</code></pre>
+            </figure>
+            <p>No transaction ID means you cannot verify they even bought the script. No error message means you are guessing. No boundaries means you are on call 24/7 for $15.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Ticket template → triage → bucket response. Boundaries enforced.</p>
+            <figure class="code">
+              <header><span>Discord forum post template (pinned)</span></header>
+              <pre><code>**Support Ticket Template**
+Please fill all fields. Incomplete tickets will be closed.
+
+1. Transaction ID: ___
+2. Script version (check version.lua): ___
+3. Describe the issue: ___
+4. Error message (F8 console screenshot): ___
+5. What have you tried so far? ___
+
+---
+After posting, our bot will triage your ticket.
+Response time: within 24 hours.
+Custom development requests: use #feature-requests instead.</code></pre>
+            </figure>
+            <p>The template collects everything you need before you open the ticket. The bot triages it. You open the ticket, see all the info, and respond in 2 minutes instead of 45.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="discord"> I have a Discord server with admin permissions (this lesson)</label></li>
+          <li><label><input type="checkbox" data-id="tebex"> I have sold or plan to sell a script with transaction IDs (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="version"> My script has a version.lua file (Lesson 04)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the support channel and template</h3>
+        </div>
+        <p class="pin-card__lede">A Discord forum channel with a pinned template is the smallest support system that works.</p>
+        <ol>
+          <li>In your Discord server, create a Forum Channel named "Support".</li>
+          <li>Set the post guidelines to the template from the good example above.</li>
+          <li>Add tags: "bug", "config", "question", "resolved".</li>
+          <li>Create a separate #feature-requests forum channel so ideas do not clog support.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Set up the triage bot</h3>
+        </div>
+        <p class="pin-card__lede">The bot auto-replies based on keywords. You can use a simple Discord bot or a webhook integration.</p>
+        <ol>
+          <li>Write the triage function from the minimal example above.</li>
+          <li>Integrate it with a Discord bot (discord.js, discord.py, or a no-code bot like Ticket Tool).</li>
+          <li>Configure the bot to auto-reply with the matching bucket template.</li>
+          <li>If a ticket lacks a transaction ID, the bot closes it with a message to reopen with the ID.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Track resolution metrics</h3>
+        </div>
+        <p class="pin-card__lede">You cannot improve what you do not measure.</p>
+        <ol>
+          <li>Log every ticket: date, bucket, resolution time, and whether it was a bug or user error.</li>
+          <li>After 30 days, review the data. If 70% of tickets are their-fix, improve your documentation.</li>
+          <li>If your-fix tickets take more than 2 hours per week, your price is too low for the support load.</li>
+          <li>Adjust your price or your documentation based on the data, not on gut feeling.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test to confirm the workflow works.</p>
+        <ol>
+          <li>
+            <strong>Test 1, template enforcement.</strong>
+            <ul>
+              <li>Action: post a ticket without a transaction ID.</li>
+              <li>Expected: the bot closes the ticket with a message to include the ID.</li>
+              <li>How to verify: the ticket is closed within 60 seconds of posting.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, triage accuracy.</strong>
+            <ul>
+              <li>Action: post a ticket saying "how do I change the heal amount" with a valid transaction ID.</li>
+              <li>Expected: the bot triages it as SELF_SERVE and replies with the docs link.</li>
+              <li>How to verify: the reply links to the correct config section in your documentation.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, their-fix routing.</strong>
+            <ul>
+              <li>Action: post a ticket with a valid transaction ID and an error caused by a missing convar.</li>
+              <li>Expected: the bot triages it as THEIR_FIX and replies with the config setup instructions.</li>
+              <li>How to verify: the reply asks the customer to check their server.cfg before reopening.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>What if the triage bot misclassifies a real bug as self-serve?</summary>
+            <p>The customer replies "that didn't help." The bot detects the follow-up, escalates to YOUR_FIX, and pings you. Manual override exists alongside automation.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Every support ticket requires a transaction ID before a human reads it.</li>
+          <li>Tickets are triaged into three buckets: self-serve, your-fix, their-fix.</li>
+          <li>Self-serve tickets are answered with documentation links, not custom explanations.</li>
+          <li>Feature requests are routed to a separate channel, not the support queue.</li>
+          <li>Resolution time is tracked so you know when support costs exceed the script price.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why require a transaction ID before providing support?</legend>
+            <label><input type="radio" name="q1" value="a"> It is required by FiveM's terms of service.</label>
+            <label><input type="radio" name="q1" value="b"> It verifies the person actually bought the script and lets you look up the purchase details without asking 5 follow-up questions.</label>
+            <label><input type="radio" name="q1" value="c"> Transaction IDs are needed for Discord bot authentication.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. A customer asks "can you add a /godmode command to the heal script?" Which bucket?</legend>
+            <label><input type="radio" name="q2" value="a"> YOUR_FIX — they are asking for a bugfix.</label>
+            <label><input type="radio" name="q2" value="b"> THEIR_FIX — they can add it themselves.</label>
+            <label><input type="radio" name="q2" value="c"> FEATURE_REQUEST — this is custom development, not support. Route to the feature request board.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What do you do when 70% of tickets are THEIR_FIX?</legend>
+            <label><input type="radio" name="q3" value="a"> Improve your documentation and setup guide — the common mistakes are not documented well enough.</label>
+            <label><input type="radio" name="q3" value="b"> Ignore those tickets — they are not your problem.</label>
+            <label><input type="radio" name="q3" value="c"> Lower the script price to compensate for the support burden.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to set up a Discord forum channel with a ticket template that captures all required information.</li>
+          <li>How to triage tickets into self-serve, your-fix, and their-fix buckets.</li>
+          <li>How to write response templates that resolve common issues without custom replies.</li>
+          <li>Why tracking resolution time and bucket distribution tells you when to raise prices or improve docs.</li>
+          <li>That support is a product feature — design it intentionally, not as an afterthought.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a 30-day support report template. It should summarize: total tickets, bucket breakdown, average resolution time, top 3 issues, and recommended action (raise price, improve docs, fix bugs).</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>support_report.md</span></header>
+          <pre><code>## Support Report — June 2025
+- Total tickets: 47
+- Self-serve: 22 (47%) — docs working
+- Their-fix: 18 (38%) — needs better setup guide
+- Your-fix: 7 (15%) — 3 bugs fixed in v1.2.0
+- Avg resolution: 4.2 hours
+- Action: add setup video for top 3 their-fix issues</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Keep a simple CSV or JSON log. Every ticket closure appends one line: <code>date,bucket,resolution_minutes</code>. Generate the report from that file.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://support.discord.com/hc/en-us/articles/6208479917079-Forum-Channels-FAQ" target="_blank" rel="noopener">Discord forum channels setup</a></li>
+          <li><a href="https://docs.tebex.io/store/emails" target="_blank" rel="noopener">Tebex purchase email customization</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference for triage scripting</a></li>
+        </ul>
+      </section>

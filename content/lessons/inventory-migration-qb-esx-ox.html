@@ -1,0 +1,377 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 04 · Lesson 05</span></div>
+        <h1>Inventory migration: QBCore, ESX, and ox_inventory</h1>
+        <p class="lede">You want to switch your inventory system. Maybe from QBCore's default to ox_inventory, maybe from ESX's to a shared one. This lesson maps the data, writes the migration script, and catches every edge case so no player loses their items.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A migration script that moves every player's inventory from one system to another, preserving all items, metadata, and durability, with a rollback plan.</dd></div>
+          <div><dt>Time</dt><dd>About 60 minutes to write, test, and run the migration. 10 minutes to roll back if needed.</dd></div>
+          <div><dt>You'll learn</dt><dd>How each inventory system stores items in the database, how to map one schema to another, and how to run a migration without downtime.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a running server with an inventory system. You know how to run a SQL query.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>Your migration script will do this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Read every item from the old inventory table (qb-inventory, esx_inventory, or custom).</li>
+            <li>Transform each item into the ox_inventory schema: name, count, metadata as a JSON object, slot number.</li>
+            <li>Insert into ox_inventory's <code>items</code> table, preserving the original citizen ID and stash references.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 05: Inventory migration between frameworks</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A Lua script that reads old inventory data and writes it in the new format.<br><span>Example: convert qb-inventory JSON blobs to ox_inventory rows.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Your database, in the old inventory table.<br><span>Example: SELECT * FROM player_inventory LIMIT 5;</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Run the migration script once, verify counts match, then swap the inventory resource.<br><span>Example: stop qb-inventory, run migration, start ox_inventory.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Dump 5 rows from your current inventory table.<br><span>Example: look at the actual JSON structure you need to parse.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run a migration that moves every item from your old inventory to ox_inventory with zero data loss.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>If the migration misses one edge case — durability, metadata, stash names, weapon serials — players log in and find their items gone. That kills a server faster than any crash.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Schema</dt><dd>The structure of a database table.<br><span>Example: ox_inventory has columns name, count, metadata, slot.</span></dd></div>
+            <div><dt tabindex="0">Metadata</dt><dd>Extra data attached to an item: durability, ammo, custom description.<br><span>Example: {"durability": 85, "serial": "WPN-001"}.</span></dd></div>
+            <div><dt tabindex="0">Stash</dt><dd>A container that is not a player's pocket (trunk, glovebox, house storage).<br><span>Example: stash name "trunk_ABC123" maps to a vehicle trunk.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Old resource</dt><dd><code>qb-inventory, esx_inventory, or custom</code></dd></div>
+            <div><dt>New resource</dt><dd><code>ox_inventory</code></dd></div>
+            <div><dt>Migration script</dt><dd><code>resources/qu_migrate/server.lua</code></dd></div>
+            <div><dt>Backup</dt><dd><code>mysqldump before running anything</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qu_migrate] Migrated 1423 items for 87 players">
+            <header><span class="file">qu_migrate/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- Migration from qb-inventory to ox_inventory
+local function migrateQbToOx()
+    local oldItems = MySQL.query.await(
+        'SELECT citizenid, inventory FROM players WHERE inventory IS NOT NULL'
+    )
+    local migrated = 0
+    for _, row in ipairs(oldItems) do
+        local inv = json.decode(row.inventory)
+        if inv then
+            for slot, item in pairs(inv) do
+                MySQL.insert.await(
+                    'INSERT INTO ox_inventory (owner, name, count, metadata, slot) VALUES (?, ?, ?, ?, ?)',
+                    { row.citizenid, item.name, item.amount or 1,
+                      json.encode(item.info or {}), tonumber(slot) }
+                )
+                migrated = migrated + 1
+            end
+        end
+    end
+    print(('[qu_migrate] Migrated %d items for %d players'):format(migrated, #oldItems))
+end
+
+RegisterCommand('migrate_inv', function(source)
+    if source > 0 then return end -- console only
+    migrateQbToOx()
+end, true)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[qu_migrate] Migrated 1423 items for 87 players</code> with no SQL errors.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Back up your database with mysqldump. Do not skip this.</li>
+            <li>Install ox_inventory alongside your old inventory. Do not remove the old one yet.</li>
+            <li>Write the migration script to read the old schema and insert into the new schema.</li>
+            <li>Run the migration on a test database first, not production.</li>
+            <li>Spot-check 5 random players — count items in old and new tables.</li>
+            <li>Only after confirming counts match, swap the inventory resources.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Run the migration, then write a verify command <code>/countitems</code> that prints the item count for the calling player from both the old and new tables. The numbers must match.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[verify] old_table=34 items, new_table=34 items — MATCH</code> for every player who runs it.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>json.decode failed</code> — the old inventory column has a different JSON structure than you expected. Print one row first.</li>
+            <li><code>Duplicate entry for key 'PRIMARY'</code> — the migration ran twice. Truncate ox_inventory and run once.</li>
+            <li><code>Metadata column is NULL</code> — you passed nil to json.encode. Use <code>item.info or {}</code> as a default.</li>
+            <li><code>Weapons lost their ammo</code> — your old system stored ammo in a separate column. You must merge it into metadata before inserting.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the item transform logic into <code>transformItem(oldFormat)</code> so you can add format-specific transforms (ESX JSON wrapper, QBCore metadata) without touching the insert loop.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://overextended.dev/ox_inventory" target="_blank" rel="noopener">ox_inventory documentation</a></li>
+            <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+            <li><a href="https://github.com/overextended/ox_inventory" target="_blank" rel="noopener">ox_inventory source code</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="inventory-migration-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Inventory schema map</h3>
+        <ul>
+          <li><strong>qb-inventory.</strong> Items stored as JSON in <code>players.inventory</code> column. Each key is a slot number, value is <code>{name, amount, info}</code>.</li>
+          <li><strong>ESX inventory.</strong> Separate <code>user_inventory</code> table with <code>identifier, item, count</code>. Metadata in a separate column or absent.</li>
+          <li><strong>ox_inventory.</strong> One <code>items</code> table. Columns: <code>owner, name, count, metadata (JSON), slot</code>. Stashes use owner like <code>stash_house_12</code>.</li>
+          <li><strong>Always back up first.</strong> <code>mysqldump -u root -p your_database > backup_before_migration.sql</code></li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>An inventory migration is a data shape change. The old system stores items as a big JSON blob in one column. The new system stores items as individual rows in a dedicated table. Your migration script is the bridge: it reads the blob, breaks it into pieces, and writes each piece as a new row. If you lose a piece, a player loses an item. Precision matters.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of moving from a filing cabinet to a digital database.</p>
+          <p>The filing cabinet (old inventory) has one folder per player, with all their items stuffed inside. The digital database (ox_inventory) has one row per item. Your migration script is the intern who opens every folder, takes out each item, photographs it, and creates a new database entry. If the intern skips a folder or mislabels a photo, that item is lost.</p>
+          <p>Run the script once. Verify the counts. Then throw away the filing cabinet.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Risky migration and safe migration, side by side</h2>
+        <p>Most people run the migration on the live database, with players online, without a backup. Do not be most people.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Risky migration</p>
+            <p class="before-after__caption">Players are online. No backup. Script runs and crashes halfway through. Half the items are gone.</p>
+            <figure class="code">
+              <header><span>What not to do</span></header>
+              <pre><code class="language-lua">-- RISKY: players online, no backup, no transaction
+RegisterCommand('migrate', function()
+    -- deletes old data first
+    MySQL.query('DELETE FROM ox_inventory')
+    -- then inserts, but what if it crashes here?
+    for _, item in ipairs(oldItems) do
+        MySQL.insert('INSERT INTO ox_inventory ...')
+    end
+end, false)</code></pre>
+            </figure>
+            <p>If the loop crashes on item #500 out of 10,000, items 1-499 are in the new table, items 500-10,000 are lost. The old table was never backed up. Players are furious.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Safe migration</p>
+            <p class="before-after__caption">Server offline. Backup made. Migration runs in a transaction. Verification query confirms counts before going live.</p>
+            <figure class="code">
+              <header><span>The safe way</span></header>
+              <pre><code class="language-lua">-- SAFE: backup, offline, transaction, verification
+-- 1. mysqldump the database
+-- 2. Stop the server (or at least kick all players)
+-- 3. Run migration wrapped in a transaction
+MySQL.transaction(function()
+    MySQL.query('DELETE FROM ox_inventory')
+    for _, item in ipairs(oldItems) do
+        MySQL.insert('INSERT INTO ox_inventory ...')
+    end
+end)
+-- 4. Verify: SELECT COUNT(*) FROM old_table vs ox_inventory
+-- 5. Counts match? Start the new inventory.</code></pre>
+            </figure>
+            <p>If the transaction fails, MySQL rolls back the DELETE. The old table is untouched. The backup exists as a second safety net. Players never see a missing item.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="04">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, you are not ready to migrate.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="backup"> I have a full database backup from the last 24 hours.</label></li>
+          <li><label><input type="checkbox" data-id="offline"> I can take my server offline for 30 minutes.</label></li>
+          <li><label><input type="checkbox" data-id="schema"> I have looked at the actual table structure of both old and new inventory.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Inspect the old data</h3>
+        </div>
+        <p class="pin-card__lede">You cannot write a migration until you see the exact shape of the old data.</p>
+        <ol>
+          <li>Open your database and find the old inventory table.</li>
+          <li>For qb-inventory: <code>SELECT citizenid, LEFT(inventory, 200) FROM players LIMIT 3;</code>.</li>
+          <li>For ESX: <code>SELECT identifier, item, count FROM user_inventory LIMIT 5;</code>.</li>
+          <li>Note the JSON structure. Does it use <code>amount</code> or <code>count</code>? Does metadata live under <code>info</code> or <code>metadata</code>?</li>
+          <li>Write down every field name exactly as it appears. One typo in your transform function and zero items migrate.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the migration script</h3>
+        </div>
+        <p class="pin-card__lede">Test on a copy of the database. Never run a migration script for the first time on production.</p>
+        <ol>
+          <li>Create resource <code>qu_migrate</code> with a manifest and server.lua.</li>
+          <li>Write a SELECT that pulls all rows from the old table.</li>
+          <li>Write a loop that transforms each old item into the new schema.</li>
+          <li>Wrap the entire write in a MySQL transaction.</li>
+          <li>After the INSERT loop, SELECT COUNT(*) from both tables and print them. They must match.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Run and verify</h3>
+        </div>
+        <p class="pin-card__lede">The migration runs once. You verify twice. Then you switch.</p>
+        <ol>
+          <li>Stop your server or kick all players.</li>
+          <li>Run <code>ensure qu_migrate</code> in the console. Then run <code>migrate_inv</code>.</li>
+          <li>Watch the output. If you see any SQL errors, stop. Fix them. Restore the backup. Try again.</li>
+          <li>Run <code>SELECT COUNT(*) FROM old_inventory;</code> and <code>SELECT COUNT(*) FROM ox_inventory;</code>. They must match.</li>
+          <li>Spot-check 5 players. Pick random citizen IDs. Check their items manually in both tables.</li>
+          <li>If everything matches, stop the old inventory resource. Start ox_inventory. Start the server.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three verifications, in order</h3></header>
+        <p>Do not skip any of these. Each one catches a different class of data loss.</p>
+        <ol>
+          <li>
+            <strong>Verify 1, row counts match.</strong>
+            <ul>
+              <li>Action: <code>SELECT COUNT(*) FROM old_table;</code> and <code>SELECT COUNT(*) FROM ox_inventory;</code>.</li>
+              <li>Expected: the numbers are identical.</li>
+              <li>How to verify: if old has 12,345 rows and new has 12,344, one item was lost. Find it before going live.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Verify 2, player spot-check.</strong>
+            <ul>
+              <li>Action: pick 5 random citizen IDs. Check their items in both tables.</li>
+              <li>Expected: same items, same counts, same metadata.</li>
+              <li>How to verify: old item "water" count 5 → new row name="water" count=5 metadata="{}".</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Verify 3, stash integrity.</strong>
+            <ul>
+              <li>Action: check one vehicle trunk and one house stash in both tables.</li>
+              <li>Expected: trunk contents and house contents are preserved exactly.</li>
+              <li>How to verify: old stash name "trunk_plateXYZ" → new owner "trunk_plateXYZ" with same items.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>What if the counts do not match?</summary>
+            <p>Restore the backup. Print the first 10 items that failed to insert. The most common cause is a field name mismatch. Your old JSON uses "amount" but your script reads "count". Fix the field name in the transform function and run the migration again.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Always back up the database before running a migration. No exceptions.</li>
+          <li>Take the server offline during the migration. Live data changes will corrupt the counts.</li>
+          <li>Run the entire migration inside a MySQL transaction. If it fails, nothing changes.</li>
+          <li>Verify row counts between old and new tables. They must match exactly.</li>
+          <li>Spot-check individual players' inventories. Automation misses edge cases; human eyes catch them.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why must the server be offline during migration?</legend>
+            <label><input type="radio" name="q1" value="a"> Because the migration script uses too much CPU.</label>
+            <label><input type="radio" name="q1" value="b"> Because player actions can add or remove items mid-migration, corrupting the count.</label>
+            <label><input type="radio" name="q1" value="c"> Because ox_inventory does not support hot-reload.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What is the purpose of wrapping the migration in a MySQL transaction?</legend>
+            <label><input type="radio" name="q2" value="a"> It makes the migration run faster.</label>
+            <label><input type="radio" name="q2" value="b"> It encrypts the data during migration.</label>
+            <label><input type="radio" name="q2" value="c"> If any INSERT fails, every change is rolled back. No partial data loss.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What is the first thing you should do before running any migration?</legend>
+            <label><input type="radio" name="q3" value="a"> Run mysqldump to create a full database backup.</label>
+            <label><input type="radio" name="q3" value="b"> Delete the old inventory table to free up space.</label>
+            <label><input type="radio" name="q3" value="c"> Start ox_inventory to make sure it loads.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to read the old inventory schema by inspecting the actual database rows.</li>
+          <li>How to write a transformation loop that converts one schema to another.</li>
+          <li>Why database backups and transactions are non-negotiable for data migrations.</li>
+          <li>How to verify a migration with row counts, spot-checks, and stash integrity tests.</li>
+          <li>The exact differences between qb-inventory JSON, ESX tabular, and ox_inventory row-based storage.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a rollback script that reads from ox_inventory and writes back to the old format. You will not need it often, but the one time you do, you will be glad it exists.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>qu_migrate server console</span></header>
+          <pre><code>[qu_migrate] Rollback complete: 1423 items restored to qb-inventory format
+[qu_migrate] ox_inventory table truncated</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Reverse the loop. SELECT from ox_inventory grouped by owner. Build the old JSON structure with json.encode. UPDATE the players.inventory column. Truncate ox_inventory after confirming the restore.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://overextended.dev/ox_inventory" target="_blank" rel="noopener">ox_inventory documentation</a></li>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation (transactions)</a></li>
+          <li><a href="https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html" target="_blank" rel="noopener">MySQL mysqldump reference</a></li>
+          <li><a href="https://github.com/qbcore-framework/qb-inventory" target="_blank" rel="noopener">qb-inventory source code</a></li>
+          <li><a href="https://github.com/overextended/ox_inventory" target="_blank" rel="noopener">ox_inventory source code</a></li>
+        </ul>
+      </section>

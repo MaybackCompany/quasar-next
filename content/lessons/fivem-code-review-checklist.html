@@ -1,0 +1,380 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 08 · Lesson 05</span></div>
+        <h1>Code review checklist before shipping FiveM resources</h1>
+        <p class="lede">By the end of this lesson you will have a code review checklist that catches the 12 most common FiveM scripting mistakes before they reach your players, saving hours of emergency patches and lost trust.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A 12-point code review checklist in a <code>REVIEW.md</code> file, plus a Lua script that runs automated checks against your resource before every release.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>What breaks most often in FiveM scripts, how to review your own code systematically, and which checks can be automated versus which need a human eye.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have written at least one Lua script for FiveM. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a review system that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Run 12 checks covering events, performance, security, error handling, and resource hygiene — the categories where most bugs ship.</li>
+            <li>Catch silent failures like nil-safe checks on server events and client-only natives called on the wrong side.</li>
+            <li>Automate 8 of the 12 checks with a Lua lint script so you run them in 10 seconds before every commit.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 05: Code review checklist for FiveM</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A checklist is a systematic review that finds bugs before players do.<br><span>Example: this lesson gives the smallest useful checklist.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find it in <code>REVIEW.md</code> at the root of your resource.<br><span>Example: check the list before every commit.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Run the automated checks, then go through the manual ones.<br><span>Example: run the Lua lint before every release.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Review one resource with the full 12-point checklist.<br><span>Example: find at least one real bug before moving on.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run the checklist on one resource and find at least one issue you would have shipped.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A bug found in review costs 5 minutes. A bug found by 200 players costs your reputation and hours of emergency support.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Event Hygiene</dt><dd>Ensuring events are named consistently, registered on the correct side, and validated.<br><span>Example: a server event that does not check <code>source</code> is a security hole.</span></dd></div>
+            <div><dt tabindex="0">Nil Safety</dt><dd>Checking that variables exist before using them, especially player objects.<br><span>Example: <code>GetPlayerName(src)</code> returns nil if <code>src</code> is invalid.</span></dd></div>
+            <div><dt tabindex="0">Side Discipline</dt><dd>Confirming client-only natives stay in client files and server-only functions stay in server files.<br><span>Example: <code>SetEntityHealth</code> is client-only and will nil-error on the server.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_review</code></dd></div>
+            <div><dt>Side</dt><dd><code>shared</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_review/REVIEW.md</code></dd></div>
+            <div><dt>Ensure order</dt><dd>N/A (tool, not a game resource)</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][review]">
+            <header><span class="file">qu_review/lint.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'review'
+
+local checks = {
+    has_fxmanifest = function(path)
+        local f = io.open(path .. '/fxmanifest.lua', 'r')
+        if f then f:close(); return true end
+        return false, 'missing fxmanifest.lua'
+    end,
+    has_server_lua = function(path)
+        local f = io.open(path .. '/server.lua', 'r')
+        if f then f:close(); return true end
+        return false, 'missing server.lua'
+    end,
+}
+
+for name, check in pairs(checks) do
+    local ok, err = check(arg[1] or '.')
+    print(('[QUIET][%s][%s] %s'):format(MODULE, name, ok and 'PASS' or 'FAIL: '..err))
+end</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][review]</code> appears with PASS or FAIL for each check.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>REVIEW.md</code> with the 12-point checklist.</li>
+            <li>Create <code>lint.lua</code> with automated checks.</li>
+            <li>Pick a resource you are about to ship.</li>
+            <li>Run the automated checks and fix all failures.</li>
+            <li>Go through the manual checks one by one.</li>
+            <li>Document every issue found and how you fixed it.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a 13th check: verify that every <code>RegisterNetEvent</code> named <code>qu:server:*</code> is in a server file, and every <code>qu:client:*</code> event is in a client file.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][review][event_side] PASS</code> or <code>FAIL: server event in client file</code>.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>client-only native in server.lua</code> means <code>SetEntityHealth</code> or similar is called on the wrong side. Move it to a client file.</li>
+            <li><code>unvalidated player ID</code> means <code>source</code> is used without checking <code>GetPlayerName(src)</code> first. Add a nil guard.</li>
+            <li><code>event name mismatch</code> means the <code>TriggerServerEvent</code> name does not match any <code>RegisterNetEvent</code>. Check for typos.</li>
+            <li><code>missing config validation</code> means a convar or config value is read without checking it exists. Add a default fallback.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Package the lint script as a standalone FiveM resource that runs on server start and checks all other resources, printing a summary to console.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime reference</a></li>
+            <li><a href="https://github.com/mpeterv/luacheck" target="_blank" rel="noopener">Luacheck — Lua linter</a></li>
+            <li><a href="https://docs.fivem.net/natives/" target="_blank" rel="noopener">FiveM native reference</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="review-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>The 12-point checklist</h3>
+        <ul>
+          <li><strong>1. Manifest:</strong> fxmanifest.lua exists and lists all scripts.</li>
+          <li><strong>2. Events:</strong> Names match between trigger and register. Correct side.</li>
+          <li><strong>3. Source check:</strong> Every server event handler validates <code>source</code>.</li>
+          <li><strong>4. Nil guards:</strong> Player objects and config values checked before use.</li>
+          <li><strong>5. Side discipline:</strong> Client natives only in client files, server functions only in server files.</li>
+          <li><strong>6. Error handling:</strong> pcall or xpcall around external calls.</li>
+          <li><strong>7. Config defaults:</strong> Every config value has a fallback.</li>
+          <li><strong>8. Logging:</strong> Key actions print to console with a module prefix.</li>
+          <li><strong>9. Performance:</strong> No infinite loops, no blocking HTTP calls on client.</li>
+          <li><strong>10. Cleanup:</strong> Resource stop removes blips, markers, and threads.</li>
+          <li><strong>11. Version:</strong> version.lua matches CHANGELOG.md.</li>
+          <li><strong>12. Dependencies:</strong> ensure order is correct in server.cfg.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Your brain cannot hold 12 checks at once while also writing code. That is why checklists exist. Pilots use checklists before takeoff — not because they are inexperienced, but because a missed step at 30,000 feet cannot be undone. Your server is at 30,000 feet the moment players join. A missed nil-check crashes the resource for everyone. A checklist catches it on the ground.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a pre-flight checklist.</p>
+          <p>The pilot does not memorize every bolt on the wing. The checklist lists them. The pilot runs down the list, ticking boxes. If one box cannot be ticked, the plane does not take off. Your code review is the pre-flight. Your players are the passengers.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most developers review by glancing at the diff and saying "looks fine." That is not a review — it is a prayer.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Ship without review. Hope nothing breaks.</p>
+            <figure class="code">
+              <header><span>The non-review</span></header>
+              <pre><code class="language-lua">-- BAD: "I'll just test it live"
+-- No checklist. No automated checks. No second pair of eyes.
+
+RegisterNetEvent('qu:server:giveCash')
+AddEventHandler('qu:server:giveCash', function(amount)
+    local src = source
+    -- give cash to player...
+    -- Wait, is 'amount' validated? Is src valid?
+    -- We'll find out when 50 players try it.
+end)
+
+-- Shipped at 2am. Crashed at 2:01am.
+-- No review means no safety net.</code></pre>
+            </figure>
+            <p>Testing live is not testing — it is gambling. A missing nil check here crashes the event for everyone. A typo in the event name means the command silently does nothing.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Run the checklist. Fix every finding. Ship with confidence.</p>
+            <figure class="code">
+              <header><span>REVIEW.md applied</span></header>
+              <pre><code class="language-lua">-- GOOD: checklist applied before shipping
+-- Check 3: validate source
+-- Check 4: nil-guard amount
+-- Check 6: pcall around external calls
+-- Check 8: log the action
+
+RegisterNetEvent('qu:server:giveCash')
+AddEventHandler('qu:server:giveCash', function(amount)
+    local src = source
+    if not GetPlayerName(src) then return end           -- CHECK 3
+    amount = tonumber(amount) or 0                      -- CHECK 4
+    if amount <= 0 then return end                      -- CHECK 4
+    local ok = pcall(exports['qu_money'].give, src, amount) -- CHECK 6
+    print(('[qu_cash] gave $%d to src=%d ok=%s'):format(amount, src, ok)) -- CHECK 8
+end)</code></pre>
+            </figure>
+            <p>Every line has a purpose tied to a checklist item. The review caught 4 issues before a single player connected. This is what shipping safely looks like.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="script"> I have a FiveM resource with at least one server and one client file (Lesson 01)</label></li>
+          <li><label><input type="checkbox" data-id="events"> I understand server/client events (Lesson 14)</label></li>
+          <li><label><input type="checkbox" data-id="version"> I have a version.lua file in at least one resource (Lesson 04)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the REVIEW.md checklist</h3>
+        </div>
+        <p class="pin-card__lede">One file. Twelve checks. Every release.</p>
+        <ol>
+          <li>Create <code>REVIEW.md</code> in your project root (not inside one resource — this is for your whole script store).</li>
+          <li>Copy the 12-point checklist from the cheat sheet above into the file.</li>
+          <li>Add a checkbox <code>[ ]</code> next to each item. Mark them as you review.</li>
+          <li>Save the file. This is now your pre-release gate. No unchecked boxes before shipping.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Automate what you can</h3>
+        </div>
+        <p class="pin-card__lede">Eight checks are pattern-matches a script can run faster than a human.</p>
+        <ol>
+          <li>Create <code>lint.lua</code> from the minimal example above.</li>
+          <li>Add checks for: missing fxmanifest, event name mismatches, client natives in server files, and missing nil guards.</li>
+          <li>Run it with <code>lua lint.lua ../my-resource</code>. Every FAIL must be fixed.</li>
+          <li>The automated checks cover points 1, 2, 5, 6, 8, 10, 11, and 12 from the checklist.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Manual review: the four that need eyes</h3>
+        </div>
+        <p class="pin-card__lede">No script can check intent. A human must review logic, security, config, and performance.</p>
+        <ol>
+          <li><strong>Logic (check 4):</strong> Read every event handler. Does every variable get validated before use?</li>
+          <li><strong>Security (check 3):</strong> Is source checked? Are admin commands gated behind permission checks?</li>
+          <li><strong>Config (check 7):</strong> Does every config value have a default? If the customer deletes a line, does the script still start?</li>
+          <li><strong>Performance (check 9):</strong> Are there loops with no wait? Are large files loaded synchronously? Does the resource clean up on stop?</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test on a resource you plan to ship.</p>
+        <ol>
+          <li>
+            <strong>Test 1, automated checks.</strong>
+            <ul>
+              <li>Action: run <code>lua lint.lua</code> against your resource.</li>
+              <li>Expected: all automated checks return PASS.</li>
+              <li>How to verify: no FAIL lines in the output. Fix any that appear.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, manual review.</strong>
+            <ul>
+              <li>Action: go through checks 3, 4, 7, and 9 by reading the code.</li>
+              <li>Expected: you find at least one thing you would improve.</li>
+              <li>How to verify: you add at least one nil guard or config default that was missing.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, checklist complete.</strong>
+            <ul>
+              <li>Action: open REVIEW.md and confirm all 12 boxes are checked.</li>
+              <li>Expected: every box has an <code>[x]</code>.</li>
+              <li>How to verify: you would bet your reputation on this release. If not, uncheck and fix.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>How long should a code review take?</summary>
+            <p>For a typical 200-line resource: 5 minutes for automated checks, 10 minutes for manual review. Longer means the code is too complex — refactor first.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Every resource goes through a 12-point checklist before shipping.</li>
+          <li>Automated checks catch the 8 pattern-based failures that humans miss.</li>
+          <li>Manual review covers the 4 judgment-based checks that scripts cannot evaluate.</li>
+          <li>No unchecked box means the release goes out. One unchecked box means it does not.</li>
+          <li>The checklist lives in the repo as REVIEW.md, versioned alongside the code.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why can a script not check all 12 points automatically?</legend>
+            <label><input type="radio" name="q1" value="a"> Lua cannot read files from disk.</label>
+            <label><input type="radio" name="q1" value="b"> Checks like logic correctness and security intent require human judgment — a script cannot know if you meant to gate an admin command.</label>
+            <label><input type="radio" name="q1" value="c"> Automated checks are slower than manual review.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What is the most dangerous single mistake in a FiveM server script?</legend>
+            <label><input type="radio" name="q2" value="a"> Forgetting to print a startup message.</label>
+            <label><input type="radio" name="q2" value="b"> Using single quotes instead of double quotes.</label>
+            <label><input type="radio" name="q2" value="c"> Not validating <code>source</code> in a server event handler — it is a universal security hole.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. When should you run the checklist?</legend>
+            <label><input type="radio" name="q3" value="a"> Before every release, after every meaningful change, and as the last step before shipping.</label>
+            <label><input type="radio" name="q3" value="b"> Only when a customer reports a bug.</label>
+            <label><input type="radio" name="q3" value="c"> Once when the project starts, then never again.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How a 12-point code review checklist catches the most common FiveM scripting mistakes.</li>
+          <li>Which 8 checks can be automated with a Lua lint script.</li>
+          <li>Which 4 checks require human judgment: logic, security, config, and performance.</li>
+          <li>Why a checklist is not optional — it is the difference between a bug found in review and a bug found by 200 players.</li>
+          <li>That REVIEW.md is a living document, versioned with your code, updated as you discover new failure patterns.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Pick one of your resources. Run the 12-point checklist on it. Document every issue you find in a <code>review_report.md</code> file, including the line number, the problem, and the fix you applied.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>review_report.md</span></header>
+          <pre><code>## Review Report — qu_heal v1.0.0
+- [FIXED] server.lua:12 — missing nil guard on GetPlayerName(src)
+- [FIXED] client.lua:5 — event name typo 'qu:server:heel' corrected to 'heal'
+- [WONT FIX] server.lua:25 — hardcoded cooldown (config planned for v1.1.0)</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Start at the top of your main server file. Go line by line. Every time you see an unchecked variable or missing guard, write it down. You will find more than you expect.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime reference</a></li>
+          <li><a href="https://github.com/mpeterv/luacheck" target="_blank" rel="noopener">Luacheck static analyzer</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">FiveM server commands and convars</a></li>
+        </ul>
+      </section>

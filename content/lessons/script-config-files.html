@@ -1,0 +1,352 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 03</span></div>
+        <h1>Script config files, structure and patterns</h1>
+        <p class="lede">Write a config.lua that every other file in your resource reads from — so you change one number and the entire script updates, without hunting through five files.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A <code>config.lua</code> file with sections for general settings, feature toggles, and per-item configuration that two other files consume correctly.</dd></div>
+          <div><dt>Time</dt><dd>About 20 minutes.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to structure a config table, why nested tables are safer than flat variables, and how to validate config values at startup.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have written at least one Lua file that uses variables.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a config system that:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Stores all tunable values in one file so users never touch your logic code.</li>
+            <li>Uses a nested Lua table so related settings stay grouped and self-documenting.</li>
+            <li>Validates itself on resource start and prints clear warnings if something is wrong.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 03: Script config files, structure and patterns</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A Lua file that returns a table of settings other files read at startup.<br><span>Example: Config.HealAmount = 200 in config.lua, used by server.lua.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>In the root of every well-written resource, named config.lua or shared/config.lua.<br><span>Example: open any qb-core resource and look for Config = {}.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Load it first in fxmanifest.lua, then reference Config.Foo everywhere else.<br><span>Example: shared_script 'config.lua' goes above other scripts.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Write one config table with three sections and read it from two files.<br><span>Example: general settings, feature toggles, and a list of items.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will change one number in config.lua, restart the resource, and see both the server and client behaviour update without touching any other file.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Without a config file, every setting is hard-coded inside logic files. A server owner who wants to change the heal cooldown has to open server.lua and risk breaking the code. A config file separates tuning from logic — the owner edits config.lua and never sees a function body.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Config table</dt><dd>A Lua table that holds all tunable values for a resource.<br><span>Example: Config = { HealAmount = 200, Cooldown = 60 }.</span></dd></div>
+            <div><dt tabindex="0">Shared script</dt><dd>A script declared in fxmanifest.lua that runs on both server and client.<br><span>Example: shared_script 'config.lua' makes Config available everywhere.</span></dd></div>
+            <div><dt tabindex="0">Startup validation</dt><dd>Code that checks config values when the resource starts and warns about impossible combinations.<br><span>Example: assert type(Config.HealAmount) == 'number', 'HealAmount must be a number'.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_config_demo</code></dd></div>
+            <div><dt>Files</dt><dd><code>fxmanifest.lua, config.lua, server.lua, client.lua</code></dd></div>
+            <div><dt>Load order</dt><dd><code>config.lua first (shared_script), then server, then client</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_config_demo</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qu_config_demo] Config loaded: HealAmount=200 Cooldown=60">
+            <header><span class="file">config.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">Config = {}
+
+Config.General = {
+    Debug = true,
+    Locale = 'en'
+}
+
+Config.Heal = {
+    Enabled = true,
+    Amount = 200,
+    CooldownSeconds = 60
+}
+
+Config.Items = {
+    { name = 'bandage', heal = 20, time = 3000 },
+    { name = 'medkit',  heal = 100, time = 8000 }
+}
+
+-- Validate
+assert(type(Config.Heal.Amount) == 'number',
+    '[qu_config_demo] Heal.Amount must be a number')
+assert(Config.Heal.CooldownSeconds > 0,
+    '[qu_config_demo] CooldownSeconds must be positive')
+
+print(('[qu_config_demo] Config loaded: HealAmount=%d Cooldown=%d')
+    :format(Config.Heal.Amount, Config.Heal.CooldownSeconds))</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[qu_config_demo] Config loaded: HealAmount=200 Cooldown=60</code> appears in the console when the resource starts.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create the resource folder <code>qu_config_demo</code> and add <code>fxmanifest.lua</code>.</li>
+            <li>Declare <code>shared_script 'config.lua'</code> first in the manifest.</li>
+            <li>Write <code>config.lua</code> with the Config table and validation from the example above.</li>
+            <li>Write <code>server.lua</code> that reads <code>Config.Heal.Amount</code> and prints it.</li>
+            <li>Write <code>client.lua</code> that reads <code>Config.General.Debug</code> and prints it.</li>
+            <li>Ensure the resource and confirm both files print the config values.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a new item to <code>Config.Items</code> called <code>defibrillator</code> with <code>heal = 200</code> and <code>time = 15000</code>. Then loop through all items in server.lua and print each name and heal value.</p>
+          <p class="expected-output"><strong>Expected output:</strong> The console prints three lines: bandage=20, medkit=100, defibrillator=200.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to index a nil value (global 'Config')</code> — config.lua is not loaded before the file that uses it. Move <code>shared_script 'config.lua'</code> above all other scripts in fxmanifest.lua.</li>
+            <li><code>attempt to index a nil value (field 'Heal')</code> — you referenced <code>Config.Heal</code> but the table does not have that key. Check the spelling and nesting.</li>
+            <li>Config values seem ignored — you are reading a global variable instead of <code>Config.Something</code>. Lua does not warn about this.</li>
+            <li>Assertion fails silently — <code>assert</code> only prints if the condition is false. Add a print before the assert to see which line runs.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Wrap the validation in a function <code>ValidateConfig()</code> that loops over expected keys and types, so adding a new setting automatically gets checked without writing a new assert line.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://www.lua.org/manual/5.4/manual.html#3.4.9" target="_blank" rel="noopener">Lua 5.4 tables and table constructors</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://github.com/qbcore-framework/qb-core" target="_blank" rel="noopener">QB-Core shared config examples</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="config-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Config patterns</h3>
+        <ul>
+          <li><strong>Use nested tables.</strong> <code>Config.Feature.Setting</code> is clearer than <code>Config_Feature_Setting</code>.</li>
+          <li><strong>Validate at startup.</strong> Crash early with a clear message, not silently with wrong values.</li>
+          <li><strong>One file, loaded first.</strong> Never spread config across multiple files.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Every FiveM resource has knobs: cooldowns, amounts, feature toggles, locale strings. If those knobs are scattered across ten files, tuning a server means editing logic code — which is how bugs get introduced. A config file collects all the knobs in one place. The server owner turns the knobs. The developer writes the logic. Those two people are often the same person at different times. The config file respects that.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a car dashboard.</p>
+          <p>The dashboard has knobs and buttons: volume, temperature, fan speed. You do not open the hood to adjust the radio. The config file is the dashboard. The logic files — server.lua, client.lua — are the engine. The owner touches the dashboard. The mechanic touches the engine. The config file draws that line.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="02">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="lua-table"> I can create a Lua table with <code>{ key = value }</code>.</label></li>
+          <li><label><input type="checkbox" data-id="manifest"> I have written an <code>fxmanifest.lua</code> with at least one script entry.</label></li>
+          <li><label><input type="checkbox" data-id="print"> I have used <code>print()</code> in a server or client script and seen the output.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource and manifest</h3>
+        </div>
+        <p class="pin-card__lede">The manifest declares what loads and in what order. Config must come first.</p>
+        <ol>
+          <li>Create <code>resources/qu_config_demo/</code>.</li>
+          <li>Create <code>fxmanifest.lua</code> inside it.</li>
+          <li>Add the following lines:
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+shared_script 'config.lua'
+server_script 'server.lua'
+client_script 'client.lua'</code></pre>
+          </li>
+          <li>Save. <code>shared_script</code> means config.lua runs on both sides.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the config file</h3>
+        </div>
+        <p class="pin-card__lede">The config is a plain Lua table. Groups keep it organised.</p>
+        <ol>
+          <li>Create <code>config.lua</code> in the resource folder.</li>
+          <li>Paste the Config table from the Minimal Example above.</li>
+          <li>Add one more setting of your own: a greeting message string.</li>
+          <li>Save. Your config is ready to be read.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Read config from the server</h3>
+        </div>
+        <p class="pin-card__lede">Server code uses Config just like any other global table. No special import needed.</p>
+        <ol>
+          <li>Create <code>server.lua</code>.</li>
+          <li>Paste:
+            <pre><code class="language-lua">print(('[qu_config_demo] Server sees Heal.Amount = %d')
+    :format(Config.Heal.Amount))
+
+for _, item in ipairs(Config.Items) do
+    print(('[qu_config_demo] Item: %s heals %d in %d ms')
+        :format(item.name, item.heal, item.time))
+end</code></pre>
+          </li>
+          <li>Save. The loop prints every item in the config.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Read config from the client</h3>
+        </div>
+        <p class="pin-card__lede">The client sees the same Config table because shared_script runs on both sides.</p>
+        <ol>
+          <li>Create <code>client.lua</code>.</li>
+          <li>Paste:
+            <pre><code class="language-lua">if Config.General.Debug then
+    print('[qu_config_demo] Client: debug mode is ON')
+end
+
+print(('[qu_config_demo] Client sees %d items in config')
+    :format(#Config.Items))</code></pre>
+          </li>
+          <li>Save. All four files are ready.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Run it and change a value</h3>
+        </div>
+        <p class="pin-card__lede">The real test: change one number and watch every file react.</p>
+        <ol>
+          <li>Add <code>ensure qu_config_demo</code> to server.cfg and start the resource.</li>
+          <li>Check the console for the config loaded message and the item list.</li>
+          <li>Change <code>Config.Heal.Amount</code> from 200 to 150 in config.lua. Save.</li>
+          <li>Restart the resource with <code>ensure qu_config_demo</code> in the console.</li>
+          <li>The printed value changes to 150. You changed nothing in server.lua or client.lua.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Two tests, in order</h3></header>
+        <p>Run each test and confirm before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, config loads.</strong>
+            <ul>
+              <li>Action: start the resource.</li>
+              <li>Expected: console prints <code>[qu_config_demo] Config loaded: HealAmount=200 Cooldown=60</code>.</li>
+              <li>How to verify: both server and client prints appear with no nil errors.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, broken config fails early.</strong>
+            <ul>
+              <li>Action: change <code>Config.Heal.Amount</code> to <code>"two hundred"</code> (a string). Restart.</li>
+              <li>Expected: the resource fails to start and prints <code>Heal.Amount must be a number</code>.</li>
+              <li>How to verify: the assert message appears, and the rest of the resource does not load.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why use shared_script instead of two separate config files?</summary>
+            <p>If you have two config files, one for server and one for client, you will eventually change one and forget the other. Then the server thinks the cooldown is 60 seconds but the client shows a timer counting from 30. One shared file means one source of truth.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why must config.lua be declared before server.lua in fxmanifest.lua?</legend>
+            <label><input type="radio" name="q1" value="a"> Because config files load faster than server files.</label>
+            <label><input type="radio" name="q1" value="b"> Because server.lua references Config, so Config must already exist in memory.</label>
+            <label><input type="radio" name="q1" value="c"> It does not matter. Load order is random.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What does shared_script do differently from server_script?</legend>
+            <label><input type="radio" name="q2" value="a"> It makes the script run twice, once on each side.</label>
+            <label><input type="radio" name="q2" value="b"> It encrypts the script before sending it to the client.</label>
+            <label><input type="radio" name="q2" value="c"> It runs the script on both the server and the client, so both sides see the same globals.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What happens if you delete the assert line from config.lua?</legend>
+            <label><input type="radio" name="q3" value="a"> The resource loads but uses a string where a number was expected, causing a confusing error later.</label>
+            <label><input type="radio" name="q3" value="b"> The resource loads correctly with no issues.</label>
+            <label><input type="radio" name="q3" value="c"> FiveM automatically converts the string to a number.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to structure a config.lua file with nested tables for organisation.</li>
+          <li>Why <code>shared_script</code> makes config available on both server and client.</li>
+          <li>How to validate config values at startup with <code>assert</code> to catch mistakes early.</li>
+          <li>How separating config from logic lets server owners tune without touching code.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a <code>Config.Locales</code> table with two languages, each containing a <code>heal_success</code> message. Then in server.lua, print the message for the locale set in <code>Config.General.Locale</code>.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console</span></header>
+          <pre><code>[qu_config_demo] Message: You have been healed.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Add <code>Config.Locales = { en = { heal_success = 'You have been healed.' }, de = { heal_success = 'Du wurdest geheilt.' } }</code>, then print <code>Config.Locales[Config.General.Locale].heal_success</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://www.lua.org/manual/5.4/manual.html#3.4.9" target="_blank" rel="noopener">Lua 5.4 table reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest docs</a></li>
+          <li><a href="https://github.com/qbcore-framework/qb-core/blob/main/shared/config.lua" target="_blank" rel="noopener">QB-Core shared config (real-world example)</a></li>
+        </ul>
+      </section>

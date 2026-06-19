@@ -1,0 +1,353 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 01 · Lesson 02</span></div>
+        <h1>FiveM error catalog: decode any red line</h1>
+        <p class="lede">Every FiveM developer sees red lines in the console. This lesson catalogs the 10 most common errors, explains what each one actually means, and gives you the fix in one line.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>Zero panic when a red error appears. You will read it, match it to this catalog, and apply the fix in under 60 seconds.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes to read and bookmark. Keep this open in a second tab.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to read a FiveM stack trace, which keywords point to the real problem, and the 10 fixes that solve 90% of errors.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have started a FiveM server at least once and seen at least one error.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will learn">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>By the end of this lesson you will know how to fix:</strong></p>
+          <ul class="tldr-card__points">
+            <li><code>attempt to call a nil value</code> — the most common Lua error. Means you called a function that does not exist.</li>
+            <li><code>attempt to index a nil value</code> — you tried to read a field from something that is <code>nil</code>.</li>
+            <li><code>SCRIPT ERROR: @resource/file.lua:42</code> — the error is in that resource, that file, line 42.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 02: FiveM error catalog</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A catalog of the 10 most common FiveM errors.<br><span>Example: match any red line to an entry and get the fix.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Your server console or F8 client console.<br><span>Example: open F8 and look for red lines after a crash.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Read the error, find the keywords, scroll to the matching entry.<br><span>Example: "nil value" means go to error #1.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Bookmark this page. When an error hits, come back here.<br><span>Example: keep this lesson open in a second monitor.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will read any FiveM error, know what it means, and apply the fix without googling.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A single red line can crash your entire server. Most errors are one typo away from working code. Knowing the catalog means you fix things in seconds instead of hours.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Stack trace</dt><dd>The list of files and line numbers showing where the error happened.<br><span>Example: stack traceback: server.lua:12 in function 'handler'.</span></dd></div>
+            <div><dt tabindex="0">Nil</dt><dd>Lua's word for "nothing" or "does not exist".<br><span>Example: a variable that was never set is nil.</span></dd></div>
+            <div><dt tabindex="0">Callback</dt><dd>A function passed to be called later, often the source of nil errors.<br><span>Example: the function argument to RegisterNetEvent.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Console</dt><dd><code>F8 (client) or server terminal</code></dd></div>
+            <div><dt>File</dt><dd><code>The resource with the error, shown in the stack trace</code></dd></div>
+            <div><dt>Line</dt><dd><code>The line number after the colon in the error message</code></dd></div>
+            <div><dt>Resource</dt><dd><code>The @resource name before the file path</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="attempt to call a nil value">
+            <header><span class="file">resources/qu_errors/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- This will error because "healPlayer" does not exist.
+RegisterNetEvent('qu:server:heal', function()
+    local src = source
+    healPlayer(src)  -- ERROR: attempt to call a nil value (global 'healPlayer')
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>SCRIPT ERROR: @qu_errors/server.lua:4: attempt to call a nil value (global 'healPlayer')</code></p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Read the error message out loud. Every word matters.</li>
+            <li>Find the resource name after <code>@</code>. That is the broken resource.</li>
+            <li>Find the file and line number after the colon. That is the exact line.</li>
+            <li>Open that file and go to that line.</li>
+            <li>Match the error text to an entry in this catalog.</li>
+            <li>Apply the fix. Restart the resource. Confirm the red line is gone.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Create a resource that intentionally calls <code>thisDoesNotExist()</code> from a command, run it, and read the error. Then fix it by defining the function.</p>
+          <p class="expected-output"><strong>Expected output:</strong> First you see <code>attempt to call a nil value (global 'thisDoesNotExist')</code>. After defining the function, the command works with no error.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value</code> — you called a function that is not defined yet, or you misspelled its name.</li>
+            <li><code>attempt to index a nil value (local 'x')</code> — variable <code>x</code> is nil and you tried to do <code>x.something</code>.</li>
+            <li><code>SCRIPT ERROR: citizen:/scripting/lua/scheduler.lua</code> — this is not your bug. It means a thread crashed inside a FiveM system call. Look at the next line for the real resource name.</li>
+            <li><code>Could not find resource</code> — the resource folder does not exist, or you misspelled it in <code>server.cfg</code>.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Wrap every callback in <code>pcall</code> during development so errors log the function name without crashing the resource.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/manual.html#2.1" target="_blank" rel="noopener">Lua 5.4 values and types (nil)</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">FiveM server console commands</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="error-catalog-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>The 10 most common FiveM errors</h3>
+        <ul>
+          <li><strong>1. attempt to call a nil value.</strong> Misspelled function name or wrong side (client vs server).</li>
+          <li><strong>2. attempt to index a nil value.</strong> You tried <code>table.field</code> but <code>table</code> is nil.</li>
+          <li><strong>3. No such export.</strong> The resource that exports the function is not started or not present.</li>
+          <li><strong>4. Could not find resource.</strong> The folder name in <code>resources/</code> does not match the ensure line.</li>
+          <li><strong>5. Invalid client object.</strong> You called a client native on the server side.</li>
+          <li><strong>6. TriggerServerEvent from server.</strong> You called a server-to-server trigger on the wrong side.</li>
+          <li><strong>7. SQL error: no such table.</strong> The database migration did not run.</li>
+          <li><strong>8. Exceeded stack depth.</strong> Infinite recursion — a function calls itself with no exit condition.</li>
+          <li><strong>9. Duplicate resource.</strong> Two folders have the same resource name.</li>
+          <li><strong>10. Script not a function.</strong> You passed a string where a function was expected.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>FiveM errors are not random. Every red line follows the same pattern: <strong>error type, file location, and the exact line where it happened.</strong> Once you learn to read the pattern, you skip the panic and go straight to the fix.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a car's check-engine light.</p>
+          <p>The light itself tells you nothing useful. But a mechanic reads the error code and knows exactly which sensor reported what. Your console is the same. The red line is the error code. This catalog is the mechanic's manual.</p>
+          <p>When you see <code>attempt to call a nil value (global 'healPlayer')</code>, the car is telling you "I tried to call a function named healPlayer but I cannot find it anywhere." That is all. Go define it.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Panic way and calm way, side by side</h2>
+        <p>Most beginners see a red line and immediately restart the server, reinstall everything, or copy-paste the error into Discord. None of those fix it.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Panic way</p>
+            <p class="before-after__caption">You see red, restart the server, reinstall FiveM, and ask Discord "why does my server crash?" with no error text.</p>
+            <figure class="code">
+              <header><span>What panic looks like</span></header>
+              <pre><code class="language-lua">-- You see: SCRIPT ERROR: @qb-core/server/player.lua:42
+-- You do: restart the entire server
+-- You say in Discord: "my server broken pls help"
+-- Nobody can help you because you did not post the error.</code></pre>
+            </figure>
+            <p>Restarting the server sometimes hides the error for five minutes, but it comes back. Asking for help without the error text gets you ignored.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Calm way</p>
+            <p class="before-after__caption">You read the error, match it to this catalog, and fix the actual line of code.</p>
+            <figure class="code">
+              <header><span>What calm looks like</span></header>
+              <pre><code class="language-lua">-- You see: @qb-core/server/player.lua:42: attempt to call
+--            a nil value (field 'GetIdentifier')
+-- You open: resources/qb-core/server/player.lua line 42
+-- You find: self.Functions.GetIdentifier() -- misspelled
+-- You fix:  self.Functions.GetIdentifier() -- correct
+-- You run: ensure qb-core
+-- Error gone. You move on with your day.</code></pre>
+            </figure>
+            <p>The fix took 30 seconds. You did not restart the server. You did not ask anyone. You read the error, found the line, and fixed the typo.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="server"> I can start a FiveM server and see the console (Lesson 01).</label></li>
+          <li><label><input type="checkbox" data-id="f8"> I know how to open the F8 client console.</label></li>
+          <li><label><input type="checkbox" data-id="lua"> I have written at least one line of Lua.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Read the error from bottom to top</h3>
+        </div>
+        <p class="pin-card__lede">The most useful line is usually the last one before the stack trace.</p>
+        <ol>
+          <li>Open your F8 console or server terminal.</li>
+          <li>Find the red <code>SCRIPT ERROR</code> line.</li>
+          <li>Read the last sentence before <code>stack traceback:</code>. That is the error.</li>
+          <li>Note the resource name after <code>@</code> and the file:line after the colon.</li>
+          <li>Ignore the stack trace for now. Fix the error first, then check the trace if needed.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Match the error to this catalog</h3>
+        </div>
+        <p class="pin-card__lede">90% of errors fit into one of the 10 patterns below. Read the error, find the keywords.</p>
+        <ol>
+          <li>Does the error say <code>nil value</code>? It is #1 or #2. Find the variable that is nil.</li>
+          <li>Does it say <code>No such export</code>? It is #3. The dependency resource is not started.</li>
+          <li>Does it say <code>Could not find resource</code>? It is #4. Check the folder name and server.cfg.</li>
+          <li>Does it say <code>Invalid client object</code>? It is #5. You called a client native on the server.</li>
+          <li>Once you match the pattern, apply the fix described in that catalog entry.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Open the file, go to the line, fix it</h3>
+        </div>
+        <p class="pin-card__lede">The error message tells you exactly where to look.</p>
+        <ol>
+          <li>The format is <code>@resource/file.lua:42</code>. Open <code>resources/resource/file.lua</code>.</li>
+          <li>Go to line 42. Most editors show line numbers. If yours does not, enable them.</li>
+          <li>Read the line. The error is on that line or the line just before it.</li>
+          <li>Apply the fix from the catalog entry. Save the file.</li>
+          <li>In the server console, type <code>ensure resource</code> to reload just that resource. Do not restart the whole server.</li>
+          <li>Confirm the error is gone. If it moved to a different line, repeat Step 3 with the new line number.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Create errors on purpose so you learn to read them. Fix each one before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, call a missing function.</strong>
+            <ul>
+              <li>Action: create a command that calls <code>banana()</code> without defining it. Run the command.</li>
+              <li>Expected: <code>attempt to call a nil value (global 'banana')</code>.</li>
+              <li>How to verify: the error message contains "banana" and the line number you wrote.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, index a nil table.</strong>
+            <ul>
+              <li>Action: write <code>local x = nil; print(x.name)</code> in a command and run it.</li>
+              <li>Expected: <code>attempt to index a nil value (local 'x')</code>.</li>
+              <li>How to verify: the error names the variable "x" and says you tried to index it.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, use a client native on server.</strong>
+            <ul>
+              <li>Action: in server.lua, call <code>SetEntityHealth(1, 200)</code> and run the resource.</li>
+              <li>Expected: <code>attempt to call a nil value (global 'SetEntityHealth')</code>.</li>
+              <li>How to verify: the error says SetEntityHealth is nil because it only exists on the client.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why do we say "nil value" instead of "does not exist"?</summary>
+            <p>Because Lua's type system has a single value for "nothing" called <code>nil</code>. When the runtime looks up a name and finds nothing, it gets nil. When you try to call nil as a function, Lua tells you what you tried to do (call) and what the value actually was (nil).</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Read the error message from bottom to top. The last line is the actual error.</li>
+          <li>Find the resource, file, and line number before doing anything else.</li>
+          <li>Match the error text to a known pattern instead of guessing.</li>
+          <li>Fix one error at a time. A second error is often caused by the first.</li>
+          <li>Use <code>ensure resource</code> instead of restarting the server.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What does <code>attempt to call a nil value</code> mean?</legend>
+            <label><input type="radio" name="q1" value="a"> The server ran out of memory.</label>
+            <label><input type="radio" name="q1" value="b"> You called a function that does not exist or is not defined yet.</label>
+            <label><input type="radio" name="q1" value="c"> The resource failed to load from disk.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. In the error <code>@qb-core/server/player.lua:42</code>, what is 42?</legend>
+            <label><input type="radio" name="q2" value="a"> The player ID.</label>
+            <label><input type="radio" name="q2" value="b"> The error code number.</label>
+            <label><input type="radio" name="q2" value="c"> The line number where the error happened.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What should you do first when an error appears?</legend>
+            <label><input type="radio" name="q3" value="a"> Read the error message. Find the file and line number.</label>
+            <label><input type="radio" name="q3" value="b"> Restart the server immediately.</label>
+            <label><input type="radio" name="q3" value="c"> Reinstall FiveM and all your resources.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Every FiveM error follows the pattern: error type, resource, file, line number.</li>
+          <li><code>attempt to call a nil value</code> means the function name is wrong, missing, or on the wrong side.</li>
+          <li><code>attempt to index a nil value</code> means the variable you are reading from is nil.</li>
+          <li>The resource name after <code>@</code> tells you which resource to open.</li>
+          <li>Use <code>ensure resource</code> to reload one resource instead of restarting the whole server.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Create a resource called <code>qu_errorlab</code> with a command <code>/error1</code> that calls <code>missingFunction()</code>. Run it, read the error, then fix it. Do the same for <code>/error2</code> that indexes <code>nilTable.field</code>. Fix that too.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console, after both fixes</span></header>
+          <pre><code>[qu_errorlab] /error1 ran successfully
+[qu_errorlab] /error2 ran successfully
+-- No red lines anywhere.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>In <code>server.lua</code>, define <code>missingFunction</code> as a local function before <code>RegisterCommand</code>. For <code>error2</code>, set <code>nilTable = {}</code> before accessing <code>nilTable.field</code>.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" target="_blank" rel="noopener">FiveM Lua runtime reference</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/manual.html#2.1" target="_blank" rel="noopener">Lua 5.4 types and nil</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/manual.html#3.4" target="_blank" rel="noopener">Lua expressions and indexing</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest</a></li>
+          <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">Server console commands</a></li>
+        </ul>
+      </section>

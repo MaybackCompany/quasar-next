@@ -1,0 +1,162 @@
+<section class="lesson-hero">
+  <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module B8 · Lesson 50</span></div>
+  <h1>Player-to-player trading system</h1>
+  <p class="lede">By the end of this lesson you will have a working trade system where two players can exchange items and money safely, with confirmation from both sides.</p>
+  <div class="hero-outcome">
+    <div><dt>You'll ship</dt><dd>A trade system with request, offer, confirm, and execute phases — fully server-authoritative.</dd></div>
+    <div><dt>Time</dt><dd>About 40 minutes.</dd></div>
+    <div><dt>You'll learn</dt><dd>How to build a multi-step interaction between two players with inventory and money validation.</dd></div>
+    <div><dt>Prereqs</dt><dd>You understand server events, client-server communication, and have an inventory system.</dd></div>
+  </div>
+</section>
+
+<section class="tldr-card" aria-label="What you will build">
+  <span class="tldr-card__chip">In 3 bullets</span>
+  <div class="tldr-card__body">
+    <p><strong>You will build a trade system:</strong></p>
+    <ul class="tldr-card__points">
+      <li>Player A types <code>/trade 42</code> to send a trade request to Player 42.</li>
+      <li>Player B accepts. Both players add items and money to the trade window.</li>
+      <li>Both confirm. The server validates everything and executes the swap atomically.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+  <p class="strict-kicker">Step by step</p>
+  <h2 id="strict-template-title">Lesson 50: Player-to-player trading</h2>
+
+  <section class="strict-section beginner-orientation" id="beginner-orientation">
+    <h3>Start here</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">What this is</dt><dd>A trade is a swap of items and money between two players that both must confirm.<br><span>Example: Player A gives $5000 for Player B's weapon — both must agree before it happens.</span></dd></div>
+      <div><dt tabindex="0">Where to find it</dt><dd>All trade logic runs on the server. The client only shows the UI and sends confirmations.<br><span>Example: the server checks that both players still have the items before executing the trade.</span></dd></div>
+      <div><dt tabindex="0">How to use it</dt><dd>Request → Accept → Offer → Confirm → Execute. Five phases, each server-validated.<br><span>Example: if a player logs out during the trade, the server cancels it and returns items.</span></dd></div>
+      <div><dt tabindex="0">What to do now</dt><dd>Build the five-phase trade flow and test it with two players.<br><span>Example: trade a sandwich for $100 and verify both inventories update correctly.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="outcome" data-section="outcome">
+    <h3>Outcome</h3>
+    <p>Two players trade items and money safely with server-authoritative validation.</p>
+  </section>
+
+  <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+    <h3>Why it matters</h3>
+    <p>Player trading is the backbone of any economy server. Getting it wrong means duplicated items, lost money, and angry players.</p>
+  </section>
+
+  <section class="strict-section" id="vocabulary" data-section="vocabulary">
+    <h3>Vocabulary</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">Trade session</dt><dd>The state of an active trade between two players, stored on the server.<br><span>Example: {playerA=1, playerB=42, offers={{}, {}}, confirmed={false, false}}</span></dd></div>
+      <div><dt tabindex="0">Atomic execution</dt><dd>Both sides of the trade happen together or not at all.<br><span>Example: if money transfer succeeds but item transfer fails, the money is refunded.</span></dd></div>
+      <div><dt tabindex="0">Server-authoritative</dt><dd>All validation runs on the server — never trust the client about what a player has.<br><span>Example: the server checks the database, not the client's claims.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="setup" data-section="setup">
+    <h3>Setup</h3>
+    <dl class="setup-list">
+      <div><dt>Resource</dt><dd><code>qu_trade</code></dd></div>
+      <div><dt>Side</dt><dd><code>server + client</code></dd></div>
+      <div><dt>File path</dt><dd><code>resources/qu_trade/server.lua</code> and <code>client.lua</code></dd></div>
+      <div><dt>Ensure order</dt><dd><code>ensure ox_lib</code> before <code>ensure qu_trade</code></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="minimal-example" data-section="minimal-example">
+    <h3>Minimal example</h3>
+    <figure class="code" data-expected-output="[TRADE] Session created between 1 and 42">
+      <header><span class="file">qu_trade/server.lua</span><span class="lang">Lua</span></header>
+      <pre><code class="language-lua">local MODULE = 'trade'
+local activeTrades = {}
+
+RegisterCommand('trade', function(source, args)
+    local targetId = tonumber(args[1])
+    if not targetId then return end
+
+    local src = source
+    local target = GetPlayerPed(targetId) -- validate target exists
+
+    local sessionId = tostring(src) .. '-' .. tostring(targetId)
+    activeTrades[sessionId] = {
+        players = {src, targetId},
+        offers = {{}, {}},       -- playerA offers, playerB offers
+        confirmed = {false, false},
+        phase = 'awaiting_accept',
+    }
+
+    TriggerClientEvent('qu_trade:request', targetId, src)
+    print(('[TRADE] Session %s: %s invited %s'):format(sessionId, src, targetId))
+end, false)
+
+RegisterNetEvent('qu_trade:accept', function(tradeId)
+    local src = source
+    local trade = activeTrades[tradeId]
+    if not trade or trade.phase ~= 'awaiting_accept' then return end
+
+    trade.phase = 'offering'
+    TriggerClientEvent('qu_trade:open', -1, tradeId, trade.players)
+end)
+
+RegisterNetEvent('qu_trade:confirm', function(tradeId, playerIndex)
+    local trade = activeTrades[tradeId]
+    if not trade or trade.phase ~= 'offering' then return end
+
+    trade.confirmed[playerIndex] = true
+
+    if trade.confirmed[1] and trade.confirmed[2] then
+        trade.phase = 'executing'
+        -- Execute the trade here: transfer items + money
+        print(('[TRADE] Executing %s'):format(tradeId))
+    end
+end)
+
+print('[TRADE] Trade system loaded')</code></pre>
+    </figure>
+    <p class="expected-output"><strong>Expected output:</strong> <code>[TRADE] Session created between 1 and 42</code></p>
+  </section>
+
+  <section class="strict-section" id="checklist" data-section="checklist">
+    <h3>Checklist</h3>
+    <ol>
+      <li>Create <code>fxmanifest.lua</code> with server and client scripts.</li>
+      <li>Create <code>server.lua</code> with the trade state machine (5 phases).</li>
+      <li>Create <code>client.lua</code> that shows NUI dialogs for each phase.</li>
+      <li>Test with two players: request, accept, offer items, both confirm, verify execution.</li>
+      <li>Test edge case: one player disconnects mid-trade — verify cleanup.</li>
+      <li>Test edge case: try to trade an item you do not have — verify server rejects it.</li>
+    </ol>
+  </section>
+
+  <section class="strict-section" id="strict-exercise" data-section="exercise">
+    <h3>Exercise</h3>
+    <p>Add a trade timeout: if neither player confirms within 60 seconds, cancel the trade and notify both players.</p>
+    <p class="expected-output"><strong>Expected output:</strong> After 60 seconds of inactivity, both players see <code>[TRADE] Trade cancelled — timed out</code>.</p>
+  </section>
+
+  <section class="strict-section" id="common-failures" data-section="common-failures">
+    <h3>Common failures</h3>
+    <ul class="failure-list">
+      <li><code>Items duplicated after trade</code> means you are not validating inventory on the server before execution. Always check the database.</li>
+      <li><code>Trade stuck in 'offering' phase forever</code> means a player disconnected and the session was not cleaned up. Add a disconnect handler.</li>
+      <li><code>Money lost on one side but items not received on the other</code> means the execution is not atomic. Wrap transfers in a single transaction.</li>
+      <li><code>Player can trade with themselves</code> means the target validation is missing. Check that source ~= target before creating a session.</li>
+    </ul>
+  </section>
+
+  <section class="strict-section" id="refactor" data-section="refactor">
+    <h3>Refactor</h3>
+    <p>Extract the trade validation and execution into separate functions so you can call <code>executeTrade(tradeId)</code> from the confirm handler and the timeout handler.</p>
+  </section>
+
+  <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+    <h3>References</h3>
+    <ul>
+      <li><a href="/lessons/trigger-server-client-event">Trigger server-client events lesson</a></li>
+      <li><a href="/lessons/ox-lib-notifications-ui">ox_lib UI lesson</a></li>
+      <li><a href="/lessons/inventories">Inventories lesson</a></li>
+    </ul>
+  </section>
+</section>

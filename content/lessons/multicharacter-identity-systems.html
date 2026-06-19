@@ -1,0 +1,366 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 03 · Lesson 04</span></div>
+        <h1>Multi-character and identity management</h1>
+        <p class="lede">Players want more than one character. This lesson shows you how multi-character works across QBCore, Qbox, ESX, and ox_core, and how to build a character selection screen that actually saves data.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A working character select screen where players create up to 5 characters, each with independent inventory, job, and bank data.</dd></div>
+          <div><dt>Time</dt><dd>About 40 minutes to understand the architecture, 20 minutes to configure.</dd></div>
+          <div><dt>You'll learn</dt><dd>How character data is keyed by citizen ID, why multi-char breaks naive scripts, and how to scope every query to the active character.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a framework (QBCore/Qbox/ESX/ox_core) running. You have seen a database table at least once.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will learn">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>By the end of this lesson you will understand:</strong></p>
+          <ul class="tldr-card__points">
+            <li>A player is a license identifier. A character is a citizen ID. One player can own multiple citizens, each with their own data.</li>
+            <li>When a script runs <code>SELECT * FROM players WHERE license = ?</code> with no citizen ID filter, it pulls the wrong character's data. This is the #1 multi-char bug.</li>
+            <li>The character selection screen is a client-side NUI that sends a citizen ID to the server, which then loads that character's row from the database.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 04: Multi-character and identity management</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>How to let one player have multiple independent characters.<br><span>Example: one Steam account, three characters, separate banks.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Your framework's character table in the database.<br><span>Example: SELECT * FROM players WHERE license = ?.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Load the active citizen ID from the player object on every query.<br><span>Example: Player.PlayerData.citizenid in QBCore.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Open your database and look at the players table.<br><span>Example: find the citizenid and license columns.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will understand how multi-character data flows and how to write queries that never mix up characters.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A single-character server limits every player to one life. The moment you add a second slot, every SQL query in every resource must be updated. If you miss one, Player A's bank balance leaks into Player A's second character. That breaks your economy.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">License</dt><dd>The unique ID for a player's copy of GTA V. One per Steam/Rockstar account.<br><span>Example: license:abc123 is always the same person.</span></dd></div>
+            <div><dt tabindex="0">Citizen ID</dt><dd>The unique ID for one character. A player can have many.<br><span>Example: citizen ABC0001 and ABC0002 belong to license:abc123.</span></dd></div>
+            <div><dt tabindex="0">Active character</dt><dd>The citizen ID the player is currently playing as.<br><span>Example: Player.PlayerData.citizenid returns the active one.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Database</dt><dd><code>Your framework's database (oxmysql or ghmattimysql)</code></dd></div>
+            <div><dt>Table</dt><dd><code>players (or characters, depending on framework)</code></dd></div>
+            <div><dt>Key columns</dt><dd><code>license, citizenid, charinfo (JSON blob)</code></dd></div>
+            <div><dt>Multi-char config</dt><dd><code>Config.MaxCharacters = 5 in your framework config</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="One row per citizenid">
+            <header><span class="file">server.lua — correct multi-char query</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- CORRECT: scoped to the active character's citizenid
+local function getPlayerBank(citizenid)
+    local result = MySQL.query.await(
+        'SELECT money FROM bank_accounts WHERE citizenid = ?',
+        { citizenid }
+    )
+    return result and result[1] and result[1].money or 0
+end
+
+-- WRONG: scoped only to license, returns first character's data
+local function getPlayerBank_BAD(license)
+    local result = MySQL.query.await(
+        'SELECT money FROM bank_accounts WHERE license = ?',
+        { license }
+    )
+    return result and result[1] and result[1].money or 0
+end</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> The correct function returns the bank balance of the currently active character. The wrong function returns the first character's balance every time.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Open your database and confirm the players table has a <code>citizenid</code> column.</li>
+            <li>Check your framework config for <code>MaxCharacters</code> (set to at least 3).</li>
+            <li>Search every SQL query in your custom resources for <code>WHERE license =</code>.</li>
+            <li>Replace with <code>WHERE citizenid =</code> using the active character ID.</li>
+            <li>Test with two characters on the same license — bank balances must be independent.</li>
+            <li>Test with two characters — inventory items must be independent.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Write a command <code>/whoami</code> that prints the player's license, citizen ID, and character name to the console. Run it on two different characters and confirm the citizen IDs are different.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[whoami] license=abc123 citizenid=XYZ0001 name="John Doe"</code> for character 1. <code>[whoami] license=abc123 citizenid=XYZ0002 name="Jane Doe"</code> for character 2.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Data leaks between characters</code> — you queried by license instead of citizen ID. Every character sees the first character's data.</li>
+            <li><code>Max characters reached but no UI shown</code> — the character select NUI is not loading. Check the spawnmanager resource.</li>
+            <li><code>Character deleted but items remain</code> — your inventory table has no CASCADE delete on the citizen ID foreign key.</li>
+            <li><code>New character overwrites old character data</code> — your INSERT uses REPLACE with only the license as the unique key.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Create a helper <code>getActiveCitizenId(source)</code> that every resource imports, so you never accidentally hardcode a license query again.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/#getplayeridentifiers" target="_blank" rel="noopener">FiveM GetPlayerIdentifiers</a></li>
+            <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="multichar-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Multi-character data model</h3>
+        <ul>
+          <li><strong>Player (license).</strong> Maps to one Steam/Rockstar account. Has many characters.</li>
+          <li><strong>Character (citizenid).</strong> One row per character. Has inventory, bank, job, appearance.</li>
+          <li><strong>Active character.</strong> The citizen ID currently loaded. Stored in Player.PlayerData.citizenid.</li>
+          <li><strong>Every query must filter by citizenid.</strong> If you query by license, you get the wrong character's data.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>A player is a person. A character is a role they play. One person can play five different roles. Each role has its own wallet, its own car keys, its own job. The database must reflect this. If your <code>bank_accounts</code> table only stores by license, all five characters share one bank account. That is not multi-character. That is a bug.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a hotel with room keys.</p>
+          <p>The guest (license) can book multiple rooms (characters). Each room has its own key, its own minibar, its own checkout time. If you hand the guest a master key that opens every room and shares one bill, the hotel collapses. The database is the hotel's ledger. Each room gets its own row. The guest is just a foreign key linking the rooms together.</p>
+          <p>Your citizen ID is the room number. Your license is the guest name. Every transaction writes to one room, never to the guest directly.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Wrong query and right query, side by side</h2>
+        <p>This is the single most common multi-character bug. One wrong WHERE clause, and every character sees the first character's bank account.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Wrong: query by license</p>
+            <p class="before-after__caption">Returns the bank balance of whichever character was created first. All characters see the same number.</p>
+            <figure class="code">
+              <header><span>server.lua — the broken query</span></header>
+              <pre><code class="language-lua">-- BROKEN: character 2 sees character 1's money
+local function getBankBalance(source)
+    local license = GetPlayerIdentifierByType(source, 'license2')
+    local result = MySQL.query.await(
+        'SELECT money FROM bank_accounts WHERE license = ? LIMIT 1',
+        { license }
+    )
+    return result[1].money  -- always row 1
+end</code></pre>
+            </figure>
+            <p>MySQL returns the first matching row. Since both characters share the same license, you always get character 1's balance. Character 2's balance is invisible.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Correct: query by citizenid</p>
+            <p class="before-after__caption">Returns exactly the bank balance of the active character. Each character sees only their own money.</p>
+            <figure class="code">
+              <header><span>server.lua — the fixed query</span></header>
+              <pre><code class="language-lua">-- CORRECT: each character has their own row
+local function getBankBalance(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return 0 end
+    local cid = Player.PlayerData.citizenid
+    local result = MySQL.query.await(
+        'SELECT money FROM bank_accounts WHERE citizenid = ?',
+        { cid }
+    )
+    return result[1] and result[1].money or 0
+end</code></pre>
+            </figure>
+            <p>The citizen ID uniquely identifies the character. Every query scoped to citizen ID returns the correct row. Character 1 and character 2 have independent balances.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, take five minutes to fix it first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="framework"> I have QBCore, Qbox, ESX, or ox_core running.</label></li>
+          <li><label><input type="checkbox" data-id="database"> I can open my database and run SELECT queries.</label></li>
+          <li><label><input type="checkbox" data-id="playerdata"> I know what Player.PlayerData contains (name, citizenid, license).</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Understand the data model</h3>
+        </div>
+        <p class="pin-card__lede">Before you change any code, open the database and look at the tables.</p>
+        <ol>
+          <li>Open your database with HeidiSQL, DBeaver, or phpMyAdmin.</li>
+          <li>Find the <code>players</code> table. Look at the columns: <code>license</code>, <code>citizenid</code>, <code>charinfo</code>.</li>
+          <li>Run <code>SELECT license, citizenid, JSON_EXTRACT(charinfo, '$.firstname') FROM players;</code>.</li>
+          <li>You should see the same license multiple times, each with a different citizen ID and first name.</li>
+          <li>That is the proof. Same player, multiple characters. Each citizen ID is a separate identity.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Audit your custom resources</h3>
+        </div>
+        <p class="pin-card__lede">Every SQL query you wrote must use citizen ID, not license.</p>
+        <ol>
+          <li>Open every custom resource you have written.</li>
+          <li>Search for the string <code>WHERE license =</code> in all <code>.lua</code> files.</li>
+          <li>Every hit is a potential data leak between characters.</li>
+          <li>Change each one to <code>WHERE citizenid =</code> and get the citizen ID from the framework's player object.</li>
+          <li>In QBCore/Qbox: <code>Player.PlayerData.citizenid</code>. In ESX: <code>xPlayer.getIdentifier()</code> returns citizenid if multi-char is on. In ox_core: <code>player.charid</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Test with two characters</h3>
+        </div>
+        <p class="pin-card__lede">The only way to know you fixed it is to test it.</p>
+        <ol>
+          <li>Create two characters on your account. Give them different names.</li>
+          <li>Log in as character 1. Deposit $100 in the bank. Note the balance.</li>
+          <li>Log out, switch to character 2. Check the bank balance. It should be $0 (or whatever you started with).</li>
+          <li>If character 2 sees $100, you missed a query. Go back to Step 2.</li>
+          <li>Repeat for inventory. Give character 1 a weapon. Switch to character 2. Character 2 should not have that weapon.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test with two characters. The first character should never affect the second.</p>
+        <ol>
+          <li>
+            <strong>Test 1, bank independence.</strong>
+            <ul>
+              <li>Action: character 1 deposits $500. Switch to character 2.</li>
+              <li>Expected: character 2's balance is unchanged.</li>
+              <li>How to verify: run <code>SELECT money FROM bank_accounts WHERE citizenid = 'CHAR2_ID';</code>.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, inventory independence.</strong>
+            <ul>
+              <li>Action: character 1 receives a pistol via command. Switch to character 2.</li>
+              <li>Expected: character 2 has no pistol.</li>
+              <li>How to verify: open character 2's inventory UI. The pistol is not there.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, job independence.</strong>
+            <ul>
+              <li>Action: character 1 sets job to police. Switch to character 2.</li>
+              <li>Expected: character 2 is not police.</li>
+              <li>How to verify: character 2's job is whatever was set for that character (usually unemployed).</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why not just use a separate table per character?</summary>
+            <p>Because that would create hundreds of tables as your player base grows. One table with a citizenid column scales better, makes queries simpler, and lets you join data across characters when you need to (e.g., "find all characters who have ever been banned").</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>A license identifies a player. A citizen ID identifies a character. Never confuse them.</li>
+          <li>Every SQL query that reads or writes player data must scope to citizen ID.</li>
+          <li>The active citizen ID comes from the framework's player object, never from a client event parameter (which a cheater can spoof).</li>
+          <li>Test every resource with two characters before considering it production-ready.</li>
+          <li>Foreign keys from inventory/job/bank tables should reference citizenid, not license.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. What is the difference between a license and a citizen ID?</legend>
+            <label><input type="radio" name="q1" value="a"> They are the same thing with different names.</label>
+            <label><input type="radio" name="q1" value="b"> A license is the player's account. A citizen ID is one of their characters.</label>
+            <label><input type="radio" name="q1" value="c"> A license is for cars. A citizen ID is for people.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>2. What happens if you query bank_accounts WHERE license = ? on a multi-character server?</legend>
+            <label><input type="radio" name="q2" value="a"> MySQL returns the first matching row, which belongs to the first character created on that license.</label>
+            <label><input type="radio" name="q2" value="b"> MySQL throws an error because license is not a foreign key.</label>
+            <label><input type="radio" name="q2" value="c"> MySQL returns the sum of all characters' balances.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>3. Where does the active citizen ID come from?</legend>
+            <label><input type="radio" name="q3" value="a"> From the client, sent via TriggerServerEvent.</label>
+            <label><input type="radio" name="q3" value="b"> From the database by querying the last login time.</label>
+            <label><input type="radio" name="q3" value="c"> From the framework's player object on the server (e.g., Player.PlayerData.citizenid).</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Multi-character means one license (player) owns multiple citizen IDs (characters).</li>
+          <li>Every database table that stores player data must key on citizenid, not license.</li>
+          <li>The active citizen ID is stored in the framework's server-side player object.</li>
+          <li>Querying by license on a multi-character server returns the wrong character's data.</li>
+          <li>Test with two characters on the same account to confirm full independence.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Write a diagnostic command <code>/chardump</code> that prints the active character's citizen ID, name, job, bank balance, and inventory slot count to the server console. Run it on both characters and confirm every value is different.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>server console, after /chardump on both characters</span></header>
+          <pre><code>[chardump] cid=ABC001 name="John Doe" job=police bank=500 inv=12/40
+[chardump] cid=ABC002 name="Jane Doe" job=unemployed bank=200 inv=3/40</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Use <code>QBCore.Functions.GetPlayer(source)</code> to get the player object, then access <code>.PlayerData.citizenid</code>, <code>.PlayerData.charinfo.firstname</code>, <code>.PlayerData.job.name</code>, and <code>.PlayerData.money.bank</code>. For inventory, query the inventory table with the citizen ID.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/#getplayeridentifiers" target="_blank" rel="noopener">GetPlayerIdentifiers on FiveM docs</a></li>
+          <li><a href="https://overextended.dev/oxmysql" target="_blank" rel="noopener">oxmysql documentation</a></li>
+          <li><a href="https://github.com/qbcore-framework/qb-core" target="_blank" rel="noopener">QBCore framework source</a></li>
+          <li><a href="https://github.com/Qbox-project/qbx_core" target="_blank" rel="noopener">Qbox core source</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest</a></li>
+        </ul>
+      </section>

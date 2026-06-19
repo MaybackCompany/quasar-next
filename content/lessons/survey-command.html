@@ -1,0 +1,147 @@
+<section class="lesson-hero">
+  <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module B7 · Lesson 44</span></div>
+  <h1>/survey — build an in-game poll players can vote on</h1>
+  <p class="lede">By the end of this lesson you will have a working <code>/survey</code> command that asks players a question, collects votes with ox_lib dialogs, and shows live results.</p>
+  <div class="hero-outcome">
+    <div><dt>You'll ship</dt><dd>A survey system with question, options, voting, and live result display.</dd></div>
+    <div><dt>Time</dt><dd>About 35 minutes.</dd></div>
+    <div><dt>You'll learn</dt><dd>How to use ox_lib input dialogs, collect server-side votes, and prevent double-voting.</dd></div>
+    <div><dt>Prereqs</dt><dd>You have ox_lib installed and a basic understanding of server events.</dd></div>
+  </div>
+</section>
+
+<section class="tldr-card" aria-label="What you will build">
+  <span class="tldr-card__chip">In 3 bullets</span>
+  <div class="tldr-card__body">
+    <p><strong>You will build a survey command:</strong></p>
+    <ul class="tldr-card__points">
+      <li>Admin types <code>/survey "Best car?" "Adder" "Zentorno" "T20"</code> to start a poll.</li>
+      <li>Players see the question and options via ox_lib dialog, pick one, and the vote is recorded.</li>
+      <li>Results display in chat showing how many votes each option received.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+  <p class="strict-kicker">Step by step</p>
+  <h2 id="strict-template-title">Lesson 44: /survey command with ox_lib</h2>
+
+  <section class="strict-section beginner-orientation" id="beginner-orientation">
+    <h3>Start here</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">What this is</dt><dd>A survey lets one person ask a question and many people answer with one click.<br><span>Example: ask your community which car to add next and get real votes.</span></dd></div>
+      <div><dt tabindex="0">Where to find it</dt><dd>Votes are stored in a table on the server. The client only displays the dialog.<br><span>Example: the server table prevents double-voting by checking player IDs.</span></dd></div>
+      <div><dt tabindex="0">How to use it</dt><dd>Admin creates a survey. Players join and vote. Results are shown to everyone.<br><span>Example: /survey "Event time?" "8 PM" "9 PM" "10 PM" runs a real-time poll.</span></dd></div>
+      <div><dt tabindex="0">What to do now</dt><dd>Build the survey command and test it with at least two players voting.<br><span>Example: verify that voting twice is blocked and results are accurate.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="outcome" data-section="outcome">
+    <h3>Outcome</h3>
+    <p>Run a survey, collect votes from multiple players, and display accurate results.</p>
+  </section>
+
+  <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+    <h3>Why it matters</h3>
+    <p>Community input makes players feel heard. A working poll system takes 50 lines of code and builds loyalty faster than any announcement.</p>
+  </section>
+
+  <section class="strict-section" id="vocabulary" data-section="vocabulary">
+    <h3>Vocabulary</h3>
+    <dl class="vocab-list">
+      <div><dt tabindex="0">Survey state</dt><dd>The question, options, and votes stored on the server.<br><span>Example: {question='Best car?', options={'Adder','Zentorno'}, votes={}}</span></dd></div>
+      <div><dt tabindex="0">Double-vote prevention</dt><dd>Checking whether a player already voted before accepting their new vote.<br><span>Example: if votes[src] then return end stops repeat voters.</span></dd></div>
+      <div><dt tabindex="0">ox_lib dialog</dt><dd>A UI component that shows options and returns the player's choice.<br><span>Example: lib.alertDialog with radio-style selection.</span></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="setup" data-section="setup">
+    <h3>Setup</h3>
+    <dl class="setup-list">
+      <div><dt>Resource</dt><dd><code>qu_survey</code></dd></div>
+      <div><dt>Side</dt><dd><code>server + client</code></dd></div>
+      <div><dt>File path</dt><dd><code>resources/qu_survey/server.lua</code> and <code>client.lua</code></dd></div>
+      <div><dt>Ensure order</dt><dd><code>ensure ox_lib</code> before <code>ensure qu_survey</code></dd></div>
+    </dl>
+  </section>
+
+  <section class="strict-section" id="minimal-example" data-section="minimal-example">
+    <h3>Minimal example</h3>
+    <figure class="code" data-expected-output="[SURVEY] Survey created: Best car? (3 options)">
+      <header><span class="file">qu_survey/server.lua</span><span class="lang">Lua</span></header>
+      <pre><code class="language-lua">local MODULE = 'survey'
+local activeSurvey = nil
+
+RegisterCommand('survey', function(source, args)
+    local question = args[1]
+    local options = {}
+    for i = 2, #args do options[#options + 1] = args[i] end
+
+    if #options < 2 then
+        return print('[SURVEY] Need at least 2 options')
+    end
+
+    activeSurvey = {
+        question = question,
+        options = options,
+        votes = {}, -- [playerId] = optionIndex
+        createdBy = source,
+    }
+
+    TriggerClientEvent('qu_survey:show', -1, activeSurvey)
+    print(('[SURVEY] Created: %s (%d options)'):format(question, #options))
+end, true)
+
+RegisterNetEvent('qu_survey:vote', function(optionIndex)
+    local src = source
+    if not activeSurvey then return end
+    if activeSurvey.votes[src] then return end -- already voted
+
+    activeSurvey.votes[src] = optionIndex
+    print(('[SURVEY] Player %s voted for option %d'):format(src, optionIndex))
+end)</code></pre>
+    </figure>
+    <p class="expected-output"><strong>Expected output:</strong> <code>[SURVEY] Created: Best car? (3 options)</code></p>
+  </section>
+
+  <section class="strict-section" id="checklist" data-section="checklist">
+    <h3>Checklist</h3>
+    <ol>
+      <li>Create <code>fxmanifest.lua</code> with <code>ox_lib</code> dependency.</li>
+      <li>Create <code>server.lua</code> with the survey command and vote handler.</li>
+      <li>Create <code>client.lua</code> that shows the ox_lib dialog when <code>qu_survey:show</code> fires.</li>
+      <li>Type <code>/survey "Test?" "Yes" "No"</code> and verify the dialog appears.</li>
+      <li>Vote twice and verify the second vote is blocked.</li>
+      <li>Extend server.lua to show results with <code>/survey_results</code>.</li>
+    </ol>
+  </section>
+
+  <section class="strict-section" id="strict-exercise" data-section="exercise">
+    <h3>Exercise</h3>
+    <p>Add a <code>/survey_close</code> command that ends the survey and prints the final results to all players in chat.</p>
+    <p class="expected-output"><strong>Expected output:</strong> Chat shows <code>[SURVEY] Results: Best car? — Adder: 5 votes, Zentorno: 8 votes</code></p>
+  </section>
+
+  <section class="strict-section" id="common-failures" data-section="common-failures">
+    <h3>Common failures</h3>
+    <ul class="failure-list">
+      <li><code>attempt to index a nil value (field 'exports')</code> means ox_lib is not started before qu_survey. Check your ensure order.</li>
+      <li><code>Dialog does not appear</code> means the client event is not registered or the resource is not ensured on the client side.</li>
+      <li><code>Votes not recorded</code> means the server event handler is missing or the event name does not match client and server.</li>
+      <li><code>Double voting still works</code> means the votes table is being reset somewhere. Check that activeSurvey is not recreated on every vote.</li>
+    </ul>
+  </section>
+
+  <section class="strict-section" id="refactor" data-section="refactor">
+    <h3>Refactor</h3>
+    <p>Replace the in-memory <code>activeSurvey</code> table with KVS storage so surveys survive a server restart.</p>
+  </section>
+
+  <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+    <h3>References</h3>
+    <ul>
+      <li><a href="/lessons/ox-lib-notifications-ui">ox_lib UI & notifications lesson</a></li>
+      <li><a href="/lessons/kvs-no-database-persistence">KVS persistence lesson</a></li>
+    </ul>
+  </section>
+</section>

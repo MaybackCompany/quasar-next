@@ -1,0 +1,192 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Track A · Lesson 09</span></div>
+        <h1>Artifact update SOP, safe upgrades every time</h1>
+        <p class="lede">By the end of this lesson you will have a written Standard Operating Procedure for updating your FiveM server artifacts that prevents downtime, catches breakage before it hits players, and always lets you roll back in under two minutes.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A one-page SOP you follow every time you update server artifacts, from backup through verification.</dd></div>
+          <div><dt>Time</dt><dd>About 15 minutes to write the SOP, then 10 minutes per update forever.</dd></div>
+          <div><dt>You'll learn</dt><dd>Why skipping the backup step costs you a full reinstall, how to test an update on a staging server, and which files you must never overwrite blindly.</dd></div>
+          <div><dt>Prereqs</dt><dd>Your server is running and you know where the artifacts folder lives.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a repeatable artifact update process that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Before touching anything, you back up the current artifacts folder and your server-data into a timestamped tarball.</li>
+            <li>You download the new artifacts to a staging folder, test them with a copy of your configuration, and only then deploy to production.</li>
+            <li>If anything breaks, you restore from the backup and are back online in under two minutes — no panic, no guessing.</li>
+          </ul>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 09: Artifact update SOP, safe upgrades every time</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A written checklist you follow every time Cfx.re releases new server artifacts.<br><span>Example: new build drops. You run through seven steps. Nothing breaks. Players never notice.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Artifacts live at <code>artifacts/</code> in your server root. New builds come from the Cfx.re build server.<br><span>Example: https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Follow the SOP every time. Never skip a step. The SOP is your insurance policy.<br><span>Example: step 1 is always backup. No exceptions, even for a "tiny" update.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Read the SOP below, then adapt it to your server's exact paths and tools.<br><span>Example: change /home/fxserver to your actual server path.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will have a written SOP for artifact updates that you can execute in under 10 minutes with zero downtime risk.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Artifact updates change the core engine your server runs on. A bad update can break every script, corrupt your database, or prevent players from connecting. Without a rollback plan, you are reinstalling from scratch while your community waits.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Artifacts</dt><dd>The compiled server binary and its supporting files. This is the FiveM server engine itself.<br><span>Example: fxserver-linux.zip contains the fxserver binary, citizen/ directory, and native docs.</span></dd></div>
+            <div><dt tabindex="0">Server-data</dt><dd>Your configuration and resources. This is separate from artifacts and should never be overwritten by an update.<br><span>Example: the folder containing server.cfg, resources/, and your database files.</span></dd></div>
+            <div><dt tabindex="0">Rollback</dt><dd>Restoring the previous artifacts version after a failed update.<br><span>Example: if build 12345 breaks your scripts, copy back build 12300 from the backup.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>none</code></dd></div>
+            <div><dt>Side</dt><dd><code>server (infrastructure)</code></dd></div>
+            <div><dt>File path</dt><dd><code>~/server/artifacts/</code> (your server root)</dd></div>
+            <div><dt>Ensure order</dt><dd>N/A — artifacts are the server binary, loaded before any resource.</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Backup created, artifacts updated, server verified running">
+            <header><span class="file">Artifact Update SOP — Complete Checklist</span><span class="lang">SOP</span></header>
+            <pre><code class="language-text">============================================================
+ARTIFACT UPDATE SOP — Quasar School
+Last updated: 2025-01-01
+============================================================
+
+PREREQUISITES:
+- [ ] Server is running and stable (no active incidents)
+- [ ] You have SSH or console access to the server machine
+- [ ] You have at least 2 GB free disk space for backup
+- [ ] Players have been warned via an announcement (optional but polite)
+
+---- STEP 1: ANNOUNCE (1 minute) ----
+- [ ] Send a chat announcement: "Server updating in 5 minutes. Brief restart expected. Rejoin in 2 minutes."
+- [ ] Wait 2 minutes for players to finish what they are doing.
+
+---- STEP 2: BACKUP (2 minutes) ----
+- [ ] Stop the server: Ctrl+C or `screen -S fxserver -X quit` or txAdmin stop
+- [ ] Verify it stopped: `ps aux | grep fxserver` shows nothing
+- [ ] Create backup directory: mkdir -p ~/backups
+- [ ] Backup artifacts:
+      cd /home/fxserver
+      cp -r artifacts ~/backups/artifacts-$(date +%Y%m%d-%H%M)
+- [ ] Backup server-data:
+      cp -r server-data ~/backups/server-data-$(date +%Y%m%d-%H%M)
+- [ ] VERIFY: `ls ~/backups/` shows two timestamped folders
+      EXPECTED: artifacts-20250101-1400/ and server-data-20250101-1400/
+- [ ] If verification fails, DO NOT PROCEED. Fix backup first.
+
+---- STEP 3: DOWNLOAD NEW ARTIFACTS (1 minute) ----
+- [ ] Go to https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/
+- [ ] Find the latest recommended build (NOT the "latest" if marked optional)
+- [ ] Download: cd /tmp && wget &lt;download-url&gt; -O fxserver-new.tar.xz
+- [ ] Verify download size is not 0: `ls -lh /tmp/fxserver-new.tar.xz`
+      EXPECTED: file size > 20 MB
+
+---- STEP 4: STAGE AND TEST (2 minutes) ----
+- [ ] Create staging directory: mkdir -p /tmp/fxserver-staging
+- [ ] Extract to staging: tar -xf /tmp/fxserver-new.tar.xz -C /tmp/fxserver-staging
+- [ ] Copy your server.cfg to staging for a quick config test:
+      cp ~/fxserver/server-data/server.cfg /tmp/fxserver-staging/
+- [ ] Start staging server on a different port:
+      cd /tmp/fxserver-staging
+      ./run.sh +exec server.cfg +set sv_port 30121
+- [ ] Connect to staging: open FiveM, press F8, `connect localhost:30121`
+- [ ] EXPECTED: you see the loading screen. If you reach character select, it works.
+- [ ] Stop staging server: Ctrl+C
+
+---- STEP 5: DEPLOY TO PRODUCTION (1 minute) ----
+- [ ] Delete old artifacts: rm -rf ~/fxserver/artifacts
+- [ ] Copy new artifacts: cp -r /tmp/fxserver-staging/* ~/fxserver/artifacts/
+- [ ] IMPORTANT: do NOT overwrite server-data. Artifacts and server-data are separate.
+- [ ] Start production server normally: cd ~/fxserver && ./run.sh +exec server-data/server.cfg
+
+---- STEP 6: VERIFY (2 minutes) ----
+- [ ] Watch the console for 30 seconds. No red error lines.
+- [ ] Join the server as a player. Confirm you spawn and can move.
+- [ ] Test one core command: /heal, /ooc, or your framework's equivalent.
+- [ ] Check F8 console: no client-side script errors.
+- [ ] EXPECTED: all tests pass. Server is healthy.
+
+---- STEP 7: CLEAN UP (1 minute) ----
+- [ ] Remove staging folder: rm -rf /tmp/fxserver-staging /tmp/fxserver-new.tar.xz
+- [ ] Remove old backups: keep only the last 3. Delete older ones.
+- [ ] Announce in chat: "Update complete. Welcome back!"
+- [ ] Log the update:
+      echo "$(date): Updated artifacts to build &lt;number&gt;" >> ~/fxserver/update-log.txt
+
+---- ROLLBACK PROCEDURE (IF STEP 6 FAILS) ----
+- [ ] Stop the server immediately.
+- [ ] Restore artifacts: rm -rf ~/fxserver/artifacts && cp -r ~/backups/artifacts-&lt;timestamp&gt; ~/fxserver/artifacts
+- [ ] Start server: cd ~/fxserver && ./run.sh +exec server-data/server.cfg
+- [ ] Verify as in Step 6.
+- [ ] Time to rollback: under 2 minutes.
+============================================================ END SOP</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> You complete all seven steps, the server restarts with new artifacts, and players reconnect without issues.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Copy the SOP above into a file on your server machine: <code>~/fxserver/UPDATE-SOP.txt</code>.</li>
+            <li>Edit the paths to match your actual server layout (change <code>/home/fxserver</code> to your real path).</li>
+            <li>Run through the backup step (Step 2) right now on your production server to confirm it works.</li>
+            <li>Verify the backup exists and has the expected files.</li>
+            <li>Choose a low-traffic time and run the full SOP for your next artifact update.</li>
+            <li>After the update, update the "Last updated" date at the top of the SOP.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Run Step 2 (backup only) on your live server right now. Do not stop the server if players are on — wait for a quiet moment. Create the timestamped backup folders and verify both exist with <code>ls -la ~/backups/</code>.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Two folders appear in <code>~/backups/</code>: <code>artifacts-YYYYMMDD-HHMM/</code> and <code>server-data-YYYYMMDD-HHMM/</code>.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>tar: Cannot open: No such file or directory</code> means the download URL was wrong or the file did not download. Check the URL on the Cfx.re build page and try again.</li>
+            <li><code>Server starts but no resources load</code> means you copied artifacts over your server-data, or the <code>+exec</code> path in the startup command is wrong. Restore from backup and double-check paths.</li>
+            <li><code>Backup folder is empty</code> means you ran <code>cp</code> without <code>-r</code> on a directory. Always use <code>cp -r</code> for folders.</li>
+            <li><code>Staging server works but production does not</code> means the production startup command or server.cfg is different from staging. Compare the two <code>run.sh</code> commands line by line.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Turn this SOP into a shell script: <code>update-artifacts.sh</code>. The script runs each step, asks for confirmation at Step 5 before deploying to production, and logs everything to a file. Now your update is one command: <code>./update-artifacts.sh</code>.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/" target="_blank" rel="noopener">Cfx.re artifacts download page</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/#step-3-get-the-server-artifacts" target="_blank" rel="noopener">FiveM vanilla server setup (artifact section)</a></li>
+            <li><a href="https://docs.fivem.net/docs/server-manual/server-commands/" target="_blank" rel="noopener">FiveM server commands (+exec, +set)</a></li>
+          </ul>
+        </section>
+      </section>

@@ -1,0 +1,299 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Module 07 · Lesson 05</span></div>
+        <h1>Key-Value Store, persistence without MySQL</h1>
+        <p class="lede">Save player data, server settings, and cooldowns across restarts using FiveM's built-in Key-Value Store — no database, no setup, just a function call.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A resource that saves a player's join count and displays it on every login, persisting across server restarts, without touching MySQL.</dd></div>
+          <div><dt>Time</dt><dd>About 25 minutes.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to read and write KVS entries, why KVS is not a database replacement, and when to use it vs when to use MySQL.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have written a server-side Lua script that runs events.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will use the KVS to:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Save a player's login count and last login timestamp with two lines of Lua.</li>
+            <li>Retrieve that data after a full server restart and show it to the player in chat.</li>
+            <li>Understand the limits — 64 KB per key, string-only values, no queries.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 05: Key-Value Store, persistence without MySQL</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A built-in FiveM storage system that saves strings under named keys, surviving restarts.<br><span>Example: KVS stores "player:1:logins" = "42" on disk.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Available via GetResourceKvpString and SetResourceKvp on the server.<br><span>Example: these functions exist only in server-side Lua and C#.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Set a value under a unique key, get it back by that key later.<br><span>Example: SetResourceKvp('my_key', 'hello world') then GetResourceKvpString('my_key').</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Save one value, restart the server, and confirm it survived.<br><span>Example: set a key, restart, read the key, print it.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will restart your server and watch a player's login count increase from where it left off, proving data persisted without a database.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Setting up MySQL for a tiny script is overkill. KVS handles small persistence needs — player settings, server configuration, cooldowns that survive crashes — with zero setup. Knowing the limit (64 KB per key, strings only) keeps you from building a banking system on it.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">KVP / KVS</dt><dd>Key-Value Pair / Key-Value Store. A simple storage where every piece of data is looked up by its unique name (the key).<br><span>Example: 'player:5:money' is the key, '1500' is the value.</span></dd></div>
+            <div><dt tabindex="0">Resource KVP</dt><dd>The KVS namespace tied to your resource. Keys are scoped to the resource that set them.<br><span>Example: a key set by qu_kvs_demo is not readable by qu_heal.</span></dd></div>
+            <div><dt tabindex="0">Flush</dt><dd>Writing cached KVS data to disk. FiveM does this automatically but you can trigger it manually.<br><span>Example: savings happen on a timer; crash before flush means data loss.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_kvs_demo</code></dd></div>
+            <div><dt>Side</dt><dd><code>server (KVS is server-only)</code></dd></div>
+            <div><dt>File</dt><dd><code>resources/qu_kvs_demo/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_kvs_demo</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[qu_kvs_demo] logins for source 1: 5">
+            <header><span class="file">qu_kvs_demo/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'kvs_demo'
+
+AddEventHandler('playerJoining', function()
+    local src = source
+    local key = ('player:%d:logins'):format(src)
+
+    -- Read existing count (returns empty string if key does not exist)
+    local raw = GetResourceKvpString(key)
+    local count = (tonumber(raw) or 0) + 1
+
+    -- Save back
+    SetResourceKvp(key, tostring(count))
+
+    print(('[qu_kvs_demo] logins for source %d: %d'):format(src, count))
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[qu_kvs_demo] logins for source 1: 1</code> on first join, <code>...2</code> on second join, and the count survives a server restart.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create <code>resources/qu_kvs_demo/</code> with <code>fxmanifest.lua</code> and <code>server.lua</code>.</li>
+            <li>Paste the minimal example into <code>server.lua</code>.</li>
+            <li>Ensure the resource and join the server. Note the login count in console.</li>
+            <li>Leave and rejoin. The count increases by 1.</li>
+            <li>Restart the entire server. Join again.</li>
+            <li>Confirm the count continued from before the restart, not from zero.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a second KVS key that stores the player's last join timestamp using <code>os.time()</code>. On join, print both the login count and the previous timestamp from the KVS.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[qu_kvs_demo] source 1: login #3, last seen at 1718841600</code>.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>attempt to call a nil value (global 'GetResourceKvpString')</code> — you are running this on the client. KVS functions are server-only. Move to server.lua.</li>
+            <li>KVS returns empty string but I expected nil — <code>GetResourceKvpString</code> returns <code>''</code> for missing keys, never <code>nil</code>. Use <code>(val ~= '' and val) or defaultValue</code>.</li>
+            <li>Data lost after crash — KVS flushes to disk periodically. If the server crashes within 60 seconds of a write, the data may be lost. Call <code>SetResourceKvpNoSync</code> for less critical data.</li>
+            <li>Key collision between resources — KVS keys are scoped per resource, but if you use generic keys like 'money', two resources can clash. Always prefix with your resource name.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Wrap the KVS read/write in a helper module with <code>getNumber(key, default)</code> and <code>setNumber(key, value)</code> so you never manually convert types again.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#getresourcekvpstring-key" target="_blank" rel="noopener">FiveM GetResourceKvpString documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#setresourcekvp-key-value" target="_blank" rel="noopener">FiveM SetResourceKvp documentation</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/manual.html#pdf-tonumber" target="_blank" rel="noopener">Lua tonumber reference</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="kvs-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>KVS limits and rules</h3>
+        <ul>
+          <li><strong>64 KB per key.</strong> Do not store large JSON blobs. Use MySQL for anything bigger.</li>
+          <li><strong>Strings only.</strong> Convert numbers with <code>tostring()</code> and <code>tonumber()</code>.</li>
+          <li><strong>Server-only.</strong> The client cannot read or write KVS. Send data via events.</li>
+          <li><strong>Resource-scoped.</strong> Keys set by <code>qu_kvs_demo</code> cannot be read by <code>qu_other</code>.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Not every script needs a database. A /heal cooldown that resets on restart is fine. But a player's lifetime login count? That should survive a restart. KVS fills the gap between "lost on restart" (in-memory variables) and "needs MySQL setup" (oxmysql). It is a text file managed by FiveM. You write a string under a key. You read it back later. It is that simple.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a sticky note on the fridge.</p>
+          <p>In-memory variables are like telling someone a number — gone when they leave the room. MySQL is a filing cabinet with labelled folders. KVS is a sticky note. Quick to write, survives a power outage, but you would not store a novel on it. Use it for the right size of data.</p>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="server-lua"> I have written a server.lua file that runs events.</label></li>
+          <li><label><input type="checkbox" data-id="format"> I have used <code>string.format</code> or <code>:format()</code> in Lua.</label></li>
+          <li><label><input type="checkbox" data-id="playerjoining"> I know that <code>playerJoining</code> fires when a player connects.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource</h3>
+        </div>
+        <p class="pin-card__lede">One folder, two files. The KVS needs no special manifest entries.</p>
+        <ol>
+          <li>Create <code>resources/qu_kvs_demo/</code>.</li>
+          <li>Create <code>fxmanifest.lua</code>:
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'</code></pre>
+          </li>
+          <li>Create an empty <code>server.lua</code>. Save both files.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the KVS logic</h3>
+        </div>
+        <p class="pin-card__lede">Paste the example, then read it line by line before running.</p>
+        <ol>
+          <li>Paste the code from the Minimal Example into <code>server.lua</code>.</li>
+          <li>Line 1-2: <code>playerJoining</code> is the earliest event that has a valid <code>source</code>.</li>
+          <li>Line 4: the key includes the player's server ID so every player has their own counter.</li>
+          <li>Line 8: <code>tonumber(raw) or 0</code> returns 0 if the key does not exist yet or is not a number.</li>
+          <li>Line 11: <code>SetResourceKvp</code> writes back. You must pass a string, so <code>tostring</code> converts the number.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Test persistence</h3>
+        </div>
+        <p class="pin-card__lede">The whole point of KVS is surviving a restart. Test it.</p>
+        <ol>
+          <li>Ensure the resource and join the server.</li>
+          <li>Check the console: <code>[qu_kvs_demo] logins for source 1: 1</code>.</li>
+          <li>Disconnect and reconnect. The console shows <code>...2</code>.</li>
+          <li>Now restart the entire FiveM server. Do not just restart the resource.</li>
+          <li>Join again. The console shows <code>...3</code>. Data survived.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Two tests, in order</h3></header>
+        <p>Run each test and confirm before trusting KVS for real data.</p>
+        <ol>
+          <li>
+            <strong>Test 1, basic read/write.</strong>
+            <ul>
+              <li>Action: join, disconnect, rejoin.</li>
+              <li>Expected: login count increments each time.</li>
+              <li>How to verify: console shows increasing numbers, not resetting to 1.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, restart survival.</strong>
+            <ul>
+              <li>Action: note the current count, restart the server, join again.</li>
+              <li>Expected: count is one higher than before the restart, not back to 1.</li>
+              <li>How to verify: the number after restart is higher than before restart.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>What happens if two players join at the exact same time?</summary>
+            <p>Each player has a unique <code>source</code> value, so they write to different keys (<code>player:1:logins</code> vs <code>player:2:logins</code>). No conflict. If two scripts write to the same key simultaneously, the last write wins. KVS is not transactional.</p>
+          </details>
+        </div>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Where can you call GetResourceKvpString?</legend>
+            <label><input type="radio" name="q1" value="a"> Only on the client.</label>
+            <label><input type="radio" name="q1" value="b"> Only on the server.</label>
+            <label><input type="radio" name="q1" value="c"> On both client and server.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What does GetResourceKvpString return for a key that has never been set?</legend>
+            <label><input type="radio" name="q2" value="a"> nil.</label>
+            <label><input type="radio" name="q2" value="b"> The string "nil".</label>
+            <label><input type="radio" name="q2" value="c"> An empty string ''.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What is the maximum size of a single KVS value?</legend>
+            <label><input type="radio" name="q3" value="a"> 64 KB.</label>
+            <label><input type="radio" name="q3" value="b"> 1 MB.</label>
+            <label><input type="radio" name="q3" value="c"> Unlimited, but it gets slow.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to use <code>SetResourceKvp</code> and <code>GetResourceKvpString</code> to persist data across restarts.</li>
+          <li>Why KVS is server-only and how to structure keys to avoid collisions.</li>
+          <li>The three limits: 64 KB max, strings only, resource-scoped.</li>
+          <li>When to use KVS (small data, no queries needed) vs MySQL (structured data, many rows, complex queries).</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a command <code>/kvslookup [id]</code> that prints another player's login count to your chat. You must read a KVS key that belongs to a different source ID.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>chat box, after /kvslookup 3</span></header>
+          <pre><code>[kvs] Player 3 has logged in 12 times.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Register a server command that reads a key with the target ID formatted in. Use <code>TriggerClientEvent('chat:addMessage', src, ...)</code> to send the result back to the requester.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#getresourcekvpstring-key" target="_blank" rel="noopener">GetResourceKvpString docs</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#setresourcekvp-key-value" target="_blank" rel="noopener">SetResourceKvp docs</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#deleteresourcekvp-key" target="_blank" rel="noopener">DeleteResourceKvp docs</a></li>
+        </ul>
+      </section>

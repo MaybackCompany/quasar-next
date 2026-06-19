@@ -1,0 +1,379 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 09 · Lesson 07</span></div>
+        <h1>Discord webhooks, privacy, and PII redaction</h1>
+        <p class="lede">By the end of this lesson you will send Discord webhooks from your FiveM server that are fast, reliable, and never expose player IP addresses, emails, or other personally identifiable information in public channels.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A webhook utility that sends embed-rich messages to Discord, with automatic PII redaction that strips IPs, license identifiers, and raw Steam IDs before they leave your server.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to POST to Discord webhooks from Lua, how to structure embeds for readability, and why redacting PII is not optional — it is a legal requirement in many jurisdictions.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a Discord server and can create a webhook URL. That is enough.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a Discord webhook system that does this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Send structured Discord embeds for key server events: player joins, purchases, admin actions, and errors.</li>
+            <li>Automatically redact IP addresses, Steam hex IDs, license identifiers, and email patterns from every payload before it hits the Discord API.</li>
+            <li>Rate-limit webhook calls to stay under Discord's 30-messages-per-minute cap without dropping important events.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 07: Webhooks, privacy, and PII redaction</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A webhook sends a message from your server to a Discord channel.<br><span>Example: this lesson sends a player-join embed to your staff channel.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Find the webhook URL in Discord under Channel Settings → Integrations.<br><span>Example: copy the URL before writing any code.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>POST JSON to the webhook URL with <code>PerformHttpRequest</code>.<br><span>Example: send one test message before wiring real events.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Send one webhook and verify it appears in Discord.<br><span>Example: match the expected payload format before adding redaction.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will send one Discord embed from Lua and confirm it arrives in your channel.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A webhook that leaks a player's IP address is a privacy violation. One screenshot posted to social media and you are explaining yourself to regulators.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">PerformHttpRequest</dt><dd>The FiveM server function that makes HTTP calls to external APIs.<br><span>Example: <code>PerformHttpRequest(url, cb, 'POST', json)</code>.</span></dd></div>
+            <div><dt tabindex="0">PII Redaction</dt><dd>Stripping personally identifiable information before it leaves your server.<br><span>Example: replacing <code>192.168.1.1</code> with <code>[REDACTED IP]</code>.</span></dd></div>
+            <div><dt tabindex="0">Embed</dt><dd>A structured Discord message with title, description, fields, and color.<br><span>Example: a join embed shows player name, time, and server population.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_webhooks</code></dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/qu_webhooks/server.lua</code></dd></div>
+            <div><dt>Ensure order</dt><dd><code>ensure qu_webhooks</code></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="[QUIET][webhook]">
+            <header><span class="file">qu_webhooks/server.lua</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">local MODULE = 'webhook'
+local WEBHOOK_URL = GetConvar('qu_discord_webhook', '')
+
+local function sendDiscord(embed)
+    local payload = json.encode({ embeds = { embed } })
+    PerformHttpRequest(WEBHOOK_URL, function(err, text, headers)
+        print(('[QUIET][%s][sent] err=%s code=%s'):format(MODULE, tostring(err), tostring(headers and headers[':status'])))
+    end, 'POST', payload, { ['Content-Type'] = 'application/json' })
+end
+
+AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
+    sendDiscord({
+        title = 'Player Connecting',
+        description = ('**%s** is joining the server.'):format(name),
+        color = 3066993,
+    })
+end)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][webhook][sent]</code> appears in the console and the embed appears in Discord.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create a Discord webhook URL in your server settings.</li>
+            <li>Create the <code>qu_webhooks</code> resource with <code>server.lua</code>.</li>
+            <li>Write the <code>sendDiscord</code> function using <code>PerformHttpRequest</code>.</li>
+            <li>Wire one event (player join) to send an embed.</li>
+            <li>Add the PII redaction function and test it with a fake IP.</li>
+            <li>Confirm the embed arrives in Discord with no raw identifiers visible.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a rate limiter — track the number of webhook calls per minute. If it exceeds 25, queue the message and send it in the next minute window.</p>
+          <p class="expected-output"><strong>Expected output:</strong> <code>[QUIET][webhook][rate_limit] queued message, will send in 30s</code> appears when the limit is hit.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>HTTP 400 Bad Request</code> means the JSON payload is malformed. Check for trailing commas or unescaped quotes.</li>
+            <li><code>HTTP 429 Too Many Requests</code> means you hit Discord's rate limit. Add a queue or slow down sends.</li>
+            <li><code>embed not appearing</code> means the <code>embeds</code> key is missing or misspelled in the JSON payload.</li>
+            <li><code>IP address visible in embed</code> means the redaction function is not being called on the description text before sending.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the webhook sender into <code>webhook.send(channel, embed)</code> so multiple channels can be configured with different URLs from a single module.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://discord.com/developers/docs/resources/webhook" target="_blank" rel="noopener">Discord webhook API documentation</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/#performhttprequest" target="_blank" rel="noopener">PerformHttpRequest documentation</a></li>
+            <li><a href="https://gdpr.eu/" target="_blank" rel="noopener">GDPR overview — why PII matters</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="webhook-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>PII redaction patterns</h3>
+        <ul>
+          <li><strong>IP address:</strong> <code>%d+%.%d+%.%d+%.%d+</code> → <code>[IP]</code></li>
+          <li><strong>Steam hex:</strong> <code>steam:[0-9A-Fa-f]+</code> → <code>[STEAM]</code></li>
+          <li><strong>License:</strong> <code>license:[0-9a-f]+</code> → <code>[LICENSE]</code></li>
+          <li><strong>Email:</strong> <code>[%w%.]+@[%w%.]+</code> → <code>[EMAIL]</code></li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>A Discord webhook is a public billboard. Anything you post to it can be screenshotted, shared, and archived indefinitely. If you post a player's IP address in a staff channel, that IP is now permanently stored on Discord's servers and visible to every staff member. Under GDPR, CCPA, and similar privacy laws, that is a data breach. Your server logs are private. Your Discord channel is not. Treat the webhook like a public broadcast, not a debug console.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a PA system in a store.</p>
+          <p>The store manager uses the PA to announce "customer at register three needs help." The manager does not announce the customer's credit card number over the PA. Your webhook is the PA system. Announce the event. Never announce the private data.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most developers dump raw player data into webhooks because it is convenient. That is a privacy incident waiting to happen.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">Dump raw identifiers and IPs directly into the webhook.</p>
+            <figure class="code">
+              <header><span>server.lua, the privacy-violating version</span></header>
+              <pre><code class="language-lua">-- BAD: raw identifiers sent to Discord
+AddEventHandler('playerConnecting', function(name, setKick, defer)
+    local src = source
+    local ids = {}
+    for _, id in ipairs(GetPlayerIdentifiers(src)) do
+        table.insert(ids, id)
+    end
+    sendDiscord({
+        title = 'Player Joined',
+        description = name .. '\n' .. table.concat(ids, '\n'),
+        -- IPs, Steam IDs, licenses all visible to everyone
+    })
+end)</code></pre>
+            </figure>
+            <p>Every staff member can see the player's Steam ID, license key, and IP address. One disgruntled staff member screenshots it and posts it publicly. You are now liable.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Redact PII before sending. Log raw data to server files only.</p>
+            <figure class="code">
+              <header><span>server.lua, the privacy-safe version</span></header>
+              <pre><code class="language-lua">-- GOOD: redact PII, log raw data to file
+local function redact(text)
+    text = text:gsub('%d+%.%d+%.%d+%.%d+', '[IP]')
+    text = text:gsub('steam:[0-9A-Fa-f]+', '[STEAM]')
+    text = text:gsub('license:[0-9a-f]+', '[LICENSE]')
+    text = text:gsub('[%w%.]+@[%w%.]+', '[EMAIL]')
+    return text
+end
+
+AddEventHandler('playerConnecting', function(name, setKick, defer)
+    local src = source
+    local ids = GetPlayerIdentifiers(src)
+    -- Log raw identifiers to private server file
+    WriteLog('connections', name, ids)
+    -- Send redacted embed to Discord
+    sendDiscord({
+        title = 'Player Connecting',
+        description = redact(('**%s** is joining.'):format(name)),
+        fields = {
+            { name = 'Identifiers', value = #ids .. ' loaded (redacted)' },
+        },
+        color = 3066993,
+    })
+end)</code></pre>
+            </figure>
+            <p>The Discord embed shows the player name and that identifiers were loaded. Raw identifiers are written to a private server log file that only you can access. Privacy preserved.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="discord"> I have a Discord server and can create webhooks (this lesson)</label></li>
+          <li><label><input type="checkbox" data-id="performhttp"> I know how to make HTTP requests from Lua (Lesson 02)</label></li>
+          <li><label><input type="checkbox" data-id="json"> I can encode and decode JSON in Lua (this lesson)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the Discord webhook URL</h3>
+        </div>
+        <p class="pin-card__lede">The URL is the only secret you need. Protect it like a password.</p>
+        <ol>
+          <li>In Discord, open Server Settings → Integrations → Webhooks.</li>
+          <li>Click "New Webhook", name it "FiveM Server", select a staff-only channel.</li>
+          <li>Copy the webhook URL. It looks like <code>https://discord.com/api/webhooks/...</code>.</li>
+          <li>Add it to <code>server.cfg</code>: <code>set qu_discord_webhook "https://discord.com/api/webhooks/..."</code>.</li>
+          <li>Never commit the URL to a public repository. Use a convar or environment variable.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the sendDiscord function</h3>
+        </div>
+        <p class="pin-card__lede">One function. Every event calls it. One place to add redaction and rate limiting.</p>
+        <ol>
+          <li>Create <code>resources/qu_webhooks/server.lua</code>.</li>
+          <li>Read the webhook URL from convar with <code>GetConvar</code>.</li>
+          <li>Write <code>sendDiscord(embed)</code> that encodes the embed to JSON and POSTs it.</li>
+          <li>Add error logging so failed webhook calls do not disappear silently.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Add PII redaction and test</h3>
+        </div>
+        <p class="pin-card__lede">Redact before sending. Log raw data to files. Never reverse the order.</p>
+        <ol>
+          <li>Write the <code>redact(text)</code> function from the cheat sheet patterns above.</li>
+          <li>Call <code>redact</code> on every string field in the embed before encoding to JSON.</li>
+          <li>Add <code>WriteLog</code> or file I/O to save raw identifiers to a server-side log file.</li>
+          <li>Test with a real player join. Confirm the Discord embed shows no raw identifiers.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and verify the output before wiring more events.</p>
+        <ol>
+          <li>
+            <strong>Test 1, embed arrives.</strong>
+            <ul>
+              <li>Action: join the server and check the Discord channel.</li>
+              <li>Expected: an embed appears with "Player Connecting" and your character name.</li>
+              <li>How to verify: the embed has a green color bar and the correct title.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, PII redacted.</strong>
+            <ul>
+              <li>Action: inspect the embed description and fields carefully.</li>
+              <li>Expected: no IP address, Steam hex, license key, or email is visible.</li>
+              <li>How to verify: search the embed text for patterns like <code>192.168</code> or <code>steam:</code> — none should appear.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, raw data logged.</strong>
+            <ul>
+              <li>Action: check the server log file after a player joins.</li>
+              <li>Expected: the raw identifiers are written to the log file.</li>
+              <li>How to verify: open the log file and confirm the identifiers are there, but they never appeared in Discord.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>What if a staff member needs to see the raw identifier?</summary>
+            <p>They check the server log file, which is only accessible to server administrators. Discord is public within your staff team. The log file is private.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Webhook URLs are stored as server convars, never in client-accessible files.</li>
+          <li>Every string in a Discord embed passes through the redaction function before sending.</li>
+          <li>Raw identifiers are written to private server log files, never broadcast to Discord.</li>
+          <li>Webhook errors are logged to console — a silent failure means missing alerts.</li>
+          <li>Rate limiting prevents Discord from blocking your webhook for exceeding 30 messages per minute.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why redact PII from webhooks instead of just not sending identifiers?</legend>
+            <label><input type="radio" name="q1" value="a"> Discord charges per character sent.</label>
+            <label><input type="radio" name="q1" value="b"> Because it is easy to accidentally include an IP in a debug message or error string. Redaction is a safety net that catches those accidents.</label>
+            <label><input type="radio" name="q1" value="c"> FiveM servers are required by law to redact all webhook data.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What happens if you hit Discord's rate limit (429)?</legend>
+            <label><input type="radio" name="q2" value="a"> Discord permanently bans the webhook URL.</label>
+            <label><input type="radio" name="q2" value="b"> The message is silently dropped with no error.</label>
+            <label><input type="radio" name="q2" value="c"> Discord rejects the request temporarily. Your webhook messages are lost unless you queue and retry them.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Where should raw player identifiers be stored?</legend>
+            <label><input type="radio" name="q3" value="a"> In a server-side log file that only the server administrator can access.</label>
+            <label><input type="radio" name="q3" value="b"> In the Discord embed description for easy debugging.</label>
+            <label><input type="radio" name="q3" value="c"> In the FiveM client console so the player can see their own data.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to send Discord webhooks from FiveM using <code>PerformHttpRequest</code>.</li>
+          <li>How to structure Discord embeds with title, description, fields, and color.</li>
+          <li>How to redact PII (IPs, Steam IDs, licenses, emails) using Lua pattern matching.</li>
+          <li>Why Discord is a public broadcast and server log files are the only safe place for raw identifiers.</li>
+          <li>How to rate-limit webhook calls to stay under Discord's 30-per-minute cap.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a redaction audit log. Every time the redaction function replaces a pattern, log the original pattern type (IP, STEAM, LICENSE, EMAIL) and the timestamp to a server file. This proves you are redacting data for compliance audits.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>redaction_audit.log</span></header>
+          <pre><code>[2025-06-15 14:32:01] REDACT IP from webhook:player_join
+[2025-06-15 14:32:01] REDACT STEAM from webhook:player_join
+[2025-06-15 14:32:01] REDACT LICENSE from webhook:player_join</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Modify the <code>redact</code> function to <code>gsub</code> with a function argument that writes to the audit log before returning the replacement string.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://discord.com/developers/docs/resources/webhook" target="_blank" rel="noopener">Discord webhook API documentation</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/" target="_blank" rel="noopener">FiveM server-side Lua functions</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/manual.html#6.4.1" target="_blank" rel="noopener">Lua pattern matching reference</a></li>
+        </ul>
+      </section>

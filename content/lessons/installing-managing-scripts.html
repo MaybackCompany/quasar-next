@@ -1,0 +1,137 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Track A · Lesson 04</span></div>
+        <h1>Evaluate, install, and manage scripts safely</h1>
+        <p class="lede">By the end of this lesson you will read a script before you install it, spot the three red flags that mean trouble, and know exactly which scripts are safe to run on your server.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A checklist you run against every script before it touches your live server.</dd></div>
+          <div><dt>Time</dt><dd>About 25 minutes to learn the process, then 2 minutes per script forever.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to spot backdoors, performance killers, and dependency traps before they break your server.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have installed at least one script before (Lesson 03).</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will learn">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will build a script evaluation habit that catches problems early:</strong></p>
+          <ul class="tldr-card__points">
+            <li>You will open the manifest and scripts before installing, looking for hidden network calls and suspicious patterns.</li>
+            <li>You will test every new script in a local-only server before it ever reaches your production box.</li>
+            <li>You will maintain a simple text file that tracks what you installed, when, and from where.</li>
+          </ul>
+        </div>
+      </section>
+      
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 04: Evaluate, install, and manage scripts safely</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>A safety process every server owner runs before installing a script.<br><span>Example: download, inspect, test locally, then deploy — never the other way around.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Scripts come from forums, GitHub, Tebex stores, and Discord. All sources carry risk.<br><span>Example: a popular forum script can still contain a backdoor added by a contributor.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Run the three-step checklist on every script, no exceptions.<br><span>Example: even a script from a friend gets the same checks.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Open the manifest of the last script you installed and audit it.<br><span>Example: check for server_script lines, HTTP calls, and unknown dependencies.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will audit any script's manifest and source files for common safety issues before installing it.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>Bad scripts steal data, crash servers, open backdoors, or consume all your CPU. One unchecked script can undo months of work. A five-minute audit stops all of that.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Backdoor</dt><dd>Hidden code that lets someone control your server without permission.<br><span>Example: a script that runs PerformHttpRequest to send data to a remote server.</span></dd></div>
+            <div><dt tabindex="0">Dependency</dt><dd>Another resource that a script requires to function.<br><span>Example: a job script depends on qb-core and will not work without it.</span></dd></div>
+            <div><dt tabindex="0">Server callback</dt><dd>A network request from client to server that waits for a response.<br><span>Example: a script uses qb-core:server:GetPlayer to fetch player data.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_safecheck</code> (the test resource you will audit)</dd></div>
+            <div><dt>Side</dt><dd><code>server</code></dd></div>
+            <div><dt>File path</dt><dd><code>resources/[scripts]/qu_safecheck/</code></dd></div>
+            <div><dt>Ensure order</dt><dd>Do not ensure this resource until you audit it.</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Audit checklist completed with no red flags">
+            <header><span class="file">Audit checklist for qu_safecheck</span><span class="lang">Checklist</span></header>
+            <pre><code class="language-text">-- AUDIT CHECKLIST: qu_safecheck --
+1. OPEN fxmanifest.lua first:
+   - [ ] Read EVERY dependency: what does it need to run?
+   - [ ] Check for server_script entries (can touch your database)
+   - [ ] Check for shared_script entries (runs on both sides)
+   - [ ] Check for ui_page entries (HTML UIs can be injectable)
+
+2. SEARCH server-side files for red flags:
+   - [ ] PerformHttpRequest (could be exfiltrating data)
+   - [ ] os.execute or io.popen (could run system commands)
+   - [ ] LoadResourceFile on files outside this resource
+   - [ ] TriggerClientEvent with -1 target (sends to EVERY player)
+
+3. SEARCH ALL files for obfuscation:
+   - [ ] Long strings of random characters (obfuscated code)
+   - [ ] load() or loadstring() calls with encoded data
+   - [ ] Base64 decode calls with hardcoded payloads
+
+RESULT: ✓ No red flags found. Safe to test on local server.</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> You complete the audit checklist on qu_safecheck and find no red flags.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Download a script but do not extract it into your production server yet.</li>
+            <li>Extract it into a <code>_staging/</code> folder outside of <code>resources/</code> and open the fxmanifest.lua.</li>
+            <li>Read every dependency. Install missing dependencies first or skip the script.</li>
+            <li>Search every .lua file for <code>PerformHttpRequest</code>, <code>os.execute</code>, and <code>loadstring</code>.</li>
+            <li>If clean, install into a local-only test server and verify it works for 10 minutes.</li>
+            <li>Only after local testing passes, copy to your production server.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Create a script that saves the audit result. Write a <code>server.lua</code> that logs the result of your audit to the server console using <code>print</code>. Include a comment line in every Lua file that says <code>-- AUDITED: safe, no red flags, YYYY-MM-DD</code>.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Server console prints <code>[qu_safecheck] Audit complete. 0 red flags found.</code> on resource start.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Ignoring the manifest and installing anyway</code> — the most common mistake. A dependency you missed causes silent failures days later. Always read the manifest first.</li>
+            <li><code>Running a script with PerformHttpRequest to an unknown domain</code> — this is data exfiltration. Block the domain or delete the script.</li>
+            <li><code>Skipping local testing and deploying straight to production</code> — a broken script crashes your live server for everyone. Always test locally.</li>
+            <li><code>Not keeping an install log</code> — three months later you cannot remember where a script came from or why you installed it. Keep a simple text file.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Add an <code>audit.lua</code> script to your server that runs on startup and checks every resource's manifest for the red-flag patterns above. Log the results to a file. Now your server audits itself every restart.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/server-functions/" target="_blank" rel="noopener">FiveM server-side Lua functions</a></li>
+            <li><a href="https://forum.cfx.re/c/development/resources/23" target="_blank" rel="noopener">Cfx.re resource releases (check reputations)</a></li>
+          </ul>
+        </section>
+      </section>

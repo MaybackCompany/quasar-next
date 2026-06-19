@@ -1,0 +1,428 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar Academy</a> › <span>Track C · Lesson 07</span></div>
+        <h1>Clothing, EUP, and asset management policy</h1>
+        <p class="lede">By the end of this lesson you will set up EUP clothing packs, organize your clothing assets into a clean resource structure, and create a policy file that prevents asset chaos on your server.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A working EUP installation with a custom clothing pack, organized in a clean folder structure (<code>eup-stream/</code>, <code>eup-ui/</code>, <code>custom-clothing/</code>), plus a one-page asset policy document.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if you go slow.</dd></div>
+          <div><dt>You'll learn</dt><dd>How EUP works with FiveM, the difference between streaming assets and script-side clothing, and how to keep 50+ clothing packs from turning into a spaghetti folder.</dd></div>
+          <div><dt>Prereqs</dt><dd>You have a FiveM server. EUP is optional — the asset management rules apply to any clothing system.</dd></div>
+        </section>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>You will set up organized clothing by doing this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>Install EUP (Emergency Uniform Pack) with the correct resource structure: separate streaming, UI, and configuration resources.</li>
+            <li>Add one custom clothing item — a hat or shirt — to a clean custom clothing resource.</li>
+            <li>Write a one-page asset policy that defines naming conventions, folder rules, and who approves new clothing assets before they go live.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson C07: Clothing, EUP, and asset policy</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>Clothing asset management is the practice of organizing every clothing file on your server so you can find, update, and remove items without breaking everything.<br><span>Example: this lesson sets up EUP with a clean structure and a policy doc.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>Clothing lives in two places: streaming assets (<code>.ytd</code>, <code>.ydd</code> files in a stream resource) and script data (item names, categories in config files).<br><span>Example: the 3D model is a stream asset; the name "LSPD Hat #3" is script data.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Separate streaming from logic. One resource for 3D files, one resource for the UI/wardrobe, one for config. Never mix them.<br><span>Example: start with a clean folder layout before adding your first custom item.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Set up the folder structure, add one custom item, and write the policy.<br><span>Example: match the expected structure before adding 50 more items.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will have a clean clothing resource structure, one custom clothing item working in-game, and a written policy for future asset additions.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>A server with 50 clothing packs dumped into one folder is unmaintainable. When you need to remove a broken t-shirt or find which resource is causing a streaming crash, organization is the difference between a 5-minute fix and a 5-hour nightmare.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">EUP</dt><dd>Emergency Uniform Pack — a popular FiveM clothing framework that replaces/adds uniforms for police, EMS, fire, and civilian roles.<br><span>Example: LSPD officers wearing EUP uniforms instead of default GTA clothes.</span></dd></div>
+            <div><dt tabindex="0">Streaming asset</dt><dd>A 3D model, texture, or drawing dictionary (<code>.ydd</code>, <code>.ytd</code>) that the game loads into memory. Lives in a <code>stream/</code> folder.<br><span>Example: a hat model is a <code>.ydd</code> file streamed by the client.</span></dd></div>
+            <div><dt tabindex="0">Drawable</dt><dd>A GTA V clothing component. Each clothing slot (hat, shirt, pants) has drawable IDs that reference streamed models.<br><span>Example: <code>SetPedComponentVariation(ped, 0, 15, 0, 2)</code> sets the face (slot 0) to drawable 15 with texture 0.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resources</dt><dd><code>eup-stream</code>, <code>eup-ui</code>, <code>custom-clothing</code></dd></div>
+            <div><dt>Files</dt><dd><code>.ydd</code> (drawable), <code>.ytd</code> (texture dictionary), <code>fxmanifest.lua</code></dd></div>
+            <div><dt>Policy file</dt><dd><code>docs/asset-policy.md</code> in your server root</dd></div>
+            <div><dt>Ensure order</dt><dd>Stream first, then UI, then custom packs</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="Clean folder structure, custom hat appears in wardrobe">
+            <header><span class="file">Recommended clothing resource structure</span><span class="lang">Text</span></header>
+            <pre><code class="language-text">resources/
+  [clothing]/
+    eup-stream/           ← all .ydd/.ytd files, no scripts
+      fxmanifest.lua       ← client_scripts: none, data_file: DLC_ITYP_REQUEST
+      stream/
+        mp_m_freemode_01_mp_m_eup/
+          hats.ydd
+          hats.ytd
+          shirts.ydd
+          shirts.ytd
+
+    eup-ui/               ← wardrobe menu, no 3D files
+      fxmanifest.lua       ← client_scripts { 'client.lua' }
+      client.lua           ← wardrobe logic
+      html/                ← wardrobe UI
+
+    custom-clothing/      ← YOUR custom items only
+      fxmanifest.lua       ← depends on eup-stream
+      stream/
+        custom_hats/
+          qu_branded_hat.ydd
+          qu_branded_hat.ytd
+      config.lua           ← drawable IDs and labels</code></pre>
+          </figure>
+          <figure class="code">
+            <header><span class="file">Asset policy template (docs/asset-policy.md)</span><span class="lang">Markdown</span></header>
+            <pre><code class="language-markdown"># Clothing Asset Policy — v1.0
+
+## Folder Rules
+- All streaming assets (.ydd, .ytd) go in `eup-stream/` or `custom-clothing/stream/`
+- Never mix .ydd files with script files in the same resource
+- Each clothing pack gets its own subfolder: `stream/[pack_name]/`
+
+## Naming Conventions
+- Custom items: `qu_[type]_[description].ydd` (e.g., `qu_hat_branded_cap.ydd`)
+- EUP items: keep original EUP naming unless there is a conflict
+- Drawable IDs: custom items start at 200+, never overlap with EUP or GTA defaults
+
+## Approval Process
+1. Developer adds clothing files to a `staging/` folder
+2. Lead developer reviews: naming, drawable ID ranges, texture sizes
+3. Approved items move to `custom-clothing/stream/` and drawable IDs are documented in `config.lua`
+4. Resource is restarted during low-population hours
+
+## Texture Rules
+- Max texture size: 1024x1024 for clothing
+- All textures must be .ytd format (not loose .png files)
+- Redundant textures (same pattern, different file) are deleted</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> Three clean resources in <code>[clothing]/</code>, one custom hat appears in the EUP wardrobe menu, and <code>docs/asset-policy.md</code> exists with the rules above customized for your server.</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create the <code>[clothing]/</code> folder with three sub-resources: <code>eup-stream</code>, <code>eup-ui</code>, <code>custom-clothing</code>.</li>
+            <li>Install or verify EUP stream files are in <code>eup-stream/stream/</code> with correct <code>fxmanifest.lua</code>.</li>
+            <li>Add one custom clothing item (hat or shirt) to <code>custom-clothing/stream/</code> with <code>.ydd</code> and <code>.ytd</code> files.</li>
+            <li>Set <code>ensure eup-stream</code>, <code>ensure eup-ui</code>, <code>ensure custom-clothing</code> in <code>server.cfg</code> in that order.</li>
+            <li>Join the server, open the EUP wardrobe, and find your custom item.</li>
+            <li>Write <code>docs/asset-policy.md</code> with folder rules, naming conventions, approval process, and texture rules.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Add a second custom clothing item — a pair of pants — with drawable ID 201. Update <code>config.lua</code> with the new entry. Verify both items appear in the wardrobe without conflicts. Update the asset policy to include your new item's drawable ID range.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Two custom items (hat and pants) appear in the wardrobe. <code>config.lua</code> lists both with their drawable IDs. Asset policy is updated within 15 minutes.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li>Custom clothing does not appear: the <code>fxmanifest.lua</code> of the streaming resource must include <code>data_file 'DLC_ITYP_REQUEST' 'stream/...'</code> pointing to the correct folder. Without this, FiveM does not stream the files.</li>
+            <li>Drawable ID conflict: your custom item uses a drawable ID already claimed by EUP or another pack. Always start custom IDs at 200+ and check the EUP drawable list before assigning.</li>
+            <li>Clothing looks invisible or glitched: the <code>.ydd</code> file references a <code>.ytd</code> that is missing or has a mismatched name. Open the <code>.ydd</code> in a hex editor and verify the texture dictionary name matches the <code>.ytd</code> file name.</li>
+            <li>Server crashes on resource start: streaming too many large clothing packs at once exceeds the client's streaming budget. Split large packs into separate resources and ensure them with a delay between them.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Write a Lua script that scans <code>custom-clothing/stream/</code> and generates <code>config.lua</code> automatically from the file names, eliminating manual drawable ID assignment.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://github.com/EUP-Studio/EUP" target="_blank" rel="noopener">EUP (Emergency Uniform Pack) on GitHub</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://docs.fivem.net/natives/?_0x262B14F48D29DE80" target="_blank" rel="noopener">SetPedComponentVariation on docs.fivem.net/natives</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="clothing-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>Clothing resource separation</h3>
+        <ul>
+          <li><strong>eup-stream.</strong> Only <code>.ydd</code> and <code>.ytd</code> files. No scripts. No UI. Pure streaming.</li>
+          <li><strong>eup-ui.</strong> Only wardrobe script and HTML. No 3D files. Handles equip/unequip.</li>
+          <li><strong>custom-clothing.</strong> Your custom items. Separate from EUP so updates do not overwrite your work.</li>
+          <li><strong>Policy file.</strong> Written rules that everyone on the team follows. Prevents chaos.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Clothing in FiveM has two halves: <strong>streaming</strong> (the 3D files the game loads) and <strong>scripting</strong> (the logic that equips items). Most servers dump both into one resource. When you need to update the wardrobe UI, you risk breaking streaming. When you add a new clothing pack, the UI resource restarts and kicks players out of the wardrobe. Separating them — one resource for files, one for logic — means you can update the UI without touching 3GB of clothing assets, and vice versa.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of a clothing store.</p>
+          <p>The warehouse (streaming resource) holds all the physical clothes — racks of shirts, shelves of hats. The cash register (UI resource) is where customers browse and check out. If you renovate the cash register, the warehouse stays open. If you restock the warehouse, the cash register keeps running. But if you put the cash register inside the warehouse and try to renovate, you shut down the entire store.</p>
+          <p>Your EUP setup separates the warehouse from the register. The policy document is the employee handbook that tells everyone where things go.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Bad way and good way, side by side</h2>
+        <p>Most servers dump all clothing into one resource. Updates break things. The good way separates concerns.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Don't do this</p>
+            <p class="before-after__caption">One resource with everything mixed together.</p>
+            <figure class="code">
+              <header><span>The monolithic clothing resource</span></header>
+              <pre><code class="language-text">resources/
+  [clothing]/
+    my-clothing/
+      fxmanifest.lua   ← streaming + scripts + UI all in one
+      client.lua       ← wardrobe logic
+      stream/           ← .ydd/.ytd files mixed with script files
+      html/             ← wardrobe UI
+      config.lua       ← drawable IDs
+      -- Problem: restarting this resource to update the UI
+      -- also restarts streaming, kicking everyone's clothing
+      -- temporarily invisible.</code></pre>
+            </figure>
+            <p>Adding one new hat means restarting the entire clothing resource. Every player on the server sees their clothes disappear for 3 seconds. Do this during peak hours and you get 50 complaints.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Do this</p>
+            <p class="before-after__caption">Separate into streaming, UI, and custom resources.</p>
+            <figure class="code">
+              <header><span>The separated clothing resources</span></header>
+              <pre><code class="language-text">resources/
+  [clothing]/
+    eup-stream/         ← streaming only, rarely restarted
+    eup-ui/             ← UI only, restart-safe
+    custom-clothing/    ← your items, separate from EUP
+
+-- Adding a hat to custom-clothing:
+-- 1. Add .ydd/.ytd to custom-clothing/stream/
+-- 2. Add drawable ID to custom-clothing/config.lua
+-- 3. Restart only custom-clothing
+-- 4. eup-stream and eup-ui keep running, no one notices</code></pre>
+            </figure>
+            <p>Adding a hat restarts only the custom clothing resource (a fraction of a second). The EUP streaming files stay loaded. The wardrobe UI stays open. Players do not even notice the update.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="C06">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, peek at the linked lesson for five minutes first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="eup"> EUP is downloaded and ready to install, or you have another clothing system in mind (any EUP tutorial)</label></li>
+          <li><label><input type="checkbox" data-id="streaming"> I understand that <code>stream/</code> folders hold 3D assets loaded by the game (Lesson C06)</label></li>
+          <li><label><input type="checkbox" data-id="resources"> I can create multiple resources and set ensure order in <code>server.cfg</code> (Lesson 02)</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Set up the three-resource structure</h3>
+        </div>
+        <p class="pin-card__lede">Three clean folders before you add a single clothing file.</p>
+        <ol>
+          <li>Inside <code>resources/</code>, create a folder named <code>[clothing]</code>. The brackets are a convention for grouping.</li>
+          <li>Inside <code>[clothing]/</code>, create three folders: <code>eup-stream</code>, <code>eup-ui</code>, <code>custom-clothing</code>.</li>
+          <li>In each folder, create an empty <code>fxmanifest.lua</code>.</li>
+          <li>Add the three <code>ensure</code> lines to <code>server.cfg</code> in order: stream first, then ui, then custom.</li>
+          <li>Start the server. All three resources should start without errors (they are empty, so no errors expected).</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Install EUP streaming assets</h3>
+        </div>
+        <p class="pin-card__lede">EUP is a streaming-first mod. The 3D files go here.</p>
+        <ol>
+          <li>Copy EUP's <code>stream/</code> folder into <code>eup-stream/</code>. This contains the <code>.ydd</code> and <code>.ytd</code> files.</li>
+          <li>Update <code>eup-stream/fxmanifest.lua</code> to include <code>data_file 'DLC_ITYP_REQUEST' 'stream/...'</code> for each subfolder.</li>
+          <li>Add the <code>fx_version 'cerulean'</code> and <code>game 'gta5'</code> headers.</li>
+          <li>Restart <code>eup-stream</code>. Check the client console (F8) for streaming errors.</li>
+          <li>If no errors, the 3D clothing models are loaded. They will not be visible yet — that requires the UI resource.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Install EUP UI (wardrobe)</h3>
+        </div>
+        <p class="pin-card__lede">The UI resource lets players browse and equip the clothes that are streaming.</p>
+        <ol>
+          <li>Copy the EUP UI script files into <code>eup-ui/</code>.</li>
+          <li>Update <code>eup-ui/fxmanifest.lua</code> with <code>client_scripts { 'client.lua' }</code> and <code>ui_page 'html/index.html'</code>.</li>
+          <li>Restart <code>eup-ui</code>. The wardrobe should now be accessible (usually via a command like <code>/eup</code> or <code>/wardrobe</code>).</li>
+          <li>Open the wardrobe and browse the default EUP uniforms. Confirm you can equip a hat, shirt, and pants.</li>
+          <li>If clothes do not appear, the UI resource cannot find the streaming data. Check that <code>eup-stream</code> is started BEFORE <code>eup-ui</code> in <code>server.cfg</code>.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Add one custom clothing item</h3>
+        </div>
+        <p class="pin-card__lede">Your first custom item proves the structure works end-to-end.</p>
+        <ol>
+          <li>In <code>custom-clothing/stream/</code>, create a subfolder for your item, e.g., <code>qu_hats/</code>.</li>
+          <li>Add your <code>.ydd</code> (hat model) and <code>.ytd</code> (hat texture) files to this folder.</li>
+          <li>Update <code>custom-clothing/fxmanifest.lua</code> with <code>data_file 'DLC_ITYP_REQUEST' 'stream/qu_hats/...'</code>.</li>
+          <li>Create <code>custom-clothing/config.lua</code> and add an entry: <code>{ drawable = 200, label = 'Quasar Branded Cap', slot = 'hat' }</code>.</li>
+          <li>Restart <code>custom-clothing</code>. Open the EUP wardrobe. Your custom hat should appear under the hats category.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-5">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 5</span>
+          <h3 class="pin-card__title">Write the asset policy document</h3>
+        </div>
+        <p class="pin-card__lede">A policy prevents future chaos. Write it once, enforce it always.</p>
+        <ol>
+          <li>Create <code>docs/asset-policy.md</code> in your server root folder.</li>
+          <li>Write four sections: Folder Rules, Naming Conventions, Approval Process, Texture Rules.</li>
+          <li>Copy the template from the minimal example and customize it with your server's actual folder names and drawable ID ranges.</li>
+          <li>Share the policy with your team. Make it required reading before anyone adds clothing.</li>
+          <li>This document is living. Update it every time you add a new category of assets.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test and confirm the expected behavior. If something does not match, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, EUP wardrobe works.</strong>
+            <ul>
+              <li>Action: open the EUP wardrobe and browse default uniforms.</li>
+              <li>Expected: hats, shirts, pants equip correctly. No invisible body parts.</li>
+              <li>How to verify: equip a full LSPD uniform. Walk around. All components render.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, custom item appears.</strong>
+            <ul>
+              <li>Action: browse to the hats category in the wardrobe and find your custom hat.</li>
+              <li>Expected: the hat is visible in the preview and equips correctly.</li>
+              <li>How to verify: the label matches your <code>config.lua</code> entry. Equipping and unequipping works without errors.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, resource isolation.</strong>
+            <ul>
+              <li>Action: restart only <code>custom-clothing</code>. Observe the wardrobe and other players.</li>
+              <li>Expected: EUP uniforms stay loaded. The wardrobe stays open. Only custom items briefly reload.</li>
+              <li>How to verify: other players do not see their clothes flicker. The restart completes in under one second.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why separate custom clothing from EUP?</summary>
+            <p>EUP updates frequently. If your custom items are mixed into the EUP resource, an update will overwrite your <code>config.lua</code> and potentially your custom <code>.ydd</code> files. Keeping custom items in a separate resource means you can update EUP by replacing its folder without touching your work.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>Streaming assets (3D files) live in a standalone resource with no scripts or UI.</li>
+          <li>UI and wardrobe logic live in a separate resource that only handles equip/unequip.</li>
+          <li>Custom clothing lives in its own resource, separate from EUP, to survive updates.</li>
+          <li>Every custom item has a documented drawable ID starting at 200+ to avoid conflicts.</li>
+          <li>An asset policy document defines the rules for the entire team and prevents chaos.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why put streaming assets and UI scripts in separate resources?</legend>
+            <label><input type="radio" name="q1" value="a"> FiveM requires them to be separate.</label>
+            <label><input type="radio" name="q1" value="b"> Restarting the UI should not restart streaming (causing clothes to briefly disappear). Restarting streaming should not restart the UI (closing the wardrobe).</label>
+            <label><input type="radio" name="q1" value="c"> Streaming files are too large to share a resource with scripts.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What is a safe starting drawable ID for custom clothing?</legend>
+            <label><input type="radio" name="q2" value="a"> 1 — start from the lowest available number.</label>
+            <label><input type="radio" name="q2" value="b"> 100 — below EUP's range.</label>
+            <label><input type="radio" name="q2" value="c"> 200+ — high enough to avoid GTA defaults and EUP conflicts.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. What is the purpose of an asset policy document?</legend>
+            <label><input type="radio" name="q3" value="a"> A written set of rules for naming, folder structure, and approval that prevents asset chaos as more clothing is added.</label>
+            <label><input type="radio" name="q3" value="b"> A legal document required by FiveM's terms of service.</label>
+            <label><input type="radio" name="q3" value="c"> A backup script that restores clothing if the database fails.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>How to structure clothing resources into three clean parts: streaming, UI, and custom.</li>
+          <li>How EUP streaming works and where <code>.ydd</code> and <code>.ytd</code> files go.</li>
+          <li>How to add a custom clothing item with a safe drawable ID and see it in the wardrobe.</li>
+          <li>Why separating streaming from logic makes updates safe and fast.</li>
+          <li>How to write an asset policy that prevents folder chaos as your server grows.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a third custom clothing item — a pair of shoes — with drawable ID 202. But this time, have someone else on your team (or simulate it yourself) follow your asset policy document to add it. They should read the policy, create the files in the correct folders, update <code>config.lua</code>, and test. The goal: the policy is clear enough that another person can add clothing without asking you questions.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>The new shoes appear in the wardrobe with label from config.lua</span></header>
+          <pre><code>Custom shoes (ID 202) visible and equippable.
+Policy document was followed without any clarifying questions.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>If the person asks a question, the policy document is missing that information. Add it. The policy should answer: where files go, what to name them, which IDs are available, and how to test.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://github.com/EUP-Studio/EUP" target="_blank" rel="noopener">EUP (Emergency Uniform Pack) on GitHub</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x262B14F48D29DE80" target="_blank" rel="noopener">SetPedComponentVariation on docs.fivem.net/natives</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xD4F7B05C" target="_blank" rel="noopener">SetPedPropIndex (hats/glasses) on docs.fivem.net/natives</a></li>
+        </ul>
+      </section>

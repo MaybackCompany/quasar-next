@@ -1,0 +1,418 @@
+<section class="lesson-hero">
+        <div class="crumbs"><a href="../index.html">Quasar School</a> › <span>Module 01 · Lesson 08</span></div>
+        <h1>Your first script: the /banana command from scratch</h1>
+        <p class="lede">You have never written a FiveM script. In this lesson you will type <code>/banana</code> in chat and see "You ate a banana" appear. Then you will make it give you health. Then armor. By the end you will have shipped your first asset, with a manifest, a command, and a working client-server split.</p>
+
+        <div class="hero-outcome">
+          <div><dt>You'll ship</dt><dd>A working <code>/banana</code> command in your own resource folder that prints chat messages, gives health, and respects the client-server boundary.</dd></div>
+          <div><dt>Time</dt><dd>About 30 minutes if this is your first ever script.</dd></div>
+          <div><dt>You'll learn</dt><dd>How to create a resource folder, write an fxmanifest, register a command, and why the client should never call SetEntityHealth without server approval.</dd></div>
+          <div><dt>Prereqs</dt><dd>You can open a text editor and create a folder. That is all.</dd></div>
+        </div>
+      </section>
+
+      <section class="tldr-card" aria-label="What you will build">
+        <span class="tldr-card__chip">In 3 bullets</span>
+        <div class="tldr-card__body">
+          <p><strong>Your /banana command will do this:</strong></p>
+          <ul class="tldr-card__points">
+            <li>The player types <code>/banana</code> in chat. A message appears: "You ate a banana. +10 health."</li>
+            <li>The player's health increases by 10. If they are at 200, it stays at 200 (capped at max).</li>
+            <li>The server decides whether the player gets the health. The client only asks. Cheaters get nothing.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="strict-template" id="strict-template" aria-labelledby="strict-template-title" data-lesson-template="strict-v1">
+        <p class="strict-kicker">Step by step</p>
+        <h2 id="strict-template-title">Lesson 08: The /banana command, your first script</h2>
+
+        <section class="strict-section beginner-orientation" id="beginner-orientation">
+          <h3>Start here</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">What this is</dt><dd>The simplest possible FiveM script — one command, one result.<br><span>Example: type /banana, see "You ate a banana" in chat.</span></dd></div>
+            <div><dt tabindex="0">Where to find it</dt><dd>In a folder you create inside resources/.<br><span>Example: resources/qu_banana/ holds all the files.</span></dd></div>
+            <div><dt tabindex="0">How to use it</dt><dd>Create three files, add one line to server.cfg, start the server.<br><span>Example: fxmanifest.lua, client.lua, server.lua.</span></dd></div>
+            <div><dt tabindex="0">What to do now</dt><dd>Open your server's resources/ folder.<br><span>Example: find where qb-core or es_extended lives.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="outcome" data-section="outcome">
+          <h3>Outcome</h3>
+          <p>You will run a /banana command that prints chat messages and modifies player health through the correct client-server flow.</p>
+        </section>
+
+        <section class="strict-section why-banner" id="why-it-matters" data-section="why">
+          <h3>Why it matters</h3>
+          <p>This is your first FiveM script. Everything you build later — jobs, inventories, banks — starts with the same three files and the same client-server pattern. Master this, and you understand the foundation of every FiveM resource.</p>
+        </section>
+
+        <section class="strict-section" id="vocabulary" data-section="vocabulary">
+          <h3>Vocabulary</h3>
+          <dl class="vocab-list">
+            <div><dt tabindex="0">Resource</dt><dd>A folder with an fxmanifest.lua that FiveM loads as a unit.<br><span>Example: resources/qu_banana is a resource.</span></dd></div>
+            <div><dt tabindex="0">Manifest</dt><dd>The fxmanifest.lua file that tells FiveM what the resource is and what files to run.<br><span>Example: fxmanifest.lua lists client.lua and server.lua.</span></dd></div>
+            <div><dt tabindex="0">RegisterCommand</dt><dd>The Lua function that turns a chat command into running code.<br><span>Example: RegisterCommand('banana', ...) creates /banana.</span></dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="setup" data-section="setup">
+          <h3>Setup</h3>
+          <dl class="setup-list">
+            <div><dt>Resource</dt><dd><code>qu_banana</code></dd></div>
+            <div><dt>Files</dt><dd><code>fxmanifest.lua, client.lua, server.lua</code></dd></div>
+            <div><dt>Path</dt><dd><code>resources/qu_banana/</code></dd></div>
+            <div><dt>Ensure</dt><dd><code>ensure qu_banana</code> in server.cfg</dd></div>
+          </dl>
+        </section>
+
+        <section class="strict-section" id="minimal-example" data-section="minimal-example">
+          <h3>Minimal example</h3>
+          <figure class="code" data-expected-output="You ate a banana.">
+            <header><span class="file">qu_banana/client.lua — version 1, chat only</span><span class="lang">Lua</span></header>
+            <pre><code class="language-lua">-- The simplest possible command.
+RegisterCommand('banana', function(source, args, rawCommand)
+    TriggerEvent('chat:addMessage', {
+        color = { 255, 255, 0 },
+        multiline = true,
+        args = { 'Banana', 'You ate a banana. Tasty.' }
+    })
+end, false)
+
+-- Every command needs:
+--   1. A name: 'banana' (players type /banana)
+--   2. A function: the code that runs when the command fires
+--   3. Restricted: false (anyone can use it)</code></pre>
+          </figure>
+          <p class="expected-output"><strong>Expected output:</strong> Player types <code>/banana</code>. Chat shows a yellow message: "Banana: You ate a banana. Tasty."</p>
+        </section>
+
+        <section class="strict-section" id="checklist" data-section="checklist">
+          <h3>Checklist</h3>
+          <ol>
+            <li>Create folder <code>resources/qu_banana</code>.</li>
+            <li>Create <code>fxmanifest.lua</code> with client_script and server_script entries.</li>
+            <li>Create <code>client.lua</code> with the RegisterCommand block above.</li>
+            <li>Create <code>server.lua</code> (empty for now, but the manifest needs it listed).</li>
+            <li>Add <code>ensure qu_banana</code> to server.cfg.</li>
+            <li>Start the server, join, type /banana, confirm the yellow message appears.</li>
+          </ol>
+        </section>
+
+        <section class="strict-section" id="strict-exercise" data-section="exercise">
+          <h3>Exercise</h3>
+          <p>Change the message from "You ate a banana. Tasty." to "You ate a banana. +10 health." Do not add the health yet — just change the text. Restart the resource and confirm the new text appears.</p>
+          <p class="expected-output"><strong>Expected output:</strong> Chat shows "Banana: You ate a banana. +10 health." in yellow.</p>
+        </section>
+
+        <section class="strict-section" id="common-failures" data-section="common-failures">
+          <h3>Common failures</h3>
+          <ul class="failure-list">
+            <li><code>Command banana not found</code> — the resource did not load. Check the folder name matches the ensure line, and the fxmanifest has no syntax errors.</li>
+            <li><code>attempt to call a nil value (global 'RegisterCommand')</code> — you put RegisterCommand in server.lua. Chat commands must go in client.lua.</li>
+            <li><code>attempt to call a nil value (global 'TriggerEvent')</code> — you are on the server side. chat:addMessage only works on the client.</li>
+            <li><code>Resource qu_banana has no scripts</code> — your fxmanifest is empty or missing the client_script/server_script lines.</li>
+          </ul>
+        </section>
+
+        <section class="strict-section" id="refactor" data-section="refactor">
+          <h3>Refactor</h3>
+          <p>Extract the chat message into a local function <code>sendBananaChat(message)</code> so you can call it from multiple places with different messages.</p>
+        </section>
+
+        <section class="strict-section lesson-refs" id="strict-references" data-section="references">
+          <h3>References</h3>
+          <ul>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/" target="_blank" rel="noopener">FiveM client-side Lua functions</a></li>
+            <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest reference</a></li>
+            <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+          </ul>
+        </section>
+      </section>
+
+      <section class="cheatsheet" id="banana-cheat-sheet">
+        <span class="label">Cheat sheet</span>
+        <h3>The three files every resource needs</h3>
+        <ul>
+          <li><strong>fxmanifest.lua.</strong> Tells FiveM this folder is a resource. Lists client_scripts, server_scripts, and dependencies.</li>
+          <li><strong>client.lua.</strong> Runs on the player's computer. Handles chat commands, UI, drawing, and most natives.</li>
+          <li><strong>server.lua.</strong> Runs on your machine. Handles validation, database calls, and sending green lights to clients.</li>
+        </ul>
+      </section>
+
+      <section id="why-this-shape">
+        <h2>The big idea, in one minute</h2>
+        <p>Every FiveM script is split into two sides. The <strong>client</strong> is the player's game — it can draw things, play sounds, and change health. The <strong>server</strong> is the referee — it checks who asked, whether they are allowed, and what the result should be. Your <code>/banana</code> command starts on the client (because chat is a client thing), asks the server for permission, and the server tells the client exactly what to do. This split is not optional. It is the entire security model.</p>
+
+        <div class="analogy-block">
+          <p class="analogy-block__label">Think of an ATM at a bank.</p>
+          <p>The keypad and screen (the client) let you type numbers and see your balance. But the money lives in the vault (the server). When you press "withdraw $20", the keypad sends a request to the vault computer. The vault checks your balance, subtracts $20, and tells the keypad to dispense the cash. The keypad never decides on its own whether to give you money. If it did, anyone with a screwdriver could become a millionaire.</p>
+          <p>Your <code>/banana</code> command is the keypad. The server.lua is the vault. The client asks. The server checks. The client acts only after the server says yes.</p>
+        </div>
+      </section>
+
+      <section id="bad-vs-good">
+        <h2>Unsafe banana and safe banana, side by side</h2>
+        <p>The unsafe version is shorter. It is also an open door for cheaters. The safe version adds 10 lines and closes the door.</p>
+
+        <div class="before-after">
+          <div class="before-after__col before-after__col--bad">
+            <p class="before-after__label">Unsafe: client heals itself</p>
+            <p class="before-after__caption">The client decides the health value and sets it. A cheater calls this every frame and never dies.</p>
+            <figure class="code">
+              <header><span>client.lua — the unsafe way</span></header>
+              <pre><code class="language-lua">-- DO NOT DO THIS. The client can lie about anything.
+RegisterCommand('banana', function()
+    local ped = PlayerPedId()
+    local current = GetEntityHealth(ped)
+    SetEntityHealth(ped, current + 10)  -- cheater sets +99999
+    TriggerEvent('chat:addMessage', {
+        color = { 255, 255, 0 },
+        args = { 'Banana', 'You ate a banana.' }
+    })
+end, false)</code></pre>
+            </figure>
+            <p>The cheater replaces <code>current + 10</code> with <code>200</code> and has full health on every keypress. No server ever checked. No cooldown ever ran.</p>
+          </div>
+          <div class="before-after__col before-after__col--good">
+            <p class="before-after__label">Safe: client asks, server approves</p>
+            <p class="before-after__caption">The client sends a request. The server checks and sends back the approved health value. Cheaters cannot bypass the check.</p>
+            <figure class="code">
+              <header><span>client.lua + server.lua — the safe way</span></header>
+              <pre><code class="language-lua">-- client.lua
+RegisterCommand('banana', function()
+    TriggerServerEvent('qu_banana:server:eat')
+end, false)
+
+RegisterNetEvent('qu_banana:client:heal')
+AddEventHandler('qu_banana:client:heal', function(amount)
+    local ped = PlayerPedId()
+    local current = GetEntityHealth(ped)
+    local maxHp = GetEntityMaxHealth(ped)
+    local newHp = math.min(current + amount, maxHp)
+    SetEntityHealth(ped, newHp)
+    TriggerEvent('chat:addMessage', {
+        color = { 255, 255, 0 },
+        args = { 'Banana', ('You ate a banana. +%d health.'):format(amount) }
+    })
+end)
+
+-- server.lua
+local BANANA_AMOUNT = 10
+local lastAte = {}
+
+RegisterNetEvent('qu_banana:server:eat', function()
+    local src = source
+    local now = os.time()
+    if lastAte[src] and (now - lastAte[src]) < 5 then
+        TriggerClientEvent('chat:addMessage', src, {
+            color = { 255, 100, 100 },
+            args = { 'Banana', 'Slow down. Wait a moment.' }
+        })
+        return
+    end
+    lastAte[src] = now
+    TriggerClientEvent('qu_banana:client:heal', src, BANANA_AMOUNT)
+end)</code></pre>
+            </figure>
+            <p>The health amount never crosses the network from the client. The server sets it as a constant (<code>BANANA_AMOUNT = 10</code>). The cooldown runs on the server where nobody can edit it. The client only heals after receiving the server's approved amount.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="prereq" data-lesson="01">
+        <h2>Before you start</h2>
+        <p>If any box is unchecked, take five minutes to fix it first.</p>
+        <ul>
+          <li><label><input type="checkbox" data-id="editor"> I have a text editor open (VS Code, Notepad++, anything).</label></li>
+          <li><label><input type="checkbox" data-id="folder"> I can see my server's resources/ folder and create new folders inside it.</label></li>
+          <li><label><input type="checkbox" data-id="cfg"> I know where server.cfg is and how to add one line to it.</label></li>
+        </ul>
+      </section>
+
+      <section class="pin-card" id="step-1">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 1</span>
+          <h3 class="pin-card__title">Create the resource folder and manifest</h3>
+        </div>
+        <p class="pin-card__lede">A resource starts as an empty folder. The manifest tells FiveM what is inside.</p>
+        <ol>
+          <li>Open <code>resources/</code>. Create a new folder: <code>qu_banana</code>.</li>
+          <li>Inside <code>qu_banana</code>, create a file: <code>fxmanifest.lua</code>.</li>
+          <li>Paste this exact text:
+            <pre><code class="language-lua">fx_version 'cerulean'
+game 'gta5'
+
+author 'YourName'
+description 'A simple /banana command'
+version '1.0.0'
+
+client_scripts {
+    'client.lua'
+}
+
+server_scripts {
+    'server.lua'
+}</code></pre>
+          </li>
+          <li><code>fx_version 'cerulean'</code> tells FiveM which API version to use. Cerulean is the current one.</li>
+          <li><code>client_scripts</code> and <code>server_scripts</code> tell FiveM which files to run and on which side. Save the file.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-2">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 2</span>
+          <h3 class="pin-card__title">Write the client command</h3>
+        </div>
+        <p class="pin-card__lede">Chat commands live on the client. This one prints a yellow message.</p>
+        <ol>
+          <li>In <code>qu_banana</code>, create a file: <code>client.lua</code>.</li>
+          <li>Paste the "safe" client.lua from the good example above. Or start with just the chat message version from the minimal example.</li>
+          <li><code>RegisterCommand('banana', function ... end, false)</code> — the first argument is the command name (without the slash). The second is the function to run. The third (<code>false</code>) means the command is not restricted to admins.</li>
+          <li><code>TriggerServerEvent('qu_banana:server:eat')</code> sends a message to the server. The server decides what happens next.</li>
+          <li>Save the file. The client side is complete.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-3">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 3</span>
+          <h3 class="pin-card__title">Write the server checker</h3>
+        </div>
+        <p class="pin-card__lede">The server is the gatekeeper. It checks the cooldown and sends the green light.</p>
+        <ol>
+          <li>In <code>qu_banana</code>, create a file: <code>server.lua</code>.</li>
+          <li>Paste the server.lua from the good example above.</li>
+          <li><code>local BANANA_AMOUNT = 10</code> — the amount is a constant on the server. It never crosses the network from the client, so cheaters cannot change it.</li>
+          <li><code>local lastAte = {}</code> — a table that remembers when each player last ate a banana. The cooldown is 5 seconds.</li>
+          <li><code>TriggerClientEvent('qu_banana:client:heal', src, BANANA_AMOUNT)</code> — sends the green light to exactly one player (the one who asked), with the approved heal amount.</li>
+          <li>Save the file. The server side is complete.</li>
+        </ol>
+      </section>
+
+      <section class="pin-card" id="step-4">
+        <div class="pin-card__head">
+          <span class="pin-card__chip">Step 4</span>
+          <h3 class="pin-card__title">Turn it on and eat a banana</h3>
+        </div>
+        <p class="pin-card__lede">One line of config, one restart, one command. Then you have shipped.</p>
+        <ol>
+          <li>Open <code>server.cfg</code>. Add a new line: <code>ensure qu_banana</code>. Place it after chat and spawnmanager.</li>
+          <li>Start your server, or in a running server type <code>refresh</code> then <code>ensure qu_banana</code> in the console.</li>
+          <li>Join the server. Take some damage first (punch a wall or shoot the ground near you).</li>
+          <li>Press T to open chat. Type <code>/banana</code> and press Enter.</li>
+          <li>You should see a yellow message and your health bar should move up by 10.</li>
+          <li>Type /banana again quickly. You should see a red message telling you to wait. The health does not increase on the second try.</li>
+          <li>Wait 5 seconds. Type /banana again. It works. You have shipped your first FiveM script.</li>
+        </ol>
+      </section>
+
+      <section class="checkpoint" id="checkpoint-1">
+        <header><span class="chip">Recap</span><h3>Three tests, in order</h3></header>
+        <p>Run each test. If one fails, fix it before moving on.</p>
+        <ol>
+          <li>
+            <strong>Test 1, the message appears.</strong>
+            <ul>
+              <li>Action: type <code>/banana</code> in chat.</li>
+              <li>Expected: yellow text "Banana: You ate a banana. +10 health." appears in chat.</li>
+              <li>How to verify: the message is yellow and visible in the chat box.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 2, health increases.</strong>
+            <ul>
+              <li>Action: take damage, check your health, type <code>/banana</code>, check again.</li>
+              <li>Expected: health is 10 points higher (capped at max).</li>
+              <li>How to verify: punch a wall until health drops below 190, then eat a banana. The bar moves up.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Test 3, cooldown works.</strong>
+            <ul>
+              <li>Action: type <code>/banana</code> twice in under 5 seconds.</li>
+              <li>Expected: first one works. Second one shows a red "Slow down" message and health does not change.</li>
+              <li>How to verify: the red message appears. Your health after the second /banana is the same as after the first.</li>
+            </ul>
+          </li>
+        </ol>
+        <div class="self-check">
+          <details>
+            <summary>Why does the cooldown live on the server and not the client?</summary>
+            <p>A cheater can edit any Lua file that runs on their computer. If the cooldown lived in client.lua, a cheater could change it to 0 seconds and spam heal. The server runs on your machine, not theirs. Rules that live on the server cannot be edited by players.</p>
+          </details>
+        </div>
+      </section>
+
+      <section id="rules-i-followed">
+        <h2>The rules you just followed</h2>
+        <ul>
+          <li>The client only asks. It never decides the result.</li>
+          <li>The server checks the player (via <code>source</code>), the cooldown, and the amount. It sends the green light.</li>
+          <li>The heal amount is a server constant. It never crosses the network from the client.</li>
+          <li>The cooldown table lives on the server, keyed by <code>source</code>. Cheaters cannot reach it.</li>
+          <li>The client only heals after receiving the approved event from the server.</li>
+        </ul>
+      </section>
+
+      <section class="quiz" aria-label="Lesson quiz">
+        <h2 class="quiz-heading">Quick check, 3 questions</h2>
+        <form class="quiz">
+          <fieldset data-answer="b">
+            <legend>1. Why is RegisterCommand in client.lua and not server.lua?</legend>
+            <label><input type="radio" name="q1" value="a"> Server.lua runs slower than client.lua.</label>
+            <label><input type="radio" name="q1" value="b"> Chat commands are a client feature. The chat box lives on the player's computer.</label>
+            <label><input type="radio" name="q1" value="c"> FiveM does not allow RegisterCommand on the server.</label>
+          </fieldset>
+          <fieldset data-answer="c">
+            <legend>2. What does the third argument to RegisterCommand (false) mean?</legend>
+            <label><input type="radio" name="q2" value="a"> The command is disabled by default.</label>
+            <label><input type="radio" name="q2" value="b"> The command runs on the server instead of the client.</label>
+            <label><input type="radio" name="q2" value="c"> The command is not restricted — any player can use it. True would mean admin-only.</label>
+          </fieldset>
+          <fieldset data-answer="a">
+            <legend>3. Why does the server send a specific heal amount to the client?</legend>
+            <label><input type="radio" name="q3" value="a"> So a cheater cannot change the amount by editing their local files.</label>
+            <label><input type="radio" name="q3" value="b"> Because the client does not know how to add numbers.</label>
+            <label><input type="radio" name="q3" value="c"> Because FiveM requires the amount to come from the server.</label>
+          </fieldset>
+          <button type="submit" class="primary">Check answers</button>
+          <p class="quiz-result" hidden></p>
+        </form>
+      </section>
+
+      <section class="lesson-recap" id="recap">
+        <h2>What you learned</h2>
+        <ul>
+          <li>Every FiveM resource needs an fxmanifest.lua that lists its client and server scripts.</li>
+          <li><code>RegisterCommand</code> creates a chat command. It lives on the client because chat is a client feature.</li>
+          <li>The client asks the server with <code>TriggerServerEvent</code>. The server checks and replies with <code>TriggerClientEvent</code>.</li>
+          <li>All rules (cooldowns, validation, amount limits) live on the server where cheaters cannot reach them.</li>
+          <li>A working command is 20 lines of code. The security layer is 10 of those lines. Never skip the security layer.</li>
+        </ul>
+      </section>
+
+      <section class="lesson-exercise" id="exercise">
+        <h2>Five-minute exercise</h2>
+        <p>Add a second command: <code>/steak</code> that gives 30 health with a 30-second cooldown. Create it in the same resource. It is the exact same pattern — you just change the name, amount, and cooldown.</p>
+        <p class="expected">Expected output</p>
+        <figure class="code"><header><span>chat box, after /steak</span></header>
+          <pre><code>Steak: You ate a steak. +30 health.</code></pre>
+        </figure>
+        <details class="explain">
+          <summary>Hint</summary>
+          <p>Add a second <code>RegisterCommand('steak', ...)</code> in client.lua that fires <code>qu_banana:server:eatSteak</code>. Add a matching handler in server.lua with <code>STEAK_AMOUNT = 30</code> and a separate <code>lastAteSteak</code> table for the 30-second cooldown.</p>
+        </details>
+      </section>
+
+      <section class="lesson-refs" id="references">
+        <h2>References</h2>
+        <ul>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/runtimes/lua/client-functions/#registercommand" target="_blank" rel="noopener">RegisterCommand on FiveM docs</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0xD80958FC74E988A6" target="_blank" rel="noopener">PlayerPedId native reference</a></li>
+          <li><a href="https://docs.fivem.net/natives/?_0x6B76DC1F" target="_blank" rel="noopener">SetEntityHealth native reference</a></li>
+          <li><a href="https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" target="_blank" rel="noopener">FiveM resource manifest</a></li>
+          <li><a href="https://www.lua.org/manual/5.4/" target="_blank" rel="noopener">Lua 5.4 reference manual</a></li>
+        </ul>
+      </section>
