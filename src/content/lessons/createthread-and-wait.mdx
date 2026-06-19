@@ -10,6 +10,8 @@
 >
   `CreateThread` starts a scheduled Lua coroutine; `Wait(ms)` yields it back to the runtime. An infinite loop that never yields can freeze the client. A polling interval that is shorter than the feature needs wastes client frame time, while one that is too long misses input or feels delayed.
 </LessonHero>
+<LessonVideo src="/lesson-videos/clase-8.mp4" caption="Quasar University: loops, threads, and client/server comms." />
+
 
 <Prereq
   items={[
@@ -201,6 +203,55 @@ end)
 
 The loop starts each pass assuming it can sleep a full second. Only when the player is within 20 metres does it drop `wait` to `0` and do the expensive per-frame work. Standing across the map, the loop costs almost nothing because it runs once a second. Standing on the marker, it runs every frame, exactly when that is worth paying for. One loop, two speeds, chosen by a cheap distance check. This is the takeaway the whole lesson points at: `Wait(0)` is not the default, it is a tool you reach for only on the frames that need it.
 
+### A loop that ends: bounded loops vs while true
+
+Every loop so far has been `while true` — it never stops on its own, so it needs a `Wait` to stay alive without freezing. But a loop does not have to be infinite. When the work has a clear finish line, you give the loop a real exit condition, and when that condition turns false the loop ends, the function returns, and the coroutine is simply gone. The scheduler never resumes it again because there is nothing left to resume.
+
+A countdown is the cleanest example. Add this third thread to `client.lua`, restart `qu_createthread_and_wait`, and run `/threadtoggle`:
+
+```lua
+-- Bounded loop: counts down once, then the coroutine ends.
+CreateThread(function()
+    local remaining = 5
+    while remaining > 0 do
+        print('[qu_createthread_and_wait] countdown ' .. remaining)
+        Wait(1000)
+        remaining = remaining - 1
+    end
+    print('[qu_createthread_and_wait] countdown done')
+end)
+```
+
+The condition is `remaining > 0`, not `true`. Each pass prints the number, yields for one second with `Wait(1000)`, then subtracts one. After five passes `remaining` reaches `0`, the `while` condition is false, the loop exits, the final `print` runs once, and the function returns. That return ends the coroutine for good.
+
+Two things are worth saying out loud. First, this loop still needs its `Wait(1000)` — a bounded loop with no `Wait` would still spin to its end with no yield in between and could still hitch the frame, so the rule "every loop yields" holds even when the loop is finite. Second, this thread runs once and is done; if you want the countdown to happen again you have to start a fresh `CreateThread`, because the old coroutine is gone, not paused. That is the difference from the slow-tick and keypress loops above, which use `while true` precisely because they must keep watching forever. Pick `while true` when the job never ends, and a real condition when it does.
+
+### When a loop talks to the server: do not spam the wall
+
+Loops and client-server events meet at one dangerous spot. A network event like `TriggerServerEvent('myresource:server:doThing')` sends a packet from this client up to the server, where server code handles it. That is cheap to call once. It is a disaster to call sixty times a second. Dropping a `TriggerServerEvent` straight into a `Wait(0)` loop floods the server with packets every frame, from every player running your resource at once, and a busy server feels it immediately.
+
+The fix is the same Wait discipline from this whole lesson, plus a guard so each press fires the event exactly once:
+
+```lua
+-- Good: the network call only fires on the frame the key goes down.
+CreateThread(function()
+    while true do
+        Wait(0)
+        if enabled and IsControlJustPressed(0, 38) then
+            TriggerServerEvent('qu_createthread_and_wait:server:ePressed')
+        end
+    end
+end)
+```
+
+The loop still polls every frame because it has to catch the one-frame press, but the network call sits behind `IsControlJustPressed`, so it sends once per tap instead of once per frame. The loop is for watching; the event is for the moment something actually changed. Never put a raw, unconditional `TriggerServerEvent` inside `Wait(0)`.
+
+<Callout variant="warning" title="The loop runs on the client, so the server must not trust it">
+  Anything inside a client `CreateThread` runs on the player's own machine, and a player can edit or fake what their client sends. A loop that decides "the player earned $500, tell the server to pay them" and fires that as a network event is an open door: a cheater triggers the same event by hand and pays themselves forever. The loop may *notice* the event (the keypress, the proximity), but the server must *re-check the facts and own the outcome* — does this player exist, are they actually where they claim, should this be allowed. Treat every value a loop sends across the wall as a request, never as a result.
+</Callout>
+
+This lesson stops at "a loop can fire a network event safely." The full round trip — how the server receives it with `RegisterNetEvent`, who `source` is, and how the server answers the one player who asked versus everyone — is its own build. See the [TriggerServerEvent and TriggerClientEvent lesson](/lessons/trigger-server-client-event) for that.
+
 ## If something went wrong
 
 <FailureList
@@ -210,6 +261,8 @@ The loop starts each pass assuming it can sleep a full second. Only when the pla
     { symptom: "Pressing E never prints", fix: "Run /threadtoggle first so enabled is true, then press E. IsControlJustPressed also only fires for the in-game E control (38), so make sure the game window has focus when you press it." },
     { symptom: "The slow tick never prints", fix: "It only prints while enabled is true and only once every five seconds. Run /threadtoggle, then wait the full five seconds before deciding it failed." },
     { symptom: "FPS drops while the resource runs", fix: "Open F8, run resmon, and read this resource's ms per frame. If it is high, move per-frame work out of the Wait(0) loop and behind an adaptive wait." },
+    { symptom: "The countdown prints once and never repeats after it finishes", fix: "That is correct: a bounded `while remaining > 0` loop ends when the condition turns false, and the coroutine is gone, not paused. To run it again, start a fresh CreateThread. Use `while true` only when the job should never end." },
+    { symptom: "Server console floods with the same event, or the server lags when players run the resource", fix: "A TriggerServerEvent is sitting unguarded inside a Wait(0) loop, so it fires every frame. Put the network call behind a condition like IsControlJustPressed so it sends once per real action, not once per frame." }
   ]}
 />
 
@@ -223,6 +276,8 @@ The loop starts each pass assuming it can sleep a full second. Only when the pla
     "Explain why a one-frame event like IsControlJustPressed must be polled inside a Wait(0) loop.",
     "Open resmon and read a resource's ms per frame to judge whether it is within the tick budget.",
     "Apply the adaptive wait pattern so a polling loop sleeps when idle and only drops to Wait(0) when it matters.",
+    "Choose between an infinite `while true` loop and a bounded loop with a real exit condition, and know that a bounded loop's coroutine ends for good when the condition turns false.",
+    "Fire a TriggerServerEvent from inside a loop safely by guarding it so it sends once per real action, and treat every value the client loop sends as a request the server must re-validate, never a result."
   ]}
 />
 
@@ -249,6 +304,27 @@ The loop starts each pass assuming it can sleep a full second. Only when the pla
   ```
 
   Restart `qu_createthread_and_wait`. Open F8, run `resmon`, and watch this resource's ms column. With `enabled` false the loop runs twice a second and the ms reads near zero. Run `/threadtoggle` to flip `enabled` true and watch the same loop jump to running every frame. You have just felt the difference between a loop that sleeps and a loop that polls, on the same code, measured in real numbers instead of guessed at.
+</Exercise>
+
+<Exercise>
+  Make the countdown announce itself across the wall — once, not sixty times.
+
+  This resource is client-only. To send a network event you need a server file, so first add `server_script 'server.lua'` to `fxmanifest.lua` (below the existing `client_script` line) and create `server.lua` next to `client.lua`. In `server.lua`, register the event and print which player fired it:
+
+  ```lua
+  RegisterNetEvent('qu_createthread_and_wait:server:countdownDone', function()
+      local src = source
+      print('[qu_createthread_and_wait] player ' .. src .. ' finished the countdown')
+  end)
+  ```
+
+  Now modify the bounded countdown loop in `client.lua` so that on the line where it currently prints `countdown done`, it also fires the event exactly once:
+
+  ```lua
+  TriggerServerEvent('qu_createthread_and_wait:server:countdownDone')
+  ```
+
+  Restart `qu_createthread_and_wait` and run `/threadtoggle`. Watch the countdown tick down in F8 (the client console), then watch the single `player N finished the countdown` line appear in the txAdmin Live Console (the server console). The lesson here is in the placement: because the event sits after the loop ends — not inside the `Wait(1000)` body — it fires once per countdown, not once per second. Move the `TriggerServerEvent` up into the loop body and restart, and you will see the server console fill with one line every second instead. That is exactly the mistake the warning above tells you never to ship.
 </Exercise>
 
 <Refs

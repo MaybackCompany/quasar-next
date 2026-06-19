@@ -311,6 +311,134 @@ Blip plus marker plus in-zone check is the skeleton of almost every interactable
 - **Quest and mission objectives.** A delivery point or a "go here next" objective is the same three layers, often with the blip and marker created and then destroyed once the step is done.
 - **Admin and debug zones.** Mark a coordinate you are testing so you can find it again, and print when you reach it to confirm the trigger fires where you expect. You just built exactly that.
 
+## Going configurable: many blips from one table
+
+Everything above hardcodes a single blip inside a thread. That is fine when you are learning, but on a real server you will place dozens of blips, and you do not want to edit Lua every time you move a shop or add a garage. The fix is the pattern this course is named for: pull every blip out of the code and into a **config table** a server owner can edit without touching logic. The code becomes a loop; the data becomes the thing you change.
+
+<Callout variant="info" title="Why a config table is a contract, not a convenience">
+  A config table is a promise between the person who writes the script and the person who runs the server: "give me a list of blips shaped like this, and I will draw all of them." The script author never edits coordinates again; the server owner never edits logic. That separation is the single reason configurable resources scale. Every blip you add is one more row of data, not one more block of code to get wrong.
+</Callout>
+
+This build extends the same `qu_world_indicators` resource you already have. You will add a config file, a loop that creates one blip per entry, and a command that deletes them all at runtime. The marker and in-zone check from the first build stay exactly as they are.
+
+<StepGroup>
+  <Step num={1} title="Add config.lua to the resource" outcome="The server owner has one file to edit, with no Lua logic in it.">
+    Inside `resources/qu_world_indicators`, create a new file named `config.lua` and paste this:
+
+    ```lua
+Config = {}
+
+-- Each entry is one blip. A server owner edits this table, never the code below.
+Config.Blips = {
+    { name = 'Police Station', coords = vector3(425.1, -979.5, 30.7),  sprite = 60,  color = 29, scale = 1.0 },
+    { name = 'Hospital',       coords = vector3(295.8, -584.9, 43.1),  sprite = 61,  color = 2,  scale = 1.2 },
+    { name = 'Garage',         coords = vector3(215.8, -810.1, 30.7),  sprite = 50,  color = 3,  scale = 0.8 },
+}
+    ```
+
+    `Config` is a plain Lua table declared as a global so other files in the resource can read it. `Config.Blips` is a list of small tables, each one describing a single blip with the same four properties you set by hand earlier: a name, a `vector3` position, a sprite ID, a colour index, and a scale. Adding a fourth blip is now one more line here, nothing else.
+  </Step>
+
+  <Step num={2} title="Load config.lua before client.lua in the manifest" outcome="Config exists in memory before any code tries to read it.">
+    Open `fxmanifest.lua` and change the client section so both files load, config first:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_scripts {
+    'config.lua',
+    'client.lua',
+}
+    ```
+
+    Order matters. FiveM loads `client_scripts` top to bottom, so `config.lua` runs first and defines the global `Config`. If you listed `client.lua` first, the loop would read `Config.Blips` while `Config` was still `nil` and crash. This is the most common mistake people hit the first time they split a config out: a file that depends on another must be listed after it.
+  </Step>
+
+  <Step num={3} title="Add the load + delete logic to client.lua" outcome="Every config blip appears on resource start, and one command removes them all.">
+    Open `client.lua` and add this **below** the existing blip and marker threads (do not remove anything you already have):
+
+    ```lua
+-- Handles of every blip we created, kept so we can delete them later.
+local createdBlips = {}
+
+local function loadConfigBlips()
+    for _, b in ipairs(Config.Blips) do
+        local blip = AddBlipForCoord(b.coords.x, b.coords.y, b.coords.z)
+        SetBlipSprite(blip, b.sprite)
+        SetBlipColour(blip, b.color)
+        SetBlipScale(blip, b.scale)
+        SetBlipAsShortRange(blip, true)
+
+        BeginTextCommandSetBlipName('STRING')
+        AddTextComponentSubstringPlayerName(b.name)
+        EndTextCommandSetBlipName(blip)
+
+        createdBlips[#createdBlips + 1] = blip
+    end
+    print(('[qu_world_indicators] loaded %d config blips'):format(#createdBlips))
+end
+
+-- Create the config blips once, when this resource starts on the client.
+AddEventHandler('onClientResourceStart', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+    loadConfigBlips()
+end)
+
+-- Remove every blip we created. true = restricted, so only an ACE-allowed
+-- identity can run it; the server console always can.
+RegisterCommand('deleteallblips', function()
+    for _, blip in ipairs(createdBlips) do
+        if DoesBlipExist(blip) then
+            RemoveBlip(blip)
+        end
+    end
+    createdBlips = {}
+    print('[qu_world_indicators] all config blips deleted')
+end, true)
+    ```
+  </Step>
+
+  <Step num={4} title="Restart and test" outcome="Config blips appear on the map, and the command clears them.">
+    In your server console (txAdmin **Live Console**, or the **FXServer console window** if you launched by double-clicking `FXServer.exe`), type:
+
+    ```text
+    restart qu_world_indicators
+    ```
+
+    Join the server, open the pause map, and confirm the three config blips (police, hospital, garage) sit at their coordinates alongside the cash-drop blip from the first build. Then, because the command is restricted, run it from the **server console** (which bypasses the ACE check), or set up an ACE grant for yourself first:
+
+    ```text
+    deleteallblips
+    ```
+
+    Watch the **server console** for the load and delete lines, and the pause map for the blips disappearing:
+
+    <ExpectedOutput>
+    [qu_world_indicators] loaded 3 config blips
+    [qu_world_indicators] all config blips deleted
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+### How the configurable build works
+
+**`createdBlips` is the cleanup ledger.** `AddBlipForCoord` hands back a numeric handle, and once the thread that created the blip exits, that number is the only way to ever reach the blip again. If you do not store it, you can never delete the blip without restarting the whole resource. So every time you create one, you append its handle with `createdBlips[#createdBlips + 1] = blip`. The table is your record of "things I made and am responsible for."
+
+**`onClientResourceStart` is the right moment to build them.** You create the config blips inside this handler, guarded by `if GetCurrentResourceName() ~= resourceName then return end`. That guard matters because the event fires for *every* resource that starts, not just yours; without it you would run `loadConfigBlips` once for every resource on the server. Inside the guard, you know it is your resource starting, so you build exactly once. This is cleaner than the bare `CreateThread` you used for the single blip because it also re-runs correctly on a `restart`.
+
+**`DoesBlipExist` before `RemoveBlip` avoids acting on a dead handle.** A blip can already be gone, for example if another script removed it or the resource half-restarted. Calling `RemoveBlip` on a handle that no longer points to anything is a silent no-op at best and a source of confusing bugs at worst. `DoesBlipExist(blip)` asks the game "is this handle still real?" and you only delete when the answer is yes. After the loop you reset `createdBlips = {}` so the ledger does not keep stale numbers that point to nothing.
+
+**The command is restricted on purpose.** `RegisterCommand('deleteallblips', fn, true)` passes `true` as the third argument, which makes the command **restricted**: it only runs for an identity that has been granted the matching ACE permission, and the server console can always run it. A command that changes state for players, even just wiping their map blips, must never be left open for anyone to type. The Feb-2025 version of this guide registered it with `false` (unrestricted), which would let any player on the server clear blips at will. Always default state-changing commands to restricted and grant access explicitly.
+
+<Callout variant="warning" title="AddTextComponentString vs AddTextComponentSubstringPlayerName">
+  Older blip tutorials, including the source this lesson is built from, use `AddTextComponentString` for the middle call of the name dance. The current, idiomatic native is `AddTextComponentSubstringPlayerName`, the same one the first build used. Both push a raw string into the text command, so keep one name throughout your resource rather than mixing them, and prefer the `Substring` form to match modern FiveM code you will read elsewhere.
+</Callout>
+
+<Checkpoint question="You add a fourth blip to Config.Blips and restart the resource, but it never appears on the map, while the original three still do. Where do you look first?">
+  First check that `config.lua` is listed in the manifest's `client_scripts` **before** `client.lua`, and that you actually restarted the resource so the new config file was re-read. If load order were wrong you would see no blips at all, so the fact that three appear tells you the table loaded; the likely culprit is the fourth entry itself. Look for a malformed row: a missing comma between table entries, a `sprite` or `color` that is a string instead of a number, or coordinates copied with the wrong sign. A blip with a valid handle but an off-map or underground coordinate is created successfully and simply draws somewhere you are not looking, which reads as "missing" even though the loop ran fine.
+</Checkpoint>
+
 ## Common mistakes
 
 <FailureList
@@ -321,6 +449,10 @@ Blip plus marker plus in-zone check is the skeleton of almost every interactable
     { symptom: "The enter line prints dozens of times per second while you stand inside", fix: "You are doing level detection, not edge detection. Add an inside boolean declared above the loop and only print when dist crosses the radius (dist < radius and not inside). Flip the flag so it fires once per crossing." },
     { symptom: "The whole server hitches and the script eats frames even when no player is near", fix: "Your loop is running Wait(0) at all times. Gate it: default sleep to 1000, compute #(coords - target), and only set sleep to 0 and draw when the player is within about 25 meters." },
     { symptom: "attempt to perform arithmetic on a nil value near GetEntityCoords", fix: "PlayerPedId() ran before your ped existed. Join and spawn into the server before the thread reads coords, or guard the loop until the ped is valid." },
+    { symptom: "attempt to index a nil value (global 'Config') when the resource starts", fix: "client.lua ran before config.lua defined the Config global. In fxmanifest.lua, list the files under client_scripts with config.lua first and client.lua second. FiveM loads them top to bottom, so a file that reads Config must come after the file that creates it." },
+    { symptom: "Blips from the config never go away, even after /deleteallblips, until you restart the whole resource", fix: "You created the blips but never stored their handles, so the delete loop has nothing to iterate. Append each handle as you create it (createdBlips[#createdBlips + 1] = blip) and delete by looping over that table. A blip handle is the only way to reach a blip after its creating thread exits." },
+    { symptom: "Calling RemoveBlip throws or silently does nothing on some entries", fix: "You are removing a handle that no longer points to a live blip. Guard every removal with if DoesBlipExist(blip) then RemoveBlip(blip) end, and reset createdBlips = {} after the loop so you never reuse stale handles." },
+    { symptom: "Any player can type /deleteallblips and wipe the map for themselves", fix: "The command was registered unrestricted. Register state-changing commands with true as the third argument of RegisterCommand so they require an ACE grant; the server console always bypasses the check, and you grant trusted identities explicitly with add_principal / add_ace." }
   ]}
 />
 
@@ -359,6 +491,8 @@ Blip plus marker plus in-zone check is the skeleton of almost every interactable
     { label: "DrawMarker native", href: "https://docs.fivem.net/natives/?_0x28477EC23D892089" },
     { label: "FiveM blips game reference", href: "https://docs.fivem.net/docs/game-references/blips/" },
     { label: "FiveM markers game reference", href: "https://docs.fivem.net/docs/game-references/markers/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
+    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "oxmysql (CommunityOx)", href: "https://github.com/communityox/oxmysql" }
   ]}
 />

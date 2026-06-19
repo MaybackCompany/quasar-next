@@ -10,6 +10,8 @@
 >
   By the end of this lesson you will type `/tpmenu`, click a place name, and watch your character arrive there with a smooth fade. The server approves destinations for this resource and can enforce permissions or write an audit entry. This is not an anti-teleport system: an exploited client can still call client natives directly.
 </LessonHero>
+<LessonVideo src="/lesson-videos/clase-0.mp4" caption="Quasar University: the teleport script, start to finish." />
+
 
 <Prereq
   items={[
@@ -232,6 +234,56 @@ The client-asks, server-approves, server-answers round-trip is the backbone of a
 
 When the action is purely cosmetic and local, like opening a settings panel, you can skip the server trip. When it changes authoritative game state, route the request through the server and validate again at the protected action. A server-approved client teleport alone is not a security boundary.
 
+## A second shape: the /tp [number] command
+
+The menu you built constrains the player to options you defined, so the only thing that crosses the network is a name you chose. There is a second teleport shape you will see constantly, especially for quick solo testing and admin tools: a command that takes a typed argument, like `/tp 2`. Here the player types a value you did not pre-approve, so the lesson shifts from "click a safe option" to "parse and validate whatever they typed."
+
+This variant is client-only on purpose. It is a builder/admin convenience, not a player-facing feature, so it skips the server round-trip. That trade is fine for a tool you gate behind a permission, and dangerous if you ever expose it to everyone. We will come back to that.
+
+<Callout variant="fivem" title="What changes versus the menu">
+  The menu's `onSelect` already knew exactly which destination it meant, so there was nothing to parse. A command argument is raw text the player typed. Before you act on it you must turn it into a number and prove it points at a real destination. That parse-and-check step is the whole new idea in this section.
+</Callout>
+
+```lua
+local teleportLocations = {
+    { x = -75.0, y = -819.0, z = 326.0, name = 'Main Rooftop' },
+    { x = -428.0, y = 1111.0, z = 327.0, name = 'Vinewood Hills' },
+    { x = 402.0, y = -996.0, z = -99.0, name = 'Hidden Bunker' },
+}
+
+RegisterCommand('tp', function(source, args)
+    local index = tonumber(args[1])
+    if not index or not teleportLocations[index] then
+        print('[qu_teleport_menu] /tp needs a number 1 to ' .. #teleportLocations)
+        return
+    end
+
+    local spot = teleportLocations[index]
+    DoScreenFadeOut(500)
+    Wait(600)
+    SetEntityCoords(PlayerPedId(), spot.x, spot.y, spot.z, false, false, false, true)
+    DoScreenFadeIn(500)
+    print('[qu_teleport_menu] moved to ' .. spot.name)
+end, false)
+```
+
+Read it argument first. `RegisterCommand` hands your function two things: `source` (the server ID of whoever ran it; on the client this is your own player) and `args`, an array of the words typed after the command. When the player types `/tp 2`, `args[1]` is the **string** `"2"`, not the number `2`. That distinction is the trap. `tonumber(args[1])` converts that string to a number, and returns `nil` if the player typed something that is not a number, like `/tp rooftop`.
+
+The guard `if not index or not teleportLocations[index] then` does two checks in one line. `not index` catches the case where `tonumber` returned `nil` (the player typed nonsense or nothing at all). `not teleportLocations[index]` catches a number that is out of range, like `/tp 9` when there are only three spots: indexing past the end of the array returns `nil`. Either failure prints a usage hint and returns, so an empty or garbage argument never crashes the handler. `#teleportLocations` is the length of the array, so the hint always names the real upper bound even after you add spots.
+
+Notice the last `SetEntityCoords` flag here is `true`, not `false` like in the menu build. That final flag is `clearArea`: with `true` the engine clears nearby entities at the destination, which is handy when you teleport onto a rooftop or into a tight interior and do not want to land inside a parked car. The three flags before it are still `alive`, `deadFlag`, and `ragdollFlag`, unchanged from the menu build.
+
+To try it, add this code to a client file in `qu_teleport_menu`, run `restart qu_teleport_menu` in the **server console** (txAdmin Live Console or the FXServer console), then in the **chat box** in game (press T) type `/tp 1`. Try `/tp 9` and `/tp banana` too, and watch the usage hint print to **F8** instead of the handler breaking.
+
+<ExpectedOutput>
+  F8 (after /tp 1): [qu_teleport_menu] moved to Main Rooftop
+  F8 (after /tp 9): [qu_teleport_menu] /tp needs a number 1 to 3
+</ExpectedOutput>
+
+<Callout variant="warning" title="This shape has no server check">
+  Because there is no `TriggerServerEvent` here, the server never sees or approves the move. That is acceptable for a builder tool you gate with a restricted command or an ACE, and unacceptable as a player feature: a player who can run `/tp` can reach any coordinate in your array, and an exploited client can reach any coordinate at all. If you want players to use numbered destinations, send `index` to the server and re-run the allow-list check there, exactly like the menu build did with a name. Convenience commands stay on the client only when you also restrict who can run them.
+</Callout>
+
 ## If something went wrong
 
 <FailureList
@@ -240,6 +292,7 @@ When the action is purely cosmetic and local, like opening a settings panel, you
     { symptom: "The menu opens but choosing a place does nothing", fix: "The destination name in onSelect does not match a key in the server allowed table or the client spots table. Check that 'legion' and 'airport' are spelled the same in all three places." },
     { symptom: "Server console shows rejected source N for ...", fix: "That destination is not in the server allowed table. This is the server doing its job. Add the name to allowed on the server and to spots on the client if it is a real destination." },
     { symptom: "Screen fades but you do not move, or the world snaps without a clean fade", fix: "Confirm the Wait after DoScreenFadeOut is larger than the fade duration. With DoScreenFadeOut(500) the wait should be 600 or more so the screen is black before SetEntityCoords runs." },
+    { symptom: "You teleport but fall through the map, land in the air, or spawn under the ground at a far-away or high destination", fix: "The destination's collision and ground have not streamed in yet, so the engine has nothing solid to put you on. Before the final move, request the collision and wait for the real ground height. Replace the bare SetEntityCoords with: first place the ped roughly with SetEntityCoords(ped, x, y, z, false, false, false, true), then RequestCollisionAtCoord(x, y, z), then loop a few frames calling local found, groundZ = GetGroundZFor_3dCoord(x, y, z + 5.0, false) with a Wait(0) each loop until found is true, then SetEntityCoords(ped, x, y, groundZ, false, false, false, true). The +5.0 starts the ground probe slightly above your target so it casts downward onto the surface. Note GetGroundZFor_3dCoord returns two values, the found boolean first and the height second." },
   ]}
 />
 

@@ -88,6 +88,29 @@ server_script 'server.lua'
         print(('[qu_tables] alias set name to "%s"'):format(maya.name))
         print(('[qu_tables] roster[1].name is now "%s" (same table!)'):format(roster[1].name))
     end, true)
+
+    -- /leaderboard: sort the roster by level (highest first), then print it.
+    -- table.sort reorders the SAME table in place; it does not return a new one.
+    RegisterCommand('leaderboard', function()
+        -- The second argument is a comparator: it must return true when a should
+        -- come before b. 'a.level > b.level' means "higher level wins", so the
+        -- list ends up sorted from highest level down to lowest.
+        table.sort(roster, function(a, b)
+            return a.level > b.level
+        end)
+        printRoster()
+    end, true)
+
+    -- /names: build ONE line listing every player's name, separated by commas.
+    -- table.concat only works on the array part (slot 1, 2, 3...) and only on
+    -- strings or numbers, so we first collect the names into a flat array.
+    RegisterCommand('names', function()
+        local names = {}
+        for _, player in ipairs(roster) do
+            table.insert(names, player.name)
+        end
+        print(('[qu_tables] roster: %s'):format(table.concat(names, ', ')))
+    end, true)
     ```
   </Step>
 
@@ -126,6 +149,28 @@ server_script 'server.lua'
     <ExpectedOutput>
       [qu_tables] alias set name to "Maya_ALT"
 [qu_tables] roster[1].name is now "Maya_ALT" (same table!)
+    </ExpectedOutput>
+
+    Restart `qu_tables` again so the roster is back to its two starting entries, then run this in the **server console** (the txAdmin Live Console or the FXServer window, NOT the in-game F8 console or the chat box):
+
+    ```text
+    leaderboard
+    ```
+
+    <ExpectedOutput>
+      [qu_tables] --- roster ---
+[qu_tables] 1. Rami (level 12, afk)
+[qu_tables] 2. Maya (level 5, online)
+    </ExpectedOutput>
+
+    Rami jumped to the top because his level (12) is higher than Maya's (5). Now run:
+
+    ```text
+    names
+    ```
+
+    <ExpectedOutput>
+      [qu_tables] roster: Rami, Maya
     </ExpectedOutput>
   </Step>
 </StepGroup>
@@ -195,6 +240,24 @@ table.insert(roster, { name = 'New Player', level = 1, status = 'online' })
 
 `table.insert` appends a value to the end of an array table and bumps the length by one. Before this line `roster` has two slots; after it, three, and the new dictionary lands at `roster[3]`. That is why your first test printed a third line. Its sibling is `table.remove(roster, 2)`, which deletes slot 2 and then **shifts every later element down** to close the gap, so the old slot 3 becomes the new slot 2. That shifting is the reason you almost never remove items inside an `ipairs` loop: you are renumbering the very list you are walking.
 
+### Ordering and joining: table.sort and table.concat
+
+You have a list. Two things you constantly need with a list are: put it in a useful order, and squash it into one readable line. That is `table.sort` and `table.concat`.
+
+```lua
+table.sort(roster, function(a, b)
+    return a.level > b.level
+end)
+```
+
+`table.sort` reorders an array table **in place**. It does not hand you back a new sorted table; it rearranges the one you passed in, and returns nothing. So after this line runs, `roster` itself is sorted and the old order is gone. With no second argument it sorts ascending using `<`, which only works when every element is directly comparable (all numbers, or all strings). Our roster holds dictionaries, and Lua has no idea how to compare two dictionaries, so we hand it a **comparator** function. The comparator receives two elements, `a` and `b`, and must return `true` when `a` should come **before** `b`. We wrote `a.level > b.level`, which reads as "the higher level comes first", giving a highest-to-lowest leaderboard. Flip it to `a.level < b.level` and you get lowest-first. This is exactly how you build a kill leaderboard, a job-grade list, or a nearest-player list in a real resource.
+
+```lua
+table.concat(names, ', ')
+```
+
+`table.concat` glues the elements of an array table into a single string, putting the separator you pass between each one. `table.concat(names, ', ')` turns `{ 'Rami', 'Maya' }` into `'Rami, Maya'`. Two hard limits trip people up. First, it only reads the **array part** (slots 1, 2, 3...); it ignores string-keyed fields entirely. Second, every element it touches must be a **string or a number**, never a table. That is why `/names` does not call `table.concat(roster, ...)` directly: each `roster` slot is a dictionary, which would throw `invalid value (at index 1) in table for 'concat'`. We first walk the roster with `ipairs` and push each `player.name` into a flat `names` array, then concat that. Reach for `table.concat` whenever you want one clean log line, one chat announcement, or one comma-separated value instead of a print per element, since one line is far easier to read in the server console and far cheaper than spamming many `print` calls.
+
 <Checkpoint question="You loop a roster with ipairs and call table.remove on the current slot when a player is offline. Some offline players survive the purge. Why?">
   Because `table.remove` shifts every later element down by one the moment you delete a slot, but the loop's index keeps marching forward. Remove slot 2 and the old slot 3 slides into slot 2, then the loop moves to slot 3 and skips the element that just moved into 2. The fix is to either loop backwards (from the last index down to 1, so removals never affect slots you have not visited yet) or build a fresh table of the survivors instead of editing the list you are iterating.
 </Checkpoint>
@@ -242,6 +305,8 @@ You reach for a table the moment you have more than one of anything, or more tha
     { symptom: "attempt to index a nil value (field 'level')", fix: "A roster entry is missing a key, or you typed player.lvl instead of player.level. Every dictionary in the array needs name, level, and status." },
     { symptom: "bad argument #2 to 'format' (no value)", fix: "The format template has more % markers than you passed arguments. Count the %d and %s slots and make sure one value follows for each, in order." },
     { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run roster or alias. Type them in the txAdmin Live Console, not the in-game chat box (press T)." },
+    { symptom: "invalid value (at index 1) in table for 'concat'", fix: "table.concat only joins strings and numbers. You passed it a table whose slots are dictionaries (like roster), or an array with a nil hole. Build a flat array of just the strings or numbers first, then concat that, exactly as /names does." },
+    { symptom: "invalid order function for sorting", fix: "Your table.sort comparator is inconsistent. It must give a strict order: never return true for both (a, b) and (b, a). Using >= or <= instead of > or < is the usual cause, because equal elements then satisfy both directions. Use a.level > b.level, not a.level >= b.level." },
   ]}
 />
 
@@ -254,6 +319,8 @@ You reach for a table the moment you have more than one of anything, or more tha
     "Use table.insert to append and know that table.remove shifts later indices down, so you do not remove inside a forward ipairs loop.",
     "Read ('%d %s'):format(...) as a method call on a string literal that fills % markers in order.",
     "State the reference gotcha out loud: assigning a table copies the reference, not the data, so mutating one name mutates both, and copy fields into a new table when you need independence.",
+    "Sort an array table in place with table.sort, and write a comparator that returns true when a should come first (a.level > b.level for highest-first).",
+    "Join an array of strings or numbers into one line with table.concat(t, separator), and know it ignores string keys and rejects table elements.",
   ]}
 />
 
@@ -302,6 +369,27 @@ print("roster[1].name =", roster[1].name)  -- changed too!`} />
   ```
 
   Restart `qu_tables`, run `promote` and confirm every level went up by one, then run `clone` and confirm `roster[1].name` stayed put while the copy got the `_CLONE` suffix. The `pairs` loop here is the shallow copy from the lesson: it builds a brand new table so your edit cannot leak back into the roster.
+
+  Then extend the build one more step. Add a `/ranks` command that prints a single line showing every player **and** their level, sorted lowest-level first, using both functions from the new section. You will have to flip the comparator and format each entry before concatenating, because `table.concat` cannot read the `level` field on its own.
+
+  ```lua
+  RegisterCommand('ranks', function()
+      -- sort lowest level first this time
+      table.sort(roster, function(a, b)
+          return a.level < b.level
+      end)
+
+      local lines = {}
+      for _, player in ipairs(roster) do
+          -- build a string per player, because concat cannot reach player.level itself
+          table.insert(lines, ('%s (%d)'):format(player.name, player.level))
+      end
+
+      print(('[qu_tables] ranks: %s'):format(table.concat(lines, ' | ')))
+  end, true)
+  ```
+
+  Restart `qu_tables`, run `ranks` in the server console, and confirm the line reads lowest level to highest, like `[qu_tables] ranks: Maya (5) | Rami (12)`. Change the comparator back to `>` and confirm the order reverses. This proves the two failure modes from the section: concat cannot read `player.level` directly (so you format each entry into a string first), and the comparator decides the direction.
 </Exercise>
 
 <Refs

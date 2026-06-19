@@ -168,6 +168,44 @@ end
 
 That condition is true only when level is at least `1` and below `10`, so it captures exactly the member band without depending on the branches above it. Both styles are valid. The chain in the lesson leans on ordering; this version states the boundaries outright. Knowing both means you can read anyone's code and pick whichever is clearer for the case in front of you.
 
+### Nesting: an if inside a branch
+
+Every branch so far has been flat — one question, one answer. But sometimes a branch needs to ask a *second* question that only makes sense once the first one passed. That is a nested if: an `if` written inside the body of another `if`.
+
+Say an owner-level player must also be flagged as verified before the gate trusts them. "Verified" is a fact the server already knows about that player; it is not something the player types, so it stays a server-side value you control — never trust the client to declare its own rank. Extend the `owner` branch in `server.lua`:
+
+```lua
+RegisterCommand('gate', function(_, args)
+    local level = tonumber(args[1]) or 0
+    local verified = true -- server-side fact; in real code you'd look this up, not take it from the player
+    local rank
+    if level >= 20 then
+        if verified then
+            rank = 'owner'
+        else
+            rank = 'owner (unverified)'
+        end
+    elseif level >= 10 then
+        rank = 'admin'
+    elseif level >= 1 then
+        rank = 'member'
+    else
+        rank = 'guest'
+    end
+    print(('[qu_if_else_elseif] level %d rank %s'):format(level, rank))
+end, true)
+```
+
+In your **server console** (the txAdmin Live Console at http://localhost:40120, left menu, Live Console, or the FXServer window), run `restart qu_if_else_elseif`, then `gate 25`.
+
+<ExpectedOutput>
+  [qu_if_else_elseif] level 25 rank owner
+</ExpectedOutput>
+
+The inner `if verified then` only runs because the outer `level >= 20` was already true. That ordering is the whole point of nesting: the second question is asked *only* in the case where it can matter. A `guest` at level `0` never reaches the verified check, so you never spend that test on someone it makes no sense for.
+
+Nesting is powerful but it is also where `end` counts go wrong. Each `if` you open needs its own `end`. Here the inner `if`/`else` closes with one `end`, the outer `if`/`elseif`/`else` chain closes with one `end`, and the handler function closes with its own `end` before the `)`. Count them top to bottom — three `end`s — and if Lua reports `'end' expected (near <eof>)`, you are missing one of them. A flatter alternative, when the logic allows, is to fold the two questions into one condition with `and`: `if level >= 20 and verified then` reads as a single line and removes a layer of nesting. Reach for `and` when both questions are simple; reach for a nested `if` when the inner case needs its own `else` branch, like the `owner (unverified)` path above.
+
 ### truthy vs falsy: what Lua treats as "yes"
 
 A condition does not have to be a comparison. An `if` will accept any value and decide whether it counts as a yes. This is where Lua surprises people who came from other languages. In Lua the rule is short and absolute:

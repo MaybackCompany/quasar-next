@@ -231,6 +231,107 @@ Reach for the database any time state must survive a restart or be the same for 
 
 Do not reach for the database for throwaway, per-session, or high-frequency data. A player's current on-screen marker, a temporary cooldown, a UI open or closed flag: keep those in memory or in a state bag. Hitting the database every frame, or for data nobody needs after disconnect, is how servers start lagging at 32 players.
 
+### Level up: one row per player, and upsert
+
+The `qu_oxmysql_crud_rows` table you just built is deliberately dumb: every `dbtest` run piles on another row, and no row belongs to anyone. Real systems are not like that. A player's inventory, money, or job is *keyed to that one player*, and writing the same thing twice should update the existing row, not create a duplicate. Two ideas get you there: a **player identifier** column, and an **upsert**.
+
+A player identifier is the stable string FiveM gives every connected player (a `license:` value, a `fivem:` id, and so on). You read it server-side from the player's session, never from anything the player typed. That is what ties a row to a human instead of to a throwaway label.
+
+An **upsert** is one query that means "insert this, but if a row already exists for this player and item, update it instead". MySQL/MariaDB spells that `INSERT ... ON DUPLICATE KEY UPDATE`, and it only works when the table has a `UNIQUE` constraint telling the database what counts as a duplicate.
+
+Make a second table. Run this SQL against the same database (HeidiSQL query tab, or the txAdmin database tab):
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_player_inventory (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  identifier VARCHAR(64) NOT NULL,
+  item_name VARCHAR(50) NOT NULL,
+  item_count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (identifier, item_name)
+);
+```
+
+The new line that matters is `UNIQUE (identifier, item_name)`. It tells the database that no two rows may share the *same player and the same item*. That single constraint is what makes the upsert possible: without it, the database has no way to know what a "duplicate" is, and `ON DUPLICATE KEY UPDATE` never fires. `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` is a free audit trail: the database stamps each new row with the time it was first written, so you never set it yourself.
+
+Now add a player command to `server.lua` that gives an item to whoever runs it:
+
+```lua
+RegisterCommand('giveitem', function(src, args)
+    -- src is 0 when the command comes from the server console.
+    if src == 0 then
+        print('[qu_oxmysql_crud] /giveitem must be run by a player in-game')
+        return
+    end
+
+    local itemName = args[1]
+    local itemCount = tonumber(args[2])
+
+    -- Validate the client's input BEFORE it touches the database.
+    if not itemName or not itemCount or itemCount <= 0 then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1Error', 'Usage: /giveitem [item_name] [count > 0]' } })
+        return
+    end
+
+    -- Read the identifier from the player's session, never from args.
+    local identifier = GetPlayerIdentifierByType(src, 'license')
+    if not identifier then
+        TriggerClientEvent('chat:addMessage', src, { args = { '^1Error', 'No license identifier found for this player' } })
+        return
+    end
+
+    MySQL.insert.await(
+        'INSERT INTO qu_player_inventory (identifier, item_name, item_count) VALUES (?, ?, ?) ' ..
+        'ON DUPLICATE KEY UPDATE item_count = item_count + ?',
+        { identifier, itemName, itemCount, itemCount }
+    )
+
+    local row = MySQL.single.await(
+        'SELECT item_count FROM qu_player_inventory WHERE identifier = ? AND item_name = ?',
+        { identifier, itemName }
+    )
+    TriggerClientEvent('chat:addMessage', src, { args = { '^2Inventory', itemName .. ' x' .. row.item_count } })
+end, false)
+```
+
+Restart the resource from the **server console (txAdmin Live Console)**:
+
+```text
+restart qu_oxmysql_crud
+```
+
+Then, **in your own game chat (not the server console)**, run it twice:
+
+```text
+/giveitem water 5
+/giveitem water 3
+```
+
+<ExpectedOutput>
+Inventory water x5
+Inventory water x8
+</ExpectedOutput>
+
+The second run did not add a second `water` row. It found the existing one (same `identifier`, same `item_name`) and bumped `item_count` from 5 to 8. That is the upsert doing its job.
+
+#### How the upsert reads, line by line
+
+```lua
+MySQL.insert.await(
+    'INSERT INTO qu_player_inventory (identifier, item_name, item_count) VALUES (?, ?, ?) ' ..
+    'ON DUPLICATE KEY UPDATE item_count = item_count + ?',
+    { identifier, itemName, itemCount, itemCount }
+)
+```
+
+The database tries the `INSERT` first. If no row matches the `UNIQUE (identifier, item_name)` key, it inserts a fresh row and you are done. If a row *does* match, the insert is blocked and the `ON DUPLICATE KEY UPDATE` branch runs instead, setting `item_count = item_count + ?` (the current value plus the new amount). Note there are **four** `?` placeholders and **four** values: three for the `INSERT`, and a fourth for the `+ ?` in the update branch. Each `?` is filled in order, so `itemCount` appears twice in the values table on purpose. Count placeholders against values every time; a mismatch is the most common oxmysql error there is.
+
+```lua
+local identifier = GetPlayerIdentifierByType(src, 'license')
+```
+
+`GetPlayerIdentifierByType(src, 'license')` is a server native that returns the player's `license:` identifier directly. You read it from the session that the server already holds, so the player cannot spoof it by typing into chat. (`license` is platform-independent but a player *can* change it by switching Rockstar/Steam accounts, so for bans the Cfx recommendation is `fivem:` instead. For an inventory keyed to the current character, `license` is fine.)
+
 <Checkpoint question="Why does this lesson use ? placeholders instead of building the SQL string with the player's input directly?">
   Because the database treats anything in a `?` slot as pure data, never as a command. The driver sends the query text and the values on separate channels, so a malicious value like `'); DROP TABLE players; --` gets stored as harmless text instead of being executed as SQL. Concatenating user input straight into the query string is the classic SQL injection hole, and it is the single most common way community servers get their databases wiped. Placeholders close that hole for free, and as a bonus the database can cache and reuse the query plan.
 </Checkpoint>
@@ -248,6 +349,8 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
     { symptom: "Unknown column or Table doesn't exist", fix: "You skipped the CREATE TABLE step or ran it against the wrong database. Run the SQL from step 3 against the same database in your connection string." },
     { symptom: "attempt to index a nil value (local 'row')", fix: "MySQL.single returned nil because no row matched. Confirm the insert ran first and that you are passing the returned id into the WHERE id = ? slot." },
     { symptom: "Parameter count mismatch / bind error", fix: "The number of ? placeholders does not match the values in the table. Count them: two question marks need exactly two values, in order." },
+    { symptom: "/giveitem keeps creating duplicate rows instead of stacking the count", fix: "Your qu_player_inventory table is missing the UNIQUE (identifier, item_name) constraint, so the database never sees a 'duplicate' and ON DUPLICATE KEY UPDATE never fires. Recreate the table with the UNIQUE line, or add it with ALTER TABLE qu_player_inventory ADD UNIQUE (identifier, item_name). It will fail if duplicate rows already exist, so delete the dupes first." },
+    { symptom: "A player gives themselves a negative or absurd item count, or crashes the command with non-number args", fix: "You skipped input validation on a state-changing command. Never trust args from chat. Validate with tonumber and a range check (itemCount > 0) BEFORE the query, read the identifier server-side with GetPlayerIdentifierByType, and gate any admin-only write behind the restricted flag (true) on RegisterCommand plus an ACE grant. The server is the authority; the client only sends a request." },
   ]}
 />
 
@@ -260,6 +363,7 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
     "Use ? placeholders so user input can never be executed as SQL.",
     "Capture the new row id from an insert and use it to read and update the same row.",
     "Decide what belongs in the database (persistent, shared state) and what does not (per-session, high-frequency data).",
+    "Key a table to a player with an identifier column and a UNIQUE constraint, then write with an INSERT ... ON DUPLICATE KEY UPDATE upsert so repeats stack instead of duplicating.",
   ]}
 />
 
@@ -275,6 +379,16 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
   ```
 
   Restart `qu_oxmysql_crud`, run `dbtest`, and confirm the last line prints `after delete, row is nil`. You just proved the read returns `nil` when no row matches, and you used the same `WHERE id = ?` discipline on a delete that would otherwise wipe the whole table. Note that `MySQL.update.await` is fine for a `DELETE` too: like an `UPDATE`, it returns the number of rows affected (here, the number removed).
+</Exercise>
+
+<Exercise>
+  Add the inverse of `/giveitem`: a `/removeitem [item_name] [count]` command that subtracts from a player's stack and never lets a count go below zero. Start from the `/giveitem` you just wrote and change three things:
+
+  - Read the current `item_count` first with `MySQL.single.await`. If the row is missing or the player does not have enough, reject with a chat message and return before writing.
+  - On a valid removal, use `MySQL.update.await` with `SET item_count = item_count - ? WHERE identifier = ? AND item_name = ?` (note the `WHERE` on both keys, so you only touch that one player's one item).
+  - If the new count would hit zero, decide deliberately: either leave a zero-count row or `DELETE` it. Pick one and say why in a comment.
+
+  Test it **in your own game chat**: `/giveitem ammo 10`, then `/removeitem ammo 4`, then `/removeitem ammo 100`. Confirm the first removal leaves `6`, and the over-removal is rejected instead of writing a negative number. You have now proved the server, not the player, decides what a valid write is.
 </Exercise>
 
 <Refs

@@ -10,6 +10,8 @@
 >
   **NUI** is FiveM's name for the in-game browser layer, a real Chromium tab the client renders on top of GTA. Every menu, hud, scoreboard, and pause UI you have ever seen in a server is NUI. So far you have used `ox_lib` and other framework UIs that wrap NUI for you. (`ox_lib` is a community library from the Overextended team, not a Cfx.re built-in, but it is everywhere.) This bonus shows the layer underneath: how to declare a page in `fxmanifest.lua`, how to push state from Lua with `SendNUIMessage`, how to receive clicks with `RegisterNUICallback`, and how to capture the cursor with `SetNuiFocus`. Once you understand these four pieces, you can read any NUI resource and build your own without a framework.
 </LessonHero>
+<LessonVideo src="/lesson-videos/clase-2.mp4" caption="Quasar University: NUI with a command (part 1)." />
+
 
 <LessonVideo loomId="ceda9248fb754825bc52c788d3b53528" title="Lockpicking skill-check NUI" caption="Build a lockpicking skill-check NUI, end to end." />
 
@@ -269,6 +271,55 @@ On the Lua side, `RegisterNUICallback('buttonClicked', function(data, cb) ... en
 
 The chat line is the visible proof the data crossed: `TriggerEvent('chat:addMessage', ...)` fires the built-in `chat` resource's message event on the client and prints the `label` the JS sent. If that text shows up in chat, the round-trip is real. An empty request body that the callback ignored, which is what the old lesson shipped, could never produce it.
 
+### Closing from inside the page: a dedicated release callback
+
+So far focus is only released inside `buttonClicked`, the action button. But what happens to a player who opens the menu and then changes their mind without clicking it? Right now: nothing. The cursor stays captured, movement stays blocked, and they are stuck. A real menu always gives the page its own way to back out, and that close action needs to tell Lua to release focus. That means a second callback whose only job is to hand input back to the game.
+
+Add a close button to `web/index.html`, inside the `#menu` div, right after the existing button:
+
+```html
+<button id="close">Close</button>
+```
+
+Then wire it in `web/app.js`. The page owns the close decision, so it hides itself immediately and fires a `closeUI` callback to release focus:
+
+```js
+const closeButton = document.getElementById('close');
+
+function closeMenu() {
+    menu.classList.add('hidden');
+    fetch(`https://${GetParentResourceName()}/closeUI`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    });
+}
+
+closeButton.addEventListener('click', closeMenu);
+
+// Escape should also back out, the same way every game menu does.
+window.addEventListener('keyup', (event) => {
+    if (event.key === 'Escape') closeMenu();
+});
+```
+
+Now register the matching callback in `client.lua`:
+
+```lua
+RegisterNUICallback('closeUI', function(data, cb)
+    SetNuiFocus(false, false)
+    cb({ ok = true })
+end)
+```
+
+Notice this callback does only two things: it releases focus and it calls `cb`. There is no money moving, no item granted, nothing to validate, so the body is empty and that is fine. The point is that focus release now has its own path that does not depend on the player clicking the main action.
+
+<Callout variant="warning" title="A close callback that forgets the two essentials">
+  A common version of this you will see copied around omits both the `SetNuiFocus(false, false)` and the `cb` call, firing the fetch as pure fire-and-forget. The result is the exact freeze this lesson warned about: the page hides, but focus never returns to the game and the player cannot move. The close path is the one place you can least afford to skip the release, because it is the player's escape hatch. Always release focus and always call `cb`, even when the callback body is otherwise empty.
+</Callout>
+
+One JS detail worth naming: `getElementById` only finds an element that already exists in the DOM. Because `<script src="app.js">` sits at the very bottom of `index.html`, after the `#menu` markup, the elements are present by the time the script runs, so the lookups are safe. If you ever move the script into the `<head>` or load it before the markup, wrap your element lookups in `document.addEventListener('DOMContentLoaded', () => { ... })` so they run only after the page has parsed. Querying an element before it exists returns `null`, and the first `.addEventListener` on it throws, which is the kind of silent JS error you would only catch in the NUI devtools below.
+
 ### Attaching Chrome devtools to a live NUI page
 
 NUI is a real Chromium instance, so it has the same devtools you use in a browser. With the game running, open `http://localhost:13172` in Chrome on the same machine. (You can also open the inspector from inside the game by typing `nui_devTools` in the F8 console, once FiveM's developer mode is on.) You get the standard inspector pointed at every live NUI page: the Console tab shows your JS errors and `console.log` output, the Network tab shows each callback request and its response, and Elements lets you tweak CSS live. The moment a NUI feature misbehaves, this is the first place to look, because a JS error that the game would otherwise swallow shows up here in red.
@@ -284,6 +335,156 @@ These four pieces are the entire foundation of every NUI resource, framework or 
 - **An interaction menu.** Lua detects the player is near an NPC, calls `SetNuiFocus` and `SendNUIMessage` with the menu options, and each click comes back through a callback. Garages, shops, and job menus are all this shape.
 - **A minigame.** A lockpick, a hacking puzzle, a skill-check. Lua starts it with a message carrying the difficulty, the page runs the game loop in JS, and a single callback reports success or failure back. The video at the top of this lesson is exactly this.
 - **A hud.** Here you usually skip `SetNuiFocus` entirely, because a hud should never steal the cursor. Lua just streams state with `SendNUIMessage` on a timer and the page redraws. Same message channel, no focus, no callback.
+
+## A different NUI entry point: the loading screen
+
+Everything above runs while you are already in the server. There is a second, very different place NUI shows up: the **loading screen**, the page a player stares at while the server streams resources to them, before their character ever spawns. It is the same Chromium layer, but it is mounted by a different manifest directive, it is driven by FiveM's own boot sequence instead of your Lua, and it receives data through a separate channel. Understanding it is the rest of the NUI picture.
+
+<Callout variant="info" title="loadscreen is not ui_page">
+  A loading screen uses `loadscreen 'web/index.html'`, not `ui_page`. `ui_page` mounts a page on the in-game client that you open and close at will. `loadscreen` mounts a page that FiveM shows automatically during connection and tears down once the world is ready. A resource can declare both, but they are answering two different questions: `loadscreen` is "what does the player see while connecting," `ui_page` is "what UI does this resource draw in-game."
+</Callout>
+
+### Build a minimal loading screen
+
+<StepGroup>
+  <Step num={1} title="Make the resource and files" outcome="A loadscreen resource exists with its page whitelisted.">
+    Inside your server's `resources` folder, create:
+
+    ```text
+resources/qu_loadingscreen/
+  fxmanifest.lua
+  web/index.html
+  web/app.js
+  web/style.css
+    ```
+  </Step>
+
+  <Step num={2} title="Write fxmanifest.lua" outcome="FiveM mounts the page as the loading screen and whitelists its assets.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+loadscreen 'web/index.html'
+loadscreen_cursor 'yes'
+
+files {
+    'web/index.html',
+    'web/app.js',
+    'web/style.css'
+}
+    ```
+
+    `loadscreen` names the page FiveM shows during connection. `loadscreen_cursor 'yes'` lets the page receive mouse clicks (you only need it if the page has buttons, a rules-accept panel, or a music toggle). The `files` block is the same rule you already know: every asset the page loads, the script and stylesheet here, must be whitelisted or the browser 404s it silently. There is no `SetNuiFocus` for a loading screen and no `ui_page`. Do not add `lua54 'yes'`: Lua 5.4 is the only runtime, so that line is a deprecated no-op.
+  </Step>
+
+  <Step num={3} title="Write the page" outcome="A page with a title, a progress bar, and a place for the player's name.">
+    Open `web/index.html` and paste this:
+
+    ```html
+<!doctype html>
+<html>
+  <head><link rel="stylesheet" href="style.css" /></head>
+  <body>
+    <div class="backdrop">
+      <h1 id="server-name">Server Name</h1>
+      <p id="welcome">Connecting…</p>
+      <div class="loadbar"><div id="loading-bar"></div></div>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
+    ```
+
+    Open `web/style.css` and paste this:
+
+    ```css
+body { margin: 0; font-family: sans-serif; }
+.backdrop { display: grid; place-items: center; min-height: 100vh; background: #0b0d10; color: #fff; }
+.loadbar { width: 60%; height: 18px; background: rgba(140,140,140,.4); border-radius: 9px; overflow: hidden; }
+#loading-bar { width: 0%; height: 100%; background: #fff; transition: width .2s; }
+    ```
+
+    Open `web/app.js` and paste this:
+
+    ```js
+// Handover data is seeded by the server BEFORE the page renders.
+window.addEventListener('DOMContentLoaded', () => {
+    const data = window.nuiHandoverData || {};
+    // serverAddress is injected automatically by FiveM; name comes from our server script.
+    if (data.name) {
+        document.getElementById('welcome').innerText = `Welcome, ${data.name}`;
+    }
+});
+
+let total = 0;
+
+// FiveM's boot sequence pushes these events as it streams the world in.
+const handlers = {
+    startInitFunctionOrder(d) { total = d.count; },
+    initFunctionInvoking(d) {
+        document.getElementById('loading-bar').style.width = ((d.idx / total) * 100) + '%';
+    },
+    startDataFileEntries(d) { total = d.count; },
+    performMapLoadFunction() {
+        // No per-step index here; just nudge the bar toward done.
+        const bar = document.getElementById('loading-bar');
+        bar.style.width = Math.min(parseFloat(bar.style.width || 0) + 2, 100) + '%';
+    }
+};
+
+window.addEventListener('message', (e) => {
+    (handlers[e.data.eventName] || function () {})(e.data);
+});
+    ```
+  </Step>
+
+  <Step num={4} title="Seed the player's name from the server" outcome="The loading screen greets each player by name.">
+    Loading-screen handover data comes from a **server script**, because the player has not finished connecting yet, there is no client to send it. Add a `server.lua` (and a `server_script 'server.lua'` line to your `fxmanifest.lua`):
+
+    ```lua
+AddEventHandler('playerConnecting', function(name, _, deferrals)
+    local src = source
+    deferrals.handover({
+        name = GetPlayerName(src)
+    })
+end)
+    ```
+
+    This runs in the **server console's** runtime, not F8. `deferrals.handover` ships a Lua table to the connecting player's loading screen, where it arrives as `window.nuiHandoverData`. FiveM automatically adds `serverAddress` to that object, so even with no script you would still see `window.nuiHandoverData.serverAddress`.
+  </Step>
+
+  <Step num={5} title="Enable and connect" outcome="You see the custom screen with your name while joining.">
+    Add `ensure qu_loadingscreen` to `server.cfg`, then in the **server console** (FXServer window or txAdmin **Live Console**) run:
+
+    ```text
+    ensure qu_loadingscreen
+    ```
+
+    Fully disconnect, then reconnect with `connect 127.0.0.1:30120` from the FiveM client. The screen renders before your character spawns.
+
+    <ExpectedOutput>
+      A dark page reading "Welcome, [your name]" with a white bar that fills as the world streams in, then vanishes the moment you spawn.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+### How the loading-screen channel differs
+
+The page listens with the same `window.addEventListener('message', ...)` you used for `SendNUIMessage`, but who fires the messages is the whole difference.
+
+- **You do not send these messages. FiveM does.** During connection the engine streams the world and fires progress events as it goes: `startInitFunctionOrder` and `initFunctionInvoking` (init functions), `startDataFileEntries` and `performMapLoadFunction` (data files and map load). Each arrives as a DOM `message` with an `eventName` field, exactly like a `SendNUIMessage` payload, except the boot sequence is the sender. You read `e.data.eventName` and update your bar. The full list lives in the FiveM loading-screen docs; you do not have to handle every event, only the ones whose `count`/`idx` numbers you want to turn into a progress bar.
+- **Data arrives once, up front, via `window.nuiHandoverData`, not `SendNUIMessage`.** Because the page renders before any client code runs, there is no Lua client to push it state. Instead the server seeds it during `playerConnecting` with `deferrals.handover`, and the page reads `window.nuiHandoverData` on `DOMContentLoaded`. Treat anything in there as display-only and escape it: use `innerText`, never `innerHTML`, so a player whose name contains markup cannot inject it into your page.
+- **There is no callback and no focus to manage.** A loading screen does not call back into Lua and you never call `SetNuiFocus`, the player is not in the world yet. `loadscreen_cursor 'yes'` is the only input switch, and only if the page has something to click.
+
+<Callout variant="warning" title="By default FiveM shuts the loading screen for you">
+  As soon as the player spawns, FiveM tears the loading screen down automatically, so a plain `loadscreen` needs no shutdown code. You only take over the lifetime if you add `loadscreen_manual_shutdown 'yes'` to the manifest, which keeps the screen up until your **client** code calls `ShutdownLoadingScreen()` (and `ShutdownLoadingScreenNui()` to also remove the NUI layer). People use manual shutdown to hold the screen through a character-selection step. The trap: enable manual shutdown, forget to call the shutdown native, and every player is stuck on the loading screen forever, fully connected but never seeing the game.
+</Callout>
+
+<Checkpoint question="Your loading screen shows the progress bar fine, but `window.nuiHandoverData.name` is always undefined even though serverAddress is present. Where is the bug?">
+  The `name` field is missing because nothing on the **server** put it there. `serverAddress` is injected by FiveM automatically, which is why it survives; `name` only exists if a server script calls `deferrals.handover({ name = ... })` inside `playerConnecting`. Check that you have a `server_script` line in the manifest and that the handover runs server-side, not in a client file, `playerConnecting` and `deferrals` exist only on the server.
+</Checkpoint>
 
 ## If something went wrong
 

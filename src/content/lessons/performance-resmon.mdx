@@ -219,11 +219,75 @@ end)
 
 The outer loop still wakes every frame, so anything frame-critical stays smooth. But the block guarded by `GetGameTimer` runs at most about twice a second, because `now - lastHeavy > 500` is only true once 500 ms have elapsed since the last run. You get per-frame responsiveness for the cheap part and a throttle on the expensive part, inside one thread. In our marker script we did not need this, because the whole loop can sleep when you are far away. You reach for `GetGameTimer` when the loop cannot sleep but one chunk of it should still be rate-limited.
 
+### Timing a block of code so your before/after is real
+
+Everything in this lesson rests on one habit: measure, don't guess. resmon gives you the per-frame average, but sometimes you want to time one specific block, for example to prove that a heavy function got cheaper after you cached its result. The tool for that is the same `GetGameTimer` you just met. It returns milliseconds since the game started as an ever-increasing integer, so the difference between two readings is how long the code between them took, in milliseconds.
+
+```lua
+local startedAt = GetGameTimer()
+
+-- the block you want to measure
+local coords = GetEntityCoords(PlayerPedId())
+local dist = #(coords - markerCoords)
+
+local elapsed = GetGameTimer() - startedAt
+print('[qu_performance_resmon] block took ' .. elapsed .. ' ms')
+```
+
+Read the two readings as bookends. `startedAt` is captured the instant before the work, `GetGameTimer() - startedAt` the instant after, and the gap is the cost of whatever sat between them. Because `client_script` output lands in the in-game F8 console, this print appears in F8, not the server console. Run it before and after a change and compare the two numbers you actually saw on your own machine.
+
+<Callout variant="warning" title="Do not reach for os.time() to time game code">
+  Older guides time loops with Lua's `os.time()`. Avoid it here. `os.time()` returns whole seconds, so anything that finishes in under a second reads as `0` and a 16.7 ms frame is invisible to it. It is wall-clock time, not the game clock, so it keeps ticking while the game is paused or hitching and tells you nothing about frame cost. For anything inside FiveM, time with `GetGameTimer` (millisecond game time) and read per-frame cost in resmon.
+</Callout>
+
 ### When you reach for each tool
 
 - **Distance-check / Wait tuning** is your default for any world-drawing or proximity loop: markers, blips, zone checks, target prompts. Sleep far, `Wait(0)` only when close.
 - **CreateThreadNow** is for resource-start setup that other code reads immediately.
 - **GetGameTimer throttling** is for the rare loop that must stay on `Wait(0)` for one job while rate-limiting a heavier job beside it.
+
+### The Wait(0) trap that hits the server, not the frame
+
+Everything so far measured the client frame, because `DrawMarker` runs on the player's machine. But the same `Wait(0)` mistake has a server-side twin that resmon will never show you: firing a network event every frame. A network event such as `TriggerServerEvent('myEvent', data)` is a message that travels from the player's game, over the network, to the server. The server has its own tick and its own budget, separate from the client frame, and every event you send is work it has to receive and process.
+
+Picture the wrong version of our marker loop. Instead of drawing locally, it tells the server where the player is on every wakeup:
+
+```lua
+-- DO NOT do this: a network event on every frame
+CreateThread(function()
+    while true do
+        Wait(0)
+        local coords = GetEntityCoords(PlayerPedId())
+        TriggerServerEvent('qu:reportPosition', coords) -- ~60 messages per second, per player
+    end
+end)
+```
+
+On one player this looks harmless. With 64 players it is roughly 3,840 messages per second hitting one server, for a position the server could read itself. The client frame may still look fine in resmon, which is exactly why this kind of bug hides: the cost moved off the screen you were watching and onto the server tick, where it shows up as rising latency and rubber-banding for everyone.
+
+The fix is the same instinct you already learned, applied to the network instead of the frame. Send only when something the server needs to know has actually changed, and throttle the rest with `GetGameTimer`:
+
+```lua
+local lastSent = 0
+local lastZone = nil
+
+CreateThread(function()
+    while true do
+        Wait(500) -- the server does not need this 60 times a second
+        local zone = GetNameOfZone(GetEntityCoords(PlayerPedId()))
+        if zone ~= lastZone then
+            lastZone = zone
+            TriggerServerEvent('qu:zoneChanged', zone) -- one message, only on a real change
+        end
+    end
+end)
+```
+
+The loop wakes twice a second, and it only sends when the zone is different from last time, so a player standing still sends nothing at all. The rule to carry away: a `Wait(0)` loop should never contain a `TriggerServerEvent`. If the server needs the data, send it on a change or on a throttle, and let the loop sleep the rest of the time.
+
+<Callout variant="warning" title="Trust the server, not the client's message">
+  Sending position or state to the server is fine for syncing. Never let the server *act* on a client's message as if it were true. A client can send any value it likes, so when an event drives money, items, or position the server must validate it: check the player is allowed, check the numbers are sane, and compute the result server-side. Treat every incoming event as a claim to verify, not a fact to apply.
+</Callout>
 
 ## If something went wrong
 
@@ -233,6 +297,8 @@ The outer loop still wakes every frame, so anything frame-critical stays smooth.
     { symptom: "Cost stays high after you walk away from the marker", fix: "The thread is still hitting Wait(0). Check that sleep is reset to 1000 at the top of every loop pass and that the dist < 20.0 guard, not just markerOn, is what flips it to 0." },
     { symptom: "The toggle prints but no marker ever appears", fix: "You are outside the 20 metre radius, so the inner DrawMarker never runs. Walk to the markerCoords spot near Legion Square, or lower the markerCoords to your own location." },
     { symptom: "attempt to perform arithmetic on a nil value (markerCoords)", fix: "vector3 needs three numbers. Make sure markerCoords is defined with vector3(x, y, z) and that none of the values are missing." },
+    { symptom: "Client resmon looks fine but everyone is rubber-banding or lagging", fix: "The cost is on the server tick, not the client frame, so resmon cannot see it. Look for a TriggerServerEvent inside a Wait(0) or low-Wait loop and gate it behind a real change or a GetGameTimer throttle so it sends only when needed." },
+    { symptom: "My GetGameTimer timing always prints 0 ms", fix: "The block is faster than one millisecond, which is normal for a couple of cheap calls. Either accept that it is effectively free, or loop the block a few thousand times between the two GetGameTimer readings and divide. Do not switch to os.time(); its one-second resolution makes the problem worse." },
   ]}
 />
 

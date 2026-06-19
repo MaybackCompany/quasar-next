@@ -266,6 +266,109 @@ On the server, `RegisterNetEvent` receives that untrusted request. The `source` 
   Because money is authoritative state, and the client cannot be trusted with it. A client `onSelect` runs on the player's machine, which can be modified. The client may identify who was selected, but the server owns the amount, checks the target and distance, rate-limits the request, verifies the sender's balance, and applies the transfer. Moving code into a server event is not sufficient by itself; the checks inside that handler are what make the boundary useful.
 </Checkpoint>
 
+### addEntity: an interaction tied to one specific spawned entity
+
+`addBoxZone` ties an option to a *place*, and `addModel` ties it to a *kind of thing*. `addEntity` is the third axis: it ties an option to **one exact entity you already have a handle to**, and no other. Use it when you spawned a single ped, vehicle, or prop in code and want the interaction to live only on that one object, not on every other entity that happens to share its model.
+
+```lua
+-- You spawned this prop yourself and kept its handle in `myAtm`.
+local netId = NetworkGetNetworkIdFromEntity(myAtm)
+exports.ox_target:addEntity(netId, {
+    {
+        name = 'qu_single_atm',
+        icon = 'fa-solid fa-credit-card',
+        label = 'Use this ATM',
+        distance = 2.0,
+        onSelect = function(data)
+            print('[qu_ox_target_interactions] specific ATM used')
+        end
+    }
+})
+```
+
+The first argument is **not** the local entity handle. It is the network id, produced by `NetworkGetNetworkIdFromEntity(entity)`. The reason is that a raw entity handle is a number that is only valid on the machine that created it and only for as long as that entity exists, while the network id is the shared identifier every client and the server agree on. Passing the network id is what lets ox_target track the right object even as it streams in and out around the player. If you pass the bare handle some older guides show, the option will attach to the wrong entity or to nothing. The entity must already exist when you call `addEntity`; if you spawn it a frame later, register the option in the same code path right after the spawn returns a valid handle.
+
+### addGlobalOption: an option with no target at all
+
+There is a fourth registrar that is easy to confuse with the `addGlobalPlayer` you built in step four. `addGlobalPlayer` puts an option on *every other player's ped*. `addGlobalOption` puts an option that is **always available no matter what the player is aiming at**, with no entity behind it at all.
+
+```lua
+exports.ox_target:addGlobalOption({
+    {
+        name = 'qu_request_help',
+        icon = 'fa-solid fa-hands-helping',
+        label = 'Request help',
+        onSelect = function()
+            print('[qu_ox_target_interactions] help requested')
+        end
+    }
+})
+```
+
+Because there is no entity, `data.entity` is not meaningful here, exactly like `addBoxZone`. Reach for `addGlobalOption` only for actions that genuinely make sense everywhere, like opening a personal menu or calling EMS, because every global option you add appears on *every* target the player ever aims at and clutters the eye menu fast. A common mistake is using `addGlobalOption` when you meant `addGlobalPlayer`: the first shows your option on walls, vehicles, and the sky; the second shows it only when aiming at another player.
+
+### A round box is a sphere zone
+
+The ATM box in step four is a `addBoxZone`, but ox_target also ships `addSphereZone` for round areas, which is simpler when you do not care about rotation or exact edges. It takes a `radius` instead of a `size` and `rotation`:
+
+```lua
+exports.ox_target:addSphereZone({
+    coords = vec3(215.76, -810.12, 30.73),
+    radius = 1.5,
+    debug = true,
+    options = { --[[ same option shape as the box ]] }
+})
+```
+
+Everything else, the `options` table and the shared field schema, is identical to the box. Pick a box when you are wrapping something rectangular like a counter and want it aligned, and a sphere when a simple radius around a point is enough.
+
+<Checkpoint question="You spawn two identical clerk peds with model a_m_y_business_03, but only the one behind the counter should offer 'Open till'. addModel would put the option on both. Which registrar do you use, and what do you pass it?">
+  `addEntity`, passing the network id of just the counter clerk: `exports.ox_target:addEntity(NetworkGetNetworkIdFromEntity(counterPed), { ... })`. `addModel` attaches by model, so it cannot tell two peds of the same model apart, both would get the option. `addEntity` attaches to one exact entity, identified by its network id rather than its local handle, so only the ped you name gets it. You would still use `addModel` for an option that *should* appear on every clerk of that model, like 'Talk'.
+</Checkpoint>
+
+### Cleaning up: every add\* has a remove\*, and you owe the server one on stop
+
+The options you register do not vanish when your resource stops or restarts. ox_target keeps them until something removes them. That matters because each `add*` has a matching `remove*`, and forgetting to call it on shutdown is the quiet cause of duplicate options after a restart.
+
+```lua
+-- Each registrar has a mirror:
+exports.ox_target:removeGlobalOption('qu_request_help')
+exports.ox_target:removeModel('a_m_y_business_03', 'qu_merchant_talk')
+exports.ox_target:removeZone(zoneId)   -- zoneId is what addBoxZone/addSphereZone returned
+exports.ox_target:removeEntity(netId, 'qu_single_atm')
+```
+
+The field that makes zone removal possible is the return value: `addBoxZone` and `addSphereZone` hand back a zone id. Capture it (`local atmZone = exports.ox_target:addBoxZone({ ... })`) if you ever intend to remove that zone, because there is no other handle to it afterwards.
+
+The clean way to undo everything at once is the `onResourceStop` event. FiveM fires it for every resource that stops; you check whether the resource that stopped is yours, and if so you tear your options down:
+
+```lua
+AddEventHandler('onResourceStop', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+    exports.ox_target:removeModel('a_m_y_business_03', 'qu_merchant_talk')
+    exports.ox_target:removeGlobalPlayer('qu_give_cash')
+    -- remove any zones by the ids you captured, and any global options
+end)
+```
+
+Without this, here is what you see: you edit `client.lua`, run `restart qu_ox_target_interactions`, and now every ped of that model shows **two** Talk to merchant options, one from the old registration that was never cleaned up and one from the new load. The old debug box may also still float at the ATM. Adding an `onResourceStop` teardown removes the stale registrations the instant the resource stops, so the fresh load starts clean.
+
+<Callout variant="warning" title="Restart, not just save">
+  Saving `client.lua` does nothing on its own; the running resource keeps its old code and its old registrations. You restart in the server console with `restart qu_ox_target_interactions`. If you registered an `onResourceStop` teardown, that restart cleans up the old options before the new ones load. If you did not, the restart leaves the old options behind and you get the duplicate eye menu described above.
+</Callout>
+
+### disableTargeting: hide the whole eye menu during cutscenes
+
+Sometimes you want to switch the entire targeting system off for a moment, not remove individual options, for instance while a cutscene plays or a fullscreen NUI menu is open and aiming would be distracting. `disableTargeting` does that:
+
+```lua
+exports.ox_target:disableTargeting(true)   -- player can no longer open the eye menu
+-- ... cutscene or menu runs ...
+exports.ox_target:disableTargeting(false)  -- targeting works again
+```
+
+The single boolean argument is the state: `true` turns the eye menu off, `false` turns it back on. The trap is forgetting the `false` call: if your cutscene errors out before re-enabling, the player is left unable to interact with anything and it looks like ox_target is broken. Always re-enable in the same code path that disabled it, ideally with the re-enable guaranteed to run even on an early return.
+
 ### When you reach for this pattern
 
 ox_target is the default answer any time a player should walk up to something and act on it. Three real cases:
