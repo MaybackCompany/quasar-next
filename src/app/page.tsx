@@ -18,14 +18,14 @@ const FEATURED_GUIDES = [
     eyebrow: "SERVER OWNER",
     title: "Build your first FiveM server",
     description: "Plan the stack, install the foundation, configure txAdmin, understand server.cfg, and add resources safely.",
-    href: "/lessons/fivem-2026-orientation",
+    href: "/lessons/artifacts-txadmin",
     meta: "20 verified chapters",
   },
   {
     eyebrow: "SCRIPT SELLER",
     title: "Build and grow a Tebex store",
     description: "Set up packages, prove compatibility, test delivery, structure offers, publish videos, and measure growth.",
-    href: "/lessons/tebex-store-growth",
+    href: "/lessons/shipping",
     meta: "14 verified chapters",
   },
 ] as const;
@@ -211,7 +211,7 @@ export default function HomePage() {
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <BookAudit className="btn btn-primary">Book your free FiveM audit</BookAudit>
-              <a className="btn btn-ghost" href="https://fivemcoach.com/en" target="_blank" rel="noopener noreferrer">
+              <a className="btn btn-ghost" href="/track/scripts" target="_blank" rel="noopener noreferrer">
                 See membership plans
               </a>
             </div>

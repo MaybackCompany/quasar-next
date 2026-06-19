@@ -19,8 +19,10 @@ export function SiteFooter() {
         </span>
         <span style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 13.5, color: "var(--muted)" }}>
           <Link href="/cheatsheets">Cheatsheets</Link>
-          <Link href="/toolbox">Toolbox</Link>
-          <Link href="/blog">Blog</Link>
+          <Link href="/tools">Tools</Link>
+          <Link href="/tutorials">Tutorials</Link>
+          <Link href="/mapping">Mapping</Link>
+          <Link href="/reviews">Reviews</Link>
           <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer">Discord</a>
           <a href={COACH_URL} target="_blank" rel="noopener noreferrer">Membership</a>
         </span>

@@ -88,10 +88,10 @@ export function SiteNav({ active }: SiteNavProps) {
           <Link className={"nav-link hide-m" + (active === "cheatsheets" ? " active" : "")} href="/cheatsheets">
             Cheatsheets
           </Link>
-          <Link className="nav-link hide-m" href="/toolbox">
+          <Link className="nav-link hide-m" href="/resources">
             Toolbox
           </Link>
-          <Link className="nav-link hide-m" href="/blog">
+          <Link className="nav-link hide-m" href="/tools">
             Blog
           </Link>
         </nav>
