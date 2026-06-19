@@ -29,6 +29,15 @@ Absolute beginners are routed to **Track B, Step 1**. Keep that nudge — make i
 
 Voice: expert, direct, encouraging, never condescending. Show, don't lecture. No hype, no em dashes or emoji in UI copy.
 
+**What this means in practice:**
+- Headings are statements, not questions. "Install the FXServer" not "Ready to install your server?"
+- Code comes before explanation. Show the command, then explain why — never the reverse.
+- Never say "simply," "just," or "easy" — it's dismissive to someone stuck.
+- Every lesson opens with what you'll *have* when you're done, not what you'll *learn*.
+- Error messages are quoted verbatim, not paraphrased. Learners Ctrl-F the literal text.
+- UI labels use sentence case, no title case. "Start building" not "Start Building."
+- No exclamation marks in lesson copy. One period per sentence.
+
 ---
 
 ## 2. The #1 fixed bug the redesign must not reintroduce
@@ -65,12 +74,35 @@ The content was fact-checked against the live 2026 FiveM ecosystem. Track B is a
 Editorial-minimal, **light-first with strong dark mode**, monochrome + a single **teal/cyan accent (~#0fb6c4)**. Geometric/grotesk sans for headings (heavy, tight, large editorial H1), **monospace for eyebrows/metadata labels** (TRACK B, MODULE 01 · LESSON 01, YOU'LL BUILD/TIME/YOU NEED). Generous whitespace, ~720px reading column, 1px hairline dividers, **no gradients, no default shadows**. Dark editor-style code panels. This reads premium (Linear/Vercel-docs tier) — preserve the discipline.
 
 ### 4.2 Foundations
-- OKLCH tokens; 60/30/10 (neutral-dominant, teal reserved for primary action + active state). Full light/dark parity. **Devs read in dark — dark mode must be first-class.**
-- Motion: transform/opacity only, **≤200ms**, no `transition-all`, respect `prefers-reduced-motion`.
+- **Color tokens (OKLCH, light mode):**
+  - `--bg` = `oklch(0.985 0 0)` (near-white, never pure #fff)
+  - `--surface` = `oklch(0.97 0.005 240)` (card/panel bg, subtle cool cast)
+  - `--border` = `oklch(0.88 0.01 240)` (1px hairline, never heavier)
+  - `--text-primary` = `oklch(0.15 0.01 260)` (near-black, never pure #000)
+  - `--text-secondary` = `oklch(0.45 0.01 260)` (metadata, captions)
+  - `--accent` = `oklch(0.65 0.18 200)` (~#0fb6c4 teal/cyan, primary actions + active state only)
+  - `--code-bg` = `oklch(0.18 0.02 260)` (dark code panel)
+  - `--code-fg` = `oklch(0.92 0 0)` (light code text, always legible)
+- **Dark mode:** full parity — `--bg` → `oklch(0.13 0.01 260)`, `--surface` → `oklch(0.17 0.015 260)`, `--text-primary` → `oklch(0.92 0 0)`, `--accent` → `oklch(0.72 0.16 200)`. Devs read in dark — dark must be first-class, not an afterthought.
+- 60/30/10 ratio: 60% neutral bg/surface, 30% text/content, 10% teal accent. Accent only on primary CTAs, active nav states, code block language labels, and the freshness badge — never on decorative elements.
+- Typography: geometric/grotesk sans for headings (heavy, tight tracking, large editorial H1). Monospace for code + metadata labels (TRACK B, MODULE 01, LESSON 01, YOU'LL BUILD/TIME/YOU NEED). Reading column ~720px max-width.
+- Motion: transform/opacity only, ≤200ms, ease-out, no `transition-all`, respect `prefers-reduced-motion`.
 - Code panels: light foreground on dark panel **for every block** (§2), syntax highlighting for all languages used (lua, bash, sql, js, yaml, html), panel height hugs content, **one-click copy**, and a **meaningful language/file label** ("server.cfg", "fxmanifest.lua", "console / F8", "folder") instead of the generic "text".
 
-### 4.3 Anti-slop (auto-reject)
-Purple gradients; blur abuse; drop-shadow soup; >200ms or `transition-all`; centered-everything; monotonous identical-card stacks; generic AI hero; em dashes/emoji in copy; default Tailwind palette; **any illegible code block**.
+### 4.3 Design principles (auto-reject violations)
+
+These are non-negotiable. If a generated design violates any of them, reject it — don't iterate.
+
+1. **No gradients.** Flat colors only. The site's visual interest comes from typography, whitespace, and the teal accent — not from color blending.
+2. **No box-shadows.** Cards, nav, buttons, code panels — zero shadows. Depth is communicated through borders (1px hairline) and surface color shifts, never drop-shadows.
+3. **Motion cap: 200ms.** All transitions ≤200ms, ease-out. Anything longer makes the site feel sluggish. Respect `prefers-reduced-motion` (instant transitions).
+4. **No `transition-all`.** Animate specific properties (opacity, transform) — never `all`.
+5. **Left-aligned, not centered.** Body text, lesson content, code blocks, metadata — left-aligned. Centered is for the hero heading only.
+6. **Asymmetric, not uniform.** Cards in a grid should vary in visual weight — a featured track card is larger than the other two. Identical repeating card stacks signal "template."
+7. **Real headings, not AI hero.** No "Unlock Your FiveM Potential" / "The Future of Game Development" fluff. The hero says exactly what the site is: "Free FiveM lessons. Build a server, write scripts, ship a game world."
+8. **No em dashes or emoji in UI copy.**
+9. **No default Tailwind palette.** Every color comes from the OKLCH tokens in §4.2.
+10. **Every code block legible.** Light text on dark panel, full stop. A single invisible block = reject.
 
 ---
 
@@ -120,7 +152,7 @@ A dark circular "N" FAB floats bottom-left on every page with no label, overlapp
 - [ ] Landing passes the 10-second test; one dominant primary CTA; beginner-reassurance line present; "new here → Track B Step 1" prominent.
 - [ ] Nav reflects the three tracks.
 - [ ] Lesson template keeps the meta list, readiness checklist, expected-output, numbered steps; adds CLIENT/SERVER badges, freshness badge, slug-based prereq links, persisted completion, and the error-string failures table.
-- [ ] Light + dark parity; dark mode first-class; OKLCH; 60/30/10; motion ≤200ms; no anti-slop patterns.
+- [ ] Light + dark parity; dark mode first-class; OKLCH tokens match §4.2; 60/30/10 ratio; motion ≤200ms; all 10 design principles (§4.3) pass.
 - [ ] Every technical claim matches §3; freshness badges render; no `lua54 'yes'`, no "avoid Qbox", no Keymaster.
 - [ ] `/cheatsheets` duplicate removed; `/paywall` is a real surface; stray FAB resolved.
 - [ ] Mobile: single column, large copy buttons, sticky lesson/next control (mobile is already strong — keep it).
