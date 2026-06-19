@@ -76,9 +76,12 @@ local webhook = GetConvar('qu_http_webhooks_webhook', '')
 local function postToDiscord(message, attempt)
     attempt = attempt or 1
     local body = json.encode({ username = 'qu_http_webhooks', content = message })
-    PerformHttpRequest(webhook, function(code, _, headers)
+    PerformHttpRequest(webhook, function(code, response, headers)
         if code == 429 and attempt == 1 then
-            local retryAfter = tonumber(headers['retry-after'] or headers['Retry-After']) or 1
+            local data = response and json.decode(response) or nil
+            local retryAfter = tonumber(data and data.retry_after)
+                or tonumber(headers['retry-after'] or headers['Retry-After'])
+                or 1
             print('[qu_http_webhooks] rate-limited, retrying in ' .. retryAfter .. 's')
             SetTimeout(retryAfter * 1000, function()
                 postToDiscord(message, 2)
@@ -209,7 +212,10 @@ Discord limits how fast you can post. Hit it too hard and it answers with HTTP s
 
 ```lua
 if code == 429 and attempt == 1 then
-    local retryAfter = tonumber(headers['retry-after'] or headers['Retry-After']) or 1
+    local data = response and json.decode(response) or nil
+    local retryAfter = tonumber(data and data.retry_after)
+        or tonumber(headers['retry-after'] or headers['Retry-After'])
+        or 1
     print('[qu_http_webhooks] rate-limited, retrying in ' .. retryAfter .. 's')
     SetTimeout(retryAfter * 1000, function()
         postToDiscord(message, 2)
@@ -218,9 +224,9 @@ if code == 429 and attempt == 1 then
 end
 ```
 
-Read it in order. When the callback runs and the status is `429`, Discord has also told you how long to wait, in a response header called `retry-after`, measured in seconds. You read that header (checking both lower and capitalized spellings, since servers vary), default to one second if it is missing, and schedule a single retry. `SetTimeout` is the FiveM native that runs a function after a delay in milliseconds, so `retryAfter * 1000` converts seconds to milliseconds. The `attempt` counter stops an endless loop: the first call passes `attempt = 1`, the retry passes `2`, and the `attempt == 1` guard means you retry exactly once and then give up rather than hammering Discord forever.
+Discord's 429 response includes a JSON `retry_after` value in seconds and can also include a `Retry-After` header. Read the JSON value first, fall back to the header, and finally use one second if neither parses. `SetTimeout` accepts milliseconds, so the code multiplies by 1000. The attempt counter allows one retry and then stops.
 
-This is the smallest honest version of retry-on-rate-limit. A fleet logging thousands of bans would add a proper queue, but the shape, detect `429`, read `retry-after`, wait, re-send once, is the same.
+This is the smallest honest version of retry-on-rate-limit. A busy logger needs a bounded queue and backoff; it must not create one unbounded timer per failed message.
 
 ### What the status codes mean
 

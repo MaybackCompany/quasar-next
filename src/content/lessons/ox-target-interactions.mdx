@@ -4,8 +4,8 @@
   meta={[
     { label: "You'll learn", value: "addModel for peds and props -> addGlobalPlayer for other players -> addBoxZone for world regions -> canInteract -> the shared option schema" },
     { label: "Time", value: "~25 minutes" },
-    { label: "Prereqs", value: "Lesson 16 (ox_lib) and Lesson 17 (Qbox). ox_target installed and started after ox_lib." },
-    { label: "Outcome", value: "A merchant ped, an ATM zone, and a give cash option on other players, all using the same target system." },
+    { label: "Prereqs", value: "Lesson 16 (ox_lib) and Lesson 17 (Qbox). ox_target installed after ox_lib, with OneSync enabled." },
+    { label: "Outcome", value: "A merchant ped, an ATM zone, and a server-validated $100 transfer request on other players, all using the same target system." },
   ]}
 >
   Most FiveM servers have things players can interact with: NPCs, doors, trunks, registers, ATMs. Before `ox_target`, building those interactions meant lots of repeated distance checks and prompt code. With `ox_target`, most of that becomes one small options table. `ox_target` is an Overextended community resource, the successor to qtarget and bt-target, not an official Cfx.re resource. This lesson teaches its one core pattern slowly, then uses it three different ways.
@@ -16,7 +16,8 @@
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
     "I can read txAdmin Live Console and F8 output.",
-    "I have ox_lib and ox_target installed, with ox_lib starting before ox_target."
+    "I have ox_lib and ox_target installed, with ox_lib starting before ox_target.",
+    "My server uses OneSync, so the server can verify both players are nearby."
   ]}
 />
 
@@ -58,7 +59,8 @@ server_script 'server.lua'
 
 dependencies {
     'ox_lib',
-    'ox_target'
+    'ox_target',
+    '/onesync'
 }
     ```
 
@@ -113,20 +115,56 @@ exports.ox_target:addGlobalPlayer({
         distance = 2.0,
         onSelect = function(data)
             local serverId = GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity))
-            TriggerServerEvent('qu_ox_target_interactions:giveCash', serverId, 100)
+            TriggerServerEvent('qu_ox_target_interactions:giveCash', serverId)
         end
     }
 })
     ```
   </Step>
 
-  <Step num={5} title="Write the server code" outcome="The give cash action is decided on the server, where it belongs.">
+  <Step num={5} title="Write the server code" outcome="The server fixes the amount, validates the target and distance, and rate-limits the request.">
     Open `server.lua` and paste this:
 
     ```lua
-RegisterNetEvent('qu_ox_target_interactions:giveCash', function(targetId, amount)
+local TRANSFER_AMOUNT = 100
+local MAX_DISTANCE = 3.0
+local lastRequestAt = {}
+
+RegisterNetEvent('qu_ox_target_interactions:giveCash', function(targetId)
     local fromId = source
-    print(('[qu_ox_target_interactions] %s -> %s gave $%s'):format(fromId, targetId, amount))
+    targetId = tonumber(targetId)
+
+    if not targetId or targetId == fromId or not GetPlayerName(targetId) then
+        print(('[qu_ox_target_interactions] rejected invalid target from %s'):format(fromId))
+        return
+    end
+
+    local now = os.time()
+    if now - (lastRequestAt[fromId] or 0) < 1 then
+        print(('[qu_ox_target_interactions] rate-limited %s'):format(fromId))
+        return
+    end
+    lastRequestAt[fromId] = now
+
+    local fromPed = GetPlayerPed(fromId)
+    local targetPed = GetPlayerPed(targetId)
+    if fromPed == 0 or targetPed == 0 then return end
+
+    local distance = #(GetEntityCoords(fromPed) - GetEntityCoords(targetPed))
+    if distance > MAX_DISTANCE then
+        print(('[qu_ox_target_interactions] rejected distant target from %s'):format(fromId))
+        return
+    end
+
+    -- Proof only. A real transfer must also read the sender's balance on the
+    -- server and use the installed framework's server-side money functions.
+    print(('[qu_ox_target_interactions] validated %s -> %s for $%s'):format(
+        fromId, targetId, TRANSFER_AMOUNT
+    ))
+end)
+
+AddEventHandler('playerDropped', function()
+    lastRequestAt[source] = nil
 end)
     ```
   </Step>
@@ -148,7 +186,7 @@ end)
 
     <ExpectedOutput>
       F8: [qu_ox_target_interactions] ATM used
-      txAdmin: [qu_ox_target_interactions] 1 -> 2 gave $100
+      txAdmin: [qu_ox_target_interactions] validated 1 -> 2 for $100
     </ExpectedOutput>
 
     The ATM line prints in F8 because `onSelect` runs on the client. The give cash line prints in txAdmin Live Console because that work was sent to the server. The numbers `1` and `2` are server ids, so they will match whoever is actually connected.
@@ -220,12 +258,12 @@ exports.ox_target:addGlobalPlayer({
 
 `addGlobalPlayer` attaches options to the ped of every other player, with no entity or model to name. This is the line that delivers the give cash outcome. The interesting work is in `onSelect`, and it is where the lesson becomes correct rather than convenient.
 
-When you aim at a player, `data.entity` is their ped, which is a local game handle that means nothing to the server. The server thinks in server ids, not ped handles. So you translate: `NetworkGetPlayerIndexFromPed` turns the ped into a local player index, and `GetPlayerServerId` turns that index into the stable server id the server understands. Then comes the rule that the original version of this lesson got wrong. Giving someone cash is a server decision. If you mutate money on the client, every player can edit their own wallet and the server never agrees. So the client does not give cash. It calls `TriggerServerEvent` to cross the network and ask the server to do it, passing the target's server id and the amount.
+When you aim at a player, `data.entity` is their ped, which is a local game handle that means nothing to the server. The server thinks in server ids, not ped handles. So you translate: `NetworkGetPlayerIndexFromPed` turns the ped into a local player index, and `GetPlayerServerId` turns that index into the server id the server understands. Giving someone cash is a server decision. The client therefore sends only the selected target id. It does not choose the amount, because a modified client could send any number it wanted.
 
-On the server, `RegisterNetEvent` receives that request. The `source` global inside a net event handler is the player who sent it, captured here as `fromId`. In a real server you would now check the sender actually has the money and call your framework to move it. For this proof we print the transfer so you can see the event crossed the network and arrived with the right ids. The point is the boundary: the client decides what the player wants, the server decides what is allowed and what actually happens.
+On the server, `RegisterNetEvent` receives that untrusted request. The `source` global is the player who sent it. The handler rejects a missing, disconnected, or self target, limits each sender to one request per second, and uses server-side coordinates to reject players more than three metres apart. The amount is the server constant `TRANSFER_AMOUNT`, never client input. This lesson deliberately stops at a validated print: it does not pretend money moved. A real implementation must next read the sender's balance on the server and call the installed framework's server-side debit and credit functions as one controlled operation.
 
 <Checkpoint question="Why does the give cash logic run on the server instead of finishing inside the client onSelect?">
-  Because money is authoritative state, and the client cannot be trusted with authoritative state. A client `onSelect` runs on the player's own machine, which a cheater controls. If the wallet changed there, anyone could grant themselves unlimited cash and the server would have no say. By calling `TriggerServerEvent` and doing the work in a `RegisterNetEvent` handler, the decision moves to the one machine no player can edit. The client's job is to capture intent (who, how much) and send it; the server's job is to validate it and apply it. This client-asks, server-decides split is the spine of every safe FiveM economy interaction.
+  Because money is authoritative state, and the client cannot be trusted with it. A client `onSelect` runs on the player's machine, which can be modified. The client may identify who was selected, but the server owns the amount, checks the target and distance, rate-limits the request, verifies the sender's balance, and applies the transfer. Moving code into a server event is not sufficient by itself; the checks inside that handler are what make the boundary useful.
 </Checkpoint>
 
 ### When you reach for this pattern
@@ -301,6 +339,8 @@ ox_target is the default answer any time a player should walk up to something an
 <Refs
   items={[
     { label: "ox_target documentation (Overextended)", href: "https://overextended.dev/ox_target" },
+    { label: "Cfx.re: Secure your events", href: "https://docs.fivem.net/docs/developers/server-security/" },
+    { label: "Cfx.re: Network and local IDs", href: "https://docs.fivem.net/docs/scripting-manual/networking/ids/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}

@@ -123,7 +123,7 @@ A FiveM server controls resources with a small set of console commands. The whol
   title="Resource control commands"
   rows={[
     { cmd: "ensure <res>", desc: "Start the resource if it is stopped, or restart it if it is already running. The safe default. This is the line you put in server.cfg." },
-    { cmd: "start <res>", desc: "Start a stopped resource. Errors if it is already running. Used once, by hand, when you have not added it to server.cfg yet." },
+    { cmd: "start <res>", desc: "Start the resource if it is stopped. It does not reload a resource that is already running." },
     { cmd: "restart <res>", desc: "Stop then start a resource that is already running. This is what you type after each edit to reload your changed code." },
     { cmd: "stop <res>", desc: "Stop a running resource. Used to take a script offline without removing it from server.cfg." },
     { cmd: "refresh", desc: "Rescan the resources folder for new or changed manifests. Run it once after you create a brand new resource folder, so the server knows the resource exists." },
@@ -134,7 +134,7 @@ The trap beginners fall into is creating a new folder and immediately typing `st
 
 ### Why ensure is the one you put in server.cfg
 
-`ensure` is the safe default because it does the right thing no matter what state the resource is in. If the resource is stopped, `ensure` starts it. If it is already running, `ensure` restarts it. `start` cannot do that. `start` on an already-running resource is an error, and your server boot would halt on the first resource that was somehow already up. That is why every line in `server.cfg` uses `ensure`, not `start`. You write the resource list once, with `ensure`, and the server brings them all up cleanly on every boot regardless of order or prior state.
+`ensure` is the useful idempotent default: if the resource is stopped it starts it, and if it is already running it restarts it. `start` only starts a stopped resource and does not reload one that is already running. Both commands are valid in `server.cfg`; modern templates usually use `ensure` because the same line also works during manual recovery when the resource's state is uncertain.
 
 `restart` versus `refresh` is the other distinction worth locking in. `restart qu_dev_loop` reloads the code of one resource that already exists. `refresh` does not restart anything. It only rescans the folder so the server learns about new resources and manifest changes. New folder: `refresh`, then `ensure`. Changed code in an existing resource: just `restart`.
 
@@ -154,7 +154,7 @@ The third argument is the restricted flag, and it is the reason your command eit
 The old version of this lesson used `true` and never explained aces, so the proof line could silently fail to appear. You use `false` here on purpose: the command runs cleanly whether you type it in the server console or test it later in chat, and there is no hidden permission gate to debug. You will meet aces and restricted commands properly when you build admin actions, where keeping players out is the entire point.
 
 <Checkpoint question="You created a brand new resource folder, added `ensure my_thing` to server.cfg, and typed `start my_thing` in the console. It says the resource does not exist. What is wrong, and what two commands fix it?">
-  The server has not scanned the new folder, so it does not know the resource exists yet. Creating a folder on disk is not enough. Run `refresh` to make the server rescan the resources directory and pick up the new manifest, then run `ensure my_thing` to start it. After that first scan, your normal loop is just edit, save, `restart my_thing`. The `start` command also failed for a second reason worth noting: `start` is for stopped resources, while `ensure` is the version that works in any state, which is why `ensure` is what you keep in server.cfg.
+  The running server has not scanned the new folder, so it does not know the resource exists yet. Run `refresh` to load new resource manifests, then `ensure my_thing` to start it. `start my_thing` would also start it after the refresh; `ensure` is preferred here because it works whether the resource is stopped or already running.
 </Checkpoint>
 
 ### Reading the server console
@@ -204,7 +204,7 @@ This is not a beginner ritual you outgrow. It is the loop you run thousands of t
   items={[
     "Run the full loop: edit server.lua, save, restart qu_dev_loop, read the console, then run the command.",
     "Choose the right command on purpose: ensure to bring a resource up in any state, start for a stopped one, restart to reload changed code, stop to take one offline, refresh to make the server see a brand new folder.",
-    "Explain why ensure is what goes in server.cfg and why start would break boot.",
+    "Explain why ensure is the idempotent default in server.cfg while start only starts a stopped resource.",
     "Tell a clean Started resource line apart from an Error parsing script line, and act on the line number instead of retyping commands.",
     "Say what the RegisterCommand restricted flag does and why a teaching command uses false.",
   ]}

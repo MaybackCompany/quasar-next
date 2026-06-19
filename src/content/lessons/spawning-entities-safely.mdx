@@ -63,10 +63,26 @@ client_script 'client.lua'
     ```lua
 local objects = {}
 
+local function loadModel(model)
+    if not IsModelInCdimage(model) or not IsModelValid(model) then
+        return false
+    end
+
+    RequestModel(model)
+    local deadline = GetGameTimer() + 5000
+    while not HasModelLoaded(model) do
+        if GetGameTimer() > deadline then return false end
+        Wait(0)
+    end
+    return true
+end
+
 RegisterCommand('spawnbox', function()
     local model = joaat('prop_boxpile_07d')
-    RequestModel(model)
-    while not HasModelLoaded(model) do Wait(0) end
+    if not loadModel(model) then
+        print('[qu_spawning_entities_safely] model is invalid or timed out')
+        return
+    end
 
     local coords = GetEntityCoords(PlayerPedId())
     local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, false, false, false)
@@ -145,17 +161,16 @@ You spawned a box, cleared it, and watched a stray one delete itself. Now take t
 
 ```lua
 local model = joaat('prop_boxpile_07d')
-RequestModel(model)
-while not HasModelLoaded(model) do Wait(0) end
+if not loadModel(model) then return end
 ```
 
-A model in GTA is an asset on disk: a mesh, textures, a collision shape. You cannot place one in the world until the game has it loaded into memory. These three lines are the load lifecycle, and you will repeat this exact shape for every entity you ever spawn.
+A model in GTA is an asset on disk: a mesh, textures, and usually collision data. You cannot place one until the client has loaded it. The helper first rejects a name that is not a valid CD image model, then requests it, yields while it loads, and stops after five seconds instead of trapping the client in an endless loop.
 
 `joaat('prop_boxpile_07d')` turns the model **name** into a **hash**. The game does not look entities up by readable string names at runtime; it looks them up by a number called a joaat hash (the name comes from Jenkins one-at-a-time, the hashing algorithm Rockstar uses). `joaat` is the FiveM helper that computes that number for you from the string. You will also see `GetHashKey('prop_boxpile_07d')` in older code. It does the exact same thing and returns the exact same number. `joaat` is the newer, shorter name; prefer it, but treat the two as interchangeable.
 
 `RequestModel(model)` asks the engine to stream that model in. It does not block and it does not finish instantly. It just files the request and returns.
 
-`while not HasModelLoaded(model) do Wait(0) end` is the part beginners skip and then wonder why their prop never appears. `RequestModel` is a request, not a guarantee. You have to wait until the model is actually in memory before you spawn from it, or `CreateObject` runs against a model that is not ready and you get nothing. `HasModelLoaded` returns `true` once the load finishes. The loop keeps yielding one frame at a time with `Wait(0)` until that happens. `Wait(0)` is what makes this safe: it hands control back to the game each frame instead of freezing it, so the engine actually gets time to do the loading you asked for. A bare `while not HasModelLoaded(model) do end` with no `Wait` would hang the client.
+`RequestModel` is a request, not a guarantee. `HasModelLoaded` flips to `true` only when streaming finishes. `Wait(0)` yields each pass so the engine can continue loading. The deadline handles the other failure mode: an invalid or unavailable model must not leave a command waiting forever. A tight loop with no `Wait` freezes the client; an unbounded yielding loop does not freeze it, but it can leave that command stuck indefinitely.
 
 ### Creating the object
 

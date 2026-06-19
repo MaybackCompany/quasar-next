@@ -42,7 +42,7 @@ The order here is deliberate. Each layer catches a class of attack the one above
 
 - **Server authority.** The client may request, only the server grants, after a check. This is the floor. A client that asks for money gets recomputed by the server, never trusted.
 - **Rate limits.** Cap how often an action can happen so spam and automation are blocked. A legitimate player robs a store every few minutes; a bot tries every frame.
-- **Integrity checks.** Detect tampered resources and unexpected events fired by an injected script.
+- **Server-side invariants.** Reject impossible state transitions, invalid event arguments, out-of-range actions, and requests that do not follow the expected server-owned sequence.
 - **Logging and review.** Catch patterns after the fact and ban with evidence, not vibes.
 - **Anti-cheat product.** A layer for injected menus and known cheat signatures, sitting on top of all of the above. Never under it.
 
@@ -64,15 +64,15 @@ This is the mechanism behind never trust the client. The cheater owns the client
 
 So a check that runs on the client and sends a clean here, nothing wrong message to the server is worthless on its own. A cheater simply makes that message always say clean. The same logic, run on the server against a request the client cannot forge, holds, because the server decides the outcome and the client cannot edit the server. That is the entire reason server authority sits at the bottom of the stack: it is the only place a check cannot be tampered out of existence.
 
-### What an integrity check actually inspects
+### What the server can actually inspect
 
-Integrity check is a buzzword until you know what it reads. A real one inspects concrete signals on the server side, where the client cannot rewrite them:
+Do not promise that ordinary Lua can reliably enumerate a cheater's private injected code or prove every client file hash. Focus first on behavior and state the server can observe and own:
 
-- **Unexpected event names.** Your resources fire a known set of net events. An injected script firing an event your code never registers, or firing one far more often than your UI ever could, is a flag.
-- **Resource hashes and lists.** The set of client resources is known. A client running a resource that was never sent, or whose contents do not match what the server shipped, is tampering.
-- **Impossible triggers.** A reward event that should only follow a verified server-side action, arriving without that action having happened, did not come from your code path.
+- **Invalid event arguments.** Reject wrong types, impossible quantities, invalid entity ownership, and coordinates outside the allowed interaction area.
+- **Rate and sequence violations.** A purchase arriving before the server opened a transaction, or hundreds of requests inside a legitimate cooldown, is server-observable evidence.
+- **Impossible state transitions.** A reward request without the server-recorded prerequisite, or movement/value changes outside allowed bounds, should be rejected and logged.
 
-None of these trust a self-report from the client. Each one watches what the client does from a vantage point the cheater cannot reach, which is exactly why it works and why a client-side scanner does not.
+None of these trust a clean/dirty self-report from the client. They validate the request against server-owned state. A commercial anti-cheat may add platform-specific detections, but evaluate those claims with evidence and do not replace these controls.
 
 ## Common mistakes
 
@@ -93,7 +93,7 @@ None of these trust a self-report from the client. Each one watches what the cli
     "State plainly that server authority beats any anti-cheat product, and explain why a client-side report can be faked.",
     "Tell an injected menu apart from resource tampering, and name which layer addresses each.",
     "Score an anti-cheat on detection, maintenance, performance, transparency, and bypass history.",
-    "Say what an integrity check actually inspects: unexpected events, resource hashes, and impossible triggers.",
+    "Name the server-observable checks that matter: event arguments, rates and sequences, entity ownership, and impossible state transitions.",
     "Avoid opaque, stale, or hype-only options, and treat any product as the layer on top of server authority, never the replacement for it.",
   ]}
 />

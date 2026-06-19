@@ -79,7 +79,8 @@ local function httpGet(url)
 end
 
 RegisterCommand('promisetest', function()
-    -- Await must run inside a thread, never bare in the handler.
+    -- Await needs a scheduler-managed coroutine. An explicit thread makes
+    -- that execution context unambiguous for this first example.
     Citizen.CreateThread(function()
         print('[qu_promises] start')
 
@@ -179,7 +180,7 @@ local a = Citizen.Await(httpGet('https://httpbin.org/uuid'))
 
 The word that matters is **pauses**, not **blocks**. A blocking call would freeze the entire server: no other resource could run, no player could move, until the network replied. `Await` does not do that. It yields the current coroutine back to the FiveM scheduler. The scheduler is then free to run every other thread on the server while your thread sits parked, waiting for its promise. When the promise settles, the scheduler wakes your thread back up exactly where it left off and hands you the value. That is why the line "feels synchronous while staying non-blocking": you read it top to bottom like normal code, but under the hood your thread stepped aside and let the server keep working.
 
-### Why Await must live inside a thread
+### Why Await needs a scheduler context
 
 Look at where the awaits sit:
 
@@ -192,7 +193,7 @@ RegisterCommand('promisetest', function()
 end, true)
 ```
 
-The awaiting work is wrapped in `Citizen.CreateThread(function() ... end)`. This is not decoration. `Citizen.Await` yields a coroutine, and yielding only works inside a coroutine that the FiveM scheduler owns. A command handler is invoked across a native C boundary, so awaiting *directly* in the handler body can fail with the error `attempt to yield across a C-call boundary`. The fix is the one shown here: the handler does nothing but spin up a thread, and all the awaiting happens inside that thread, which the scheduler does own. Whenever you await, ask yourself one question first: am I inside a `CreateThread`, an event handler the scheduler started, or a `lib.callback`? If the answer is no, wrap it.
+`Citizen.Await` yields the current coroutine, so the code must run in a context owned by the Cfx scheduler. `CreateThread`, `SetTimeout`, and registered event/command callbacks are scheduler contexts in the current Lua runtime. This example creates an explicit thread because it is easy to recognize and keeps the command callback small. The actual runtime assertion is about being outside the scheduler, not about command handlers specifically.
 
 ### Flattening the pyramid
 
@@ -245,7 +246,7 @@ The rule of thumb: if two async steps depend on each other, promises plus `Await
 
 <FailureList
   items={[
-    { symptom: "attempt to yield across a C-call boundary", fix: "You called Citizen.Await directly in the command handler instead of inside Citizen.CreateThread. Wrap the awaiting work in a thread, as Step 4 does." },
+    { symptom: "Current execution context is not in the scheduler", fix: "Citizen.Await ran from a plain function call outside CreateThread, SetTimeout, or the event system. Move the awaiting work into a scheduler-managed context." },
     { symptom: "The command prints start and then nothing, forever", fix: "A promise was never settled. Every path through your callback must call p:resolve or p:reject. If PerformHttpRequest never fires its callback (bad URL, host unreachable), the promise stays pending and Await waits forever. Add a reject on the failure branch." },
     { symptom: "attempt to call a nil value (global 'promise')", fix: "promise.new is provided by the FiveM runtime, not a require. Confirm this is a real FiveM server resource started with ensure, not the in-browser Lua sandbox, which has no FiveM globals." },
     { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run it. Run promisetest from the txAdmin Live Console, not the in-game chat box (press T)." },
@@ -260,7 +261,7 @@ The rule of thumb: if two async steps depend on each other, promises plus `Await
     "Explain that a promise is a claim ticket for a value that does not exist yet, and name its three states: pending, resolved, rejected.",
     "Wrap a callback API like PerformHttpRequest in promise.new, resolving on success and rejecting on failure.",
     "Use Citizen.Await to pause a thread until a promise settles and read the value back into a local, without blocking the server.",
-    "Say why Await must run inside Citizen.CreateThread and recognise the attempt to yield across a C-call boundary error.",
+    "Say why Await needs a scheduler-managed coroutine and use CreateThread when the current context is uncertain.",
     "Chain three dependent async calls top to bottom instead of nesting them, and catch a rejected promise with pcall.",
   ]}
 />

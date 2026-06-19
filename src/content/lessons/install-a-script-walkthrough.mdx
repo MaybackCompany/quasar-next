@@ -49,7 +49,7 @@ Here is the order, drawn as a stack. Read it from the bottom.
 
 In `server.cfg` the load order is literally the top-to-bottom order of your `ensure` lines. So the resource that everyone depends on, `oxmysql`, gets `ensure`d first, and your script gets `ensure`d last. If you flip that, your script boots before `oxmysql` exists and you get `attempt to call a nil value` the instant it starts. That one rule prevents most install failures.
 
-Note the names. `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are **Overextended** community resources, not official Cfx.re resources. Your database engine is **MariaDB** (the modern drop-in for MySQL). On the framework line, **Qbox** (`qbx_core`) is the actively maintained QBCore successor, while classic **QBCore** development has stalled. ESX (`es_extended`) is also current. Pick whichever your script's README names.
+Note the names. `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are **Overextended** community resources, not Cfx.re built-ins. Your database engine is **MariaDB**. QBCore, Qbox (`qbx_core`), and ESX (`es_extended`) have separate official repositories and compatibility requirements. Install the framework and exact dependencies named by the script's current documentation.
 
 ## Build it
 
@@ -195,9 +195,7 @@ set mysql_connection_string "mysql://root:yourpassword@localhost:3306/fivem"
     Now read the txAdmin Live Console. A clean install prints the script's own start banner and no red error lines:
 
     <ExpectedOutput>
-      [    script:oxmysql] Database server connection established!
-[    script:qs_lockpick] Resource qs_lockpick started.
-[    script:qs_lockpick] Loaded 0 saved lockpick attempts from the database.
+      Started resource qs_lockpick
     </ExpectedOutput>
 
     Reading the console is not optional. It is the script telling you, in its own words, whether it found its database, loaded its config, and started. If those lines appear and no red traceback follows, the install is done.
@@ -218,7 +216,7 @@ So the rule is not a style preference. It is cause and effect. The dependency mu
 
 A script's code and a script's database are two separate things you must both provide. The folder you dropped in is the code. The `.sql` file is the shape of the data the code expects: tables, columns, keys. FiveM starts the code regardless of whether the tables exist, because it has no idea what your script will query. The mismatch only surfaces at runtime, the first time the code runs a `SELECT` or `INSERT` against a table that was never created.
 
-That is why `no such table` is a database error, not a code error. The connection worked. The script ran. The table simply was never imported. Importing the `.sql` before the first run closes that gap. If a script ships no `.sql` file, it stores nothing in the database and you skip this step entirely, which is itself useful information about what the script does.
+That is why `no such table` is a database error, not a code error. The connection worked. The script ran. The table simply was never imported. Importing the `.sql` before the first run closes that gap. If a script ships no `.sql` file, do not assume it stores nothing: it may reuse framework tables, create its schema in code, use KVP storage, or call an external service. Read its official installation notes to learn what persistence it uses.
 
 ### Why load order is the order of the lines
 

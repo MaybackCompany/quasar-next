@@ -67,31 +67,22 @@
     Do not add a `lua54 'yes'` line. Lua 5.4 is the only runtime on modern FXServer, so that line is deprecated and ignored.
   </Step>
 
-  <Step num={3} title="Add one vehicle handling block" outcome="stream/handling.meta contains a single, valid handling entry you can edit.">
-    A real `handling.meta` is XML wrapped in `<CHandlingDataMgr>`. Each vehicle has one `<Item>` block, and the `<handlingName>` tag links that block to a vehicle model (here, the `ADDER`). Paste this minimal, valid file into `stream/handling.meta`:
+  <Step num={3} title="Copy one complete, working handling entry" outcome="stream/handling.meta contains a complete entry from the vehicle you will test.">
+    Do not hand-author a five-field handling block. A real `CHandlingData` item contains many related fields and may include sub-handling data; a partial sample is not a safe runnable file.
 
-    ```text
-    <?xml version="1.0" encoding="UTF-8"?>
-    <CHandlingDataMgr>
-      <HandlingData>
-        <Item type="CHandlingData">
-          <handlingName>ADDER</handlingName>
-          <fMass value="1800.000000" />
-          <fInitialDriveForce value="0.350000" />
-          <fInitialDriveMaxFlatVel value="155.000000" />
-          <fBrakeForce value="0.800000" />
-          <fTractionCurveMax value="2.350000" />
-        </Item>
-      </HandlingData>
-    </CHandlingDataMgr>
-    ```
+    Start with an add-on vehicle that already works on your staging server. In that vehicle's `vehicles.meta`, find its `<modelName>`, then read the `<handlingId>` in the same item. In the package's `handling.meta`, find the complete `<Item type="CHandlingData">` whose `<handlingName>` exactly matches that id. Copy the **whole item**, including every field and `SubHandlingData`, into the standard `CHandlingDataMgr` wrapper in `stream/handling.meta`.
 
-    These are the four fields beginners change most:
+    The model name and handling id are often similar, but they are not required to match. Follow the actual `vehicles.meta` link instead of guessing. Also keep the original vehicle resource's load order documented: two resources defining the same handling id can override each other, so this staging override must be ensured after the vehicle resource and removed when the exercise is done.
 
-    - `fInitialDriveMaxFlatVel` is top speed in game units. About 140-155 is normal. 300 is extremely fast, 20 feels like a golf cart.
-    - `fBrakeForce` is brake strength. 0.5 to 1.0 is the normal range.
-    - `fTractionCurveMax` is tire grip. 2.0 to 2.5 is standard. Lower slides like ice, higher sticks like glue.
-    - `fMass` is weight in kg. Heavier accelerates slower but is harder to push around.
+    Fields you will commonly inspect include:
+
+    - `fInitialDriveForce`, which contributes to acceleration rather than representing horsepower directly.
+    - `fInitialDriveMaxFlatVel`, which contributes to theoretical drive speed but does not guarantee the measured top speed by itself.
+    - `fBrakeForce`, which contributes to braking strength.
+    - `fTractionCurveMax`, one part of the tire-grip model that interacts with other traction fields.
+    - `fMass`, which affects physics mass but should not be tuned in isolation.
+
+    There is no universal “normal range” that fits every class. Use the working vehicle's values as the baseline and change one field by 5 to 10 percent.
   </Step>
 
   <Step num={4} title="Commit the untouched baseline to Git" outcome="GitHub Desktop holds a clean snapshot you can revert to before any edit.">
@@ -115,25 +106,51 @@
     Typing spawn menus every time is slow. Paste this helper into `client.lua`. It spawns a vehicle right in front of you and puts you in the driver seat:
 
     ```lua
+    local testVehicle
+
     RegisterCommand('testhandling', function(_, args)
-        local model = args[1] or 'adder' -- default to adder if no model given
-        local hash = GetHashKey(model)
+        local model = args[1]
+        if not model then
+            print('[qu_handling] usage: /testhandling your_model_name')
+            return
+        end
+
+        local hash = joaat(model)
+        if not IsModelInCdimage(hash) or not IsModelAVehicle(hash) then
+            print('[qu_handling] invalid vehicle model: ' .. model)
+            return
+        end
 
         RequestModel(hash)
+        local deadline = GetGameTimer() + 5000
         while not HasModelLoaded(hash) do
-            Wait(100) -- wait until the model is loaded into memory
+            if GetGameTimer() > deadline then
+                print('[qu_handling] model load timed out: ' .. model)
+                return
+            end
+            Wait(0)
+        end
+
+        if testVehicle and DoesEntityExist(testVehicle) then
+            DeleteEntity(testVehicle)
         end
 
         local ped = PlayerPedId()
         local coords = GetEntityCoords(ped)
         local heading = GetEntityHeading(ped)
 
-        local vehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
-        SetPedIntoVehicle(ped, vehicle, -1) -- -1 = driver seat
+        testVehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
+        SetPedIntoVehicle(ped, testVehicle, -1) -- -1 = driver seat
         SetModelAsNoLongerNeeded(hash) -- let the game unload the model later
 
         print('[qu_handling] spawned ' .. model .. ' for handling test')
     end, false)
+
+    AddEventHandler('onResourceStop', function(resourceName)
+        if resourceName == GetCurrentResourceName() and testVehicle and DoesEntityExist(testVehicle) then
+            DeleteEntity(testVehicle)
+        end
+    end)
     ```
   </Step>
 
@@ -153,13 +170,13 @@
     Join the server, then run the test command in-game chat:
 
     ```text
-    /testhandling adder
+    /testhandling your_model_name
     ```
 
     You should drop into an Adder. Drive it, then brake. Remember how long it takes to stop, because the next step changes exactly that.
 
     <ExpectedOutput>
-      [qu_handling] spawned adder for handling test
+      [qu_handling] spawned your_model_name for handling test
     </ExpectedOutput>
   </Step>
 
@@ -167,7 +184,8 @@
     Open `stream/handling.meta` and change only the brake force. Leave every other number alone:
 
     ```text
-    <fBrakeForce value="1.400000" />
+    <!-- Example: a 10 percent increase from an original 0.800000 -->
+    <fBrakeForce value="0.880000" />
     ```
 
     The game reads handling only at resource start, so the edit does nothing until you restart. In the txAdmin Live Console run:
@@ -176,7 +194,7 @@
     restart qu_handling
     ```
 
-    Spawn the car again with `/testhandling adder`, drive fast, then brake. It should stop clearly sooner than the baseline. If you like it, commit in GitHub Desktop with `feat: increase brake force for adder`. If not, revert and you are back to the baseline in two clicks. Changing one value at a time is the single most important habit in this lesson: if you ever change four numbers and the car feels wrong, you cannot tell which one broke it.
+    Calculate the new number from the value in your own complete entry; do not assume its original value is `0.800000`. Spawn a fresh car with `/testhandling your_model_name`, drive the same route, then brake at the same marker. If the evidence is better, commit the exact model and percentage. Otherwise revert. Changing one value at a time is the key habit: if you change four numbers and the car feels wrong, you cannot identify the cause.
   </Step>
 </StepGroup>
 
@@ -193,19 +211,22 @@ The lesson repeats one rule twice: change a number, nothing happens until you re
 The first three lines of the command body are a pattern you will write in almost every FiveM script that spawns something:
 
 ```lua
+if not IsModelInCdimage(hash) or not IsModelAVehicle(hash) then return end
 RequestModel(hash)
+local deadline = GetGameTimer() + 5000
 while not HasModelLoaded(hash) do
-    Wait(100)
+    if GetGameTimer() > deadline then return end
+    Wait(0)
 end
 ```
 
-Models are streamed in on demand, not held in memory all the time. `RequestModel(hash)` asks the engine to start loading the Adder's model, but loading takes time and does not finish on the same line. If you called `CreateVehicle` immediately, the model would not be ready and the spawn would fail or return a blank handle. The `while not HasModelLoaded(hash) do Wait(100) end` loop is how you wait for the load to finish: it checks every 100 milliseconds and only moves on once the model is in memory. `Wait` yields the thread so the game keeps running while you wait, instead of freezing. Learn this loop once and you can spawn vehicles, peds, and props the same way for the rest of the course.
+Models stream on demand. The first check rejects an unknown name or a model that is not a vehicle. `RequestModel` starts loading, `Wait(0)` yields so the game can continue, and the five-second deadline prevents an unavailable asset from leaving the command stuck forever.
 
 ### Spawning the vehicle and seating the driver
 
 ```lua
-local vehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
-SetPedIntoVehicle(ped, vehicle, -1)
+testVehicle = CreateVehicle(hash, coords.x, coords.y, coords.z, heading, true, false)
+SetPedIntoVehicle(ped, testVehicle, -1)
 SetModelAsNoLongerNeeded(hash)
 ```
 
@@ -213,13 +234,14 @@ SetModelAsNoLongerNeeded(hash)
 
 ### How the XML maps to a real car
 
-The handling file is just XML, and the one tag that does the linking is `<handlingName>`:
+The handling file is XML, and the link starts in `vehicles.meta`. Read the vehicle's real `<handlingId>`, then find the identical `<handlingName>` value in the complete handling entry:
 
 ```text
-<handlingName>ADDER</handlingName>
+<handlingId>EXAMPLECAR</handlingId>
+<handlingName>EXAMPLECAR</handlingName>
 ```
 
-The structure nests in a fixed order: `<CHandlingDataMgr>` wraps a single `<HandlingData>` block, which holds one `<Item>` per vehicle. Inside each `<Item>`, the `<handlingName>` tag is the key that connects this block of numbers to a specific in-game model. When the Adder spawns, the engine looks up the handling entry whose `<handlingName>` matches the model's handling id, which for the Adder is `ADDER`, and applies these numbers. Change the name to the wrong id and your edits land on a different car, or no car at all, which is one of the quiet ways a handling edit appears to do nothing.
+`<CHandlingDataMgr>` contains a `<HandlingData>` collection with complete items. The model name does not directly select an item. Its `vehicles.meta` record supplies the handling id, and the matching `handlingName` selects the physics data. Multiple vehicles can intentionally share one handling id, so search for every use before assuming a change affects only one car.
 
 ## If something went wrong
 
@@ -227,8 +249,8 @@ The structure nests in a fixed order: `<CHandlingDataMgr>` wraps a single `<Hand
   items={[
     { symptom: "Could not load resource qu_handling", fix: "Open fxmanifest.lua and check the data_file line and quotes; the path must be 'stream/handling.meta' exactly." },
     { symptom: "The car drives exactly the same after editing", fix: "You forgot restart qu_handling, or you edited the wrong &lt;handlingName&gt; block, or the data_file line is missing from the manifest." },
-    { symptom: "The car launches into the sky", fix: "fMass went too low or fInitialDriveMaxFlatVel went absurdly high. Revert the commit and change by 10 to 20 percent at a time." },
-    { symptom: "The car slides everywhere like it is on ice", fix: "fTractionCurveMax is too low. Raise it back toward 2.0 to 2.5." },
+    { symptom: "The vehicle becomes unstable or unrealistic", fix: "Revert the single edited field, restart, and prove the baseline is restored. Do not compensate by changing several other fields." },
+    { symptom: "More than one vehicle changed", fix: "Search vehicles.meta for every model using this handlingId. Shared handling ids intentionally apply one entry to multiple vehicles." },
     { symptom: "attempt to call a nil value at /testhandling", fix: "Type /testhandling in in-game chat (client side), not the server console, and confirm client.lua is listed in the manifest." },
   ]}
 />
@@ -237,8 +259,8 @@ The structure nests in a fixed order: `<CHandlingDataMgr>` wraps a single `<Hand
 
 <Recap
   items={[
-    "Build a qu_handling streaming resource with a stream/ folder and a data_file 'HANDLING_FILE' line in the manifest.",
-    "Read a handling.meta block and recognize fInitialDriveMaxFlatVel, fBrakeForce, fTractionCurveMax, and fMass.",
+    "Build a staging override from one complete working CHandlingData entry and load it with HANDLING_FILE.",
+    "Follow modelName to handlingId in vehicles.meta, then handlingName in handling.meta.",
     "Follow the safe workflow: commit a baseline, change one value, restart qu_handling, test, then commit or revert.",
     "Match a broken-car symptom (flying, stuck, sliding) to the field that caused it, and undo it with a GitHub Desktop revert."
   ]}
@@ -247,7 +269,7 @@ The structure nests in a fixed order: `<CHandlingDataMgr>` wraps a single `<Hand
 ## Try it yourself
 
 <Exercise>
-  Revert back to the baseline commit and restart `qu_handling`. Then change `fTractionCurveMax` from `2.350000` to `0.700000`, restart, spawn with `/testhandling adder`, and take a tight corner. Write down how the grip feels, then revert the commit so the car is back to normal.
+  Revert to the baseline and restart `qu_handling`. Read your vehicle's current `fTractionCurveMax`, reduce it by 5 percent, restart, spawn a fresh copy with `/testhandling your_model_name`, and repeat one fixed corner. Write down the difference, then revert and prove the baseline returned. Do not use an arbitrary value copied from another vehicle.
 </Exercise>
 
 <Refs

@@ -2,7 +2,7 @@
   crumbs="Module 09 · Bonus"
   title="NUI from scratch: ui_page, messages, callbacks"
   meta={[
-    { label: "You'll learn", value: "The cfx-nui-<resource>/ callback scope, the Lua to JS message and callback APIs, focus capture, and how to attach Chrome devtools to a live NUI page." },
+    { label: "You'll learn", value: "The GetParentResourceName callback URL, the Lua to JS message and callback APIs, focus capture, and how to attach Chrome devtools to a live NUI page." },
     { label: "You'll ship", value: "A minimal NUI menu: a command opens a Chromium overlay with one button, the button sends data back to Lua, and a Lua-triggered chat message confirms the round-trip." },
     { label: "Time", value: "~25 minutes" },
     { label: "Why now", value: "You finished the vehicle handling lesson. Knowing how NUI works under the hood lets you debug any UI bug for the rest of the course." },
@@ -128,7 +128,7 @@ window.addEventListener('message', (event) => {
 
 // JS to Lua: send a real payload back, then hide on the callback's reply.
 button.addEventListener('click', () => {
-    fetch('https://cfx-nui-qu_nui_from_scratch/buttonClicked', {
+    fetch(`https://${GetParentResourceName()}/buttonClicked`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ label: 'Send to Lua and close' })
@@ -242,7 +242,7 @@ This is the piece the old version of this lesson was missing, and it is why the 
 ### RegisterNUICallback: sending a payload from JS back to Lua
 
 ```js
-fetch('https://cfx-nui-qu_nui_from_scratch/buttonClicked', {
+fetch(`https://${GetParentResourceName()}/buttonClicked`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ label: 'Send to Lua and close' })
@@ -258,7 +258,7 @@ RegisterNUICallback('buttonClicked', function(data, cb)
 end)
 ```
 
-The page talks back to Lua by making an HTTP request, and the URL scope is the part to memorize. It is always `https://cfx-nui-&lt;resource&gt;/&lt;endpoint&gt;`. Here the resource is `qu_nui_from_scratch` and the endpoint is `buttonClicked`, giving `https://cfx-nui-qu_nui_from_scratch/buttonClicked`. That `cfx-nui-` prefix is not optional decoration; it is the scheme FiveM intercepts to route the request to your Lua instead of out to the real internet. Drop the prefix, or use the bare resource name, and the request leaves the NUI sandbox and fails. The endpoint after the slash is the string you register on the Lua side. They must match exactly.
+The page talks back to Lua by making an HTTP request. The current documented form is `https://${GetParentResourceName()}/&lt;endpoint&gt;`. `GetParentResourceName()` is provided inside NUI and returns the resource that owns the page, so the code keeps working if the folder is renamed. The endpoint after the slash must exactly match the string passed to `RegisterNUICallback`. Do not hardcode `cfx-nui-&lt;resource&gt;` for callbacks: that prefix is the resource-file URL scope, while the official callback API uses the parent resource name directly.
 
 On the Lua side, `RegisterNUICallback('buttonClicked', function(data, cb) ... end)` is the listener for that endpoint. The handler is handed two arguments:
 
@@ -269,10 +269,10 @@ The chat line is the visible proof the data crossed: `TriggerEvent('chat:addMess
 
 ### Attaching Chrome devtools to a live NUI page
 
-NUI is a real Chromium instance, so it has the same devtools you use in a browser. With the game running, open `http://localhost:13172` in Chrome on the same machine. You get the standard inspector pointed at every live NUI page: the Console tab shows your JS errors and `console.log` output, the Network tab shows each `cfx-nui-` fetch and its response, and Elements lets you tweak CSS live. The moment a NUI feature misbehaves, this is the first place to look, because a JS error that the game would otherwise swallow shows up here in red.
+NUI is a real Chromium instance, so it has the same devtools you use in a browser. With the game running, open `http://localhost:13172` in Chrome on the same machine. You get the standard inspector pointed at every live NUI page: the Console tab shows your JS errors and `console.log` output, the Network tab shows each callback request and its response, and Elements lets you tweak CSS live. The moment a NUI feature misbehaves, this is the first place to look, because a JS error that the game would otherwise swallow shows up here in red.
 
 <Checkpoint question="The button click fires the fetch, but the menu never closes and the chat line never appears, with no error in F8. Where do you look first, and what is the most likely cause?">
-  Open the NUI devtools at `http://localhost:13172` and check the Network tab. The most likely cause is a mismatch between the `fetch` URL and the registered callback: either the endpoint string after the slash does not match the name in `RegisterNUICallback` (`buttonClicked` in both places), or the `cfx-nui-` prefix or resource name is wrong, so the request never reaches Lua. A failed or pending request in the Network tab confirms it. If the request succeeds but the menu still does not close, the Lua callback ran but never called `cb`, so the `fetch` promise that hides the menu in `.then` never resolves. Both failures are silent in F8, which is exactly why devtools is the first stop.
+  Open the NUI devtools at `http://localhost:13172` and check the Network tab. The most likely cause is a mismatch between the `fetch` URL and the registered callback: the URL should use `GetParentResourceName()` and the endpoint string after the slash must match `RegisterNUICallback` (`buttonClicked` in both places). A failed or pending request confirms it. If the request succeeds but the menu still does not close, the Lua callback ran but never called `cb`, so the `fetch` promise that hides the menu in `.then` never resolves.
 </Checkpoint>
 
 ### When you reach for this pattern
@@ -289,7 +289,7 @@ These four pieces are the entire foundation of every NUI resource, framework or 
   items={[
     { symptom: "The menu never appears after /openui", fix: "The page starts hidden on purpose and only reveals on the open message. Open the NUI devtools at http://localhost:13172, check the Console for a JS error, and confirm app.js is listed in the files block so the browser can load it." },
     { symptom: "Mouse and movement are frozen after closing", fix: "Focus was captured but never released. Make sure SetNuiFocus(false, false) runs in the callback. The game is not frozen, input is still being routed to the browser." },
-    { symptom: "Clicking the button does nothing, no callback prints", fix: "The fetch URL or endpoint is wrong. It must be exactly https://cfx-nui-qu_nui_from_scratch/buttonClicked and the RegisterNUICallback name must be buttonClicked. Confirm the request in the devtools Network tab." },
+    { symptom: "Clicking the button does nothing, no callback prints", fix: "The fetch URL or endpoint is wrong. Use https://${GetParentResourceName()}/buttonClicked in browser-side JS, and make sure the RegisterNUICallback name is buttonClicked. Confirm the request in the devtools Network tab." },
     { symptom: "The button works but the menu stays open", fix: "The Lua callback never called cb. Every RegisterNUICallback must call cb exactly once, even cb({}), or the fetch promise never resolves and the .then that hides the menu never runs." },
   ]}
 />
@@ -301,7 +301,7 @@ These four pieces are the entire foundation of every NUI resource, framework or 
     "Declare a NUI page with ui_page and whitelist every asset it loads in the files block, and explain why a missing file 404s silently.",
     "Capture and release input with SetNuiFocus, knowing the first boolean is the keyboard/input focus and the second is the mouse cursor.",
     "Push state from Lua to JS with SendNUIMessage and read it off event.data in a window message listener.",
-    "Send a payload from JS back to Lua over the cfx-nui-<resource>/<endpoint> scope and read it as the data argument of RegisterNUICallback.",
+    "Send a payload from JS back to Lua with https://${GetParentResourceName()}/<endpoint> and read it as the data argument of RegisterNUICallback.",
     "Call cb exactly once to resolve the fetch, and prove the round-trip with a chat line carrying the data the page sent.",
     "Open the NUI devtools at http://localhost:13172 to inspect the Console and Network tabs of a live page.",
   ]}
@@ -315,7 +315,7 @@ These four pieces are the entire foundation of every NUI resource, framework or 
   ```js
   document.querySelectorAll('button').forEach((btn) => {
       btn.addEventListener('click', () => {
-          fetch('https://cfx-nui-qu_nui_from_scratch/buttonClicked', {
+          fetch(`https://${GetParentResourceName()}/buttonClicked`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ label: btn.textContent })
@@ -330,6 +330,7 @@ These four pieces are the entire foundation of every NUI resource, framework or 
 <Refs
   items={[
     { label: "FiveM NUI development guide", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/" },
+    { label: "FiveM NUI callbacks", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/nui-callbacks/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}

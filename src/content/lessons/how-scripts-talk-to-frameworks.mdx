@@ -119,19 +119,19 @@ RegisterCommand('fwtest', function(source)
     elseif FrameworkName == 'qbcore' then
         local Player = Framework.Functions.GetPlayer(src)
         if not Player then return end
-        Player.Functions.AddMoney('cash', 100)
+        Player.Functions.AddMoney('cash', 100, 'qu_framework_talk test')
         print(('[qu_framework_talk] QBCore gave $100, job is %s'):format(Player.PlayerData.job.name))
 
     elseif FrameworkName == 'qbox' then
         local Player = exports.qbx_core:GetPlayer(src)
         if not Player then return end
-        Player.Functions.AddMoney('cash', 100)
+        exports.qbx_core:AddMoney(src, 'cash', 100, 'qu_framework_talk test')
         print(('[qu_framework_talk] Qbox gave $100, job is %s'):format(Player.PlayerData.job.name))
 
     else
         print('[qu_framework_talk] no supported framework is running on this server')
     end
-end, false)
+end, true)
     ```
   </Step>
 
@@ -141,6 +141,7 @@ end, false)
     ```cfg
     ensure es_extended       # or qb-core, or qbx_core (only one of these)
     ensure qu_framework_talk
+    add_ace group.admin command.fwtest allow
     ```
 
     Save, then in the txAdmin Live Console run:
@@ -155,7 +156,7 @@ end, false)
       [qu_framework_talk] detected framework: esx
     </ExpectedOutput>
 
-    Now join the server so you are a real player, open F8, and run:
+    Now join with a txAdmin administrator account so the command has both a real player and the `command.fwtest` ACE. Open F8 and run:
 
     ```text
     /fwtest
@@ -190,10 +191,10 @@ An **export** is a function one resource publishes for other resources to call. 
 ```lua
 -- The EVENT style (older ESX scripts you will still meet in the wild)
 ESX = nil
-TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
+TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end) -- legacy recognition only
 ```
 
-An **event** is a message. Here your script shouts `esx:getSharedObject` into the resource and hands over a callback function. ESX runs that callback and passes the object back into it, which assigns it to your `ESX` variable. It does the same job as the export, but indirectly, through the event bus. You will see this pattern in tutorials written before 2021. It still works on ESX Legacy, but the export style is cleaner and is what you should write today. Qbox never shipped a shared-object event at all; it is exports only, which is why the Qbox branch in your code calls `exports.qbx_core` directly and never stores a core table.
+You will see this event pattern in old tutorials. Current ESX Legacy code should use the export or its supported import; do not assume the old event exists on a current install. Recognize it for migration work, then replace it. Qbox uses exports rather than a shared-object event.
 
 The mental model: **export is a phone call, event is a letter.** A phone call gives you the answer while you wait. A letter gets answered later, when the other side gets around to reading it. For grabbing the framework object, you want the phone call.
 
@@ -222,10 +223,10 @@ With the player object in hand, you call its functions to change state.
 ```lua
 xPlayer.addAccountMoney('money', 100)  -- ESX
 Player.Functions.AddMoney('cash', 100) -- QBCore
-Player.Functions.AddMoney('cash', 100) -- Qbox
+exports.qbx_core:AddMoney(src, 'cash', 100, 'example') -- Qbox native API
 ```
 
-Here the dialects diverge in a way worth noticing. On ESX you name the account first, then the amount: `addAccountMoney('money', 100)` adds 100 to the cash account (the account literally named `'money'`), and a third `reason` argument is optional. QBCore and Qbox also take a **money type** first, then the amount, because they track several accounts separately: `'cash'`, `'bank'`, and often `'crypto'`. So `AddMoney('cash', 100)` means add 100 to the cash account specifically. If you passed `'bank'` instead, the cash in their pocket would not move at all. Qbox is a community continuation of QBCore, so it inherits the same `'cash'` and `'bank'` account model and the same `Player.Functions.AddMoney` shape. To take money away you call `xPlayer.removeAccountMoney('money', 100)` on ESX and `Player.Functions.RemoveMoney('cash', 100)` on QBCore and Qbox.
+Here the dialects diverge. ESX uses named accounts such as `money` and `bank`. QBCore uses configured money types through `Player.Functions`. Qbox has a similar data model but its native API is the `qbx_core` money export, which also accepts a reason for the audit log. Do not assume optional money types such as `crypto` exist unless the server's framework configuration defines them.
 
 > On ESX Legacy you will still see the shorter `xPlayer.addMoney(100)` and `xPlayer.removeMoney(100)` in older scripts. Those are backwards-compatibility shortcuts; `addAccountMoney('money', ...)` and `removeAccountMoney('money', ...)` are the current API, so write those today.
 
@@ -291,7 +292,7 @@ local job = Player.PlayerData.job.name      -- read job (plain data)
 
 -- ============ Qbox ============
 local Player = exports.qbx_core:GetPlayer(src)
-Player.Functions.AddMoney('cash', 100)      -- give $100 (cash account)
+exports.qbx_core:AddMoney(src, 'cash', 100, 'example')
 local job = Player.PlayerData.job.name      -- read job (plain data)
 ```
 </Mockup>
@@ -304,10 +305,10 @@ Read top to bottom and the family resemblance is obvious. Every framework: get t
     ["Get the framework", "exports['es_extended']:getSharedObject()", "exports['qb-core']:GetCoreObject()", "exports.qbx_core (no core table)"],
     ["Get the player", "ESX.GetPlayerFromId(src)", "QBCore.Functions.GetPlayer(src)", "exports.qbx_core:GetPlayer(src)"],
     ["Player object name", "xPlayer", "Player", "Player"],
-    ["Give $100", "xPlayer.addAccountMoney('money', 100)", "Player.Functions.AddMoney('cash', 100)", "Player.Functions.AddMoney('cash', 100)"],
-    ["Take $100", "xPlayer.removeAccountMoney('money', 100)", "Player.Functions.RemoveMoney('cash', 100)", "Player.Functions.RemoveMoney('cash', 100)"],
+    ["Give $100", "xPlayer.addAccountMoney('money', 100)", "Player.Functions.AddMoney('cash', 100)", "exports.qbx_core:AddMoney(src, 'cash', 100, reason)"],
+    ["Take $100", "xPlayer.removeAccountMoney('money', 100)", "Player.Functions.RemoveMoney('cash', 100)", "exports.qbx_core:RemoveMoney(src, 'cash', 100, reason)"],
     ["Read job name", "xPlayer.getJob().name", "Player.PlayerData.job.name", "Player.PlayerData.job.name"],
-    ["Money model", "single main account", "cash / bank / crypto", "cash / bank / crypto"],
+    ["Money model", "named accounts such as money/bank", "configured types such as cash/bank", "configured types such as cash/bank"],
   ]}
   caption="The same two actions across all three frameworks. Same shape, different names."
 />
@@ -339,25 +340,22 @@ Read top to bottom and the family resemblance is obvious. Every framework: get t
 ## Try it yourself
 
 <Exercise>
-  Turn `/fwtest` into a real job-gated paycheck command, `/paycop`, that only pays players whose job is `police`, and pays them an amount you type. Read the job, compare it, then add the money only if it matches.
+  Build a restricted job-gated test command, `/paycop`, that pays a fixed server-defined amount only when the active job is `police`. Do not accept the reward amount from the player.
 
   ```lua
-  RegisterCommand('paycop', function(source, args)
+  local PAYCOP_AMOUNT = 100
+
+  RegisterCommand('paycop', function(source)
       local src = source
-      local amount = tonumber(args[1])
-      if not amount then
-          print('[qu_framework_talk] usage: /paycop <amount>')
-          return
-      end
 
       -- 1. Get the player object for your framework (reuse the branch from the lesson).
       -- 2. Read their job name into a variable called jobName.
       -- 3. if jobName ~= 'police' then print a 'not a cop' line and return.
-      -- 4. Otherwise add `amount` to their cash and print a confirmation.
-  end, false)
+      -- 4. Otherwise add PAYCOP_AMOUNT through the server framework API.
+  end, true)
   ```
 
-  Fill in the four steps using the right calls for your framework. `tonumber(args[1])` turns the typed amount into a number, and the job check is just a string compare against `'police'`. Test it twice: once as an unemployed player, where it should refuse, and once after running `/setjob` (ESX) or `/setjob` in QBCore/Qbox to make yourself police, where it should pay out. You have now written the exact gate every job script in FiveM uses: read job, compare, then act.
+  Grant only your admin group the `command.paycop` ACE while testing. Test once as unemployed, where it refuses, and once as police. In a real payroll feature, entitlement, amount, cooldown, and duty all come from server-held state; a job name alone is not enough.
 </Exercise>
 
 <Refs

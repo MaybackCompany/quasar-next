@@ -88,10 +88,11 @@ end, false)
     restart qu_trigger_event
     ```
 
-    This is a `client_script`, so the command runs from inside the game. Join the server, open the F8 console, and type:
+    This is a `client_script`, so the command runs from inside the game. Run `/shout hello` in chat, or type `shout hello` without a slash in F8.
 
     ```text
-    /shout hello
+    Chat: /shout hello
+    F8: shout hello
     ```
 
     <ExpectedOutput>
@@ -125,7 +126,7 @@ AddEventHandler('qu_trigger_event:shout', function(message)
 end)
 ```
 
-`AddEventHandler` says: when the event named in the first argument fires, run this function. The function you hand it is the handler. Notice that both calls use the **same** event name. FiveM does not throw away the first one when you register the second. It keeps a list. When `qu_trigger_event:shout` fires, FiveM walks that list and runs every handler on it, in the order they were registered. That is why you got two lines and why handler one printed before handler two. Registration order is run order.
+`AddEventHandler` says: when the event named in the first argument fires, run this function. Both calls use the same name, so both handlers run. Do not build logic that depends on listener order: the official event documentation promises matching handlers, not a stable ordering contract between independent resources.
 
 This is the part the old version of this lesson never said out loud, and it is the entire reason the demo prints twice. One event can have many listeners. That is not a bug to design around, it is the feature. A `playerDied` event in a real server might be heard by the medical resource, the scoreboard resource, and the anticheat resource all at once, none of them aware of the others.
 
@@ -139,7 +140,7 @@ end, false)
 
 `TriggerEvent` is the line that fires the message. It takes the event name, then any values you want to pass to the handlers. Here you pass one value, the reconstructed message string, and both handlers receive it as their `message` parameter.
 
-Two properties of `TriggerEvent` matter and you should burn them in now. First, it is **synchronous**. When you call `TriggerEvent`, FiveM runs every matching handler right then, in order, before the next line of your code runs. It does not queue the event for later. By the time `TriggerEvent` returns, both prints have already happened. Second, it is **same-side only**. `TriggerEvent` fires on the side it was called from and nowhere else. This code is a `client_script`, so the event fires on the client, and only client-side handlers hear it. It never crosses the network to the server. That is exactly what we want for a local conversation between two handlers in the same process.
+The documented property to keep is that `TriggerEvent` is **same-side only**. This code is a `client_script`, so only client-side handlers for that name hear it; it never crosses the network to the server. Handlers may yield or schedule other work, so do not use undocumented timing or listener-order assumptions as a coordination mechanism.
 
 ### Why args is a table, and what table.concat does
 
@@ -161,7 +162,7 @@ Here is why mixing them up bites you. If you register a networked event with pla
 The rule to carry forward: use `AddEventHandler` when the event stays on one side, and reach for `RegisterNetEvent` only when an event genuinely needs to cross the network, and then validate every argument as if a cheater sent it, because one might have.
 
 <Checkpoint question="Why did one /shout print two lines, and what would happen if you changed both AddEventHandler calls to RegisterNetEvent?">
-  Two lines printed because both `AddEventHandler` calls registered a handler for the same event name, `qu_trigger_event:shout`, and `TriggerEvent` runs every registered handler in order. The event being local and same-side does not limit how many handlers can listen, only where it can be fired from.
+  Two lines printed because both `AddEventHandler` calls registered a handler for the same event name, `qu_trigger_event:shout`. The event being local and same-side does not limit how many handlers can listen, only where it can be fired from.
 
   Switching both to `RegisterNetEvent` would still print two lines here, because `TriggerEvent` fires locally and `RegisterNetEvent` handlers also catch local triggers. But it would be the wrong choice: you would have flagged a purely local event as network-capable, which means any client could now fire `qu_trigger_event:shout` across the wire with arguments you never sanitized. Nothing in this demo needs that, so `AddEventHandler` is correct and safer.
 </Checkpoint>
@@ -191,8 +192,8 @@ Same-side events are how you keep one resource's parts loosely joined so you can
 <Recap
   items={[
     "Explain that an event is a named message, and that resources use events because they cannot share variables directly.",
-    "Register two handlers for one event name with AddEventHandler and predict that both run, in registration order.",
-    "Fire a local event with TriggerEvent and state that it is synchronous and same-side only.",
+    "Register two handlers for one event name with AddEventHandler and predict that both run without relying on their order.",
+    "Fire a local event with TriggerEvent and state that it stays on the same side.",
     "Explain why a command's args arrives as a table and what table.concat(args, ' ') rebuilds.",
     "State the rule: AddEventHandler for same-side events, RegisterNetEvent only for events that cross the network, and why mixing them up is a silent failure or a security hole.",
   ]}
@@ -213,7 +214,7 @@ Same-side events are how you keep one resource's parts loosely joined so you can
   end)
   ```
 
-  Restart `qu_trigger_event`, then run `/shout hello world` in F8. Handler one should echo `hello world`, and handler two should report `11 characters`. The `#` operator on a string returns its length. You just proved the two handlers are fully independent: they receive the same value but do different things with it, which is the entire reason one event can have many listeners.
+  Restart `qu_trigger_event`, then run `/shout hello world` in chat or `shout hello world` in F8. Handler one should echo `hello world`, and handler two should report `11 characters`. The `#` operator on this ASCII string returns its byte length. You just proved the two handlers are independent: they receive the same value but do different things with it.
 </Exercise>
 
 <Refs

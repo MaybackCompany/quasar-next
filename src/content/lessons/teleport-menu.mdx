@@ -8,7 +8,7 @@
     { label: "You will not need", value: "Any prior teleport experience. Every term is defined the first time it is used." },
   ]}
 >
-  By the end of this lesson you will type `/tpmenu`, click a place name, and watch your character arrive there with a smooth fade. The interesting part is not the teleport. It is that the **server** decides whether the move is allowed, so a player cannot edit the menu to send themselves anywhere they like.
+  By the end of this lesson you will type `/tpmenu`, click a place name, and watch your character arrive there with a smooth fade. The server approves destinations for this resource and can enforce permissions or write an audit entry. This is not an anti-teleport system: an exploited client can still call client natives directly.
 </LessonHero>
 
 <Prereq
@@ -62,7 +62,7 @@ dependencies {
 }
     ```
 
-    Two things to know about this manifest. There is no `lua54 'yes'` line: as of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only Lua runtime. And `ox_lib` is an Overextended (community) library, not a built-in Cfx.re resource. You install it yourself and it must be running before this resource, which is what the `dependencies` block enforces.
+    Two things to know about this manifest. There is no `lua54 'yes'` line: as of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only Lua runtime. And `ox_lib` is a Community Ox library, not a built-in Cfx.re resource. You install it yourself and it must be running before this resource, which is what the `dependencies` block enforces.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The menu, the server check, and the fade all exist as runnable code.">
@@ -148,7 +148,7 @@ You ran it and you teleported. Now take the code apart so the next time you buil
 
 ### The ox_lib context menu
 
-ox_lib is a utility library from Overextended, the same community group behind oxmysql and ox_target. It is not shipped by Cfx.re, so you install it yourself and start it before any resource that uses it. The `shared_script '@ox_lib/init.lua'` line in the manifest pulls ox_lib's helper table into your resource. From that point on, `lib` is a global you can call. If ox_lib is not started, `lib` is `nil` and every line that touches it errors. That is the most common failure in this lesson.
+ox_lib is a Community Ox utility library. It is not shipped by Cfx.re, so you install it yourself and start it before any resource that uses it. The `shared_script '@ox_lib/init.lua'` line in the manifest pulls ox_lib's helper table into your resource. From that point on, `lib` is a global you can call. If ox_lib is not started, `lib` is `nil` and every line that touches it errors. That is the most common failure in this lesson.
 
 ```lua
 lib.registerContext({
@@ -168,7 +168,7 @@ Look closely at what `onSelect` does. It does **not** teleport. It calls `Trigge
 
 ### Why the server checks the destination
 
-This is the idea the lesson exists to teach, and it comes straight from trust and authority: never let the client be the final word on anything that matters. A player can edit their own client files. If the client picked the coordinates and teleported itself, a cheater could add a menu option that drops them inside a locked bank vault. So the client only sends an **intent**, the name `legion`, and the server decides whether that is allowed.
+This round-trip controls what the **resource** will approve. It is useful when a destination requires an ACE, job, item, cooldown, or audit entry. It does not prove that the player's whole client is trustworthy: a modified client can call `SetEntityCoords` or locally trigger a client handler without asking this server event. Protect the valuable server-side result, such as entering a heist state or opening a stash, with its own server check.
 
 ```lua
 local allowed = { legion = true, airport = true }
@@ -186,10 +186,10 @@ end)
 
 `allowed` is an **allow-list**: a table of the only destination names the server will accept. `RegisterNetEvent` registers a handler that runs on the server when a client fires `qu_teleport_menu:request`. Inside a server net event, the global `source` holds the server ID of the player who sent it, so the first line copies it into `src` before anything else can overwrite it. The guard `if not allowed[destination] then ... return end` is the gate: if the player sent a name that is not in the allow-list, the server logs a rejection and returns, and nothing happens. Only when the name passes does the server fire `TriggerClientEvent('qu_teleport_menu:approved', src, destination)`, which sends an approval back to that one player by their `src`.
 
-Notice the shape of the trip. Client to server with `TriggerServerEvent`, then server back to one client with `TriggerClientEvent` plus the target `src`. That out-and-back is the round-trip. The client asks, the server judges, the server answers. A cheater editing the client cannot bypass the `allowed` table, because that table lives on the server where they cannot touch it.
+Notice the shape of the trip. Client to server with `TriggerServerEvent`, then server back to one client with `TriggerClientEvent` plus the target `src`. That out-and-back is the round-trip. A normal client cannot make this resource approve a name outside `allowed`. A modified client can still teleport locally, so never use this table as the only protection for money, items, doors, stashes, or mission state.
 
 <Checkpoint question="A player edits their client.lua to add a third menu option that sends 'bank_vault' to the server. Do they teleport into the vault?">
-  No. The client can send any string it likes, including `bank_vault`, but the server's handler checks `allowed['bank_vault']`, which is `nil`. The guard `if not allowed[destination]` is true, so the server logs a rejection and returns without ever firing the approval event. The client never receives `qu_teleport_menu:approved`, so `SetEntityCoords` never runs. The only way to add a real destination is to edit the server's `allowed` table, which the player cannot reach. That is server authority in one table.
+  This resource will not approve `bank_vault`: the server checks `allowed['bank_vault']`, gets `nil`, and returns. That does not stop an exploited client from moving its own ped by another route. Any reward, stash, mission state, or permission at the destination still needs a separate server-side check.
 </Checkpoint>
 
 ### The fade and the teleport
@@ -227,7 +227,7 @@ The client-asks, server-approves, server-answers round-trip is the backbone of a
 - **Admin teleports and noclip.** Same menu shape, but the server's allow-list is "is this player an admin" instead of a list of place names.
 - **Any menu that grants something.** Garages, stashes, faction doors. The menu is just the UI. The decision always belongs on the server.
 
-When the action is purely cosmetic and local, like opening a settings panel, you can skip the server trip. The moment the action changes anything other players can see or anything a cheater would want, route it through the server.
+When the action is purely cosmetic and local, like opening a settings panel, you can skip the server trip. When it changes authoritative game state, route the request through the server and validate again at the protected action. A server-approved client teleport alone is not a security boundary.
 
 ## If something went wrong
 
@@ -274,7 +274,7 @@ When the action is purely cosmetic and local, like opening a settings panel, you
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "ox_lib context menu documentation", href: "https://overextended.dev/ox_lib/Modules/Interface/Client/context" },
+    { label: "Community Ox context menu documentation", href: "https://coxdocs.dev/ox_lib/Modules/Interface/Client/context" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />

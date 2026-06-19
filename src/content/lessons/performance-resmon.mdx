@@ -2,13 +2,13 @@
   crumbs="Track 2 · Pro Path"
   title="Performance: resmon, threads, profiling"
   meta={[
-    { label: "You'll learn", value: "resmon, Citizen.CreateThread vs CreateThreadNow, Wait tuning, GetGameTimer for hot loops" },
+    { label: "You'll learn", value: "resmon, CreateThread, adaptive Wait tuning, GetGameTimer throttling, and when to capture a profiler trace" },
     { label: "Time", value: "~24 minutes" },
     { label: "Prereqs", value: "Lessons 13 (threads) and 14 (server vs client)" },
-    { label: "Outcome", value: "You drop a client script's resmon cost from about 6 ms to under 0.05 ms without breaking what it draws" },
+    { label: "Outcome", value: "You measure an idle and near-marker baseline, then prove the loop sleeps when its work is not visible" },
   ]}
 >
-  Every client frame has a budget. At 60 frames per second the game gets about 16.6 ms to do everything, and your script's threads run inside that window. If one script eats 6 ms because of a runaway `while true do Wait(0)`, the player's frame rate drops and the world stutters. This lesson teaches you to read `resmon`, pick the right thread API, and tune `Wait` values like a sound engineer tunes a mixer.
+  At 60 frames per second one frame is about 16.7 ms, shared by the game and every resource. A `Wait(0)` loop is not automatically bad; its body runs every frame, so unnecessary work inside it is the problem. This lesson teaches you to measure before and after instead of promising made-up benchmark numbers.
 </LessonHero>
 
 <YouTube id="UspWGEbsY20" title="High-performance Lua code" caption="RED: writing high-performance Lua for FiveM." />
@@ -60,7 +60,7 @@ client_script 'client.lua'
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
-    Open `client.lua` and paste this. It draws a marker under you, but only when the marker is `on`, and even then it sleeps when no one is near the spot. This is the difference between a 6 ms script and a 0.05 ms script.
+    Open `client.lua` and paste this. It draws a marker only when enabled and nearby, and otherwise sleeps. Record your own resmon numbers because cost depends on hardware, client build, and the work inside the loop.
 
     ```lua
 local markerOn = false
@@ -135,11 +135,7 @@ You ran it, toggled the marker, and watched a number move in resmon. Now take th
 
 `resmon` is the client-side resource monitor. You opened it with `resmon 1` in the F8 console, and it draws a live table: one row per running resource, sorted by cost. The column you care about is the millisecond cost, the average time that resource's threads spend running per frame.
 
-FiveM colours that number so you can triage at a glance:
-
-- **Green** is healthy. Roughly under 0.5 ms. The resource is awake rarely or doing very little when it is.
-- **Yellow** is a warning, roughly 0.5 ms to a few ms. Worth a look, especially if the resource should be idle.
-- **Red** is a problem, multiple milliseconds and up. A single red resource can eat a meaningful slice of the 16.6 ms frame budget by itself, and the player feels it as stutter.
+Use the colors as hints from the current client build, not universal pass/fail thresholds. Compare the same resource on the same machine at idle and while doing its intended work. If it is unexpectedly expensive, capture a Cfx profiler trace to locate the exact function instead of guessing from one average.
 
 The critical mental model: resmon measures the **client** frame, because `DrawMarker` is a client native that runs on each player's machine. This is not the server tick. The server has its own budget and its own profiler. When you read resmon you are watching what your code costs the player's game, frame by frame, which is exactly where a runaway `Wait(0)` loop does its damage.
 
@@ -157,7 +153,7 @@ sleep = 0
 
 A FiveM thread is a loop that yields control back to the engine every time it hits `Wait`. The number you pass is how long the engine is allowed to leave the thread asleep before waking it again.
 
-- `Wait(0)` means "wake me next frame." At 60 fps that is about 60 wakeups per second. Every wakeup runs the body of your loop, so `while true do Wait(0)` executes its body roughly 60 times a second forever. If the body is `DrawMarker` plus a coords lookup, that work lands on every single frame, and that is where your 6 ms comes from.
+- `Wait(0)` means "wake me next frame." At 60 fps that is about 60 wakeups per second. Every wakeup runs the body, so reserve it for work such as `DrawMarker` that genuinely must happen every rendered frame.
 - `Wait(1000)` means "leave me asleep for a second." The body runs about once per second. A thread that is asleep costs essentially nothing, which is why an idle resource shows 0.00 ms in resmon.
 
 So the cost of a thread is not about how much code it contains. It is about how often that code is allowed to run. `Wait(0)` is not wrong. Drawing a marker smoothly genuinely needs every frame. The mistake is running `Wait(0)` when nothing on screen needs updating that often.
@@ -184,7 +180,7 @@ Wait(sleep)
 
 Read it as a decision the loop makes on every wakeup. It starts each pass assuming the cheapest answer: `sleep = 1000`. Only if the marker is on **and** the player is within 20 metres does it switch to `sleep = 0` and actually draw. The `#(coords - markerCoords)` expression is a vector length: it measures the straight-line distance between two points, so `dist < 20.0` is "within 20 metres."
 
-The payoff is the cost curve you watched in resmon. Far away, the loop wakes once a second, does one cheap distance check, finds you are out of range, and goes back to sleep. Near zero cost. Walk inside 20 metres and it flips to `Wait(0)`, drawing the marker every frame at full smoothness. Walk away and it drops back to the one-second idle. The marker looks identical to the naive version that drew every frame from anywhere on the map, but it only pays the per-frame price in the few seconds you can actually see it. That is the 6 ms to 0.05 ms drop the outcome promised.
+The payoff is the cost curve you watch in resmon. Far away, the loop wakes once a second and goes back to sleep. Inside 20 metres it flips to `Wait(0)` and draws every frame. The amount saved is whatever your own before/after measurement shows.
 
 <Checkpoint question="The marker is on, but you are standing 200 metres away. How many times per second does the loop run DrawMarker, and what does resmon show?">
   Zero times per second. Each wakeup the loop computes `dist`, finds it is far larger than 20.0, never enters the inner `if`, and leaves `sleep` at 1000. So the thread wakes about once per second, runs one subtraction and one comparison, and sleeps again. `DrawMarker` is never reached. resmon shows the resource resting in green near 0.00 ms, even though the marker is logically "on." The cost only appears once you are inside the 20 metre radius and the loop flips to `Wait(0)`.
@@ -192,7 +188,7 @@ The payoff is the cost curve you watched in resmon. Far away, the loop wakes onc
 
 ### CreateThread vs CreateThreadNow
 
-You started the loop with `CreateThread`. There is a second native, `CreateThreadNow`, and the difference matters once you have startup code that must run before anything else.
+You started the loop with `CreateThread`. The Cfx Lua runtime also has an immediate scheduler helper, `Citizen.CreateThreadNow`; it appears in runtime and framework internals but is not the default beginner API.
 
 - `CreateThread(fn)` schedules the function to begin on the **next** game tick. The line returns immediately and the rest of your file keeps loading; the thread starts a frame later. This is the right default for a background loop like ours, because nothing depends on it running this instant.
 - `CreateThreadNow(fn)` runs the function **immediately and synchronously**, right where you call it. It does not return until the function either finishes or hits its first `Wait`. You reach for this when later code in the same file depends on setup the thread performs, and you cannot afford to lose a frame waiting for the scheduler.
@@ -276,7 +272,8 @@ The outer loop still wakes every frame, so anything frame-critical stays smooth.
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
+    { label: "Cfx.re profiler guide", href: "https://docs.fivem.net/docs/scripting-manual/debugging/using-profiler/" },
+    { label: "Cfx.re Lua scheduler source", href: "https://github.com/citizenfx/fivem/blob/master/data/shared/citizen/scripting/lua/scheduler.lua" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

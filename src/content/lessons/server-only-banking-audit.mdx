@@ -4,11 +4,11 @@
   meta={[
     { label: "You'll ship", value: "qu_audit_bank: two MariaDB tables and one server file where the real player triggers a deposit or withdraw, and every transaction writes an audit row." },
     { label: "Time", value: "~50 minutes" },
-    { label: "You'll learn", value: "Client sends an intent, never a balance -> server reads the real balance -> one safe UPDATE -> an INSERT into the audit log on every action -> read the trail back" },
+    { label: "You'll learn", value: "Resolve source to the active character -> validate an intent -> update a practice balance -> append an audit row -> understand the transaction work still required" },
     { label: "Prereqs", value: "SQL from zero (oxmysql, parameterized queries) and the mini bank capstone (server-held balance, reject-if-larger) complete." },
   ]}
 >
-  The mini bank proved the server owns the balance. This lesson adds the part a real economy cannot run without: a record. Every deposit and withdraw now runs through one server-side handler, triggered by a server-registered command that hands you the real connected player's source. The server reads that player's true balance, applies the change in a single safe UPDATE, and writes an audit row that captures who, what, how much, the balance before, and the balance after. The client sends an intent. It never sends a balance, and now it can never move money without leaving a trace.
+  The mini bank proved the server owns the practice balance. This lesson adds an audit record and resolves the connected player to the framework's active character id. It is still a teaching ledger, not a drop-in replacement for framework cash: a deposit is restricted to administrators, and production code must make the balance write and audit insert one atomic transaction.
 </LessonHero>
 
 <Prereq
@@ -22,7 +22,11 @@
 />
 
 <Callout variant="fivem" title="Build the proof, then understand it">
-  This lesson builds a server-authoritative bank with a full audit trail as a working FiveM resource named `qu_audit_bank`. It is server-only: there is no client file and no NUI, so there is no F8 output. Every line lands in the txAdmin Live Console. Follow the folder names, file names, SQL, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
+  This lesson builds a server-authoritative practice ledger with an audit trail as a working FiveM resource named `qu_audit_bank`. It is server-only: there is no client file and no NUI, so there is no F8 output. Every line lands in the txAdmin Live Console. Follow the folder names, file names, SQL, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line.
+</Callout>
+
+<Callout variant="danger" title="The two writes are not yet atomic">
+  The example writes the balance and then the audit row as two visible steps. A process or database failure between them can leave a changed balance with no audit row, and two simultaneous requests can race after reading the same balance. Use this to learn the data flow. Before production, put the money change and audit record behind a transaction or a serialized account service, and use an atomic balance condition for withdrawals.
 </Callout>
 
 ## Build it
@@ -80,7 +84,7 @@ CREATE TABLE IF NOT EXISTS qu_audit_log (
   id INT AUTO_INCREMENT PRIMARY KEY,
   citizenid VARCHAR(64) NOT NULL,
   source INT NOT NULL,
-  action VARCHAR(16) NOT NULL,
+  action VARCHAR(32) NOT NULL,
   amount INT NOT NULL,
   balance_before INT NOT NULL,
   balance_after INT NOT NULL,
@@ -95,11 +99,21 @@ CREATE TABLE IF NOT EXISTS qu_audit_log (
     Open `server.lua` and paste this:
 
     ```lua
--- In a real server the citizenid comes from the player's framework identity
--- (QBCore, Qbox, ESX). For the lesson we derive a stable id from the source so
--- you can test with a real connected player and still get a consistent account.
+-- Resolve the active character id. A server source is only a temporary slot;
+-- never use it as the durable account key.
 local function citizenIdFor(source)
-    return 'player_' .. source
+    if GetResourceState('qbx_core') == 'started' then
+        local player = exports.qbx_core:GetPlayer(source)
+        return player and player.PlayerData.citizenid
+    elseif GetResourceState('qb-core') == 'started' then
+        local core = exports['qb-core']:GetCoreObject()
+        local player = core.Functions.GetPlayer(source)
+        return player and player.PlayerData.citizenid
+    elseif GetResourceState('es_extended') == 'started' then
+        local esx = exports.es_extended:getSharedObject()
+        local player = esx.GetPlayerFromId(source)
+        return player and player.identifier
+    end
 end
 
 -- Read the balance, creating the account at 0 on first touch.
@@ -124,6 +138,10 @@ end
 -- real client -> server net event, which this is not).
 AddEventHandler('qu_audit_bank:request', function(src, action, amount)
     local citizenid = citizenIdFor(src)
+    if not citizenid then
+        print('[qu_audit_bank] REJECTED: no loaded framework character for source ' .. src)
+        return
+    end
 
     -- Validate the intent. The client may only ask to deposit or withdraw a
     -- positive whole number. It never sends a balance.
@@ -131,6 +149,14 @@ AddEventHandler('qu_audit_bank:request', function(src, action, amount)
     if action ~= 'deposit' and action ~= 'withdraw' then return end
     if not amount or amount <= 0 or amount ~= math.floor(amount) then
         print('[qu_audit_bank] REJECTED bad amount from source ' .. src)
+        return
+    end
+
+    -- This demo has no cash account to debit, so only an administrator may
+    -- create ledger value with /deposit. A real ATM would remove framework
+    -- cash here and continue only if that server-side removal succeeded.
+    if action == 'deposit' and not IsPlayerAceAllowed(src, 'qu_audit_bank.deposit') then
+        print('[qu_audit_bank] REJECTED unauthorized deposit from source ' .. src)
         return
     end
 
@@ -193,10 +219,11 @@ end, true)
   </Step>
 
   <Step num={6} title="Start, join, and test it" outcome="The expected proof appears in the txAdmin Live Console.">
-    Open `server.cfg` and add this line:
+    Open `server.cfg` and add these lines. The ACE lets txAdmin administrators use the demo deposit; ordinary players cannot mint ledger value:
 
     ```text
     ensure qu_audit_bank
+    add_ace group.admin qu_audit_bank.deposit allow
     ```
 
     Save, then run:
@@ -205,7 +232,7 @@ end, true)
     restart qu_audit_bank
     ```
 
-    Now join your own server so you have a real player source. The `deposit` and `withdraw` commands are not restricted, so run them from your in-game chat box (press T). The `auditlog` command is restricted, so run it from the txAdmin Live Console:
+    Join with a loaded framework character and a txAdmin administrator account. Run `deposit` and `withdraw` from your in-game chat box (press T). The handler performs the explicit deposit ACE check; `auditlog` is a restricted command and runs from the txAdmin Live Console:
 
     ```text
     /deposit 100
@@ -220,14 +247,14 @@ end, true)
     ```
 
     <ExpectedOutput>
-      [qu_audit_bank] deposit 100 for player_1: 0 -> 100
+      [qu_audit_bank] deposit 100 for ABC12345: 0 -> 100
 [qu_audit_bank] REJECTED withdraw of 250, balance is only 100
-[qu_audit_bank] withdraw 40 for player_1: 100 -> 60
+[qu_audit_bank] withdraw 40 for ABC12345: 100 -> 60
 [qu_audit_bank] #1 src=1 deposit 100 (0 -> 100)
 [qu_audit_bank] #2 src=1 withdraw 40 (100 -> 60)
     </ExpectedOutput>
 
-    Your source number may differ from `1`; it is your real server slot. Notice the rejected withdraw of 250 never reaches the audit log, because no money moved. Only the two transactions that actually changed the balance left a row.
+    Your source number and character id will differ from the sample. QBCore/Qbox print the active `citizenid`; ESX prints the active character `identifier`. The rejected withdraw never reaches the transaction log because no balance moved.
   </Step>
 </StepGroup>
 
@@ -246,9 +273,9 @@ AddEventHandler('qu_audit_bank:request', function(src, action, amount)
     local citizenid = citizenIdFor(src)
 ```
 
-The mini bank ran from the console, where there is no real player. This lesson runs from a connected player, but it stays entirely on the server: the `deposit` command is registered inside a `server_script`, so its handler runs on the server, and there `RegisterCommand` hands you the player's server slot as the first callback argument, `source`. That is the one piece of identity the player cannot fake, because the server assigns the slot, not the client. There is no client file and no round-trip across the wire for the identity; the trusted `source` comes straight from the command callback.
+The mini bank ran from the console, where there is no real player. Here `RegisterCommand` hands the server handler the connection's current server slot as `source`. The client cannot choose a different sender slot for that command, but `source` is not a durable identity: it is reused after disconnects. `citizenIdFor` therefore resolves the slot through the active framework player and returns QBCore/Qbox `citizenid` or the ESX character `identifier`.
 
-Because everything happens in one runtime, the command passes that trusted `source` explicitly into the handler with `TriggerEvent`, which fires a same-runtime event. The handler receives it as its first parameter, `src`, and uses that local everywhere after. This is the key reason for the explicit pass: the magic `source` global is only populated for a real client -> server net event, which this is not, so a plain same-runtime handler must be told who the player is. From `src` you derive the `citizenid`, and that is the account the rest of the handler reads and writes. The client typed `action` and `amount` into chat. It did not, and could not, supply the identity.
+Because everything happens in one runtime, the command passes `source` explicitly into the handler with `TriggerEvent`. The same-runtime handler receives it as `src`, resolves the loaded character, and rejects the request if no framework player exists. The player typed the amount; they did not supply the durable character key.
 
 ### The client sends an intent, never a balance
 
@@ -289,7 +316,7 @@ MySQL.update.await(
 
 The server reads the real `balanceBefore` from its own table, decides the `balanceAfter` itself, then writes it in a single UPDATE. The reject-if-larger check sits between the read and the write, comparing the requested `amount` against the balance the server just read, never against anything the client sent. A withdraw bigger than the balance prints a rejection and returns before the UPDATE, so the balance never goes negative.
 
-Notice the deposit and the withdraw both end at the same single UPDATE. There is exactly one place in this handler where the stored balance changes, and it writes the value the server computed. Keeping the write to one statement is what makes the audit row trustworthy: the number you log as `balance_after` is the number you actually stored, computed in the same handler, not a second guess.
+Notice the deposit and withdraw both end at the same UPDATE and reuse the same computed `balanceAfter`. That prevents two formulas inside this handler. It does not make the UPDATE and following audit INSERT atomic; the production warning above still applies.
 
 ### The audit row is written on every action, on the same trip
 
@@ -361,7 +388,7 @@ A server-owned balance plus an append-only audit log is the shape every economy 
 
 <Refs
   items={[
-    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
+    { label: "Community Ox oxmysql documentation", href: "https://coxdocs.dev/oxmysql" },
     { label: "FiveM RegisterCommand and the server-side source argument", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterCommand/" },
     { label: "FiveM triggering events (TriggerEvent is the same-runtime call; TriggerServerEvent is client-only)", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
     { label: "MariaDB CURRENT_TIMESTAMP and TIMESTAMP", href: "https://mariadb.com/kb/en/timestamp/" }

@@ -135,21 +135,30 @@ This lesson builds the item in ox_inventory first because it is free and open, s
     Now hand the item to a player. Put this command in any server-side file (a `server_script`). It checks capacity first, then adds, then reports failure if it failed:
 
     ```lua
-RegisterCommand('givewater', function(source)
-    local src = source
+RegisterCommand('givewater', function(source, args)
+    local src = source > 0 and source or tonumber(args[1])
+    if not src or not GetPlayerName(src) then
+        print('Usage from console: givewater <playerId>')
+        return
+    end
+
     if exports.ox_inventory:CanCarryItem(src, 'water', 1) then
         local success, response = exports.ox_inventory:AddItem(src, 'water', 1)
-        if not success then
+        if success then
+            print(('[qu_items] added water to player %s'):format(src))
+        else
             print('AddItem failed: ' .. tostring(response)) -- invalid_item | inventory_full | invalid_inventory
         end
+    else
+        print(('[qu_items] player %s cannot carry water'):format(src))
     end
-end, false)
+end, true)
     ```
 
-    Join the server so you have a ped and an inventory, then run `givewater` from the console. A bottle of water appears in your inventory. If it does not, the console prints exactly why.
+    Join the server so you have an inventory, find your server id, then run `givewater 1` from the server or txAdmin console, replacing `1` with your id. The command is restricted; console execution is allowed, while in-game execution requires the `command.givewater` ACE permission.
 
     <ExpectedOutput>
-      [    script:ox_inventory] item 'water' added (count 1) to inventory 1
+      [qu_items] added water to player 1
     </ExpectedOutput>
 
     If the item is not registered yet, you will instead see the failure path fire:

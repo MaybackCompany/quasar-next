@@ -38,10 +38,10 @@
     To make daily real instead of aspirational, run that command on a schedule. On Linux, a cron line that dumps every night at 4am:
 
     ```bash
-    0 4 * * * /usr/bin/mariadb-dump -u root -pYOURPASS fivem > /backups/fivem-$(date +\%F).sql
+    0 4 * * * /usr/bin/mariadb-dump --defaults-extra-file=/root/.mariadb-backup.cnf --single-transaction --routines fivem > /backups/fivem-$(date +\%F).sql
     ```
 
-    On Windows, create a Task Scheduler task that runs the same `mariadb-dump` line in a `.bat` file. If you run txAdmin, its scheduled-tasks feature can fire a backup script on the same cadence as your restarts.
+    Put the backup user's credentials in `/root/.mariadb-backup.cnf`, restrict that file to the service account (`chmod 600`), and never place a password directly in a cron line or command history. On Windows, use Task Scheduler with a protected option file. txAdmin documents scheduled **restarts and events**, not a general operating-system task runner, so do not rely on it to execute a backup script.
   </Step>
 
   <Step num={2} title="Store backups off the server box" outcome="A server failure does not take the backups with it.">
@@ -59,7 +59,7 @@
     mariadb -u root -p fivem_migrate_test -e "ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;"
     ```
 
-    Only once that runs clean on the copy do you touch production. Stop writes first: a live `ALTER` while oxmysql is still writing can leave half-applied rows. Stop the resources that write to this database (or `stop`/`ensure` the framework), run the change, then bring them back:
+    Only once that runs clean on the copy do you touch production. Put the server in maintenance and stop the resources that write to the affected tables so application code cannot race the migration. Then run the change and bring the resources back only after validation:
 
     ```sql
     ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;

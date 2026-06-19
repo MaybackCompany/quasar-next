@@ -41,9 +41,9 @@
     sv_hostname "My ESX Server"
     sv_maxclients 48
 
-    # Pin the game build. Use a current build from the live artifacts list,
-    # never a stale number copied from an old guide.
-    sv_enforceGameBuild <current-build>
+    # GTA content build, not the FXServer artifact number. Keep the recipe's
+    # value unless an asset requires another supported build.
+    sv_enforceGameBuild <supported-game-build>
 
     set mysql_connection_string "mysql://root:PASSWORD@127.0.0.1/fivem?charset=utf8mb4"
     set mysql_slow_query_warning 150
@@ -67,7 +67,7 @@
 
     - `sv_licenseKey` is your **Cfx.re Portal** key. Get it free at `portal.cfx.re` (this is the current portal; older guides call it Keymaster). It is required even for a local test server.
     - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn you about any query slower than 150 ms.
-    - `sv_enforceGameBuild` pins which GTA build players load. Pull a **current** build number from the live FiveM artifacts list; never paste a stale build from a 2024 tutorial.
+    - `sv_enforceGameBuild` pins which GTA content build players load. The FXServer artifacts page lists **server software** builds, not GTA content builds. Keep the official recipe's value unless your assets require another build, then use the supported list in the Cfx.re server-command reference.
 
     <Callout variant="fivem" title="Two of these lines are secrets">
       `sv_licenseKey` and `mysql_connection_string` contain secrets. Never paste their real values into Discord, public GitHub, screenshots, videos, or support tickets. Blur them first. If one leaks, revoke the key in the Cfx.re Portal and rotate the database password immediately.
@@ -84,7 +84,7 @@
     # 2. Shared helper library second
     ensure ox_lib
 
-    # 3. Framework core third (ESX or Qbox for a new 2026 server)
+    # 3. Framework core third
     ensure es_extended
 
     # 4. Core gameplay systems after the framework
@@ -111,13 +111,13 @@
 
     The fix is never "restart it again" or "ensure it twice." The fix is to move the dependency line **above** the line that needs it, save, and reload. Order is the whole mechanism.
 
-    Here is the full chain in the order it must appear: database bridge, then shared library, then framework, then a script that depends on all three. One line each, with the reason it sits where it does:
+    Here is an **example** chain for a script whose own README and manifest name all three dependencies. Do not assume every framework needs every ox resource; install only what the official recipe and the resource manifest require.
 
     ```cfg
     ensure oxmysql        # database bridge, registers MySQL exports first
     ensure ox_lib         # shared library, defines the global lib used by the rest
-    ensure es_extended    # framework, needs oxmysql + ox_lib already loaded above it
-    ensure qs-smartphone-pro  # your script, needs the framework + ox_lib above it
+    ensure es_extended    # framework; its recipe requires oxmysql
+    ensure qs-smartphone-pro  # example only: place it after every dependency its docs name
     ```
 
     <Callout variant="fivem" title="Organize it into sections">
@@ -194,11 +194,13 @@
     ensure qu_dep_consumer
     ```
 
-    Open txAdmin and go to the **Live Console**. Restart the provider, then the consumer:
+    Open txAdmin and go to the **Live Console**. Stop both resources first, then start the provider and consumer in that order:
 
     ```text
-    restart qu_dep_provider
-    restart qu_dep_consumer
+    stop qu_dep_consumer
+    stop qu_dep_provider
+    start qu_dep_provider
+    start qu_dep_consumer
     ```
 
     The consumer found the provider because it loaded second:
@@ -208,7 +210,7 @@
     [qu_dep_consumer] provider found: pong
     </ExpectedOutput>
 
-    Now break it. Swap the two lines so the consumer is ensured **first**, save, and restart both again:
+    Now break it. Swap the two lines so the consumer is ensured **first**, save, then stop both and start them in the wrong order. Merely restarting the consumer while the provider is still running would not test startup order.
 
     ```text
     ensure qu_dep_consumer
@@ -216,8 +218,10 @@
     ```
 
     ```text
-    restart qu_dep_consumer
-    restart qu_dep_provider
+    stop qu_dep_consumer
+    stop qu_dep_provider
+    start qu_dep_consumer
+    start qu_dep_provider
     ```
 
     The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early:
@@ -277,7 +281,7 @@
 <Recap
   items={[
     "Read server.cfg top to bottom and explain what every important line does, including the two that hold secrets.",
-    "Order an ensure block as a dependency map: oxmysql, then ox_lib, then framework, then systems, then your scripts.",
+    "Order an ensure block from each resource's declared dependencies, putting every named dependency above its dependent.",
     "Build a throwaway provider and consumer to prove ensure order without risking a live server.",
     "Open any script's fxmanifest.lua, read its dependencies and shared_script lines, and place it correctly in server.cfg by inspection alone."
   ]}

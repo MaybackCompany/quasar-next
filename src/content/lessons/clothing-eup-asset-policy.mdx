@@ -2,7 +2,7 @@
   crumbs="Module A3 · Operate & secure"
   title="Clothing, EUP, and asset policy"
   meta={[
-    { label: "You'll build", value: "A real streamed asset resource that registers on start, prints a confirmation line, and shows a measurable number in resmon." },
+    { label: "You'll build", value: "A correctly shaped asset resource, then validate a real licensed pack with the client streaming tools." },
     { label: "Time", value: "~20 minutes." },
     { label: "You need", value: "A framework server you can restart, and the streaming display turned on (resmon)." },
     { label: "You'll learn", value: "How the stream/ folder auto-registers assets -> how EUP differs from normal clothing -> how component IDs map to menu slots -> how to measure streaming memory instead of guessing -> the IP and policy lines you do not cross." },
@@ -24,7 +24,7 @@
 </Callout>
 
 <Callout variant="fivem" title="Build the proof, then understand it">
-  This lesson builds one streamed asset resource named `qu_stream_proof`. It does not need a real clothing pack to teach the mechanism: the same `stream/` folder and `data_file` line that register a prop pack register your proof. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart so you understand what every clothing and EUP pack is actually doing under the hood.
+  This lesson builds the structure of an asset resource named `qu_stream_proof`. An empty or renamed placeholder is **not** a valid GTA asset, so it cannot prove streaming. The structural check proves only that the resource starts; the final exercise uses a real asset you are licensed to run and validates it in the client.
 </Callout>
 
 ## Build it
@@ -38,10 +38,9 @@ resources/qu_stream_proof/
   fxmanifest.lua
   server.lua
   stream/
-    qu_proof.ytyp
     ```
 
-    For this proof you do not need a real `.ytyp`. Any placeholder file with that name lets the manifest line resolve and the resource start. When you swap in a real clothing or prop pack later, the real `.ydd`, `.ytd`, and `.ytyp` files go in this same `stream/` folder.
+    Leave `stream/` empty for the structural check. When you validate a real pack later, its valid `.ydd`, `.ytd`, `.ymt`, `.ytyp`, or other documented files go here. Renaming an empty text file to `.ytyp` does not create a valid archetype and can produce a misleading or broken test.
   </Step>
 
   <Step num={2} title="Write fxmanifest.lua" outcome="FiveM knows the resource and registers the streamed type.">
@@ -52,11 +51,9 @@ fx_version 'cerulean'
 game 'gta5'
 
 server_script 'server.lua'
-
-data_file 'DLC_ITYP_REQUEST' 'stream/qu_proof.ytyp'
     ```
 
-    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime, so you leave it out. The `data_file` line is the part that matters for streaming. It tells the game to load a prop type definition (a `.ytyp`) from your `stream/` folder. Without it, prop packs register their meshes but the game never knows the prop type exists.
+    No `lua54 'yes'` line is needed. When a real prop pack includes a `.ytyp`, copy the pack author's manifest entry, commonly `data_file 'DLC_ITYP_REQUEST' 'stream/name.ytyp'`. Do not add a `data_file` entry for a file that does not exist or invent one for a clothing pack that does not ship it.
   </Step>
 
   <Step num={3} title="Write the proof line" outcome="The resource reports the moment it registers its stream.">
@@ -66,11 +63,11 @@ data_file 'DLC_ITYP_REQUEST' 'stream/qu_proof.ytyp'
 AddEventHandler('onResourceStart', function(resourceName)
     if resourceName ~= GetCurrentResourceName() then return end
 
-    print('[qu_stream_proof] streaming registered, stream/ folder is live')
+    print('[qu_stream_proof] resource started; validate real assets in the client')
 end)
     ```
 
-    The print is what proves the resource loaded and reached the point where its stream is live. The `onResourceStart` event fires once, on the server, the moment this resource finishes starting. We guard it with the `resourceName` check so we only react to our own start, not every other resource on the server.
+    This print proves only that the server resource loaded. Server-side `onResourceStart` cannot prove that a client downloaded or rendered an asset. We guard it with the `resourceName` check so it reacts only to this resource.
   </Step>
 
   <Step num={4} title="Start it" outcome="The proof line appears in the server console.">
@@ -87,7 +84,7 @@ end)
     ```
 
     <ExpectedOutput>
-      [qu_stream_proof] streaming registered, stream/ folder is live
+      [qu_stream_proof] resource started; validate real assets in the client
     </ExpectedOutput>
   </Step>
 
@@ -98,13 +95,13 @@ end)
     strmem 1
     ```
 
-    That turns on the streaming memory overlay. Each streamed resource shows its current memory use in MB. Your `qu_stream_proof` will sit near zero because the placeholder is tiny. Note the number. When you swap in a real clothing pack, this same overlay is how you tell a 40 MB pack from a 400 MB one before your players have to download it.
+    Use the streaming diagnostics only after adding a **valid, licensed asset**. An empty folder has nothing meaningful to measure. Depending on the current client channel, streaming diagnostics such as `strdbg` may require developer mode; use the official client-console reference linked below and confirm the asset visually in game as well as in diagnostics.
   </Step>
 </StepGroup>
 
 ## How it works
 
-You restarted the resource and the line appeared. The resource never opened a menu, never spawned a ped, and yet the moment it started, its `stream/` folder was live and downloadable by every connecting client. That is the entire mechanism behind every clothing and EUP pack you will ever install. Take it apart so the next time you add a pack you are reasoning about it, not following someone's README on faith.
+You restarted the resource and proved its manifest and server script load. You have **not** proved asset streaming yet because the folder is empty. A real validation needs a valid licensed asset, a clean client download, and an in-game visual or streaming diagnostic. Keep that boundary clear: a server start line is not a client-render proof.
 
 ### The stream/ folder is the magic, not a config
 
@@ -131,9 +128,7 @@ Pure clothing packs (drawables and textures only, no new prop types) often do no
 
 ### How EUP differs from a normal clothing swap
 
-This is the distinction the audit flagged, and it is the one most people get wrong. A normal clothing addon adds civilian drawable variations: a new jacket model, a new pants texture. EUP (Emergency Uniform Pack) is not just more drawables. EUP works by patching the game's uniform component and prop variation tables so that emergency-service ped models gain extra outfit slots that vanilla GTA does not expose.
-
-Practically, that means EUP ships two things a plain clothing pack does not: an `eup-stream` resource holding the uniform `.ydd`/`.ytd` files, and a small meta patch that registers those variations against the affected ped models. You install the stream resource the same way you built `qu_stream_proof`, then point your clothing menu at the new component slots. If you drop EUP drawables into a `stream/` folder but skip the meta patch, the files download but no slot ever shows them. The download cost without the payoff. That failure mode is invisible until a player opens the menu and the uniforms are not there.
+"EUP" is commonly used for emergency-service uniform packs, but it is not one universal resource layout. A pack may be a replacement or an add-on clothing collection and may include drawable/texture files plus metadata such as `.ymt` files. Install the exact manifest and metadata shipped by the licensed pack; do not assume every pack must be renamed `eup-stream` or requires a `.ytyp`. First prove the resource starts, then use the game's drawable/texture counts or the appearance resource's documented refresh path to prove the new variations exist.
 
 ### How a clothing menu maps slots to your drawables
 
@@ -155,7 +150,7 @@ Your players never type file names. They open a menu (illenium-appearance, qb-cl
 Within a slot, a **drawable** is which model variation (the jacket shape), and a **texture** is which skin on that drawable (the color or pattern). So a menu selection is three numbers: component ID, drawable index, texture index. When you add a clothing pack, you are appending new drawable indexes onto one of these slots. The menu's config is where you tell it the new indexes exist, which is the concrete version of the old lesson's hand-wavy "wire it to your menu." You are mapping slot 11, drawable 42, texture 0 to a label your players can click.
 
 <Checkpoint question="A new EUP pack downloads fine (you see it in resmon) but the uniforms never appear in your clothing menu. The files are clearly streaming. What is the most likely cause?">
-  The drawables are streaming, but the variations were never registered against the ped models, or the menu was never told the new slot indexes exist. EUP is not a plain drawable swap: it needs its meta patch to add the uniform component/prop variations to the affected ped models, and your menu (illenium-appearance, qb-clothing) needs its config updated so those new component and drawable indexes show up as selectable options. Streaming proves the bytes arrived. It does not prove the game knows what slot they belong to. Check the meta patch loaded and the menu config lists the new indexes.
+  Streaming bytes is only one stage. Confirm the pack's shipped metadata loaded, the pack targets the ped model you are testing, and the appearance resource supports or refreshes add-on collections. Follow the pack and menu's official install instructions rather than assuming every menu needs a hand-written index list.
 </Checkpoint>
 
 ### Measuring instead of guessing
@@ -172,7 +167,7 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
   items={[
     { symptom: "Resource starts but the proof line never prints", fix: "The onResourceStart handler is checking the wrong name, or server.lua is not listed as a server_script in the manifest. Confirm the guard uses GetCurrentResourceName() and that the manifest has server_script 'server.lua'." },
     { symptom: "Props from the pack are invisible or fall through the map", fix: "The .ytyp type was never requested. Add data_file 'DLC_ITYP_REQUEST' 'stream/yourfile.ytyp' to the manifest, one line per .ytyp the pack ships." },
-    { symptom: "Pack downloads (visible in resmon) but no uniforms in the menu", fix: "Streaming works but the slots are not wired. For EUP, confirm the meta patch loaded so the variations register on the ped models, then add the new component and drawable indexes to your clothing menu config." },
+    { symptom: "Pack downloads but no uniforms appear in the menu", fix: "Confirm the pack's metadata loaded, it targets the ped model you are testing, and your appearance resource supports or refreshes add-on collections. Follow both projects' install docs." },
     { symptom: "First join takes forever after adding a pack", fix: "The pack is too big or you stacked several. Read each resource's MB in the strmem overlay, downscale oversized .ytd textures, and cut variants you will never use." },
     { symptom: "Memory warning or crash under player load", fix: "Streamed asset memory counts against your streaming budget. Trim pack size and texture resolution until the strmem total sits comfortably under the limit." },
     { symptom: "Got a takedown or marketplace warning", fix: "You streamed unlicensed or ripped assets. Remove them and replace with licensed or free-for-FiveM packs, and document the license for each one." },
@@ -183,9 +178,9 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
 
 <Recap
   items={[
-    "Build a streamed resource and prove it registered with an onResourceStart print.",
+    "Build the structure of an asset resource and explain why onResourceStart proves only server startup, not client rendering.",
     "Explain why the stream/ folder auto-registers assets while a .ytyp needs data_file 'DLC_ITYP_REQUEST'.",
-    "Say how EUP differs from a normal clothing swap: variation meta patch plus eup-stream, not just drawables.",
+    "Treat EUP as a pack category rather than one universal folder layout, and preserve each pack's shipped manifest and metadata.",
     "Map a menu selection to a component ID, drawable index, and texture index.",
     "Read streaming memory in resmon with strmem so pack size is a measured number, not a guess.",
     "Use only licensed or free-for-FiveM assets and document each one.",
@@ -195,7 +190,7 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
 ## Try it yourself
 
 <Exercise>
-  Turn the proof into a real size test. Find any free-for-FiveM clothing or prop pack you are licensed to use, and drop its `stream/` contents into your `qu_stream_proof/stream/` folder alongside (or instead of) the placeholder. Update the manifest so every `.ytyp` the pack ships has its own `data_file 'DLC_ITYP_REQUEST'` line.
+  Turn the structure into a real size test. Find a clothing or prop pack you are licensed to use, preserve its documented folder layout, and copy its valid `stream/` contents into `qu_stream_proof/stream/`. If it ships `.ytyp` files, preserve the author's corresponding manifest entries.
 
   ```lua
   data_file 'DLC_ITYP_REQUEST' 'stream/pack_props_a.ytyp'
@@ -207,8 +202,10 @@ The `stream/` folder plus an optional `data_file` line is not just for clothing.
 
 <Refs
   items={[
-    { label: "Cfx.re docs · Asset streaming", href: "https://docs.fivem.net/docs/scripting-manual/assetstreaming/" },
+    { label: "Cfx.re assets guide · resource stream folder", href: "https://docs.fivem.net/docs/assets-manual/beginner-series/part-4/" },
+    { label: "Cfx.re data-file types", href: "https://docs.fivem.net/docs/game-references/data-files/" },
     { label: "Cfx.re docs · Resource manifest (data_file)", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "Cfx.re Platform Server · Terms of Service", href: "https://docs.fivem.net/docs/server-manual/server-commands/" }
+    { label: "Cfx.re client console commands · streaming diagnostics", href: "https://docs.fivem.net/docs/client-manual/console-commands/" },
+    { label: "Cfx.re Platform License Agreement", href: "https://fivem.net/terms" }
   ]}
 />

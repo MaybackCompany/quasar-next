@@ -1,6 +1,6 @@
 <LessonHero
   crumbs="Module 05 · Lesson 16"
-  title="ox_lib: the toolbox every modern FiveM script uses"
+  title="ox_lib: a common UI toolbox"
   meta={[
     { label: "You'll learn", value: "lib.notify -> lib.registerContext / lib.showContext -> lib.inputDialog -> lib.progressCircle -> where the ox_lib docs live" },
     { label: "Time", value: "~25 minutes" },
@@ -77,6 +77,14 @@ dependencies {
     Open `client.lua` and paste this:
 
     ```lua
+lib.registerContext({
+    id = 'qu_ox_lib_notifications_ui_menu',
+    title = 'qu_ox_lib_notifications_ui',
+    options = {
+        { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' }
+    }
+})
+
 RegisterCommand('oxdemo', function()
     lib.notify({
         title = 'qu_ox_lib_notifications_ui',
@@ -84,18 +92,10 @@ RegisterCommand('oxdemo', function()
         type = 'success'
     })
 
-    lib.registerContext({
-        id = 'qu_ox_lib_notifications_ui_menu',
-        title = 'qu_ox_lib_notifications_ui',
-        options = {
-            { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' }
-        }
-    })
-
     lib.showContext('qu_ox_lib_notifications_ui_menu')
 end, false)
 
-RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
+AddEventHandler('qu_ox_lib_notifications_ui:ask', function()
     local input = lib.inputDialog('Save a name', { 'Name' })
     if not input then return end
 
@@ -176,7 +176,7 @@ lib.showContext('qu_ox_lib_notifications_ui_menu')
 
 A context menu is built in two moves. `lib.registerContext` defines the menu and stores it under an `id`. `lib.showContext` then opens the menu by that same `id`. Splitting definition from display means you can register a menu once and reopen it as many times as you like.
 
-Each entry in `options` is one row in the menu. Our single row has a `title` (what the player reads) and an `event`. When the player clicks that row, ox_lib fires the named event with `TriggerEvent`, which is why you have a matching `RegisterNetEvent('qu_ox_lib_notifications_ui:ask', ...)` further down. The event fires on the same client that clicked: ox_lib menus are client-side UI, so the click and the handler both live on the player's machine. Nothing crosses the network here.
+Each entry in `options` is one row in the menu. Our row has a `title` and an `event`. When the player clicks it, ox_lib fires a local client event, which is why the code listens with `AddEventHandler`. Nothing crosses the network, so `RegisterNetEvent` would unnecessarily expose a local UI action as network-callable. The static context is registered once when the resource loads and the command only opens it, matching the ox_lib guidance not to re-register static menus repeatedly.
 
 `event=` is one of two ways to wire a menu row. The other is `onSelect`, where you hand the option an inline function instead of an event name:
 
@@ -229,7 +229,7 @@ The reason to use ox_lib instead of building these by hand, the way earlier less
     { symptom: "Resource qu_ox_lib_notifications_ui does not exist", fix: "The folder is not inside resources, or the ensure line does not match the folder name exactly. Names are case sensitive." },
     { symptom: "attempt to index a nil value (local 'input')", fix: "The cancel guard is missing. Add if not input then return end right after lib.inputDialog so an Escape or closed dialog does not try to read input[1]." },
     { symptom: "/oxdemo does nothing and there is no notification", fix: "Run restart qu_ox_lib_notifications_ui, then trigger /oxdemo from the in-game chat box (press T). The command is restricted false, so it runs from chat, not the server console." },
-    { symptom: "The menu opens but clicking the row does nothing", fix: "The option event name and the RegisterNetEvent name must match exactly. Both must read qu_ox_lib_notifications_ui:ask, character for character." },
+    { symptom: "The menu opens but clicking the row does nothing", fix: "The option event name and AddEventHandler name must match exactly. Both must read qu_ox_lib_notifications_ui:ask." },
   ]}
 />
 
@@ -252,7 +252,7 @@ The reason to use ox_lib instead of building these by hand, the way earlier less
   Extend the dialog to collect two fields and gate the save behind a longer timer. Ask for both a name and an amount, then report both:
 
   ```lua
-  RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
+  AddEventHandler('qu_ox_lib_notifications_ui:ask', function()
       local input = lib.inputDialog('Save a record', { 'Name', 'Amount' })
       if not input then return end
 

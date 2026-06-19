@@ -2,13 +2,13 @@
   crumbs="Module B7 · Production patterns"
   title="Voice scripting: proximity, channels, and radio"
   meta={[
-    { label: "You'll build", value: "A client resource with a /proximity command that sets how far your voice carries, and a /radio command that toggles a voice channel so everyone on it hears you regardless of distance." },
+    { label: "You'll build", value: "A pma-voice integration that reads current proximity state and joins/leaves a radio through supported exports." },
     { label: "Time", value: "~24 minutes" },
     { label: "You need", value: "A running server with a voice resource active (pma-voice is the common modern choice) or the built-in mumble system, plus a second player to test with. If voice is not installed yet, do the Voice setup and troubleshooting lesson first." },
-    { label: "You'll learn", value: "The proximity-vs-channel model -> MumbleSetTalkerProximity -> MumbleSetVoiceChannel and NetworkClearVoiceChannel -> MumbleSetAudioInputDistance -> submixes for radio effects, line by line" },
+    { label: "You'll learn", value: "pma-voice state and exports -> why direct Mumble overrides conflict -> server channel checks -> the native concepts underneath" },
   ]}
 >
-  The setup lesson got voice working as config. This one is the scripting side. You will learn the two ways FiveM moves a player's voice: **proximity**, where range falls off with distance, and **channels**, where everyone tuned to the same channel hears each other across the whole map. By the end you will own a `/proximity` setter and a `/radio` toggle, and you will be able to read every mumble native the channel system is built from.
+  The setup lesson got voice working as config. This lesson integrates with pma-voice through the API it owns. You will read proximity from a state bag and join radio through `setRadioChannel`, then study the lower-level Mumble natives for understanding only.
 </LessonHero>
 
 <Prereq
@@ -21,15 +21,15 @@
 />
 
 <Callout variant="fivem" title="Build the proof, then understand it">
-  This lesson builds `MumbleSetTalkerProximity`, `MumbleSetVoiceChannel`, `NetworkClearVoiceChannel`, and `MumbleSetAudioInputDistance` into a working client resource named `qu_voice_scripting`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it runs, the next section takes every line apart so you can read the mumble voice natives and use them without copying.
+  This lesson builds a supported pma-voice integration in `qu_voice_scripting`. pma-voice's README says other resources must not override its talker/input/output distance natives, so the runnable code uses pma-voice exports and state.
 </Callout>
 
 ## The two ways voice travels
 
 Before any code, hold these two models in your head. They are different systems, and almost every voice bug comes from confusing them.
 
-- **Proximity.** Your voice is positional. The closer a listener is, the louder you are, and past a distance you vanish. This is the default world voice. The single number that controls it is the talker proximity, set with `MumbleSetTalkerProximity(distance)`. Change that number and your shout range changes for everyone near you.
-- **Channels.** A channel ignores distance entirely. Everyone tuned to the same channel hears each other whether they are next to each other or across the map. This is how a radio works. You join a channel with `MumbleSetVoiceChannel(channel)` and leave it with `NetworkClearVoiceChannel`. While you are on a channel you are out of the positional world and into a flat room where channel members hear you at full volume.
+- **Proximity.** Your voice is positional. With pma-voice, configured modes and its cycle control own the distance; `LocalPlayer.state.proximity` reports the current mode, distance, and name.
+- **Radio.** pma-voice layers a push-to-talk radio channel over ordinary proximity. Join with `exports['pma-voice']:setRadioChannel(channel)` and leave with channel `0`. Do not replace pma-voice routing with `MumbleSetVoiceChannel`.
 
 The mental model to lock in: proximity is a *radius*, a channel is a *room*. A radio command does not change anyone's proximity radius. It moves the speaker into a shared room and back out again. Keep those two ideas separate and the natives below stop being a soup of similar names.
 
@@ -77,38 +77,32 @@ dependencies { 'pma-voice' }
     Open `client.lua` and paste this:
 
     ```lua
--- Proximity is a radius. This command sets how far your voice carries.
-RegisterCommand('proximity', function(_, args)
-    local metres = tonumber(args[1])
-    if not metres then
-        print('[qu_voice_scripting] usage: /proximity <metres>')
-        return
-    end
-
-    MumbleSetTalkerProximity(metres + 0.0)
-    print(('[qu_voice_scripting] talker proximity set to %.1f m'):format(metres))
-end, false)
-
--- A channel is a room. This command toggles you in and out of one channel.
+-- pma-voice owns routing. Use its export instead of overriding Mumble natives.
 local onChannel = false
 local myChannel = 5
 
 RegisterCommand('radio', function()
     if onChannel then
-        NetworkClearVoiceChannel()
+        exports['pma-voice']:setRadioChannel(0)
         onChannel = false
-        print('[qu_voice_scripting] left voice channel ' .. myChannel)
+        print('[qu_voice_scripting] left radio channel ' .. myChannel)
     else
-        MumbleSetVoiceChannel(myChannel)
+        exports['pma-voice']:setRadioChannel(myChannel)
         onChannel = true
-        print('[qu_voice_scripting] joined voice channel ' .. myChannel)
+        print('[qu_voice_scripting] joined radio channel ' .. myChannel)
     end
 end, false)
 
--- Read your current talker proximity on demand.
+-- pma-voice publishes the current mode through the local player's state bag.
 RegisterCommand('proxread', function()
-    local current = MumbleGetTalkerProximity()
-    print(('[qu_voice_scripting] current proximity is %.1f m'):format(current))
+    local proximity = LocalPlayer.state.proximity
+    if not proximity then
+        print('[qu_voice_scripting] proximity state is not ready')
+        return
+    end
+    print(('[qu_voice_scripting] proximity %s: %.1f m'):format(
+        proximity.mode, proximity.distance
+    ))
 end, false)
     ```
   </Step>
@@ -129,25 +123,23 @@ end, false)
     Join the server so your ped exists, then run these tests from the F8 console:
 
     ```text
-    /proxread then /proximity 8 then /proxread then /radio
+    /proxread then /radio
     ```
 
     <ExpectedOutput>
-      [qu_voice_scripting] current proximity is 5.0 m
-[qu_voice_scripting] talker proximity set to 8.0 m
-[qu_voice_scripting] current proximity is 8.0 m
-[qu_voice_scripting] joined voice channel 5
+      [qu_voice_scripting] proximity Normal: 8.0 m
+[qu_voice_scripting] joined radio channel 5
     </ExpectedOutput>
 
-    Your first `/proxread` number is whatever your voice resource set as the default, so it may not be exactly `5.0`. The point is that the second `/proxread` reports the value you just set. To prove the channel, have a second player run `/radio` too: you will hear each other at full volume no matter how far apart you stand. Run `/radio` again on either side to leave the channel and fall back to proximity.
+    Your mode name and distance come from pma-voice configuration, so they may differ. Use pma-voice's configured proximity-cycle key (F11 by default) and run `/proxread` again to watch the state change. A second player on radio channel 5 is needed to test radio audio.
   </Step>
 </StepGroup>
 
 ## How it works
 
-You ran it and the lines appeared. Now take the code apart so the next time you script voice you are deciding, not copying. There are three commands, and each one demonstrates one half of the proximity-vs-channel model.
+You ran two commands through pma-voice's supported integration surface. The native sections below explain what a voice resource does underneath; they are not extra calls to paste beside pma-voice.
 
-### Setting proximity: MumbleSetTalkerProximity
+### Under the hood: MumbleSetTalkerProximity
 
 ```lua
 local metres = tonumber(args[1])
@@ -159,20 +151,20 @@ end
 MumbleSetTalkerProximity(metres + 0.0)
 ```
 
-`MumbleSetTalkerProximity(distance)` is a CLIENT native. It takes one number: the distance in metres at which your voice stops being heard. Set it to `8.0` and a listener twenty metres away hears nothing while someone three metres away hears you clearly, with a falloff in between. This is the *radius* model. It does not move you anywhere; it resizes the bubble your voice fills.
+`MumbleSetTalkerProximity(distance)` is the lower-level client native a voice resource uses for its proximity radius. The sample explains the argument, but pma-voice's README explicitly says other resources must not override this native. Configure pma-voice modes and let it own the call.
 
-Two details in this block matter. First, `args[1]` arrives as a **string**, because everything typed into a command comes in as text. `tonumber` converts `"8"` into the number `8`, and the `if not metres` guard prints a usage line and bails when someone types `/proximity` with no number or with a word. Always validate command input before you hand it to a native, because a native fed a `nil` will error or silently do nothing. Second, `metres + 0.0` forces the value to a float. Mumble distance natives expect a floating point number, and `+ 0.0` is the cheap, readable way to turn the integer `8` into `8.0` without a separate cast.
+On a bare Mumble implementation, `tonumber` and a range check are required before passing command input to the native. On pma-voice, do not expose arbitrary metre input; use its configured Whisper, Normal, and Shouting modes.
 
-### Reading proximity back: MumbleGetTalkerProximity
+### Reading pma-voice proximity state
 
 ```lua
-local current = MumbleGetTalkerProximity()
-print(('[qu_voice_scripting] current proximity is %.1f m'):format(current))
+local proximity = LocalPlayer.state.proximity
+print(proximity.mode, proximity.distance)
 ```
 
-`MumbleGetTalkerProximity()` is the read side of the same setting. It takes no arguments and returns the current proximity as a float. Every setter native worth knowing tends to have a getter beside it, and reading a value back is how you prove your setter actually landed instead of trusting that it did. The `%.1f` in the format string trims the float to one decimal place so the console line stays clean. This getter is also how the `/proxread` test in the build above shows you the before and after of your `/proximity` call.
+The pma-voice state bag is the supported read side for integrations. `proximity.index`, `proximity.distance`, and `proximity.mode` update when its configured mode changes.
 
-### Joining and leaving a channel: MumbleSetVoiceChannel and NetworkClearVoiceChannel
+### Joining and leaving pma-voice radio
 
 ```lua
 local onChannel = false
@@ -180,25 +172,25 @@ local myChannel = 5
 
 RegisterCommand('radio', function()
     if onChannel then
-        NetworkClearVoiceChannel()
+        exports['pma-voice']:setRadioChannel(0)
         onChannel = false
         print('[qu_voice_scripting] left voice channel ' .. myChannel)
     else
-        MumbleSetVoiceChannel(myChannel)
+        exports['pma-voice']:setRadioChannel(myChannel)
         onChannel = true
         print('[qu_voice_scripting] joined voice channel ' .. myChannel)
     end
 end, false)
 ```
 
-This is the *room* model, and it is the heart of the lesson. `MumbleSetVoiceChannel(channel)` is a CLIENT native that takes one integer: the channel number to join. The instant you call it, your voice leaves the positional world and enters channel 5. Anyone else who has also joined channel 5 hears you at full volume regardless of where they are standing, and you hear them. Distance stops mattering inside a channel. `NetworkClearVoiceChannel()` is the matching native that takes no arguments and pulls you back out, returning your voice to ordinary proximity.
+`setRadioChannel` is the supported pma-voice integration. Channel `0` leaves radio. pma-voice handles voice targets, push-to-talk, state, clicks, and optional submixes; a direct Mumble channel call does not reproduce that radio system.
 
 The two variables above the handler are what make this a *toggle*. `onChannel` is a boolean that remembers whether you are currently in the channel, and `myChannel` holds the channel number so the join and the leave agree on the same room. Each time you run `/radio`, the `if onChannel` branch checks that flag: if you are in, it clears the channel and flips the flag to `false`; if you are out, it joins and flips to `true`. Without that remembered state, the command could not know which action to take, and you would need two separate commands to get on and off the radio. This is the same register-now, run-later handler pattern every command uses: the handler holds the toggle logic and runs it each time the word is typed.
 
-You will see `NetworkSetVoiceChannel` and `MumbleSetVoiceChannel` used interchangeably in older code. They are aliases for the same channel system on the mumble backend FiveM uses today, so either name joins a channel. This lesson uses the `Mumble` names throughout because they match the rest of the mumble native family you read here.
+You will see `NetworkSetVoiceChannel` and `MumbleSetVoiceChannel` in lower-level or older code. Recognize them, but use the voice resource's documented API when one owns routing.
 
 <Checkpoint question="Two players are on opposite ends of the map. Player A runs /radio, player B runs /radio. Why can they hear each other when proximity would normally silence them?">
-  Because `/radio` calls `MumbleSetVoiceChannel(5)` on both clients, and a channel ignores distance. Proximity is a radius: past the talker proximity metres, a positional listener hears nothing. A channel is a room: every client that called `MumbleSetVoiceChannel` with the same number is in the same room and hears every other member at full volume, with no distance falloff at all. The map distance between A and B is irrelevant while they are both on channel 5. The moment either one calls `NetworkClearVoiceChannel`, that player drops back into the positional world and the across-the-map link is gone for them. Proximity and channels are two separate routing systems, and a player can be in exactly one channel at a time on top of their proximity voice.
+  Because pma-voice puts both clients on radio channel 5 and routes push-to-talk radio audio independently of positional distance. Leaving with `setRadioChannel(0)` removes that radio route while ordinary proximity remains active.
 </Checkpoint>
 
 ### Tuning what you hear and capture: the audio distance natives
@@ -234,7 +226,7 @@ MumbleSetSubmixForServerId(serverId, -1)
 
 Voice scripting is one of those areas where the same three or four natives cover almost everything players ask for. Here is the map from feature to native:
 
-- **A radio script.** Players on the same frequency hear each other anywhere. That is `MumbleSetVoiceChannel` to join the frequency, `NetworkClearVoiceChannel` to drop it, and a submix routed by `MumbleSetSubmixForServerId` for the radio tone. The frequency-to-channel mapping and the permission to use a frequency are decided on the server.
+- **A pma-voice radio integration.** Use `setRadioChannel` or the server `setPlayerRadio` export, plus `addChannelCheck` for server-side access rules. Let pma-voice own targets and submixes.
 - **A whisper or shout mechanic.** Cycling between a small, medium, and large `MumbleSetTalkerProximity` value is exactly what the proximity modes in a voice resource do. You are just resizing the radius.
 - **A phone call.** Two players on a private channel nobody else is on. Same channel natives as the radio, with a server that pairs exactly two participants on a unique channel number.
 - **A megaphone or PA.** A temporary jump to a wide `MumbleSetTalkerProximity` so a positional voice reaches a whole plaza, then back to normal when released.
@@ -250,7 +242,7 @@ In all four, the client requests and the server grants. Your `/radio` command is
     { symptom: "Proximity changes briefly then snaps back to the old range", fix: "pma-voice owns MumbleSetTalkerProximity and reapplies it from its config, so your direct call gets overwritten. On a pma-voice server set ranges through its config and exports, not by calling the native yourself." },
     { symptom: "MumbleSetSubmixForServerId runs but voice has no radio effect", fix: "Submix effects require native audio. Enable native audio (voice_useNativeAudio on pma-voice) and confirm the submix was created with CreateAudioSubmix before you route a server id through it." },
     { symptom: "Resource errors with 'Failed to load script' or starts before voice is ready", fix: "The dependencies key forces load order. Use dependencies { 'pma-voice' } in fxmanifest.lua (brace list, key is dependencies not dependency) so the voice resource starts first." },
-    { symptom: "Any player can put themselves on the staff radio channel", fix: "The client picked its own channel with no check. Move the decision server-side: the client requests, a server net event validates the player and grants the channel, only then does the client call MumbleSetVoiceChannel." },
+    { symptom: "Any player can put themselves on the staff radio channel", fix: "Register a pma-voice server channel check or call its server setPlayerRadio export only after validating job/item access. A client export call alone is not authorization." },
   ]}
 />
 
@@ -258,9 +250,9 @@ In all four, the client requests and the server grants. Your `/radio` command is
 
 <Recap
   items={[
-    "Explain the proximity-vs-channel model: proximity is a radius set by MumbleSetTalkerProximity, a channel is a room joined with MumbleSetVoiceChannel that ignores distance.",
-    "Set and read talker proximity with MumbleSetTalkerProximity and MumbleGetTalkerProximity, validating command input with tonumber and a guard first.",
-    "Toggle a player in and out of a voice channel with MumbleSetVoiceChannel and NetworkClearVoiceChannel, using a remembered boolean for the toggle.",
+    "Read pma-voice proximity mode, name, and distance from LocalPlayer.state.proximity.",
+    "Explain why integrations must not override the Mumble distance natives owned by pma-voice.",
+    "Join and leave pma-voice radio with setRadioChannel(channel) and setRadioChannel(0).",
     "Name what MumbleSetAudioInputDistance and MumbleSetAudioOutputDistance do, and why you do not call them yourself when pma-voice is running.",
     "Describe how a submix (CreateAudioSubmix plus MumbleSetSubmixForServerId) adds a radio effect to channel voice, and that it requires native audio.",
     "Say why the channel decision belongs on the server even though the native runs on the client.",
@@ -272,22 +264,13 @@ In all four, the client requests and the server grants. Your `/radio` command is
 <Exercise>
   Right now any player can join channel 5 by typing `/radio`, which means anyone can sit on what should be a staff or police frequency. Move the decision to the server, where it belongs. Have the client ask, and the server grant.
 
-  Client side, change `/radio` so that instead of calling the native directly, it triggers a server event and waits to be told the channel:
+  Client side, change `/radio` so it requests access instead of setting a channel itself:
 
   ```lua
   RegisterCommand('radio', function()
       TriggerServerEvent('qu_voice_scripting:requestChannel')
   end, false)
 
-  RegisterNetEvent('qu_voice_scripting:setChannel', function(channel)
-      if channel == 0 then
-          NetworkClearVoiceChannel()
-          print('[qu_voice_scripting] left the radio')
-      else
-          MumbleSetVoiceChannel(channel)
-          print('[qu_voice_scripting] joined channel ' .. channel)
-      end
-  end)
   ```
 
   Add a `server.lua` (and a `server_script 'server.lua'` line to the manifest) that decides who is allowed on the channel. Use `source` to identify the player, since `source` is only valid inside a server-side net event handler:
@@ -298,18 +281,18 @@ In all four, the client requests and the server grants. Your `/radio` command is
       -- Replace this with your real check: a job, an item, or an ace permission.
       local allowed = true
       local channel = allowed and 5 or 0
-      TriggerClientEvent('qu_voice_scripting:setChannel', src, channel)
+      exports['pma-voice']:setPlayerRadio(src, channel)
   end)
   ```
 
-  Restart the resource, run `/radio`, and confirm you still join channel 5, but now through a server grant. Then flip `allowed` to `false` and confirm the server sends `0`, so the client clears the channel instead of joining. You have just turned a client-trusted radio into a server-authorised one, which is the difference between a demo and something you can ship.
+  Restart the resource, run `/radio`, and inspect `Player(source).state.radioChannel` on the server. Replace `allowed = true` with a real server-held job, item, or ACE check before treating this as shippable.
 </Exercise>
 
 <Refs
   items={[
     { label: "Cfx.re docs · Voice (mumble) natives", href: "https://docs.fivem.net/natives/#voicechat" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "pma-voice (Overextended)", href: "https://github.com/AvarianKnight/pma-voice" },
+    { label: "pma-voice repository and integration API", href: "https://github.com/AvarianKnight/pma-voice" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

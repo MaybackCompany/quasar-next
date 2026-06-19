@@ -4,8 +4,8 @@
   meta={[
     { label: "You'll build", value: "A React + Vite NUI that opens on a command, shows one value Lua sent, and POSTs back to close. The resource serves a built dist folder, not loose HTML." },
     { label: "Time", value: "~35 minutes" },
-    { label: "You need", value: "The NUI from scratch lesson done so you know SendNUIMessage, RegisterNUICallback, and SetNuiFocus. Node 18+ installed, and a server you can restart." },
-    { label: "You'll learn", value: "A ui/ source folder vs a built dist/ output, ui_page on the build artifact, typed Lua-to-React messages, the cfx-nui fetch back to Lua, and the build-then-refresh dev loop." },
+    { label: "You need", value: "The NUI from scratch lesson done so you know SendNUIMessage, RegisterNUICallback, and SetNuiFocus. Node 20.19+ or 22.12+ installed, and a server you can restart." },
+    { label: "You'll learn", value: "A ui/ source folder vs a built dist/ output, ui_page on the build artifact, typed Lua-to-React messages, the GetParentResourceName callback, and the build-then-refresh dev loop." },
     { label: "Pass condition", value: "/phone opens a React panel showing a balance Lua pushed, the Close button POSTs to Lua, and F8 prints the round-trip." },
   ]}
 >
@@ -15,7 +15,7 @@
 <Prereq
   items={[
     "I finished NUI from scratch, so SendNUIMessage, RegisterNUICallback, and SetNuiFocus are familiar.",
-    "I have Node 18 or newer installed (run node --version to check).",
+    "I have Node 20.19+ or 22.12+ installed (run node --version to check, as required by current Vite).",
     "I can edit server.cfg and restart one resource, and I can join the server and read F8 output."
   ]}
 />
@@ -59,12 +59,12 @@ resources/qu_nui_react/
     "build": "vite build"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.0"
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.0"
   }
 }
     ```
@@ -118,10 +118,8 @@ createRoot(document.getElementById('root')).render(<App />);
     ```jsx
 import React, { useEffect, useState } from 'react';
 
-const RESOURCE = 'qu_nui_react';
-
 function nuiPost(endpoint, body) {
-  return fetch(`https://cfx-nui-${RESOURCE}/${endpoint}`, {
+  return fetch(`https://${GetParentResourceName()}/${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -300,7 +298,7 @@ Note the cleanup. The listener is attached inside `useEffect` with an empty depe
 
 ```jsx
 function nuiPost(endpoint, body) {
-  return fetch(`https://cfx-nui-${RESOURCE}/${endpoint}`, {
+  return fetch(`https://${GetParentResourceName()}/${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
@@ -308,7 +306,7 @@ function nuiPost(endpoint, body) {
 }
 ```
 
-This is the same callback scope as before, wrapped in a helper so you write the URL once. The scheme is always `https://cfx-nui-&lt;resource&gt;/&lt;endpoint&gt;`. Here the resource is `qu_nui_react` and the endpoint is `close`, giving `https://cfx-nui-qu_nui_react/close`. The `cfx-nui-` prefix is the scheme FiveM intercepts to route the request into your Lua rather than out to the internet. Drop it, or use the bare resource name, and the request escapes the sandbox and fails.
+This is the same callback scope as before, wrapped in a helper so you write the URL once. The official form is `https://${GetParentResourceName()}/&lt;endpoint&gt;`. FiveM provides `GetParentResourceName()` inside NUI, and it returns the resource that owns the page. That avoids a hardcoded folder name and keeps the callback working if the resource is renamed. The endpoint still has to match `RegisterNUICallback('close', ...)` exactly.
 
 On the Lua side `RegisterNUICallback('close', function(data, cb) ... end)` answers that endpoint. The endpoint string after the last slash must match the registered name exactly. The contract on `cb` is identical to the raw lesson: the `fetch` promise stays pending until you call `cb` exactly once, so the `.then(() => setOpen(false))` that hides the panel never runs if you forget it. `SetNuiFocus(false, false)` on the first line of the callback releases the cursor the instant the click arrives.
 
@@ -343,7 +341,7 @@ For smaller jobs you would still pull in a community wrapper. `ox_lib`, from the
     { symptom: "The panel is blank and the NUI devtools Network tab shows a 404 for assets/index-*.js", fix: "vite.config.js is missing base: './'. Vite emitted absolute asset paths that do not resolve under the cfx-nui scope. Add the base line, run npm run build again, then restart qu_nui_react." },
     { symptom: "Couldn't load resource qu_nui_react: ui/dist/index.html not found", fix: "You never ran the build, so dist/ does not exist. cd into resources/qu_nui_react/ui and run npm install then npm run build before ensuring the resource." },
     { symptom: "Code changes do not show up in game after restart", fix: "You edited ui/src but did not rebuild. The game serves ui/dist. Run npm run build in the ui/ folder, then restart qu_nui_react." },
-    { symptom: "Mouse and movement are frozen after closing", fix: "Focus was captured but never released. Confirm SetNuiFocus(false, false) runs in the close callback and that the React Close button actually reaches the cfx-nui-qu_nui_react/close endpoint." },
+    { symptom: "Mouse and movement are frozen after closing", fix: "Focus was captured but never released. Confirm SetNuiFocus(false, false) runs in the close callback and that the React Close button reaches https://${GetParentResourceName()}/close." },
     { symptom: "The button POSTs but the panel stays open", fix: "The Lua close callback never called cb. Every RegisterNUICallback must call cb exactly once, even cb({}), or the fetch promise never resolves and the .then that sets open to false never runs." }
   ]}
 />
@@ -356,7 +354,7 @@ For smaller jobs you would still pull in a community wrapper. `ox_lib`, from the
     "Configure Vite for NUI with base set to a relative path so hashed assets resolve under the cfx-nui scope.",
     "Point ui_page and the files block at ui/dist, using assets/*.js and *.css globs so the whitelist survives every rebuild.",
     "Drive React state from a typed SendNUIMessage, switching on a type field and cleaning up the message listener in useEffect.",
-    "POST from React back to Lua over the cfx-nui-<resource>/<endpoint> scope and resolve the fetch with cb in the callback.",
+    "POST from React back to Lua with https://${GetParentResourceName()}/<endpoint> and resolve the fetch with cb in the callback.",
     "Run the build-then-refresh dev loop without debugging a change that was never compiled, and use npm run dev for a faster inner loop."
   ]}
 />
@@ -394,8 +392,11 @@ For smaller jobs you would still pull in a community wrapper. `ox_lib`, from the
 <Refs
   items={[
     { label: "FiveM NUI development guide", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/" },
+    { label: "FiveM NUI callbacks", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/nui-callbacks/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "Vite build guide", href: "https://vite.dev/guide/build.html" },
+    { label: "Vite 8 release", href: "https://vite.dev/blog/announcing-vite8" },
+    { label: "React versions", href: "https://react.dev/versions" },
     { label: "React useEffect reference", href: "https://react.dev/reference/react/useEffect" }
   ]}
 />

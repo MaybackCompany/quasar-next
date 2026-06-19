@@ -59,7 +59,7 @@ The five steps are easy to nod along to and hard to actually run when a report l
 
 A player posts in your bug channel: "car shop lets me dupe cars". That is all you have. Here is the loop.
 
-**1. Capture.** You do not edit anything yet. You ask the reporter three things: roughly what time, which shop, and exactly what they clicked. They say around 21:40, the Luxury Autos shop, and "I just spammed the buy button." Now you open the evidence. The Live Console may already have scrolled past 21:40, so go to the file. Open `txData/<your-server>/logs/server` and search for the timestamp near `21:40`. You find repeated `vehicle:purchase` events from one player id inside the same second. Screenshot the report, copy that block of log lines, and note the player id and the resource name. That is your evidence packet.
+**1. Capture.** You do not edit anything yet. Ask for the time, shop, character/server ID, and exact clicks. txAdmin's activity logs cover platform/admin activity such as joins, drops, chat, kills, explosions, and commands; they do **not** automatically record every custom resource event. Search the raw FXServer log and any audit log the shop resource actually implements. If no purchase audit exists, record that evidence gap and reproduce on staging with temporary server-side logging. Never claim txAdmin captured `vehicle:purchase` unless your resource explicitly logged it.
 
 **2. Reproduce.** On a test server, stand at the same shop and spam the buy button the way they described. The vehicle is granted several times before any balance check catches up. It reproduces every time. A bug you can trigger on demand is a bug you can fix; if it had only happened once and never again, it would get a watch entry instead.
 
@@ -86,10 +86,10 @@ This is why the record step matters more than it looks. When the next dupe repor
 Step 1 leans on finding the right lines in a file, so make that concrete. txAdmin keeps rotating logs under `txData/<your-server>/logs`:
 
 - `fxserver` is the raw server console output, the same stream you see live, including resource `print` lines and Lua errors.
-- `server` is txAdmin's structured event log: joins, drops, chat, deaths, explosions, and resource events, each stamped with a time.
+- `server` is txAdmin's activity log for events txAdmin records, such as joins, drops, chat, deaths/kills, explosions, and commands. Custom gameplay events appear only if a resource explicitly logs them.
 - `admin` is who did what in the txAdmin panel: kicks, bans, restarts, console commands.
 
-To work an incident, take the time from the report and open the `server` log first, because it is timestamped and searchable. Find the minute, then read outward to see what led up to the event and what followed. When you need the exact error text or a stack trace, cross to `fxserver` at the same time. The Live Console is for what is happening right now; the moment a restart clears it, these files are the only record left, which is exactly why step 1 is capture and not edit.
+To work an incident, take the report time and search the activity and FXServer logs that actually cover the symptom. Find the minute, then read outward. For a custom economy action, use the resource's audit table/log if it has one; txAdmin cannot manufacture application-level evidence. The Live Console is for now, while rotating files preserve earlier output according to your retention settings.
 
 ## Common mistakes
 

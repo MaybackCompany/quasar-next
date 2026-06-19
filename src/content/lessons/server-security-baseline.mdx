@@ -27,7 +27,7 @@
 
 <StepGroup>
   <Step num={1} title="Give permissions by role, not by person" outcome="Admin power flows through ACE groups, not hardcoded names.">
-    Use ACE permissions and groups so you can add or remove a staffer in one line. Grant the narrowest power that does the job; only owners get `command.*` style access.
+    Use ACE permissions and groups so you can add or remove a staffer in one line. Grant the narrowest power that does the job; only owners get the parent `command` object that covers all server commands.
 
     ```text
     add_ace group.admin command allow
@@ -69,7 +69,7 @@ Read the lines back in plain English. `add_ace group.admin command allow` says t
 
 That inheritance is the point. You grant a power to a group once, then you add or remove people by adding or removing one `add_principal` line. The staffer maps to a group, the group maps to a set of commands, and you never edit a command grant to onboard a new moderator.
 
-`identifier.fivem:` and `identifier.discord:` are two different keys for the same person. The FiveM identifier follows them across name changes. The Discord identifier lets you tie permissions to your Discord roles. Pick whichever you can verify and stay consistent, because a typo in an identifier silently grants nothing rather than erroring.
+`identifier.fivem:` and `identifier.discord:` are two possible identifiers for a player. A Discord identifier is an account ID, not a Discord-role check, and it may be unavailable when Discord identity is not present. Copy the full identifier from txAdmin and prefer a stable identifier that is present for your players. A typo silently grants nothing.
 
 ### Scope a moderator, do not clone an admin
 
@@ -82,7 +82,7 @@ add_ace group.mod command.quit deny
 add_principal identifier.discord:000000000000000000 group.mod
 ```
 
-`allow` and `deny` are not symmetric in importance. An object with no rule is already denied by default, so you do not have to deny everything. You add an explicit `deny` only where a child could otherwise inherit `allow` from a parent, or where you want a rule that no future grant can override. `command.quit` shuts the whole server down, so even on `group.admin` it is worth an explicit `add_ace group.admin command.quit deny` unless the owner alone holds it. The same logic applies to `command.*` wildcards: the broader the grant, the more carefully you fence off the few commands that can wipe or close the server.
+`allow` and `deny` are not symmetric in importance. An object with no rule is already denied by default, so you do not have to deny everything. You add an explicit `deny` where a child could otherwise inherit `allow` from a parent. `command.quit` shuts the whole server down, so even on `group.admin` it is worth an explicit `add_ace group.admin command.quit deny` unless the owner alone holds it. The broader the parent-object grant, the more carefully you fence off destructive child commands.
 
 ## Common mistakes
 
@@ -119,19 +119,19 @@ add_principal identifier.discord:000000000000000000 group.mod
   add_principal identifier.discord:YOUR_DISCORD_ID group.mod
   ```
 
-  Restart the server, join with the account that owns that Discord ID, and run two checks from your in-game console. First the allowed one:
+  Restart the server, then use the **server console** to test both objects without kicking anyone or stopping the server:
 
   ```text
-  kick 1
+  test_ace identifier.discord:YOUR_DISCORD_ID command.kick
   ```
 
   Then the denied one:
 
   ```text
-  quit
+  test_ace identifier.discord:YOUR_DISCORD_ID command.quit
   ```
 
-  The kick should go through. The `quit` should be refused, and the server console prints a line that the command was denied for your principal. If `quit` actually shut the server down, your account is still inheriting `command` from an admin group somewhere higher up. Find that grant and scope it down. You just proved that a `deny` on a child holds even when a broad `allow` exists, which is the entire reason scoped roles are safe.
+  The first result should be `ALLOW` and the second `DENY`. `kick` and `quit` are server-console commands, not ordinary F8 commands; `test_ace` proves the policy without performing either action. If a result is unexpected, inspect inherited principals and broader `command` grants.
 </Exercise>
 
 <Refs

@@ -5,7 +5,7 @@
     { label: "You'll learn", value: "Server-authoritative events, rate limit per source, sanity checks, audit logs to Discord" },
     { label: "Time", value: "~22 minutes" },
     { label: "Prereqs", value: "Lesson 14 (server vs client), P1 (DB), P2 (webhooks)" },
-    { label: "Outcome", value: "Your reward events refuse cheats, log violations, and notify you in Discord within 1 second" },
+    { label: "Outcome", value: "A reward-request demo rejects rapid repeats and logs the rejection without trusting a client-supplied amount" },
   ]}
 >
   No client-side check is real security. Every "give me money" event a cheater finds is one your server should have rejected. This lesson covers the four patterns that stop most attacks: server authority, rate limiting, sanity checks, and audit logging. The key idea is one sentence long. The server trusts who sent an event, but never what they sent.
@@ -20,7 +20,7 @@
 />
 
 <Callout variant="fivem" title="Build the proof, then understand it">
-  This lesson builds a server-authoritative reward event. The client sends an intent, the server decides the amount, rejects abuse, and logs it to Discord without ever exposing the webhook to players. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart line by line so you understand why a real cheater cannot beat it.
+  This lesson builds a reward-authorization demo. The client sends an intent, the server decides the amount, rejects rapid repeats, and logs them without exposing the webhook. The sample prints the approved amount; it does not actually add framework money.
 </Callout>
 
 ## Build it
@@ -117,8 +117,8 @@ RegisterNetEvent('qu_anticheat:claimDailyReward', function()
 
     lastClaim[src] = now
     local amount = DAILY_REWARD
-    print(('[qu_anticheat] reward approved for %s (id %d): %d'):format(GetPlayerName(src), src, amount))
-    TriggerClientEvent('qu_anticheat:rewardResult', src, true, ('paid %d'):format(amount))
+    print(('[qu_anticheat] reward approved for %s (id %d): %d (demo only)'):format(GetPlayerName(src), src, amount))
+    TriggerClientEvent('qu_anticheat:rewardResult', src, true, ('approved %d (demo only)'):format(amount))
 end)
 
 AddEventHandler('playerDropped', function()
@@ -149,8 +149,8 @@ end)
     In the server console you see the approval. In your own F8 console you see the result the server sent back:
 
     <ExpectedOutput>
-      [qu_anticheat] reward approved for yourName (id 1): 250
-      [qu_anticheat] approved: paid 250
+      [qu_anticheat] reward approved for yourName (id 1): 250 (demo only)
+      [qu_anticheat] approved: approved 250 (demo only)
     </ExpectedOutput>
 
     Run `claimreward` a second time within ten seconds. The server prints a blocked line, fires your Discord webhook, and your F8 console prints `denied: on cooldown`.
@@ -159,7 +159,7 @@ end)
 
 ## How it works
 
-You just proved server authority for real. The command lives on the client, the decision lives on the server, and the only thing that crossed the network was the word "I claim." The server picked the amount. A cheater editing your client cannot change that, and the reason is the single most important idea in this lesson.
+You proved that this event's amount and short cooldown decision live on the server. You did not build a complete daily reward: no money is granted, the state resets on resource restart, and disconnecting clears the source-keyed cooldown.
 
 ### Why `source` is trustworthy but the payload is not
 
@@ -170,11 +170,11 @@ RegisterNetEvent('qu_anticheat:claimDailyReward', function()
     local src = source
 ```
 
-`RegisterNetEvent` registers a **networked** event, meaning a client is allowed to trigger it across the wire with `TriggerServerEvent`. When that happens, FiveM sets the server-side global `source` to the server ID of the player who fired it. You did not compute that value and the client did not send it. The platform stamps it from the actual network connection, so `source` is trustworthy. A player cannot pretend to be a different `source`.
+`RegisterNetEvent` registers a networked event. FiveM sets the server-side `source` to the connection that sent it; the payload does not choose another sender slot. That makes `source` useful for identifying this request, but it is a temporary, reusable server slot, not a durable person or character id.
 
 The payload is the opposite. Anything the client passes as an argument is just data the client chose to send, and a cheater rewrites their own client freely. That is why this resource sends **no amount at all**. The old, broken version of this lesson had the client send `amount` and the server merely range-checked it. That is not authority, that is a suggestion. Here the client sends only the intent `qu_anticheat:claimDailyReward`, and the server reads `DAILY_REWARD` from its own constant. There is no amount field for a cheater to inflate, because the amount never left the server.
 
-Lock this in as a rule. Trust the sender, never the message. The client may say "I want to claim my daily reward." It may never say "and the reward is 999999."
+Lock this in as a rule: use `source` to identify the sending connection, resolve durable identity through the framework when needed, and never trust the payload. The client may say "I want to claim my daily reward." The server must decide whether that connection's active character is entitled and what the reward is.
 
 <Checkpoint question="A teammate sends amount from the client and clamps it to 1..500 on the server. Why is that still cheatable, and what is the fix?">
   Because the client controls the payload, the cheater simply sends the maximum the clamp allows, every single time, as fast as the rate limit permits. The range check only bounds the damage per call. It does not establish who decides the value. The fix is the one in this lesson: the client sends an intent with no amount, and the server derives the amount itself from server-side state (a constant here, a database row in production). When there is no amount field on the wire, there is nothing to forge.
@@ -238,7 +238,7 @@ Every rejection records who and why. The `print` gives you a local trail in the 
 
 ### When you reach for these four patterns
 
-You combine these four on every event where a player gains something: money, items, XP, a vehicle, a level. Server authority decides the value, the sanity check rejects impossible inputs on events that still take a payload, the rate limit caps how fast an action can repeat, and the audit log tells you when someone tried. In production the `DAILY_REWARD` constant becomes a database read of the player's actual entitlement, and the cooldown becomes a stored "last claimed at" timestamp so it survives a restart. The shape stays exactly what you built here.
+You combine these checks on every event where a player gains something. In production the handler verifies stored entitlement, persists a last-claimed timestamp against a stable framework id, and grants the reward through the server framework API only after the durable write succeeds. A source-keyed memory table is a burst limiter, not a once-per-day guarantee.
 
 ## If something went wrong
 
@@ -256,7 +256,7 @@ You combine these four on every event where a player gains something: money, ite
 
 <Recap
   items={[
-    "Explain why source inside a RegisterNetEvent handler is trustworthy while the event payload never is.",
+    "Explain that source identifies the sending connection while the payload is untrusted, and that source is not a durable character id.",
     "Design the event so the client sends an intent and the server derives the amount, leaving nothing on the wire to forge.",
     "Rate limit per player with a table keyed by source, and choose os.time versus GetGameTimer by the window you guard.",
     "Clear per-source state on playerDropped to avoid leaks and stale cooldowns from reused server IDs.",

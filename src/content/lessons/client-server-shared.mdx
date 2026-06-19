@@ -92,7 +92,7 @@ print('[qu_client_server_shared] server read Config.Greeting: ' .. Config.Greeti
 RegisterCommand('splitproof', function(src)
     print('[qu_client_server_shared] server fired splitproof for src ' .. src)
     TriggerClientEvent('qu_client_server_shared:proof', src, Config.MaxDistance)
-end, true)
+end, false)
     ```
   </Step>
 
@@ -121,13 +121,13 @@ end)
     restart qu_client_server_shared
     ```
 
-    Join the server, then run `splitproof` from the server/txAdmin Live Console. The command is restricted (the `true` flag), so it only runs as a principal that holds the `command.splitproof` ace, and the server/txAdmin console runs as the system console principal that has command permission by default:
+    Join the server, open the in-game chat box with T, and run:
 
     ```text
-    splitproof
+    /splitproof
     ```
 
-    There is no automatic "the host's client is an ace" rule: a connected player, even the host, gets `command.splitproof` rights only if you explicitly grant them. To run it from in-game F8 instead, first add the ace to `server.cfg`, e.g. `add_ace identifier.fivem:<yourId> command.splitproof allow` (or `add_principal identifier.fivem:<yourId> group.admin` plus `add_ace group.admin command.splitproof allow`), then restart and run `splitproof` in F8.
+    The command uses `false` because this proof action only prints and sends a number back to the player who ran it. Running it as a connected player gives the handler a real player source such as `1`. The server console has source `0`, which is not a connected client and therefore cannot receive `TriggerClientEvent`.
 
     <ExpectedOutput>
       Server: [qu_client_server_shared] server read Config.Greeting: three folders, one resource
@@ -162,7 +162,7 @@ Stop guessing per file. Use this rule for every line you write:
 
 - **client/** if the line touches the local player: the ped, the camera, drawing on screen, NUI, key presses, anything that only makes sense for one person's game. Natives like `PlayerPedId()`, `DrawMarker`, `SetNuiFocus` live here.
 - **server/** if the line touches authority: the `source` of an event, money, inventory, the database, bans, or anything a cheating client must not be allowed to decide. This side is the referee. It is the only side a player cannot edit.
-- **shared/** only for pure config tables and stateless helper functions: a number, a label, a list of job names, a function that turns cents into a money string. No natives. No secrets. No state.
+- **shared/** only for data and helpers that are safe on both sides: a number, a label, a list of job names, or a function that turns cents into a money string. No secrets, no authoritative mutable state, and no native unless the official reference marks it available on both client and server.
 
 When you are unsure, ask one question: does this line decide something a player could cheat? If yes, it goes in server. The server is the only side you control; the client runs on the player's machine and they can read and change it.
 
@@ -172,11 +172,11 @@ Two things will burn you if they end up in `shared/`.
 
 The first is secrets. Database connection strings, API keys, admin passwords. Anything in `shared/` is shipped to every client and a determined player can dump it out of their game memory. A secret in shared is a secret you have handed to the public. Secrets belong in `server/` or, better, in convars set in `server.cfg`.
 
-The second is server-only natives. Natives like `GetPlayerIdentifiers` or `DropPlayer` only exist in the server runtime. If a shared file calls one, it loads fine on the server but throws `attempt to call a nil value` the instant the client VM runs that same file. Shared code has to be safe to run on both sides, which in practice means no natives at all.
+The second is side-specific natives. Natives like `GetPlayerIdentifiers` or `DropPlayer` only exist in the server runtime. If a shared file calls one, it loads fine on the server but throws `attempt to call a nil value` when the client runs that same file. Some Cfx natives are available on both sides, so check the API-set badge in the official native reference rather than applying a blanket "no natives" rule.
 
 ### Why the glob import works and why load order matters
 
-Look back at the manifest. You wrote `shared_scripts { 'shared/*.lua' }`, not a single filename. The `*` is a glob: FiveM expands it to every `.lua` file in that folder, in name order. Add `shared/jobs.lua` tomorrow and the manifest already loads it, no edit needed. That is why real resources use globs per folder instead of listing twenty files by hand.
+Look back at the manifest. You wrote `shared_scripts { 'shared/*.lua' }`, not a single filename. The `*` is a glob: FiveM expands it to every matching `.lua` file in that folder. Add `shared/jobs.lua` tomorrow and the manifest already includes it. The official manifest reference does not promise an alphabetical order for glob matches, so list files explicitly whenever one shared file depends on another.
 
 The curly-brace list also matters for a second reason: order. FiveM loads `shared_scripts` before `client_scripts` and `server_scripts`. That ordering is the reason your prints worked. By the time `server/main.lua` and `client/main.lua` run, `shared/config.lua` has already run on that side, so `Config` exists. Flip the order, load a script before the shared file that defines `Config`, and you get `attempt to index a nil value (global 'Config')`. Shared first is not a suggestion; it is what makes the config available when the rest of your code reads it.
 
@@ -197,8 +197,8 @@ You reach for it on the very first file of every resource, not as cleanup later.
     { symptom: "attempt to index a nil value (global 'Config')", fix: "A client or server file ran before shared loaded, or the file is in the wrong folder. Confirm config.lua is inside shared/ and the manifest lists shared_scripts before client_scripts and server_scripts." },
     { symptom: "Could not find dependency / no script files matched 'shared/*.lua'", fix: "The folder name or glob is wrong. The path is case sensitive and relative to the resource root. Confirm the folder is named shared (not Shared) and the file ends in .lua." },
     { symptom: "Server console prints, but F8 shows nothing", fix: "The client print and event live in client/main.lua, which only runs in-game. You must join the server, not just restart it from the console. Read F8 while connected." },
-    { symptom: "attempt to call a nil value when the resource starts", fix: "A shared file is calling a server-only or client-only native. Shared code must use no natives. Move that line into server/ or client/ where the native exists." },
-    { symptom: "splitproof does nothing in F8", fix: "The command is restricted (the true flag), so it silently fails unless the principal running it holds the command.splitproof ace. There is no automatic host-is-an-ace rule. Run splitproof from the server/txAdmin Live Console, which runs as the system console principal that has command permission by default. To run it from F8 instead, first grant your identifier the ace in server.cfg (e.g. add_ace identifier.fivem:<yourId> command.splitproof allow), then restart." },
+    { symptom: "attempt to call a nil value when the resource starts", fix: "A shared file is calling a native that is unavailable on one side. Check the native's API-set badge and move the call into server/ or client/ unless it is documented for both." },
+    { symptom: "splitproof prints source 0 but nothing reaches F8", fix: "You ran the command from txAdmin. Source 0 is the server console, not a player. Join the server and run /splitproof in chat, or type splitproof without a slash in F8." },
   ]}
 />
 
@@ -224,7 +224,7 @@ You reach for it on the very first file of every resource, not as cleanup later.
   RegisterCommand('checkconfig', function(src)
       print('[qu_client_server_shared] server Config.Greeting is now: ' .. Config.Greeting)
       TriggerClientEvent('qu_client_server_shared:checkconfig', src)
-  end, true)
+  end, false)
   ```
 
   In `client/main.lua`, add the matching handler:
@@ -235,7 +235,7 @@ You reach for it on the very first file of every resource, not as cleanup later.
   end)
   ```
 
-  Restart `qu_client_server_shared`, join, and run `checkconfig`. The server prints `server edited this` while the client still prints `three folders, one resource`. You just watched the two VMs disagree, which is the whole lesson. Now move that `Config.Greeting = ...` edit into `shared/config.lua` instead and confirm both sides agree again, because now both copies start from the changed source.
+  Restart `qu_client_server_shared`, join, and run `/checkconfig` in chat. The server prints `server edited this` while the client still prints `three folders, one resource`. You just watched the two VMs disagree, which is the whole lesson. Now move that `Config.Greeting = ...` edit into `shared/config.lua` instead and confirm both sides agree again, because now both copies start from the changed source.
 </Exercise>
 
 <Refs

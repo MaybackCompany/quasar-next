@@ -4,11 +4,11 @@
   meta={[
     { label: "You'll learn", value: "What CreateThread actually creates, why Wait is mandatory inside loops, and how to pick the right wait time per use case" },
     { label: "Time", value: "~15 minutes" },
-    { label: "Prereqs", value: "Lesson 04 (loops), Lesson 11 (natives), Lesson 15 (callbacks)" },
-    { label: "Outcome", value: "You can split work across draw threads, state threads, and polling threads, and you stop your resource from eating the server frame" },
+    { label: "Prereqs", value: "Lesson 04 (loops) and Lesson 11 (natives)" },
+    { label: "Outcome", value: "You can split client work across coroutines and keep polling from consuming unnecessary client frame time" },
   ]}
 >
-  Every FiveM script runs inside one Lua VM per resource. The VM has a strict per-tick budget. `CreateThread` spawns a coroutine; `Wait(ms)` yields it back to the engine. Forget the Wait and you freeze the game. Use the wrong Wait value and your script either hogs the frame or feels laggy. This bonus is the deep dive that turns "I copied the boilerplate" into "I know exactly why it's there."
+  `CreateThread` starts a scheduled Lua coroutine; `Wait(ms)` yields it back to the runtime. An infinite loop that never yields can freeze the client. A polling interval that is shorter than the feature needs wastes client frame time, while one that is too long misses input or feels delayed.
 </LessonHero>
 
 <Prereq
@@ -103,10 +103,11 @@ end)
     restart qu_createthread_and_wait
     ```
 
-    Now join the server, open F8, and run this test. Type the command, wait a few seconds for the slow tick, then press E:
+    Now join the server. Run `/threadtoggle` in chat, or type `threadtoggle` without a slash in F8. Wait a few seconds for the slow tick, then press E.
 
     ```text
-    /threadtoggle, wait ~5s, then press E
+    Chat: /threadtoggle
+    F8: threadtoggle
     ```
 
     <ExpectedOutput>
@@ -129,7 +130,7 @@ The name lies a little. `CreateThread` does not start an operating-system thread
 
 FiveM runs a **scheduler**. Once per frame the engine walks the list of coroutines that are due to run, resumes each one, lets it work until it yields, then moves to the next. When your resource has two `CreateThread` blocks, you have handed the scheduler two coroutines. It resumes them one after another inside that single VM. They are not truly parallel. They take turns, fast enough that to a player they look simultaneous.
 
-This is why a heavy loop in one resource can lag every other script: they may all be sharing a frame. The scheduler cannot move on to the next coroutine until the current one gives control back. Which is the entire reason the next idea exists.
+This is why a heavy client loop can delay other client script work and the game frame: the scheduler cannot move on until the current coroutine yields. Server-side loops use the same cooperative idea but affect the server runtime instead of a player's renderer.
 
 ### Why Wait is mandatory
 
@@ -175,7 +176,7 @@ Every `Wait(0)` loop you add has a cost, and the tool that shows it is **resmon*
 resmon
 ```
 
-You get a live table of every running resource and a column showing how many **milliseconds per frame** each one is spending. That number is the resource's slice of the frame. The frame as a whole has a budget: at 60 fps a frame is about 16.6 ms total, shared across every resource plus the game itself. A script sitting at 0.01 ms is invisible. A script sitting at 2 or 3 ms on its own is eating a real chunk of everyone's frame, and resmon will color it to warn you. That is what "over budget" looks like in practice: one resource's ms creeping up until the sum of all resources cannot fit inside the frame, and the server's frame time starts to climb.
+You get a live client-side table of resources and their script time. At 60 fps the whole client frame is about 16.6 ms, shared by the game and client resources. A resource consistently spending multiple milliseconds is consuming a visible part of that local player's frame budget. `resmon` does not measure server tick time; use the server profiler for server-side performance.
 
 Your two-loop resource here will sit near zero, because the only thing the `Wait(0)` loop does each frame is one cheap boolean check. The cost problem shows up when people put expensive work, native calls, drawing, distance math, inside a `Wait(0)` loop that did not need to run every frame. Which is exactly what the next pattern fixes.
 
@@ -218,7 +219,7 @@ The loop starts each pass assuming it can sleep a full second. Only when the pla
   items={[
     "Explain that CreateThread starts a Lua coroutine in the resource's single VM, not an OS thread, and that the scheduler resumes coroutines one at a time per frame.",
     "Say why Wait is mandatory: without a yield a while-true loop never hands the frame back and the whole game freezes.",
-    "Read Wait(0) as resume next frame (about 60 runs per second) and Wait(5000) as sleep five seconds, and pick the value on purpose.",
+    "Read Wait(0) as resume next game tick (frame-rate dependent) and Wait(5000) as resume after roughly five seconds, and pick the value on purpose.",
     "Explain why a one-frame event like IsControlJustPressed must be polled inside a Wait(0) loop.",
     "Open resmon and read a resource's ms per frame to judge whether it is within the tick budget.",
     "Apply the adaptive wait pattern so a polling loop sleeps when idle and only drops to Wait(0) when it matters.",

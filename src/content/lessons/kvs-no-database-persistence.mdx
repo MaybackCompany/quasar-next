@@ -55,7 +55,7 @@ game 'gta5'
 server_script 'server.lua'
     ```
 
-    The KVS natives are SERVER natives, so the code lives in one `server_script`. There is no `client_script` here, and there is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only runtime.
+    The KVS natives are available in Cfx scripting contexts, but this lesson deliberately uses them in a `server_script` so the saved counter is controlled by the server and not by a player's local client store. There is no `lua54 'yes'` line; Lua 5.4 is the only Lua runtime.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The counter reads from disk, increments, and writes back.">
@@ -64,7 +64,7 @@ server_script 'server.lua'
     ```lua
 local KEY = 'visit_count'
 
--- Read the saved number on startup. nil means the key has never been written.
+-- Read the saved number on startup. An unset integer key reads as 0.
 local count = GetResourceKvpInt(KEY)
 print(('[qu_kvs_counter] loaded count from KVS: %d'):format(count))
 
@@ -153,9 +153,9 @@ RegisterCommand('countup', function()
 end, true)
 ```
 
-`SetResourceKvpInt(key, value)` writes an integer to the store under that key. There is no save button, no flush, no commit. The value is on disk the instant the call returns. That simplicity is the KVS selling point and also its trap, which the mistakes section comes back to.
+`SetResourceKvpInt(key, value)` writes an integer to the store under that key. There is no application-level save button or transaction to commit. Treat the call as a persistence write, not as free in-memory work: do not run it every frame or use KVS for high-frequency economy state.
 
-Notice the two-step rhythm: bump the in-memory `count`, then push it to the KVS. The local variable is your fast working copy for this session; the KVS is the durable copy that outlives the process. Keeping both in sync by hand is fine here because there is exactly one value. The restricted flag is `true`, so only the server console and aces can fire the command. A counter you do not want random players inflating belongs behind that flag. Remember the rule from the trust lessons: the client may request, only the server grants. KVS lives entirely on the server, so a player can never reach it directly.
+Notice the two-step rhythm: bump the in-memory `count`, then push it to the KVS. The local variable is your fast working copy for this session; the server-side KVS is the durable copy. The restricted flag is `true`, so the command requires the `command.countup` ACE; the server console can run it. A remote client cannot call this server-side KVS code directly, but any network event you expose around it would still need normal server validation.
 
 FiveM gives you three typed pairs, and you pick by the shape of your value:
 
@@ -214,7 +214,7 @@ The KVS is the right tool when all of these are true:
 
 You reach for **MariaDB plus oxmysql** the moment any of those breaks. oxmysql is the Overextended community resource that connects your server to a MariaDB database, and MariaDB is the database engine to prefer in 2026 over plain MySQL. You need it when the data is **relational** (players own vehicles, vehicles belong to garages), when you must **query and filter** (leaderboards, "all characters for this license"), or when the data is **shared across many resources** that each read and write the same tables. A whole-server economy with 64 players hammering wallets is squarely database territory, not KVS territory.
 
-This is the exact line that separates this lesson from the **Persistence: cache plus write-back** lesson. That lesson keeps player money in a database and uses an in-memory cache with a dirty flag and a timed flush so the database is not hit on every change. It exists because a database write is expensive and you want to batch them. The KVS has the opposite shape: each `SetResourceKvpInt` is a cheap direct write, so there is no cache and no flush, but you also give up queries, relationships, and cross-resource sharing. KVS is for small private state that must survive a restart. The cache plus write-back pattern is for large shared relational state that must survive a restart **and** be queryable. Pick by what the data looks like, not by which one you learned first.
+This is the line that separates this lesson from **Persistence: cache plus write-back**. KVS is for small, low-frequency, resource-private state. It still performs persistent storage work, so cache or debounce frequent changes. MariaDB plus oxmysql is for relational, shared, queryable data and supports transactions and indexing. Pick by the data model and durability requirements, not by which API is shorter.
 
 ## Common mistakes
 
@@ -246,9 +246,14 @@ This is the exact line that separates this lesson from the **Persistence: cache 
   Turn the single counter into a per-player visit tracker that survives restarts, then list the leaderboard. The key for each player is built from their identifier, and the find iterator reads them all back. Build a server command that increments the caller's own count and one that prints every stored player count:
 
   ```lua
-  -- Server side. source is the player who fired the command.
+  -- Server side. Use a stable identifier for the durable key.
   RegisterCommand('myvisits', function(source)
-      local key = ('visits_%s'):format(source)
+      local license = GetPlayerIdentifierByType(source, 'license')
+      if not license then
+          print('[qu_kvs_counter] no license identifier for source ' .. source)
+          return
+      end
+      local key = ('visits_%s'):format(license)
       local n = GetResourceKvpInt(key) + 1
       SetResourceKvpInt(key, n)
       print(('[qu_kvs_counter] player %s now has %d visits'):format(source, n))
@@ -265,14 +270,15 @@ This is the exact line that separates this lesson from the **Persistence: cache 
   end, true)
   ```
 
-  Notice the restricted flag is `false` on `myvisits` so a joined player can run it from F8 and `source` is their real server id, but `true` on `allvisits` so only the console can dump the full list. The `'visits_'` prefix on `StartFindKvp` means `allvisits` only walks the visit keys and ignores the `visit_count` key from the main lesson. Run `myvisits` from a couple of different connected clients, restart the whole server, then run `allvisits` from the console and confirm every player's number came back. Now ask yourself the design question: at what player count, or what added feature like sorting the leaderboard by visits, would this stop being a KVS job and become a MariaDB plus oxmysql job?
+  The command receives a temporary server source, then converts it to a stable `license:` identifier before building the persistent key. Never use `source` itself as a durable key: sources are connection slots and are reused. The `'visits_'` prefix makes `allvisits` ignore the main `visit_count` key. Because this dump prints player identifiers, keep `allvisits` ACE-restricted and never expose its output to clients. Once you need sorting, filtering, cross-resource access, or many players, move this data to MariaDB.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM KVS SetResourceKvp reference", href: "https://docs.fivem.net/natives/?_0x21C7A35B" },
-    { label: "FiveM KVS GetResourceKvpInt reference", href: "https://docs.fivem.net/natives/?_0x557B586A" },
-    { label: "FiveM StartFindKvp reference", href: "https://docs.fivem.net/natives/?_0xDD379006" },
+    { label: "FiveM native reference (search SetResourceKvpInt)", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM native reference (search GetResourceKvpInt)", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM native reference (search StartFindKvp)", href: "https://docs.fivem.net/natives/" },
+    { label: "FiveM player identifiers", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/GetPlayerIdentifiers/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" }
   ]}
