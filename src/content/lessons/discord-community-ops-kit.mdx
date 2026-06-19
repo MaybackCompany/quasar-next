@@ -45,7 +45,7 @@
   </Step>
 
   <Step num={2} title="Set up a ticket flow" outcome="A player issue becomes a tracked, assignable item.">
-    Use a ticket bot so opening a ticket creates a private thread or channel only the player and staff can see. Ticket Tool is a common free choice; any bot that does panel + private thread works. Configure the panel so each ticket prompts the player for the same fields every time: what broke, when it happened (server time helps), their in-game name or Steam/license ID, and any console or F8 error text. Those fields are not decoration. They are the exact inputs your incident runbook needs to reproduce and fix the issue.
+    Use a ticket bot so opening a ticket creates a private thread or channel only the player and authorized staff can see. Configure the panel to ask what broke, when it happened, the in-game/character name, and any console error. Ask for a raw player identifier only when staff genuinely need it, keep it in the private ticket, and define retention/deletion rules; identifiers and logs are user data, not decoration. Treat ticket transcripts and screenshots the same way: redact identifiers before pasting them anywhere outside the private ticket.
   </Step>
 
   <Step num={3} title="Write the escalation path" outcome="Staff know who handles what without asking.">
@@ -63,18 +63,27 @@ Two pieces of this kit look simple but trip up real servers: the logs webhook an
 
 ### Why the logs webhook URL is a secret
 
-To get server events into your private logs channel, you create a Discord webhook on that channel and Discord gives you a URL that looks like this:
+To get server events into your private logs channel, open that channel's settings (gear icon, or right-click the channel) -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL. Discord gives you a URL that looks like this (the same Webhooks screen is where you later Delete or Regenerate it if it leaks). A server-side resource, built in a later lesson, reads the convar below and POSTs to this URL; this lesson only sets up the channel and stores the secret, so the logs channel stays empty until that resource exists. That empty channel is expected, not a mistake. If you want to confirm the webhook itself works before that resource exists, send one optional test message from PowerShell, replacing the URL with your own:
+
+```powershell
+curl.exe -H "Content-Type: application/json" -d '{"content":"webhook test"}' "https://discord.com/api/webhooks/123.../AbCd..."
+```
+
+A single line saying "webhook test" should appear in your logs channel. Delete that test message afterward.
 
 ```text
 https://discord.com/api/webhooks/123456789012345678/AbCdEf...your-token...
 ```
 
-That URL is a credential, not a link. Anyone who has it can POST a message to your logs channel as your server, with no login and no permission check. There is no separate password. Possession of the URL is the permission. If it leaks, someone can spam your staff channel, impersonate your bot, or bury a real incident under noise, and your only fix is to delete the webhook and issue a new URL.
+That URL is a credential, not a link. Anyone who has it can POST a message to your logs channel as your server, with no login and no permission check. There is no separate password. Possession of the URL is the permission. If it leaks, someone can spam your staff channel, impersonate your bot, or bury a real incident under noise, and your only fix is to delete the webhook and issue a new URL. You do this in the same place you created it: Channel settings -> Integrations -> Webhooks -> select the webhook -> Delete Webhook, then create a fresh one and update the convar value in server.cfg. The old URL stops working the moment you delete it.
 
 So treat it exactly like any other secret. Do not paste it in a public channel, a screenshot, or a commit. It belongs in your `server.cfg` as a convar, read by your resources, never hard coded into a script you might share:
 
 ```cfg
 set discord_log_webhook "https://discord.com/api/webhooks/.../..."
+# Use `set` (server-side only). Do NOT use `setr` (it replicates the value to every
+# connected client) or `sets` (it publishes the value on the public server list and the
+# open http://<server_ip>:<server_port>/info.json file). Either one leaks the webhook.
 ```
 
 This is the same rule code review enforces on every other secret: keys and tokens live in config the server reads, not in the source. A webhook URL is no different.

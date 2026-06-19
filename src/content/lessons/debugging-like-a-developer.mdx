@@ -91,11 +91,14 @@ end, false)
     ensure qu_debugging_like_a_developer
     ```
 
-    Save, then run this in the txAdmin Live Console:
+    Save. Because this folder is brand new, the running server does not know it exists yet, so run these two lines in the txAdmin Live Console, one at a time:
 
     ```text
-    restart qu_debugging_like_a_developer
+    refresh
+    ensure qu_debugging_like_a_developer
     ```
+
+    `refresh` rescans the `resources` folder so the server discovers your new folder. `ensure` then starts it (and on later edits, `ensure` restarts it). Use `restart qu_debugging_like_a_developer` only after the resource has already been started once in this session.
 
     Now join the server, press F8 to open the in-game console, and run the test there:
 
@@ -109,9 +112,7 @@ end, false)
       [qu_debugging_like_a_developer] risky() failed, error was: @qu_debugging_like_a_developer/client.lua:6: planned failure
       [qu_debugging_like_a_developer] stack at point of failure
       stack traceback:
-        [C]: in function 'error'
-        @qu_debugging_like_a_developer/client.lua:6: in function 'risky'
-        ...
+        [the exact frames here depend on your FiveM build; copy what F8 prints]
     </ExpectedOutput>
 
     The exact line number after `client.lua:` will match wherever the `error(...)` call sits in your file. In the code above that is line 6.
@@ -211,10 +212,10 @@ log(debug.traceback('stack at point of failure', 2))
 
 A single `file:line` tells you where the error fired. A **traceback** tells you the whole chain of calls that led there, newest at the top. `debug.traceback(message, level)` builds that chain as a string. The first argument is a label printed at the top so you know what you are looking at. The second argument, `2`, tells it how many frames to skip so the trace starts at the interesting code and not inside the traceback machinery itself.
 
-Read a traceback top to bottom as the answer to one question: how did we get here. The top frame is where the error happened. Each line below it is the function that called the one above. In a deep bug, the traceback is how you find that the bad value was not created where it exploded, it was passed in from three functions up. For a one-level failure like this lesson, the trace is short, but the skill of reading frames top down is the same at any depth.
+Read a traceback top to bottom as the answer to one question: how did we get here. Important detail for this lesson: because we call `debug.traceback` in the `else` branch, *after* `pcall` already caught and unwound the error, this trace shows the recovery path (the command we are running), not the original failing line. The failing line comes from the error message in `result` (`...client.lua:6: planned failure`). To capture a traceback that still includes the failing `risky`/`error` frames, you pass a handler that runs *before* the stack unwinds: `xpcall(risky, debug.traceback)`. We keep `pcall` here to stay simple, but know the difference. In a deep bug, the traceback is how you find that the bad value was not created where it exploded, it was passed in from three functions up. For a one-level failure like this lesson, the trace is short, but the skill of reading frames top down is the same at any depth.
 
-<Checkpoint question="pcall returns ok=false. Which variable holds the message 'planned failure', and why is the old expected output of an empty result= wrong?">
-  The **second** return value holds it. `pcall` returns the success boolean first and the error message second, so after `local ok, result = pcall(risky)` the variable `result` contains the string `@qu_debugging_like_a_developer/client.lua:6: planned failure`. It is never empty when the call fails, because the whole point of `error('planned failure')` is to produce that message. An expected output showing `result=` with nothing after it would be a bug in the lesson, not something you did wrong. When the call succeeds, `result` instead holds whatever the function returned.
+<Checkpoint question="pcall returns ok=false. Which variable holds the message that gets logged as 'error was: ...', and why is it never empty on failure?">
+  The **second** return value holds it. `pcall` returns the success boolean first and the error message second, so after `local ok, result = pcall(risky)` the variable `result` contains the string `@qu_debugging_like_a_developer/client.lua:6: planned failure`. It is never empty when the call fails, because the whole point of `error('planned failure')` is to produce that message. When the call succeeds, `result` instead holds whatever the function returned.
 </Checkpoint>
 
 ### F8 versus the server console, and why it matters
@@ -238,7 +239,7 @@ You will reach for `pcall` and tracebacks constantly once you leave beginner ter
     { symptom: "Resource qu_debugging_like_a_developer does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name. Case and underscores must match." },
     { symptom: "Could not load resource qu_debugging_like_a_developer", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
     { symptom: "Nothing appears when you run /debugfail", fix: "This is client code, so the output is in F8, not txAdmin. Join the server, press F8 in-game, and run /debugfail there." },
-    { symptom: "result= prints empty", fix: "You captured only one value from pcall. Write local ok, result = pcall(risky) with both variables, since the message is the second return value." },
+    { symptom: "The 'error was:' line shows nothing after the colon", fix: "You captured only one value from pcall, so result holds the boolean, not the message. Write local ok, result = pcall(risky) with both variables, since the error message is the second return value." },
     { symptom: "attempt to call a nil value (global 'pcall')", fix: "pcall is lowercase and built into Lua. Check for a typo like Pcall or PCall. Lua is case sensitive." },
   ]}
 />

@@ -37,7 +37,7 @@ The `server/` folder holds the **artifacts**: the FiveM server binaries you down
 
 The `server-data/` folder holds **your** content: the `resources/` folder full of scripts, and the `server.cfg` that decides what runs. This is the folder you version-control and back up. They are kept separate on purpose, so updating the engine never risks your scripts, and backing up your scripts never drags along a few hundred megabytes of binaries.
 
-The server is launched from inside `server-data/`, pointing back at the engine and handing it your config:
+In a **vanilla, non-txAdmin** launch, FXServer is started from `server-data/` and handed the config directly:
 
 ```text
 # Windows, run from inside server-data:
@@ -47,7 +47,7 @@ C:\FXServer\server\FXServer.exe +exec server.cfg
 bash ~/FXServer/server/run.sh +exec server.cfg
 ```
 
-That `+exec server.cfg` is the whole handoff. The engine starts, reads your `server.cfg` top to bottom, and that file is what you spend the rest of this lesson organizing.
+That `+exec server.cfg` is the vanilla handoff. If txAdmin manages your server, do **not** launch a second FXServer process with this command: start FXServer without `+exec` to open txAdmin, then let the txAdmin profile launch the configured data folder and cfg. The official txAdmin repository documents that distinction.
 
 ## Build it
 
@@ -86,7 +86,7 @@ resources/
 ├── [framework]/
 │   ├── oxmysql/        # database layer (Overextended)
 │   ├── ox_lib/         # shared library (Overextended)
-│   └── es_extended/    # the framework (or qb-core / qbx_core)
+│   └── es_extended/    # one example framework (or qb-core / qbx_core)
 ├── [standalone]/
 │   ├── ox_target/      # 3D interaction (Overextended)
 │   └── ox_inventory/   # inventory (Overextended)
@@ -111,8 +111,8 @@ ensure sessionmanager
 
 ## --- Framework group: dependencies BEFORE the framework ---
 ensure oxmysql        # database layer, must load first
-ensure ox_lib         # shared library, framework calls into it
-ensure es_extended    # the framework itself (depends on the two above)
+ensure ox_lib         # shared library for resources whose manifests require it
+ensure es_extended    # framework itself; follow its official recipe dependencies
 
 ## --- Standalone deps, then your gameplay scripts ---
 ensure ox_target
@@ -205,7 +205,7 @@ ensure oxmysql        # registers the database exports
 ensure es_extended    # calls those exports on start -> they exist -> OK
 ```
 
-Get it backwards and the dependent resource reaches for exports that do not exist yet, and it errors out during boot:
+Get it backwards and the dependent resource reaches for exports that do not exist yet, and it typically errors out during boot (it can also fail silently if it touches the export later instead of at start):
 
 ```cfg
 # WRONG: dependent before dependency -> startup error
@@ -213,7 +213,7 @@ ensure es_extended    # tries to use oxmysql exports that are not registered yet
 ensure oxmysql
 ```
 
-The reliable order is always the same: database layer, then shared library, then framework, then the scripts that build on the framework, then maps. That is exactly why the `[framework]` folder groups `oxmysql`, `ox_lib`, and `es_extended` together, and why those three `ensure` lines sit at the top of your config in that sequence.
+The reliable rule is **dependency before dependent**, using each resource's README and `fxmanifest.lua` as the source of truth. Database-backed frameworks commonly need `oxmysql`; a script that imports `@ox_lib/init.lua` needs `ox_lib`. Do not assume every framework needs every ox resource just because an example config includes them.
 
 <Checkpoint question="If everything in [framework] needs to load before everything in [scripts], can you just ensure both bracket folders and trust the order?">
   Mostly, but with a sharp edge. Ordering between groups is reliable: `ensure [framework]` above `ensure [scripts]` does load the whole framework group before the scripts group. What brackets do NOT give you is fine-grained order inside a group. `ensure [framework]` starts oxmysql, ox_lib, and es_extended, but does not promise es_extended loads last. When the order within a group matters, list those few resources by name in the exact sequence you need, instead of relying on the bracket. Brackets group; they do not sort.
@@ -285,6 +285,7 @@ ensure [jobs]
   items={[
     { label: "FiveM: setting up a server (vanilla)", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/" },
     { label: "FiveM server commands reference", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "txAdmin official repository · running txAdmin", href: "https://github.com/citizenfx/txAdmin#running-txadmin" }
   ]}
 />

@@ -5,10 +5,10 @@
     { label: "You'll build", value: "qu_bank: one balance table in MariaDB and one server file that runs /bank deposit, withdraw, and balance." },
     { label: "Time", value: "About 60 minutes if you have never used oxmysql before." },
     { label: "Prereqs", value: "Lessons 14 (events), 15 (callbacks), and 16 (ox_lib menus)." },
-    { label: "Outcome", value: "A bank a cheater cannot drain, because the server holds the truth and rejects a withdraw larger than the balance." },
+    { label: "Outcome", value: "A server-only ledger demo that rejects invalid amounts and a withdraw larger than the stored balance." },
   ]}
 >
-  By the end of this lesson you will run a working `/bank` command that lets a player deposit cash, withdraw cash, and check a balance saved in MariaDB. The balance lives only on the server, and a withdraw larger than the balance is refused. That refusal is the capstone idea: the server holds the truth, so the client cannot lie its way to free money.
+  By the end of this lesson you will run a server-console `/bank` command that changes a practice ledger in MariaDB. This is not yet a framework bank: it does not remove pocket cash on deposit or grant pocket cash on withdrawal. It isolates the database rule so you can prove validation before connecting it to real money.
 </LessonHero>
 
 <LessonVideo loomId="cd89f7885d564617bb886d16649de125" title="ATM robbery with ox_lib" caption="Cruze builds an ATM robbery with ox_lib, the same server-authority pattern." />
@@ -23,7 +23,7 @@
 />
 
 <Callout variant="fivem" title="Build the proof, then understand it">
-  This lesson builds a server-authoritative bank as a working FiveM resource named `qu_bank`. Follow the folder names, file names, SQL, code, restart command, and expected output exactly. Once it works, the next section takes the code apart line by line so you know why a cheater cannot drain it.
+  This lesson builds the database half of a server-authoritative bank as a working resource named `qu_bank`. Follow the folder names, file names, SQL, code, restart command, and expected output exactly. The final section also names the framework money and concurrency work still required before this pattern is production-ready.
 </Callout>
 
 ## Build it
@@ -68,7 +68,7 @@ dependencies {
   </Step>
 
   <Step num={4} title="Create the balance table" outcome="The database has one row per player, keyed so it cannot duplicate.">
-    Run this SQL in your database before starting the resource. oxmysql speaks to MariaDB, which is the recommended engine for FiveM in 2026:
+    Run this SQL in your database before starting the resource. oxmysql works with both MySQL and MariaDB; MariaDB is the most common choice for FiveM servers and benchmarks fastest in oxmysql's own tests:
 
     ```sql
 CREATE TABLE IF NOT EXISTS qu_bank_accounts (
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS qu_bank_accounts (
 );
     ```
 
-    The table keys on `citizenid`, not an auto-increment `id`. That primary key is what makes the account unique: one row per player, and the database itself refuses to store a second row for the same `citizenid`. A real bank needs exactly this shape.
+    The table keys on a character id, not an auto-increment row id. QBCore and Qbox call that value `citizenid`; ESX uses its active character `identifier` instead. The primary key makes one ledger row per active character id.
   </Step>
 
   <Step num={5} title="Write the lesson code" outcome="The /bank command runs deposit, withdraw, and balance on the server.">
@@ -107,8 +107,14 @@ end
 
 RegisterCommand('bank', function(source, args)
     local action = args[1]
-    local amount = tonumber(args[2]) or 0
+    local amount = tonumber(args[2])
     local citizenid = TEST_CITIZEN
+
+    if action ~= 'balance' and (not amount or amount <= 0 or amount ~= math.floor(amount)) then
+        print('[qu_bank] amount must be a positive whole number')
+        return
+    end
+
     local balance = getBalance(citizenid)
 
     if action == 'balance' then
@@ -148,10 +154,10 @@ end, true)
     ensure qu_bank
     ```
 
-    Save, then run:
+    Save. If this is the first time you are starting the resource this session, type `ensure qu_bank` in the txAdmin Live Console to start it. After any later edit to the files, use `restart qu_bank` to reload it:
 
     ```text
-    restart qu_bank
+    ensure qu_bank
     ```
 
     Now run these four commands in order, from the txAdmin Live Console:
@@ -176,7 +182,7 @@ end, true)
 
 ## How it works
 
-You ran it and the bank refused an over-withdraw. That refusal is what separates a real bank from a number on a screen. Now take the code apart so you understand where the truth lives and why a cheater cannot move it.
+You ran it and the practice ledger refused an over-withdraw. Now take the code apart so you understand where the stored truth lives and what must be added before this becomes a real economy feature.
 
 ### Why the balance lives only on the server
 
@@ -184,7 +190,7 @@ In FiveM, a `client_script` runs inside every player's own game, on their own ma
 
 If the balance lived on the client, a cheater would edit it to a billion and you could not stop them, because they own that machine. So the balance lives in the database, which only the server can read and write. The client is allowed to *ask* for a deposit or a withdraw, but the server is the one that checks the rules and changes the number. That is what "server authority" means, and it is the reason this lesson is the capstone.
 
-In this lesson the command runs from the console, which is already on the server, so you are testing the authoritative half directly. In a finished feature the player's UI would fire a client to server event or an `ox_lib` callback with the requested amount, and this exact server code would be the handler that validates it. The validation does not move when you add a UI. It stays right here.
+In this lesson the restricted command runs from the console, so you are testing the ledger half directly. A finished feature also needs a trusted source for each move. A deposit must remove the same amount from server-held cash, a withdrawal must add the same amount through the framework, and both changes need failure handling. Never expose this practice deposit as an unrestricted player event.
 
 ### The reject-if-larger check
 
@@ -195,7 +201,7 @@ if amount > balance then
 end
 ```
 
-This is the four lines that make it a bank. Before any money moves, the server compares the requested `amount` against the `balance` it just read from its own database. If the request is too big, it prints a rejection and `return`s immediately, so the `UPDATE` below never runs and the balance never changes. The client does not get a vote. It can send `withdraw 999999999` all day and the answer is the same.
+This is the guard that stops the practice ledger going negative. Before the ledger changes, the server compares the requested `amount` against the stored `balance`. If the request is too big, it returns before the `UPDATE`. Production code must additionally make the check-and-update atomic so two simultaneous withdrawals cannot both pass after reading the same old balance.
 
 Notice the order: read the real balance first, then check, then write. If you checked against a number the client sent instead of the number the server read, you would have rebuilt the exact hole you were trying to close. The check is only worth anything because it runs against server-owned data.
 
@@ -208,7 +214,7 @@ local row = MySQL.single.await(
 )
 ```
 
-`MySQL` here is the oxmysql library. oxmysql is a community resource from Overextended, not an official Cfx.re component, and it is the standard database layer most modern FiveM servers use. The three calls you used each do one job:
+`MySQL` here is the oxmysql library. The maintained 2026 repository is under Community Ox; it is not an official Cfx.re component. The three calls you used each do one job:
 
 - `MySQL.single` returns one row, or `nil` if nothing matched.
 - `MySQL.insert` runs an INSERT and returns the new row's auto-increment id.
@@ -228,7 +234,7 @@ PRIMARY KEY (citizenid)
 
 The table keys on `citizenid` and stores exactly one balance per player. Compare that to a generic log table with an auto-increment `id` that just appends a row every time something happens. With the per-player design, reading a balance is one lookup by `citizenid`, and there is physically no way to end up with two conflicting balances for the same person, because the primary key forbids a duplicate. That guarantee is doing real work: it is the database enforcing "one account per player" for you, even if your code has a bug.
 
-This is also why you would reach for an upsert in a fuller version. An upsert (INSERT ... ON DUPLICATE KEY UPDATE) only works because `citizenid` is a unique key. Without that key the database has nothing to detect the duplicate on, and the upsert silently inserts a second row instead. In this lesson we kept it explicit with a SELECT then INSERT then UPDATE so each step is visible, but the unique key is what makes the safe version possible later.
+This is also why you would reach for an upsert in a fuller version. An upsert only detects duplicates because the character id is unique. This lesson keeps SELECT, INSERT, and UPDATE separate so each operation is visible, but that is not an atomic transfer design. Concurrent writes require a conditional update or transaction/locking strategy, and a two-account transfer must succeed or fail as one unit.
 
 <Checkpoint question="A player edits their game memory and sends the server a withdraw request for 1,000,000 from an account holding 50. Why do they still get nothing?">
   Because the amount lives on the client, but the balance and the decision live on the server. The server reads the real balance (50) from its own database, compares the requested 1,000,000 against it, sees the request is larger, prints a rejection, and returns before any UPDATE runs. The player can lie about how much they want, but they cannot touch the number the server reads, so the check always runs against the truth. The only thing the client controls is the request, never the answer.
@@ -252,7 +258,7 @@ In every one of these, the rule is the same: the server reads its own data, deci
     { symptom: "Failed to execute query ... near 'qu_bank_accounts'", fix: "You started the resource before running the CREATE TABLE SQL. Run the SQL from step 4, then restart qu_bank." },
     { symptom: "No such export oxmysql ... or MySQL is nil", fix: "oxmysql is not started before qu_bank. Confirm ensure oxmysql comes before ensure qu_bank in server.cfg, and that the dependencies block names oxmysql." },
     { symptom: "Connection refused / unable to connect to the database", fix: "Your MariaDB connection string is wrong or the server is not running. Check the mysql_connection_string convar in server.cfg points at a live MariaDB instance." },
-    { symptom: "attempt to perform arithmetic on a nil value (amount)", fix: "You ran bank deposit with no number. tonumber(args[2]) fell back to 0; pass an amount, like bank deposit 100." },
+    { symptom: "amount must be a positive whole number", fix: "Pass a positive integer, such as bank deposit 100. Zero, negative, fractional, and missing amounts are rejected before any query runs." },
   ]}
 />
 
@@ -273,12 +279,22 @@ In every one of these, the rule is the same: the server reads its own data, deci
 <Exercise>
   Add a `transfer` action so a player can move money to another account, with the server enforcing every rule. Extend the command to accept `bank transfer &lt;toCitizenid&gt; &lt;amount&gt;`:
 
+  Because the command's opening guard runs `tonumber(args[2])` on every non-`balance` action, a transfer (where `args[2]` is the target id, not a number) is rejected before this branch runs. Add `transfer` to the guard exemption first, the same way `balance` is exempt:
+
+  ```lua
+  -- change the top-level guard so transfer is not blocked by the amount check
+  if action ~= 'balance' and action ~= 'transfer' and (not amount or amount <= 0 or amount ~= math.floor(amount)) then
+      print('[qu_bank] amount must be a positive whole number')
+      return
+  end
+  ```
+
   ```lua
   elseif action == 'transfer' then
       local target = args[2]
       local moveAmount = tonumber(args[3]) or 0
-      if moveAmount <= 0 then
-          print('[qu_bank] transfer amount must be positive')
+      if moveAmount <= 0 or moveAmount ~= math.floor(moveAmount) then
+          print('[qu_bank] transfer amount must be a positive whole number')
           return
       end
       if moveAmount > balance then
@@ -294,9 +310,39 @@ In every one of these, the rule is the same: the server reads its own data, deci
   Restart `qu_bank`, run `bank deposit 200`, then `bank transfer XYZ99999 250` and confirm it is rejected, then `bank transfer XYZ99999 50` and confirm both balances move. Notice you added two server-side checks: the amount must be positive, and it cannot exceed the balance. A real transfer also needs the two updates to succeed or fail together as a transaction, which is the next thing to learn after this.
 </Exercise>
 
+## Connecting it to real money (ESX and QBCore)
+
+The ledger above is deliberately standalone so you could prove the validation rule in isolation. To make `/bank` move a player's **actual** pocket cash and bank balance, you stop storing your own balance and instead read and write the **framework's** money. The server-authority rule does not change: the server reads the real balance, validates, then moves it. Only the storage moves from your table to the framework.
+
+Detect the framework once, then branch. Both blocks below run **server-side** and validate before moving anything:
+
+```lua
+-- ESX (es_extended) deposit: cash -> bank, validated on the server
+local xPlayer = ESX.GetPlayerFromId(src)          -- ESX.Player is the modern accessor
+if not xPlayer then return end
+local cash = xPlayer.getAccount('money').money     -- 'money' is the cash account in ESX
+if amount > 0 and cash >= amount then
+    xPlayer.removeAccountMoney('money', amount)
+    xPlayer.addAccountMoney('bank', amount)
+end
+```
+
+```lua
+-- QBCore deposit: cash -> bank, validated on the server
+local Player = QBCore.Functions.GetPlayer(src)
+if not Player then return end
+local cash = Player.Functions.GetMoney('cash')     -- QBCore money types: cash, bank, crypto
+if amount > 0 and cash >= amount then
+    Player.Functions.RemoveMoney('cash', amount, 'bank-deposit')
+    Player.Functions.AddMoney('bank', amount, 'bank-deposit')
+end
+```
+
+The validation is identical to your ledger: positive amount, sufficient balance, decided on the server, never trusting a number the client sent. Withdraw is the mirror image (check `bank >= amount`, then `RemoveMoney('bank', ...)` and `AddMoney('cash', ...)`). The full Quasar University banking project wraps this in a NUI front-end with deposit, withdraw, and transfer, but the rule never changes: **the server is the only place a balance moves.** Reach for a real database table (the pattern above) only when you need balances the framework does not already track.
+
 <Refs
   items={[
-    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" },
+    { label: "Community Ox oxmysql documentation", href: "https://coxdocs.dev/oxmysql" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "FiveM events and server authority", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }

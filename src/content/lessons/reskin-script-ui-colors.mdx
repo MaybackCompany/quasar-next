@@ -137,11 +137,12 @@ Some authors name the folder `web/` or `ui/` instead of `html/`. The name does n
     Then open the script's UI in game the normal way (the command or key the script uses). The panel comes back with the new colors. If a stale skin lingers, clear the NUI cache once and reconnect:
 
     ```text
-    # In the FiveM client app data folder (%localappdata%/FiveM/FiveM.app/):
-    # delete data/nui-storage, then rejoin the server.
+    # Fully close FiveM first (it locks these files while running).
+    # Then in the FiveM client app data folder (%localappdata%/FiveM/FiveM.app/):
+    # delete the data/nui-storage folder, relaunch FiveM, and rejoin the server.
     ```
 
-    Here is what the same panel looks like before and after. Same boxes, same buttons, same positions. Only the paint changed.
+    Here is an illustrative before/after sketch of the same panel (the hex labels are shown only to mark which element each color drives; the real HUD shows colored elements, not hex text). Same boxes, same buttons, same positions. Only the paint changed.
 
     <Mockup app="HUD panel · old palette (#7b2ff7 accent)">
       <div style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, lineHeight: 1.7 }}>
@@ -201,7 +202,7 @@ A CSS file has two kinds of content, and they are not equally safe to touch.
 - **Values** are the things after the colon: `#0fb6c4`, `12px`, `bold`. Changing a color value can only ever change how something looks. The worst case is an ugly color, and you can read it right back off the panel and fix it.
 - **Structure** is everything else: the property *names* (`--accent`, `background`, `display`), the **selectors** (`.btn-spawn`, `.tab.active`), and the **braces and semicolons** that hold the file together. The JavaScript and the HTML look these names up by their exact spelling.
 
-Rename `--accent` to `--accentt` and every `var(--accent)` in the file now reads an undefined property and falls back to nothing. Delete a closing brace and the browser stops parsing the file at that point, so half the panel loses all styling. Touch a selector like `.btn-spawn` and the rule no longer matches the button it was meant to style. None of that is a Lua error you will see in the console; it is a silently broken-looking UI. So the discipline is strict: in a reskin you only ever edit the text **between the colon and the semicolon**. Leave the names, the selectors, and the punctuation exactly as the author wrote them.
+Rename `--accent` to `--accentt` and every `var(--accent)` in the file now references an undefined property. That `var()` becomes invalid, and the browser falls back to the property's initial or inherited value (for `background` that is transparent), so the intended color simply disappears. Delete a closing brace and the browser stops parsing the file at that point, so half the panel loses all styling. Touch a selector like `.btn-spawn` and the rule no longer matches the button it was meant to style. None of that is a Lua error you will see in the console; it is a silently broken-looking UI. So the discipline is strict: in a reskin you only ever edit the text **between the colon and the semicolon**. Leave the names, the selectors, and the punctuation exactly as the author wrote them.
 
 ### The fork: raw-HTML NUI vs built React NUI
 
@@ -246,7 +247,7 @@ Recoloring a NUI is one of the most common first edits a server owner makes, and
   items={[
     { symptom: "Edited the CSS, restarted, panel still shows the old colors", fix: "Either you edited a built NUI's loose file instead of its src/ + rebuild, or the client cached the old NUI. Confirm there is no web/ build/ bundle that overrides html/, then delete data/nui-storage in the FiveM app folder and reconnect." },
     { symptom: "After the edit, part of the panel lost ALL its styling (raw, unstyled boxes)", fix: "You deleted or broke a brace or semicolon, so the browser stopped parsing the CSS at that point. Restore from your style.css.bak and re-do the edit, changing only the text between the colon and the semicolon." },
-    { symptom: "The color did not change anywhere even though the file saved fine", fix: "You renamed the property (for example --accent to --accentt). Every var(--accent) now reads an undefined value. Put the original property name back; change the value after it, never the name." },
+    { symptom: "The color did not change anywhere even though the file saved fine", fix: "You renamed the property (for example --accent to --accentt). Every var(--accent) now points at an undefined property, so each one becomes invalid and the color falls back to the element's default (often transparent or inherited). Put the original property name back; change the value after it, never the name." },
     { symptom: "One element changed but the button you wanted is still the old color", fix: "That specific rule uses a hardcoded hex (background: #7b2ff7) instead of var(--accent). Change that one value in that one rule too, leaving its selector and property name untouched." },
     { symptom: "Change worked, then vanished after the script author shipped an update", fix: "It is a built NUI and you edited the compiled bundle, which the new build overwrote. Edit the source in web/src/ and run npm run build, or re-apply after each update." },
   ]}

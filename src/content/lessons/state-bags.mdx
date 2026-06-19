@@ -24,7 +24,7 @@
 </Callout>
 
 <Callout variant="fivem" title="OneSync must be on">
-  State bags ride on the OneSync networking layer. If your server is the legacy non-OneSync kind, replication will not happen and the F8 line will never appear. The 7-day starter and every modern host run OneSync by default, so you are almost certainly fine. If you are unsure, confirm `set onesync on` is in your `server.cfg` (the old `onesync_enabled true` form is deprecated).
+  State bags require state awareness (OneSync). Confirm your server profile has OneSync enabled before testing. If you manage `server.cfg` yourself, use the current `onesync on` setting supported by your artifact and perform a full server restart after changing it.
 </Callout>
 
 ## Build it
@@ -77,10 +77,9 @@ end, false)
     Open `client.lua` and paste this:
 
     ```lua
-AddStateBagChangeHandler('mood', nil, function(bagName, key, value)
-    local player = GetPlayerFromStateBagName(bagName)
-    if player == 0 then return end
-    if player ~= PlayerId() then return end
+local myBagName = ('player:%s'):format(GetPlayerServerId(PlayerId()))
+
+AddStateBagChangeHandler('mood', myBagName, function(bagName, key, value)
     print('[qu_state_bags] my mood is now ' .. tostring(value))
 end)
     ```
@@ -93,13 +92,15 @@ end)
     ensure qu_state_bags
     ```
 
-    Save, then run:
+    Save. Then, in the txAdmin Live Console (or the FXServer console window), run:
 
     ```text
-    restart qu_state_bags
+    ensure qu_state_bags
     ```
 
-    Join the server so you are a real player, then run this in chat (F8) or the console:
+    `ensure` starts the resource if it is not running yet and restarts it if it is, so it is the safe command for a resource you just added.
+
+    Join the server so you are a real player, then run this in the in-game chat box:
 
     ```text
     /setmood focused
@@ -120,7 +121,7 @@ You set one value on the server and a different machine, the client, printed it 
 
 ### What a state bag actually is
 
-A state bag is a **key/value store bolted onto something the engine already networks**: a player, an entity, or the server itself. You write `Player(src).state:set('mood', 'focused', true)` and FiveM stores `mood = "focused"` against that player and ships the change to every client that needs it. It is the opposite of an event in one important way. An event is fire-and-forget: you call `TriggerClientEvent`, it runs once on whoever is listening right now, and then it is gone. A state bag is **a value that stays set**. Anyone who reads the bag later, including a player who connects an hour from now, sees the current value. That persistence is the entire reason to choose a state bag over a broadcast event.
+A state bag is a **key/value store bolted onto something the engine already networks**: a player, an entity, or the server itself. You write `Player(src).state:set('mood', 'focused', true)` and FiveM stores `mood = "focused"` against that player and replicates it according to network scope. It is the opposite of an event in one important way. An event is fire-and-forget; a state bag holds the current value for as long as its owner exists. This is network state, not disk persistence: player/entity state disappears with that owner, and state bags do not replace MariaDB or the KVS for surviving a server restart.
 
 Three scopes exist, and picking the right one is the skill the lesson title promises:
 
@@ -139,16 +140,15 @@ Player(src).state:set('mood', mood, true)
 `Player(src)` looks up the player by their **server id**, the slot number you saw printed as `1`. The `src` comes from the command handler, exactly as it did in the events lessons: it is the player who typed the command. `.state` is that player's state bag, the key/value store. `:set(...)` writes one key. Read its three arguments left to right:
 
 - `'mood'` is the **key**, the name of the slot you are writing. You read it back later by this same name.
-- `mood` is the **value**, here whatever word the player typed after the command. State bag values can be strings, numbers, booleans, or tables, so you could store `{ level = 3, color = 'red' }` just as easily.
-- `true` is the **replicated flag**, and it is the argument everyone skips and then wonders why nothing reached the client. State set from the server replicates to clients by default, but you should pass `true` explicitly so your intent is unmistakable and the value is guaranteed to cross the network. Pass `false` and the value stays server-only: it is set, the server can read it, but no client is ever told. A server-only flag is occasionally what you want, but for anything a client must react to, `true` is the line between working and silently doing nothing.
+- `mood` is the **value**, here whatever word the player typed after the command. State bag values can be strings, numbers, booleans, or tables, so you could store `{ level = 3, color = 'red' }` just as easily. Note that `args[1]` is raw client input: a player controls exactly what they type, so for any state that grants power (a job, an admin flag) you must validate or restrict who can set it on the server rather than trusting the argument as-is.
+- `true` is the **replicated flag**. State set by the server replicates by default, so omitting the third argument would also replicate; passing `true` here makes the lesson's intent explicit. Pass `false` to keep that write server-only.
 
 ### The client handler, argument by argument
 
 ```lua
-AddStateBagChangeHandler('mood', nil, function(bagName, key, value)
-    local player = GetPlayerFromStateBagName(bagName)
-    if player == 0 then return end
-    if player ~= PlayerId() then return end
+local myBagName = ('player:%s'):format(GetPlayerServerId(PlayerId()))
+
+AddStateBagChangeHandler('mood', myBagName, function(bagName, key, value)
     print('[qu_state_bags] my mood is now ' .. tostring(value))
 end)
 ```
@@ -156,17 +156,13 @@ end)
 `AddStateBagChangeHandler` registers a function that fires whenever a matching bag changes. It takes three arguments:
 
 - The first, `'mood'`, is the **key filter**: only changes to a key named `mood` wake this handler. Pass `nil` here and you would hear about every key on every matching bag.
-- The second, `nil`, is the **bag filter**: which bag to watch. `nil` means all of them, so this handler hears the `mood` change on every player, not just yours. That is exactly why the guard below matters.
+- The second, `myBagName`, is the **bag filter**: which bag to watch. Player bag names use `player:<serverId>`, so building the name from your local player's server ID narrows this handler to your own bag. Pass `nil` only when you intentionally want to observe every matching bag.
 - The third is the **callback**, and FiveM hands it `bagName`, `key`, and `value` when a change fires. `bagName` is a string like `player:1`, where `1` is the server id whose bag changed. `value` is the new value.
 
-Now the two guard lines, which are the part the old version of this lesson got subtly wrong:
+The bag name format is worth recognizing because the same shape shows up for other scopes. A player bag is `player:<serverId>`, an entity bag is `entity:<netId>`, and global state uses `global`. When you truly need all player bags, pass `nil` as the bag filter and resolve each bag deliberately; for an own-player handler, an exact bag filter is simpler and avoids mixing up server IDs, local player indexes, and not-found sentinel values.
 
-`GetPlayerFromStateBagName(bagName)` parses that `player:1` string and converts the server id into a **local player index**, the kind of number `PlayerId()` returns. It returns `0` when no matching player exists on this client. Here is the trap: `0` is also a valid local player index, the local player, so a naive `if player == PlayerId()` check passes when the function actually failed to find anyone. That is why the first guard is `if player == 0 then return end`: bail out before the not-found value can masquerade as you. Only after that do we ask `if player ~= PlayerId() then return end`, which drops every other player's mood change and keeps only your own. The handler runs on every client for every player, so without these two lines you would print other people's moods as if they were yours.
-
-The bag name format is worth memorizing because the same shape shows up for the other scopes. A player bag is `player:<serverId>`. An entity bag is `entity:<netId>`, and you parse it with `GetEntityFromStateBagName` the same way. Global state changes report a bag name of `global`.
-
-<Checkpoint question="Why does the client handler need both the `player == 0` guard and the `player ~= PlayerId()` guard, when one comparison looks like it should be enough?">
-  Because `GetPlayerFromStateBagName` returns `0` both for the local player and as its not-found sentinel. The bag filter is `nil`, so the handler fires for every player's `mood` change on the server, not just yours. When a change arrives for a player your client cannot resolve, the function returns `0`. If you only wrote `if player == PlayerId()`, that `0` would equal your local index of `0` and you would wrongly print a stranger's mood as your own. The `if player == 0 then return end` line throws out the not-found case first, and only then does `player ~= PlayerId()` cleanly reject every player who is not you. Together they guarantee the print fires for exactly one player: the one running this client.
+<Checkpoint question="Why does this handler build `player:<serverId>` instead of comparing a resolved player value with `PlayerId()`?">
+  A server ID, a client-local player index, and a state-bag name are three different identifiers. Building the exact bag name from `GetPlayerServerId(PlayerId())` lets FiveM filter before the callback runs and avoids ambiguous conversions. The result is one handler for exactly this client's player bag.
 </Checkpoint>
 
 ### When you reach for a state bag instead of an event
@@ -184,8 +180,8 @@ If instead you only need a one-time "do this now" with no value worth rememberin
 <FailureList
   items={[
     { symptom: "Resource qu_state_bags does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
-    { symptom: "Server prints set mood but F8 shows nothing", fix: "The replicated flag is the cause. Confirm the third argument of :set is true, not false and not omitted, then restart qu_state_bags." },
-    { symptom: "F8 prints other players' moods, or prints when someone else runs the command", fix: "Your client handler is missing a guard. Keep both the player == 0 return and the player ~= PlayerId() return so only your own bag prints." },
+    { symptom: "Server prints set mood but F8 shows nothing", fix: "Confirm the third argument of :set is true (or omitted for the server default), OneSync is enabled, and myBagName uses GetPlayerServerId(PlayerId())." },
+    { symptom: "F8 prints other players' moods", fix: "Your bag filter is nil or built from the wrong ID type. Filter with ('player:%s'):format(GetPlayerServerId(PlayerId()))." },
     { symptom: "Nothing replicates even with the true flag", fix: "State bags need OneSync. Confirm set onesync on is in server.cfg (the old onesync_enabled true form is deprecated), then restart the server, not just the resource." },
     { symptom: "F8 never opens or shows no output", fix: "You must be joined as a real player. The change handler runs on the client, so connect to the server first, then read F8." },
   ]}
@@ -199,7 +195,7 @@ If instead you only need a one-time "do this now" with no value worth rememberin
     "Name the three scopes and pick the right one: Entity(handle).state for a thing, Player(serverId).state for a person, GlobalState for the world.",
     "Set a value with Player(src).state:set(key, value, true) and explain that the third argument is the replicated flag that pushes it to clients.",
     "Read AddStateBagChangeHandler's three arguments: a key filter, a bag filter where nil means all bags, and a callback that receives bagName, key, and value.",
-    "Use GetPlayerFromStateBagName plus the player == 0 and player ~= PlayerId() guards to react to only the local player's bag.",
+    "Build an exact player:<serverId> bag filter to react only to the local player's bag without mixing ID types.",
   ]}
 />
 
@@ -210,11 +206,11 @@ If instead you only need a one-time "do this now" with no value worth rememberin
 
   ```lua
   -- server.lua
-  RegisterCommand('serverstatus', function(src, args)
+  RegisterCommand('serverstatus', function(_, args)
       local status = args[1] or 'calm'
-      GlobalState:set('serverStatus', status, true)
+      GlobalState.serverStatus = status
       print('[qu_state_bags] server status is now ' .. status)
-  end, false)
+  end, true)
   ```
 
   ```lua
@@ -224,7 +220,7 @@ If instead you only need a one-time "do this now" with no value worth rememberin
   end)
   ```
 
-  Restart `qu_state_bags`, run `/serverstatus busy`, and confirm every connected client prints the new status, with no per-player guard needed. Then explain to yourself why the global handler has no `GetPlayerFromStateBagName` check: a `GlobalState` change is not tied to any one player, so there is no owner to filter by. Notice you passed `'global'` as the bag filter this time instead of `nil`, which narrows the handler to only the server-wide bag.
+  Restart `qu_state_bags`, run `serverstatus busy` from txAdmin Live Console, and confirm every connected client prints the new status, with no per-player guard needed. The command is ACE-restricted because a world-wide status is server authority, not something every player should set. Notice you passed `'global'` as the bag filter instead of `nil`, which narrows the handler to the server-wide bag.
 </Exercise>
 
 <Refs

@@ -62,6 +62,8 @@ client_script 'client.lua'
   <Step num={4} title="Declare the convars in server.cfg" outcome="The server has two config values it can read.">
     Open `server.cfg` and add these two lines **above** the line that ensures this resource. You will add the `ensure` line in Step 6.
 
+    `server.cfg` is NOT inside the `resources` folder. It lives in your server's base data directory, the same folder you launch FXServer from, one level above `resources`. (If you set the server up with txAdmin, you can also open it from the txAdmin **Settings** page.)
+
     ```text
 set qu_convars_cash 750
 setr qu_convars_debug true
@@ -97,11 +99,7 @@ end, false)
     ensure qu_convars_server_cfg
     ```
 
-    Save, then run:
-
-    ```text
-    restart qu_convars_server_cfg
-    ```
+    Save, then restart the whole server so FXServer re-reads `server.cfg`. txAdmin is the web control panel that manages your server; open it in a browser at `http://<your-server-ip>:40120` (use `http://localhost:40120` if you are on the machine running the server) and log in. In the left sidebar open the txAdmin dashboard and click **Restart** (the server restart action, not a single-resource restart). A resource restart alone does NOT re-execute changed `server.cfg` lines, so the new convar values would not load.
 
     Run the first test in the txAdmin Live Console:
 
@@ -109,7 +107,7 @@ end, false)
     cashcfg
     ```
 
-    Join the server, open the F8 console, and run the second test there:
+    Join the server. While you are in-game, press the **F8** key to open the FiveM developer console (a text overlay that drops down over the game). This is where client-side `print` output appears and where you type client commands. With it open, run the second test there:
 
     ```text
     debugcfg
@@ -132,7 +130,7 @@ When you write a convar in `server.cfg` you choose one of three commands. They l
 
 - `set name value` declares a **server-only** convar. The server can read it. Clients cannot. If a client tries, it gets the fallback default you passed, not the real value. This is the right choice for anything a player should never see: database strings, API keys, owner IDs.
 - `setr name value` declares a **replicated** convar. The `r` is for replicated. The server reads it, and the value is also pushed to every connected client, so client Lua can read the real value too. Use this only for config that is safe for players to know and that the client genuinely needs, like a debug flag that turns on extra on-screen logging.
-- `sets name value` declares a **server-list info string**. It does not feed your Lua at all. It populates the server-browser metadata that players see before they connect, like `sets tags "roleplay, economy"`. You set these for the listing, not to read them back in code.
+- `sets name value` declares a **server-info convar** exposed in the server's public info, such as `sets tags "roleplay, economy"`. Treat every `sets` value as public and never place a secret in it. Use `set`/`setr` for application configuration so the intended visibility is obvious.
 
 That is the whole rule. `set` stays on the server, `setr` rides along to clients, `sets` is for the browser. In this lesson `qu_convars_cash` is a `set` because the starting balance is a server decision a player has no business reading, and `qu_convars_debug` is a `setr` because the client console needs to know whether debug logging is on.
 
@@ -165,7 +163,7 @@ That last argument is the **restricted flag**. With `false`, anyone can run the 
 
 ### Runtime versus server.cfg
 
-One more model to lock in. A convar set in `server.cfg` is read when the resource starts. If you edit `server.cfg` you must restart the resource (or the server) for the new value to take effect, which is why every step here ends with `restart qu_convars_server_cfg`. But you can also set a convar live from the console:
+One more model to lock in. Editing the `server.cfg` **file** does not execute the changed line on a running server. Perform a full server restart, or deliberately re-run the relevant cfg with `exec`, before testing the new value. Restarting only the resource does not re-read `server.cfg`. The Lua `GetConvar*` calls read the current convar value each time they execute. You can also set a convar live from the server console:
 
 ```text
 setr qu_convars_debug false
@@ -179,14 +177,14 @@ Convars are how you stop hard-coding the things that differ between your test se
 
 - **A debug switch.** Wrap your noisy `print` calls in `if GetConvarBool('myresource_debug', false) then`. Flip `setr myresource_debug true` while you investigate, flip it off in production, and you never ship a build to change logging.
 - **Per-server tuning.** Starting balance, max stack size, payout rates. One resource, many servers, each with its own numbers in its own `server.cfg`.
-- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`, so the value never replicates to a client that could read it.
+- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`. A `setr` convar is copied to every connected client, where the value lives in client memory and can be read or extracted by any player, so declaring a secret with `setr` is a real credential leak, not just a cosmetic one. Keep secrets as `set` so they never leave the server.
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "Server reads cash 500 instead of 750", fix: "The set qu_convars_cash line is missing, misspelled, or below the ensure line in server.cfg. Convars are read at resource start, so the set line must load before the resource. Fix it, then restart qu_convars_server_cfg." },
-    { symptom: "F8 client reads debug false (not true)", fix: "The convar was declared with set, not setr. Plain set never reaches clients, so the client read falls back to the default. Change the line to setr qu_convars_debug true and restart." },
+    { symptom: "Server reads cash 500 instead of 750", fix: "The convar is missing or misspelled, or you edited server.cfg without re-executing it. Fix the line, then fully restart the server (or deliberately exec the cfg) before testing again." },
+    { symptom: "F8 client reads debug false (not true)", fix: "The convar was declared with set instead of setr, or the edited cfg was never re-executed. Use setr, then fully restart the server or exec the cfg." },
     { symptom: "debugcfg prints nothing in F8", fix: "Client convars are read on the client, so you must join the server and run debugcfg in the F8 console, not in txAdmin. txAdmin shows server output only." },
     { symptom: "cashcfg prints nothing", fix: "Run cashcfg in the txAdmin Live Console. If you had left the restricted flag as true, only the console and authorized aces could run it; this lesson uses false so it runs anywhere." },
   ]}
@@ -200,7 +198,7 @@ Convars are how you stop hard-coding the things that differ between your test se
     "Explain why a client reading a plain set convar silently gets the default, and that setr is required for any value client Lua must see.",
     "Pick the right read function by return type: GetConvar (string), GetConvarInt (int), GetConvarFloat (float), GetConvarBool (bool), each with a fallback default.",
     "Declare config in server.cfg and read it from Lua so a value changes per server with no code redeploy.",
-    "Explain that cfg convars are read at resource start, so a server.cfg edit needs a restart, while a live set in the console applies immediately.",
+    "Explain that editing a cfg file does not execute it; restart the server or exec the cfg, while a live set in the server console applies immediately.",
   ]}
 />
 
@@ -229,13 +227,13 @@ Convars are how you stop hard-coding the things that differ between your test se
   end, false)
   ```
 
-  Restart `qu_convars_server_cfg`. Run `secretcfg_server` in txAdmin and `secretcfg_client` in F8. The server prints `server secret supersecret`. The client prints `client secret hidden`, because a plain `set` convar never crosses to the client and the read falls back to your default. You have just demonstrated, in your own console, why every secret stays a `set` and never a `setr`.
+  Fully restart the server so it re-reads `server.cfg`. Run `secretcfg_server` in txAdmin and `secretcfg_client` in F8. The server prints `server secret supersecret`. The client prints `client secret hidden`, because a plain `set` convar never crosses to the client and the read falls back to your default. You have just demonstrated, in your own console, why every secret stays a `set` and never a `setr`.
 </Exercise>
 
 <Refs
   items={[
     { label: "FiveM convars reference", href: "https://docs.fivem.net/docs/scripting-reference/convars/" },
     { label: "FiveM server.cfg / setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" }
   ]}
 />

@@ -7,7 +7,7 @@
     { label: "You need", value: "A QBCore server, database backups, and a test environment." },
   ]}
 >
-  Qbox began as a QBCore fork and keeps backwards compatibility as a goal, which is exactly why people migrate: a more actively maintained, ox-native base without throwing away their QBCore scripts. QBCore development stalled, Qbox is the successor people are moving to. But "compatible" is not "identical." This lesson sets realistic expectations and gives you a staged plan.
+  Qbox began as a QBCore fork and keeps backwards compatibility as a goal, which is exactly why a QBCore server can migrate without throwing away its scripts: Qbox is an ox-native base. It is newer than QBCore, not a replacement you must adopt — QBCore and ESX remain the established frameworks, and you migrate only for specific technical reasons, not because QBCore stopped working. And "compatible" is not "identical." This lesson sets realistic expectations and gives you a staged plan.
 </LessonHero>
 
 <Prereq
@@ -19,25 +19,27 @@
 />
 
 <Callout variant="fivem" title="Why Qbox, honestly">
-  Qbox (qbx_core) is the actively maintained, ox-native successor to QBCore, built to keep QBCore scripts working where it can. It depends on oxmysql, ox_lib, and ox_inventory, which are Overextended (ox) community resources, not official Cfx.re resources. You migrate for maintenance and modern dependencies, not because QBCore stops running overnight.
+  Qbox (qbx_core) is a newer, ox-native fork of QBCore that describes itself as its successor and is built to keep QBCore scripts working where it can. QBCore and ESX remain the established frameworks; Qbox is the option this lesson migrates to, not a default you must switch to. It has two hard dependencies, oxmysql and ox_lib, and expects ox_inventory as its inventory (configured separately rather than required to boot). These are Overextended (ox) community resources, not official Cfx.re resources. You migrate for maintenance and modern dependencies, not because QBCore stops running overnight.
 </Callout>
 
 ## A staged migration
 
 <StepGroup>
   <Step num={1} title="Back up and stand up a test server" outcome="You can experiment without risking the live server.">
-    Full database backup, then clone the server onto a test environment. Match the live server's artifact (FXServer) version and `sv_enforceGameBuild` on the test box so what you prove there holds in production. Every step below happens on the test server first. Never migrate live.
+    Full database backup, then clone the server onto a test environment. Match the live server's artifact (FXServer) version and `sv_enforceGameBuild` on the test box so what you prove there holds in production. Note: sv_enforceGameBuild is a startup-only convar (set it in server.cfg before the server boots; it cannot be changed while running). Its value is a GTA content game build number such as 3095 and up -- a SEPARATE numbering scheme from the FXServer artifact number (the 31000+ range). Copy whatever value your live server already uses so the test and live builds match exactly. Every step below happens on the test server first. Never migrate live.
   </Step>
 
   <Step num={2} title="Install the ox dependency stack" outcome="oxmysql, ox_lib, and ox_inventory are running.">
-    Qbox is ox-native, so the modern dependency spine must be in place before qbx_core. Install and start oxmysql, ox_lib, and ox_inventory, in order, with no missing-dependency errors. These are Overextended resources, so pull them from the Overextended GitHub releases, not from a QBCore bundle.
+    Qbox is ox-native, so its required dependencies must be in place before qbx_core. qbx_core declares two hard dependencies in its fxmanifest: ox_lib and oxmysql. Install and start oxmysql and ox_lib first, with no missing-dependency errors in the console. ox_inventory is the inventory Qbox expects, but it is configured separately and is not required for qbx_core to boot, so install it as part of the same stack but know that a missing ox_inventory does not stop qbx_core from starting. These are Overextended (CommunityOx) resources, so pull them from the official Overextended GitHub releases, not from a QBCore bundle.
+
+    Where this happens: each resource is a folder you place inside your server's resources directory (for example resources/[ox]/oxmysql) and then add to server.cfg with an ensure line (ensure oxmysql). After editing server.cfg, start or restart resources from the txAdmin Live Console or the FXServer console with commands like 'ensure oxmysql' or 'restart qbx_core'. If you do not yet have a server folder and server.cfg, complete the server-setup lesson first.
   </Step>
 
   <Step num={3} title="Install qbx_core and turn on the bridge" outcome="QBCore scripts run against Qbox where compatibility allows.">
-    Install `qbx_core`. The compatibility layer is not a separate download: `qbx_core` ships a QBCore shim that rebuilds the old `QBCore` object on top of the Qbox API. `qbx_core` ships with the QBCore bridge enabled by default. You can set it explicitly with a convar in your `server.cfg` (note the capital B):
+    Install `qbx_core`. The compatibility layer is not a separate download: `qbx_core` ships a QBCore shim that rebuilds the old `QBCore` object on top of the Qbox API. `qbx_core` ships with the QBCore bridge enabled by default. You can set it explicitly by adding this line to your `server.cfg` (open the file in a text editor such as VS Code, add the line above your `ensure qbx_core` line, save, then restart the server). `setr` means a replicated convar (its value is sent to clients too); the capital B in enableBridge matters because convar names are case-sensitive:
 
     ```cfg
-    setr qbx:enableBridge true
+    setr qbx:enableBridge "true"
     ```
 
     With the bridge on, many QBCore exports and events are translated to Qbox, so a lot of scripts work as-is. Expect a list of scripts that still need edits; that is normal, not failure. The next section shows you exactly where the line falls.
@@ -47,8 +49,7 @@
     Go through your resources: core (banking, jobs, inventory) first, then the rest. Note what works, what needs an edit, and what to drop. Confirm the production artifact version and game build match what you tested. Only cut production over once the core loop is solid on the test server.
 
     <ExpectedOutput>
-      [qbx_core] bridge enabled
-players spawn, money and jobs and inventory work, core scripts load with no console errors
+      Illustrative (exact wording varies by version): after qbx_core starts you should see it load without dependency errors, and in-game players spawn with money and jobs working and your core scripts loading with no red console errors. There is no single guaranteed 'bridge enabled' line to look for; the real proof is behavioural -- the QBCore scripts you bridged still function in-game.
     </ExpectedOutput>
   </Step>
 </StepGroup>
@@ -89,10 +90,10 @@ The shapes differ (ox_inventory takes the player `source`, not a player-bound me
 <FailureList
   items={[
     { symptom: "Migrated live and broke the server", fix: "Always migrate on a test server first; cut production over only after the core loop is proven." },
-    { symptom: "qbx_core will not start", fix: "Missing the ox stack. Install oxmysql, ox_lib, and ox_inventory in order before qbx_core." },
-    { symptom: "Old QBCore scripts behave as if Qbox is not there", fix: "The bridge was explicitly disabled. Confirm qbx:enableBridge is true (it is the default) and restart qbx_core, then re-test." },
+    { symptom: "qbx_core will not start", fix: "Its declared dependencies are missing. qbx_core requires ox_lib and oxmysql to be installed and started first (these are the only hard dependencies in its fxmanifest). Install and start oxmysql and ox_lib before qbx_core. ox_inventory is the expected inventory but is configured separately, not a start-time requirement." },
+    { symptom: "Old QBCore scripts behave as if Qbox is not there", fix: "The bridge was probably set to false. In your server console type the convar name (qbx:enableBridge) to read back its current value, or search server.cfg for that line. Set it to \"true\" (the default), save server.cfg, restart qbx_core, then re-test." },
     { symptom: "Inventory exports fail after switching", fix: "qb-inventory is gone; Qbox uses ox_inventory. Rewrite AddItem and RemoveItem calls to the ox_inventory exports; the bridge does not cover these." },
-    { symptom: "Player data missing after switch", fix: "Restore the backup; confirm the database schema and character ids map correctly before retrying." },
+    { symptom: "Player data missing after switch", fix: "Restore the backup; confirm the database schema and character ids map correctly before retrying. Security and data note: the test server must point at a SEPARATE database (a copy), never your live production database -- set its oxmysql mysql_connection_string to the test copy so a failed migration cannot corrupt live player data. Keep at least one backup stored off the server machine. The mysql_connection_string contains your database username and password; never paste it in chat, screenshots, or commits." },
   ]}
 />
 
@@ -100,7 +101,7 @@ The shapes differ (ox_inventory takes the player `source`, not a player-bound me
 
 <Recap
   items={[
-    "Explain why Qbox is the maintained, ox-native QBCore successor while QBCore development stalled.",
+    "Explain what Qbox is — a newer, ox-native fork of QBCore that keeps QBCore compatibility — and that migrating is a technical choice, not a requirement (QBCore and ESX remain established).",
     "Back up and migrate on a test server with matching artifact and game build, never live.",
     "Install the ox dependency stack before qbx_core and confirm the bridge is enabled with qbx:enableBridge (on by default).",
     "Tell a bridged call (GetPlayer) from one you must rewrite yourself (ox_inventory items).",

@@ -7,7 +7,7 @@
     { label: "Project", value: "qu_jobs_framework" },
   ]}
 >
-  A job is a tiny state machine: *off-duty* or *on-duty*, plus a grade that decides what the player may do, plus a paycheck that lands on a clock while they are on duty. This lesson builds that spine as a server-side resource that detects whichever framework you run, reads the player's job and grade, toggles duty, gates a high-grade action, and pays on a timer. It does not depend on any one framework's UI.
+  A job is a small state machine: *off-duty* or *on-duty*, plus a job name and grade that decide what the player may do. This lesson builds a framework-reading demo that keeps its own temporary duty table, gates one action by both job and grade, and calculates payroll on a timer. It prints the calculated pay; it does not change framework money or framework duty state.
 </LessonHero>
 
 <YouTube id="OZCpgsSWQe4" title="FiveM job center script from zero" caption="Cruze: building a job center script from zero." />
@@ -22,7 +22,7 @@
 />
 
 <Callout variant="fivem" title="Build the proof, then understand it">
-  This lesson builds a working server-side resource named `qu_jobs_framework` that reads your job and grade, toggles duty, gates a grade-locked action, and pays you on a clock. Follow the folder names, file names, code, restart command, and expected output exactly. Then the next section takes the code apart line by line so you can swap in your own job logic.
+  This lesson builds a working server-side resource named `qu_jobs_framework` that reads your job and grade, toggles a local demo duty flag, gates an action, and prints calculated payroll on a clock. Follow the folder names, file names, code, restart command, and expected output exactly.
 </Callout>
 
 ## Build it
@@ -69,6 +69,7 @@ server_script 'server.lua'
 
 local duty = {}                 -- duty[src] = true|false, keyed by server id
 local PAY_INTERVAL_MS = 60000   -- pay every 60 seconds while on duty
+local BOSS_JOB = 'police'       -- the job allowed to use /jobaudit
 local BOSS_GRADE = 2            -- minimum grade.level allowed to run /jobaudit
 
 -- Return a normalised { name, grade, label } for the player on src,
@@ -112,8 +113,8 @@ end, false)
 RegisterCommand('jobaudit', function(src)
     local job = getJob(src)
     if not job then return end
-    if job.grade < BOSS_GRADE then
-        print(('[qu_jobs_framework] %s denied /jobaudit (grade %d < %d)'):format(GetPlayerName(src), job.grade, BOSS_GRADE))
+    if job.name ~= BOSS_JOB or job.grade < BOSS_GRADE then
+        print(('[qu_jobs_framework] %s denied /jobaudit (%s grade %d)'):format(GetPlayerName(src), job.name, job.grade))
         return
     end
     print(('[qu_jobs_framework] %s ran /jobaudit as %s grade %d'):format(GetPlayerName(src), job.name, job.grade))
@@ -163,7 +164,7 @@ end)
     clockin
     ```
 
-    Read the result in txAdmin Live Console. A brand new character on Qbox, QBCore, or ESX starts unemployed, so the proof line looks like this:
+    Read the result in txAdmin Live Console. On a typical default setup an unemployed character produces a line like this; your starting job and grade label can differ:
 
     <ExpectedOutput>
       [qu_jobs_framework] yourName job unemployed grade 0 (Freelancer) duty true
@@ -189,10 +190,10 @@ if GetResourceState('qbx_core') == 'started' then
 
 `GetResourceState` is a FiveM native that asks the server, what is the status of the resource with this name? It returns a string such as `started`, `stopped`, `missing`, or `starting`. You are not loading the framework here. You are asking whether it is already running so you know which API to call. This is why the resource works on three different stacks without you editing it: it checks `qbx_core` first, then `qb-core`, then `es_extended`, and uses the first one that is `started`.
 
-The order is deliberate. **Qbox (`qbx_core`) is checked first because it is the active successor to QBCore.** QBCore development stalled, and Qbox is the community fork that picked it up and kept moving. For a new server in 2026 the two recommended bases are Qbox and ESX Legacy (`es_extended`), so this resource supports both, plus legacy `qb-core` for servers that have not migrated yet. Whichever one your server runs, the same `/clockin` command works.
+The order is deliberate because Qbox provides a QB compatibility surface. Check the native `qbx_core` resource before the compatibility name `qb-core`, then check a standalone QBCore install, then ESX. This detects an installed stack; it is not a recommendation that one framework is automatically right for every server.
 
 <Checkpoint question="Your server runs Qbox, but the resource keeps printing 'no framework player'. What is the first thing to check?">
-  Check that `qbx_core` actually started before `qu_jobs_framework`, and that you joined with a fully loaded character. `GetResourceState('qbx_core')` only returns `started` once Qbox has finished loading, and `exports.qbx_core:GetPlayer(src)` only returns a player object after that character is selected and loaded in. If you call `/clockin` from the bare server console (source 0) or before your character loads, there is no framework player for that source and `getJob` correctly returns `nil`. Put `ensure qu_jobs_framework` below the framework's `ensure` line in `server.cfg`.
+  Check that `qbx_core` actually started before `qu_jobs_framework`, and that you joined with a fully loaded character. `GetResourceState('qbx_core')` only returns `started` once Qbox has finished loading, and `exports.qbx_core:GetPlayer(src)` only returns a player object after that character is selected and loaded in. If you call `clockin` from the bare server console (source 0) or before your character loads, there is no framework player for that source and `getJob` correctly returns `nil`. Put `ensure qu_jobs_framework` below the framework's `ensure` line in `server.cfg`.
 </Checkpoint>
 
 ### Reading job and grade out of each framework
@@ -227,13 +228,15 @@ duty[src] = not duty[src]
 ### Where grade gating actually hooks in
 
 ```lua
-if job.grade < BOSS_GRADE then
+if job.name ~= BOSS_JOB or job.grade < BOSS_GRADE then
     print(('[qu_jobs_framework] %s denied /jobaudit ...'))
     return
 end
 ```
 
-This is the whole point of reading the grade number. `/jobaudit` is a stand-in for any boss-only action: setting wages, hiring, opening the safe. The gate is a single comparison against `BOSS_GRADE`. A regular employee at grade 0 or 1 is turned away with a printed reason; a grade 2 or higher passes. Notice the gate lives at the top of the handler and `return`s early on failure. That early-return shape is how you keep a permission check from drowning in nested `if` blocks: check, bounce, and only the allowed path continues. Swap the printed line for the real action and you have a working permission system.
+This is the point of reading both the job name and grade. A grade number alone is not permission because an unrelated job can also have grade 2. This demo requires the `police` job and then checks `BOSS_GRADE`. The early return keeps the protected action below one clear gate.
+
+Security note: this is a demo gate, not real authorization. Because `/jobaudit` is registered with `RegisterCommand(..., false)`, any player can type it, and the only thing stopping them is the job/grade your framework reports for that source. For an action that actually matters (emptying a boss stash, firing an employee, paying real money), enforce authority on the server: gate it with an ACE permission via `IsPlayerAceAllowed(src, 'group.boss')` (registered with `add_ace`/`add_principal` in your server.cfg) or your framework's own boss-permission check, and never trust a value the client could influence. Treat the job/grade read here as convenience, not a security boundary.
 
 ### The payroll loop
 
@@ -248,7 +251,7 @@ CreateThread(function()
 end)
 ```
 
-A paycheck on a clock is a loop that sleeps, then acts, forever. `CreateThread` starts a coroutine that FiveM manages for you, and `Wait(PAY_INTERVAL_MS)` yields it for 60 seconds before each pass. `Wait` only works inside a thread like this, which is exactly why the payroll lives in its own `CreateThread` and not at the top level of the file. Each pass walks the `duty` table with `pairs`, and for every player still on duty it re-reads their current job (their grade may have changed mid-shift) and pays base plus a grade bonus. The pay landing in a console print here would, in a real job, be a call into the framework's money API, for example `player.Functions.AddMoney('bank', pay, 'salary')` on Qbox. The structure is identical: a timed loop over who is on duty.
+A paycheck calculation on a clock is a loop that sleeps, then acts, forever. `CreateThread` starts a coroutine that FiveM manages for you, and `Wait(PAY_INTERVAL_MS)` yields it for 60 seconds before each pass. Each pass walks the local `duty` table and re-reads the current job. The demo only prints the amount. Real Qbox code can call `exports.qbx_core:AddMoney(src, 'bank', pay, 'salary')`; QBCore and ESX use their documented money APIs. Before doing that, sync duty through the framework, verify the expected job again, and disable any overlapping framework payroll so you do not double-pay.
 
 ### The leak you must close
 
@@ -276,7 +279,7 @@ You reach for the framework-detection wrapper any time you write a resource you 
     { symptom: "attempt to index a nil value (field 'PlayerData')", fix: "GetPlayer returned nil because the character is not loaded yet. The getJob nil-check guards this, so confirm you pasted the if not player then return nil end lines in every branch." },
     { symptom: "attempt to call a nil value (field 'GetPlayer')", fix: "The framework export name is wrong for your stack. Qbox uses exports.qbx_core:GetPlayer, QBCore uses GetCoreObject then QBCore.Functions.GetPlayer, ESX uses ESX.GetPlayerFromId. Match the branch to the framework you actually run." },
     { symptom: "No payroll line ever prints", fix: "You must stay on duty and wait the full 60 seconds. Confirm duty true printed first, and that PAY_INTERVAL_MS is 60000, not a typo. The loop reads the duty table once per minute." },
-    { symptom: "Grade gate lets everyone through", fix: "Your test character is grade 2 or higher, or the framework reports grade as a string. Print job.grade and confirm it is the number you expect before comparing it to BOSS_GRADE." },
+    { symptom: "Grade gate lets the wrong job through", fix: "Require both job.name == BOSS_JOB and job.grade >= BOSS_GRADE. Grade numbers are local to each job and are not a global permission level." },
   ]}
 />
 

@@ -55,6 +55,7 @@ When a script author wants you to change behavior, they pull those changeable va
 resources/qu_config_demo/
   fxmanifest.lua
   config.lua
+  server-config.lua
   server.lua
     ```
   </Step>
@@ -67,10 +68,11 @@ fx_version 'cerulean'
 game 'gta5'
 
 shared_script 'config.lua'
+server_script 'server-config.lua'
 server_script 'server.lua'
     ```
 
-    The order matters. `shared_script 'config.lua'` is listed first, so FiveM runs it before `server.lua`. A shared script loads on both the client and the server, which is why almost every script ships its config as a `shared_script`: both sides can read the same settings. By the time `server.lua` runs, the `Config` table already exists.
+    The order matters. `shared_script 'config.lua'` is listed first, so FiveM runs it before `server.lua`. A shared script is sent to clients and runs on both client and server, so it may contain only settings players are allowed to read. `server-config.lua` is server-only and loads before `server.lua`; it is where server-only configuration and secret references belong.
   </Step>
 
   <Step num={4} title="Write config.lua" outcome="A real, multi-key config table the script can read.">
@@ -96,7 +98,19 @@ Config.Locations = {
     { label = 'Sandy Shores',  coords = vec3(1960.0, 3740.0, 32.0) },
 }
 
-Config.Webhook = ''                -- Discord webhook URL, blank = off
+    ```
+
+    Open `server-config.lua` and paste this. The actual webhook stays in a non-replicated convar rather than a file clients download:
+
+    ```lua
+ServerConfig = {}
+ServerConfig.Webhook = GetConvar('qu_config_webhook', '')
+    ```
+
+    If you need a webhook, set it in the server's private `server.cfg` and never commit the real value:
+
+    ```cfg
+set qu_config_webhook "https://discord.com/api/webhooks/replace-me"
     ```
   </Step>
 
@@ -122,11 +136,14 @@ end, true)
     ensure qu_config_demo
     ```
 
-    Save, then run:
+    Save. The line in `server.cfg` only takes effect the next time the whole server boots, so to start the resource right now in your running server, run these two commands in the txAdmin Live Console. `refresh` makes the server notice your brand-new folder; `ensure` starts it (and restarts it if it was already running):
 
     ```text
-    restart qu_config_demo
+    refresh
+    ensure qu_config_demo
     ```
+
+    From now on, after you EDIT this resource you only need `restart qu_config_demo` (it is already started, so a plain restart is enough).
 
     Run this test from the txAdmin Live Console:
 
@@ -159,7 +176,7 @@ Different authors name things slightly differently, but the same handful of keys
     ["Config.Locations", "Coordinates and labels for blips, shops, or job points", "Yes, add or edit entries"],
     ["Config.Items", "Item names the script gives or takes", "Careful: names must match your inventory exactly"],
     ["Config.OpenKey", "The key binding that opens the menu", "Yes, use a valid key name"],
-    ["Config.Webhook", "A Discord webhook URL for logs, blank disables it", "Yes, paste your own URL"],
+    ["ServerConfig.Webhook", "A server-only webhook read from a private convar", "Set the convar outside shared files and version control"],
   ]}
   caption="The common config surface. Values are yours to change. The code that uses them is not."
 />
@@ -188,10 +205,10 @@ A price is a **number**, so it has no quotes: `water = 5`. A name like the frame
 ### The Discord webhook
 
 ```lua
-Config.Webhook = ''
+ServerConfig.Webhook = GetConvar('qu_config_webhook', '')
 ```
 
-A **webhook** is a URL the script posts log messages to so they show up in a Discord channel. Right now it is an empty string, which the author has wired to mean "logging off." When you are ready, you paste your channel's webhook URL between the quotes. Treat that URL like a password. Anyone who has it can post into your channel, so never share a `config.lua` with a live webhook still inside it.
+A **webhook** is a URL the script posts to so log messages appear in a Discord channel. Treat it like a password: anyone who has it can post through it. Never put one in `config.lua` when that file is declared as a `shared_script`, because shared files are downloaded by clients. Keep the value in a private server convar and let `server-config.lua` read it with `GetConvar`. If a webhook is exposed, rotate it in Discord instead of merely deleting it from the file.
 
 <Checkpoint question="Why does Config.Debug = 'false' fail to turn debugging off?">
   Because the quotes turn it into a string, not a boolean. When the script checks `if Config.Debug then`, Lua treats any non-empty string as true, including the text `"false"`. So the check passes and the debug logs keep printing. The fix is to remove the quotes so it is the real boolean `false`. In Lua only `false` and `nil` count as false; every other value, including `0` and the string `"false"`, counts as true. That is a Lua rule worth memorizing early, because it surprises people coming from other languages.
@@ -203,7 +220,7 @@ Here is the mental line that keeps your server alive. There are two kinds of fil
 
 ### The config is the cockpit
 
-`config.lua` is built to be edited. The author put values there on purpose so you can tune them. Changing a price, a key bind, a coordinate, or a boolean is a **safe edit**. You are turning a knob the author left out for you. The worst that happens with a clean edit is the number is wrong and you change it again.
+`config.lua` is built to be edited. The author put values there on purpose so you can tune them. Changing a documented price, key bind, coordinate, or boolean is the intended customization surface, but it is not risk-free: a wrong type, missing item name, invalid coordinate, or exposed secret can still break behavior. Back up the file, make one change, restart, and test the documented range.
 
 ### The logic is the engine
 
@@ -211,9 +228,10 @@ The other files, usually `server.lua`, `client.lua`, and anything in a `server/`
 
 ```text
 resources/qu_config_demo/
-  config.lua      <- the cockpit. Edit these values freely.
-  server.lua      <- the engine. Read it, learn from it, do not casually edit.
-  fxmanifest.lua  <- the wiring. Only touch when adding or renaming files.
+  config.lua         <- shared settings. Clients can read every value here.
+  server-config.lua  <- server-only settings and private convar reads.
+  server.lua         <- the engine. Read it, learn from it, do not casually edit.
+  fxmanifest.lua     <- the wiring. Only touch when adding or renaming files.
 ```
 
 The whole reason a `config.lua` exists is to give you a safe surface so you never need to open the engine just to set a price.
@@ -288,9 +306,11 @@ The resource will not start. In the console you get something like:
 <Mockup app="txAdmin · Live Console">
   ```text
   Error parsing script @qu_config_demo/config.lua in resource qu_config_demo:
-  config.lua:3: '}' expected (to close '{' at line 1) near 'bandage'
+  config.lua: '}' expected (to close '{' ...) near 'bandage'
   Failed to load script config.lua.
   ```
+
+  (Illustrative: the exact line number and wording depend on your server build and where the error sits in your file. What matters is the shape: `'}' expected ... near 'bandage'`.)
 </Mockup>
 
 Read it backwards. Lua reached `bandage` while it was still expecting either another item or the `}` that closes the table, because nothing told it the `water = 12` line had ended. The comma is the separator between entries. Without it, Lua cannot tell where one value stops and the next begins, so it gives up and the resource never loads.
@@ -336,7 +356,7 @@ The file loads fine. No red text. But when the script later runs `playerMoney - 
     { symptom: "'}' expected (to close '{' ...) near 'bandage'", fix: "A comma is missing between two table entries. Every entry inside a { } table needs a comma after it, including a trailing one is fine. Add the comma after the value on the line above the one named." },
     { symptom: "unfinished string near ''qbox'", fix: "A quote is missing on one end of a string. Strings need a matching quote at the start and the end. Re-add the closing quote on the value named in the error." },
     { symptom: "attempt to perform arithmetic on a string value", fix: "You quoted a number that the code does math on, like a price. Remove the quotes so it is a real number: water = 12, not water = '12'." },
-    { symptom: "attempt to index a nil value (global 'Config')", fix: "server.lua ran before Config existed. In fxmanifest.lua, list shared_script 'config.lua' before server_script 'server.lua' so the config loads first." },
+    { symptom: "attempt to index a nil value (global 'Config' or 'ServerConfig')", fix: "A config file did not load first. In fxmanifest.lua, list shared_script 'config.lua', then server_script 'server-config.lua', then server_script 'server.lua'." },
     { symptom: "I changed a value but nothing changed in game", fix: "A config edit only applies after a restart. Save the file, then run restart qu_config_demo in the console and test again." },
   ]}
 />
@@ -346,7 +366,7 @@ The file loads fine. No red text. But when the script later runs `playerMoney - 
 <Recap
   items={[
     "Recognize the Config = {} table pattern and read any value back with Config.Name.",
-    "Name the common keys a script exposes: Framework, Locale, Debug, Prices, Locations, Items, key bindings, and Webhook, and say what each controls.",
+    "Name common config keys such as Framework, Locale, Debug, Prices, Locations, Items, and key bindings, while keeping webhooks and other secrets server-only.",
     "Tell a safe config edit from a risky logic edit, and know that anything not exposed in config.lua was not meant for you to change.",
     "Set the right type every time: numbers bare, strings quoted, booleans as bare true or false.",
     "Read a parse error backwards to find a missing comma or quote, and know a wrong type can break at runtime instead of at startup.",
@@ -374,7 +394,7 @@ The file loads fine. No red text. But when the script later runs `playerMoney - 
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" },
     { label: "FiveM script loading (client/server/shared)", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/#scripts" },
     { label: "Lua 5.4 reference manual: tables", href: "https://www.lua.org/manual/5.4/manual.html#2.1" }
   ]}

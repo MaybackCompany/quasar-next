@@ -1,6 +1,6 @@
 <LessonHero
   crumbs="Module 05 · Lesson 16"
-  title="ox_lib: the toolbox every modern FiveM script uses"
+  title="ox_lib: a common UI toolbox"
   meta={[
     { label: "You'll learn", value: "lib.notify -> lib.registerContext / lib.showContext -> lib.inputDialog -> lib.progressCircle -> where the ox_lib docs live" },
     { label: "Time", value: "~25 minutes" },
@@ -77,6 +77,14 @@ dependencies {
     Open `client.lua` and paste this:
 
     ```lua
+lib.registerContext({
+    id = 'qu_ox_lib_notifications_ui_menu',
+    title = 'qu_ox_lib_notifications_ui',
+    options = {
+        { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' }
+    }
+})
+
 RegisterCommand('oxdemo', function()
     lib.notify({
         title = 'qu_ox_lib_notifications_ui',
@@ -84,18 +92,10 @@ RegisterCommand('oxdemo', function()
         type = 'success'
     })
 
-    lib.registerContext({
-        id = 'qu_ox_lib_notifications_ui_menu',
-        title = 'qu_ox_lib_notifications_ui',
-        options = {
-            { title = 'Ask name', event = 'qu_ox_lib_notifications_ui:ask' }
-        }
-    })
-
     lib.showContext('qu_ox_lib_notifications_ui_menu')
 end, false)
 
-RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
+AddEventHandler('qu_ox_lib_notifications_ui:ask', function()
     local input = lib.inputDialog('Save a name', { 'Name' })
     if not input then return end
 
@@ -174,9 +174,9 @@ lib.registerContext({
 lib.showContext('qu_ox_lib_notifications_ui_menu')
 ```
 
-A context menu is built in two moves. `lib.registerContext` defines the menu and stores it under an `id`. `lib.showContext` then opens the menu by that same `id`. Splitting definition from display means you can register a menu once and reopen it as many times as you like.
+A context menu is built in two moves. `lib.registerContext` defines the menu and stores it under an `id`, and in this resource it runs once at the top of `client.lua` when the resource loads. `lib.showContext` then opens the menu by that same `id`, and in this resource it lives inside the `/oxdemo` command handler so the menu opens each time you run the command. Splitting definition from display means you register the menu once on load and reopen it as many times as you like.
 
-Each entry in `options` is one row in the menu. Our single row has a `title` (what the player reads) and an `event`. When the player clicks that row, ox_lib fires the named event with `TriggerEvent`, which is why you have a matching `RegisterNetEvent('qu_ox_lib_notifications_ui:ask', ...)` further down. The event fires on the same client that clicked: ox_lib menus are client-side UI, so the click and the handler both live on the player's machine. Nothing crosses the network here.
+Each entry in `options` is one row in the menu. Our row has a `title` and an `event`. When the player clicks it, ox_lib fires a local client event, which is why the code listens with `AddEventHandler`. Nothing crosses the network, so `RegisterNetEvent` would unnecessarily expose a local UI action as network-callable. The static context is registered once when the resource loads and the command only opens it, matching the ox_lib guidance not to re-register static menus repeatedly.
 
 `event=` is one of two ways to wire a menu row. The other is `onSelect`, where you hand the option an inline function instead of an event name:
 
@@ -206,6 +206,10 @@ print('[qu_ox_lib_notifications_ui] saved ' .. input[1])
 
 `lib.progressCircle` shows a circular timer and, importantly, it blocks until the timer finishes. `duration = 1000` means it waits one thousand milliseconds, one second, before the code continues. So the `print` on the next line does not run until the circle completes. This is why the order on screen is exactly: dialog closes, circle spins for a second, line prints. If you put the progress circle before `lib.inputDialog`, the player would watch a bar fill before you even asked them anything, which makes no sense. The pattern is collect the input first, then show progress while you pretend to do the work, then report the result. In a real script the gap during the progress bar is where you would actually save to a database or call the server.
 
+<Callout variant="warning" title="Anything typed into inputDialog is untrusted client input">
+  The value you read from `input[1]` comes from the player's own machine, so a player can send anything at all, not just what your dialog seems to allow. In this lesson it only goes to a local `print`, which is safe. The moment a real script sends that value to the server, the server must treat it as untrusted: check the type and length, reject what does not fit, and when it reaches a database use a parameterized query (the `?` placeholder form) rather than building the SQL string by gluing the value in. Trusting raw client input server-side is how servers get money duped, items spawned, and databases broken.
+</Callout>
+
 <Checkpoint question="A teammate moves the lib.progressCircle call above the lib.inputDialog call. What does the player experience, and why?">
   The progress circle runs first, blocking for a full second while the screen shows a spinner, and only after it finishes does the input dialog appear asking for the name. The behaviour is backwards because `lib.progressCircle` blocks until its `duration` elapses, so whatever you place after it waits. You want the bar to represent work done on data you already have, so the input has to be collected before the circle, not after.
 </Checkpoint>
@@ -229,7 +233,7 @@ The reason to use ox_lib instead of building these by hand, the way earlier less
     { symptom: "Resource qu_ox_lib_notifications_ui does not exist", fix: "The folder is not inside resources, or the ensure line does not match the folder name exactly. Names are case sensitive." },
     { symptom: "attempt to index a nil value (local 'input')", fix: "The cancel guard is missing. Add if not input then return end right after lib.inputDialog so an Escape or closed dialog does not try to read input[1]." },
     { symptom: "/oxdemo does nothing and there is no notification", fix: "Run restart qu_ox_lib_notifications_ui, then trigger /oxdemo from the in-game chat box (press T). The command is restricted false, so it runs from chat, not the server console." },
-    { symptom: "The menu opens but clicking the row does nothing", fix: "The option event name and the RegisterNetEvent name must match exactly. Both must read qu_ox_lib_notifications_ui:ask, character for character." },
+    { symptom: "The menu opens but clicking the row does nothing", fix: "The option event name and AddEventHandler name must match exactly. Both must read qu_ox_lib_notifications_ui:ask." },
   ]}
 />
 
@@ -252,7 +256,7 @@ The reason to use ox_lib instead of building these by hand, the way earlier less
   Extend the dialog to collect two fields and gate the save behind a longer timer. Ask for both a name and an amount, then report both:
 
   ```lua
-  RegisterNetEvent('qu_ox_lib_notifications_ui:ask', function()
+  AddEventHandler('qu_ox_lib_notifications_ui:ask', function()
       local input = lib.inputDialog('Save a record', { 'Name', 'Amount' })
       if not input then return end
 

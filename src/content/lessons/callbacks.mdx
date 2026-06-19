@@ -26,7 +26,7 @@
 </Callout>
 
 <Callout variant="fivem" title="ox_lib is a community library, install it first">
-  Callbacks in this lesson use `ox_lib`, a utility library from Overextended. It is a community resource, not a built-in Cfx.re one, so it does not ship with your server. Download `ox_lib`, drop it in `resources`, and `ensure` it before `qu_callbacks`. If `ox_lib` is missing or started after your resource, the global `lib` is nil and every line below errors with `attempt to index a nil value (global 'lib')`.
+  Callbacks in this lesson use `ox_lib`, a utility library originally created by Overextended and now maintained by the community under the CommunityOx organization. It is a community resource, not a built-in Cfx.re one, so it does not ship with your server. Download the latest `ox_lib` release zip from https://github.com/CommunityOx/ox_lib/releases (the project, originally by Overextended, is now maintained under CommunityOx; the docs live at https://overextended.dev/ox_lib). Unzip it, rename the folder to exactly `ox_lib`, drop it in `resources`, and `ensure` it before `qu_callbacks`. If `ox_lib` is missing or started after your resource, the global `lib` is nil and every line below errors with `attempt to index a nil value (global 'lib')`.
 </Callout>
 
 ## Build it
@@ -98,7 +98,7 @@ end, false)
     ensure qu_callbacks
     ```
 
-    Save, then run:
+    Save. Then, in the **txAdmin Live Console** (the same place you read server output — not the in-game chat and not your computer's terminal), type:
 
     ```text
     restart qu_callbacks
@@ -138,7 +138,7 @@ The second argument is the function that produces the answer. Two things make it
 - `src` is passed in for you automatically. `ox_lib` puts the server id of the player who asked as the first parameter, so you always know who is asking without reaching for the global `source`. Here you use it to look up that specific player's name.
 - Whatever you `return` becomes the answer. A plain `TriggerClientEvent` sends a fire-and-forget message and returns nothing meaningful. A callback handler's `return` value is shipped back to the client as the result of its question. Return `500` here and the client receives `500`. In a real script you would replace `return 500` with a database read or a framework call like `return Player(src).money`.
 
-This is the server side of trust. The balance is computed on the server, where the player cannot touch it. The client never gets to decide its own balance, it only gets to ask.
+This is the server side of trust. The balance is computed on the server, where the player cannot touch it. In a real framework resource, replace the fixed `500` with a documented server-side framework adapter or database read; `Player(src).money` is not a built-in FiveM API.
 
 ### The client asks and waits
 
@@ -167,6 +167,8 @@ That `false` is the most copied and least understood value in the whole lesson. 
 - Pass `false` and you set no cooldown. Every call is allowed through immediately. That is the right choice here, and the common one, because most callbacks do not need to be rate-limited.
 
 Note what `delay` is not: it is not how long `await` waits for the answer. The response timeout is a separate global convar, covered below. If you want to throttle a spammable callback, pick a cooldown like `5000`; otherwise pass `false` and move on.
+
+This delay is client-side convenience, not a security rate limit. A modified client can bypass it and call the underlying network event. Validate every callback argument and apply any real cooldown or rate limit on the server.
 
 You should still guard the result before you trust it, because the server handler can return `nil`:
 
@@ -197,7 +199,7 @@ You could fake a callback with the tools from the previous lessons: the client f
 
 The answer arrives in a different place from where you asked. Your "what do I do with the balance" logic now lives in the event handler, far from the command that started everything. If you fire two balance requests close together, nothing tells you which answer belongs to which request, you have to hand-match them yourself with request ids. And there is no safety net for a dropped response, so a lost answer leaves the client waiting on an event that never comes, with no way to notice.
 
-`lib.callback.await` solves all three for free. The answer comes back to the exact line that asked, so the request and its handling stay together. Each request is correlated to its own response under the hood, so two questions never cross wires. And the global `ox:callbackTimeout` convar means a request that is never answered eventually errors out instead of hanging silently forever. That is why frameworks moved to callbacks for any client-to-server question.
+`lib.callback.await` solves all three. The answer comes back to the exact line that asked, each request is correlated to its own response, and the global `ox:callbackTimeout` convar makes an unanswered request error instead of hanging forever. This is why callback helpers are useful for client-to-server questions that need an answer.
 
 ### The async form, when you do not want to block
 
@@ -242,35 +244,43 @@ Notice the call is `lib.callback` with no `.await`, and the last argument is a f
 ## Try it yourself
 
 <Exercise>
-  Make the callback answer a real yes/no question instead of a fixed number, and pass an argument from the client. Change the server to take a price and decide whether the player can afford it:
+  Make the callback answer a real yes/no question without trusting a client-supplied price. Let the client request an item name, then have the server look up the authoritative price:
 
   ```lua
-  lib.callback.register('qu_callbacks:canAfford', function(src, price)
+  local prices = { water = 25, bandage = 100 }
+
+  lib.callback.register('qu_callbacks:canAfford', function(src, itemName)
+      if type(itemName) ~= 'string' then return false end
+      local price = prices[itemName]
+      if not price then return false end
+
       local balance = 500
-      return balance >= price
+      return balance >= price, price
   end)
   ```
 
-  Change the client to send a price and branch on the boolean answer. Here `5000` is the `delay`: a 5 second re-trigger cooldown on `qu_callbacks:canAfford`, not a 5 second budget for the answer. Any value after that second argument is forwarded to the server handler as an extra argument, which is how `price` reaches the server:
+  Change the client to send the item name and branch on the answer. The `5000` delay prevents accidental rapid repeats in this normal client, while the allow-list and server-side lookup enforce trust:
 
   ```lua
   RegisterCommand('canibuy', function(_, args)
-      local price = tonumber(args[1]) or 0
-      local ok = lib.callback.await('qu_callbacks:canAfford', 5000, price)
+      local itemName = args[1] or ''
+      local ok, price = lib.callback.await('qu_callbacks:canAfford', 5000, itemName)
       if ok then
-          print('[qu_callbacks] you can afford ' .. price)
+          print(('[qu_callbacks] you can afford %s for %d'):format(itemName, price))
       else
-          print('[qu_callbacks] not enough money for ' .. price)
+          print('[qu_callbacks] unknown item or not enough money')
       end
   end, false)
   ```
 
-  Restart `qu_callbacks`, then run `/canibuy 300` and `/canibuy 900` from F8. Confirm the first prints that you can afford it and the second does not. You just sent data up with the request, made the server decide, and branched on the answer, which is the real shape of a "can I buy this?" check.
+  Restart `qu_callbacks`, then run `/canibuy water` and, after five seconds, `/canibuy supercar` in chat. The server accepts the allow-listed item and rejects the invented one. A real purchase would re-check the same server price and balance while performing the server-side debit; a positive UI callback alone must never grant the item.
 </Exercise>
 
 <Refs
   items={[
-    { label: "ox_lib callback documentation (Overextended)", href: "https://overextended.dev/ox_lib/Modules/Callback/Shared" },
+    { label: "ox_lib callback documentation (client)", href: "https://overextended.dev/ox_lib/Modules/Callback/Lua/Client" },
+    { label: "ox_lib callback documentation (server)", href: "https://overextended.dev/ox_lib/Modules/Callback/Lua/Server" },
+    { label: "ox_lib callback timeout source (ox:callbackTimeout default 300000)", href: "https://github.com/CommunityOx/ox_lib/blob/master/imports/callback/client.lua" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}

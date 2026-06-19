@@ -16,7 +16,8 @@
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
     "I can read txAdmin Live Console output.",
-    "I have ox_inventory installed and started, with a 'burger' item defined."
+    "I have ox_inventory installed and started.",
+    "I have a 'burger' item defined in ox_inventory's data/items.lua (the lesson tells you how, and restart ox_inventory after adding it). If you skip this, the command fails with invalid_item."
   ]}
 />
 
@@ -66,25 +67,35 @@ dependencies {
     Open `server.lua` and paste this:
 
     ```lua
-RegisterCommand('burger', function(source)
-    local src = source
+RegisterCommand('burger', function(source, args)
+    local src = source > 0 and source or tonumber(args[1])
+    if not src or not GetPlayerName(src) then
+        print('[qu_inventories] usage from console: burger <playerId>')
+        return
+    end
 
-    -- Add 5 burgers. AddItem returns success + a response string.
+    if not exports.ox_inventory:CanCarryItem(src, 'burger', 5) then
+        print('[qu_inventories] player cannot carry 5 burgers')
+        return
+    end
+
+    local before = exports.ox_inventory:Search(src, 'count', 'burger')
+
+    -- AddItem returns success plus item/slot data or a failure reason.
     local success, response = exports.ox_inventory:AddItem(src, 'burger', 5)
     if not success then
         print('[qu_inventories] add failed: ' .. tostring(response))
         return
     end
 
-    -- Read the TRUE count back from the inventory, do not trust the count we asked for.
-    local count = exports.ox_inventory:Search(src, 'count', 'burger')
-    print('[qu_inventories] burger count ' .. count)
+    local after = exports.ox_inventory:Search(src, 'count', 'burger')
+    print(('[qu_inventories] burger total %s, added %s'):format(after, after - before))
 end, true)
     ```
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
-    Open `server.cfg` and add this line below your `ensure ox_inventory` line:
+    In a text editor (VS Code), open `server.cfg` — it lives in your server data folder (the folder you point FXServer at with `+exec`), NOT inside `resources`. Add this line below your `ensure ox_inventory` line:
 
     ```text
     ensure qu_inventories
@@ -103,10 +114,12 @@ end, true)
     ```
 
     <ExpectedOutput>
-      [qu_inventories] burger count 5
+      [qu_inventories] burger total 5, added 5
     </ExpectedOutput>
 
     The command is server-side and restricted, so it runs from the console. The console is source zero and has no inventory of its own, which is why you target a connected player id. We will unpack why in the next section.
+
+    Security note: the `true` at the end of `RegisterCommand(..., true)` marks the command **restricted**, so a connected player can only run it if they hold the `command.burger` ACE permission. Keep any command that grants items restricted — an item-giving command that any player can call is a free item-duplication exploit. Verify with primary docs before trusting third-party command code.
   </Step>
 </StepGroup>
 
@@ -116,29 +129,30 @@ You ran it and the count appeared. The reason the count is the proof, and not th
 
 ### The two models, and why the count is the truth
 
-Before the code, the mental model. There are two ways to limit what a player can carry.
+Before the code, the mental model. There are two common ways to limit what a player can carry.
 
 - **Slot-based.** The inventory is a fixed grid of numbered pockets, say 50 slots. Each kind of item occupies a slot, and a slot holds up to a stack limit of that item. Run out of free slots and you cannot carry more, even if each item is feather-light.
 - **Weight-based.** The inventory has a single kilogram cap, say 60 kg. Nothing else is counted. Carry one heavy item or a thousand light ones, the only question is the total weight.
 
-`ox_inventory` enforces **both at once**: every player has a slot count and a weight cap, and an add can fail because either limit is hit. That is exactly why you cannot trust the number you asked for. You requested 5 burgers, but if the player had room for only 3 by weight or slots, the inventory holds 3, not 5. So the lesson reads the real number back instead of assuming the request was honored in full.
+`ox_inventory` enforces **both at once**: every player has a slot count and a weight cap. `CanCarryItem` checks whether all five fit before the write. `AddItem` then either succeeds or returns a documented failure such as `inventory_full`; this lesson does not claim it silently clips five down to three. Reading the count before and after gives you an observable proof that exactly five were added.
 
 ### Adding the item
 
 ```lua
+if not exports.ox_inventory:CanCarryItem(src, 'burger', 5) then return end
 local success, response = exports.ox_inventory:AddItem(src, 'burger', 5)
 ```
 
 `exports.ox_inventory:AddItem` is how one resource calls a function another resource has published. `ox_inventory` exports `AddItem`; you call it with `exports.ox_inventory:` followed by the function name. The arguments here are the inventory to add to (`src`, the player's server id), the item name (`'burger'`), and the count (`5`).
 
-It returns two values: `success`, a boolean, and `response`, a string. On a clean success, `success` is `true`. On a hard failure, such as a completely full inventory, `success` is `false` and `response` is a reason like `inventory_full`. That is why the code captures both and prints `response` when the add fails, instead of printing a bare "add failed" that tells you nothing.
+It returns two values: `success`, a boolean, and `response`. On success, the response can contain item or slot data. On failure, it is a reason such as `invalid_item`, `invalid_inventory`, or `inventory_full`. That is why the code prints `response` only on failure.
 
-Here is the trap the old version of this lesson fell into. `success` is not a clean "all five landed" flag. It tells you the add was accepted, not how many units actually fit once weight and slot caps were applied. Gating only on the boolean and assuming you got all five is how phantom items and desync bugs are born. The honest move is the next line.
+The capacity check and success result are the write contract. The before/after count is the test evidence: it catches a wrong target inventory, wrong item name, or unexpected integration behavior without inventing partial-add semantics.
 
 ### Reading the truth back
 
 ```lua
-local count = exports.ox_inventory:Search(src, 'count', 'burger')
+local after = exports.ox_inventory:Search(src, 'count', 'burger')
 ```
 
 `Search` asks the inventory what it actually holds. The second argument is the **mode**, and the mode decides what you get back:
@@ -146,7 +160,7 @@ local count = exports.ox_inventory:Search(src, 'count', 'burger')
 - `'count'` returns a single number: the total quantity of that item across every slot it occupies. That is what we print, because a number is the cleanest proof that the item is really there.
 - `'slots'` returns an array of tables, one per slot the item lives in, each with its `slot` number, its `count`, and its `metadata`. You reach for `'slots'` when you need to know *where* the item sits or inspect per-stack metadata, not just the grand total.
 
-So the flow is: ask the inventory to add, then ask the inventory what it now holds. The printed `5` is not the `5` you passed to `AddItem`. It is the inventory's own answer, read fresh. If a weight cap had clipped the add to 3, this line would print `3`, and you would see the truth instead of a lie.
+So the flow is: read the starting count, verify capacity, add, check the result, then read the ending count. On an empty inventory, the total is 5 and the delta is 5. If the player already had two burgers, the total is 7 and the delta is still 5.
 
 ### Stacking and metadata
 
@@ -162,7 +176,7 @@ Metadata is the per-item data attached to a single stack: durability, a weapon s
 
 `AddItem(src, 'burger', 5)` only works if `'burger'` already exists. The name is not magic. It is a key in `ox_inventory`'s `data/items.lua`, a single Lua table where each key is the canonical item name and each value is that item's config. If you call `AddItem` with a name that is not in this table, it fails with `invalid_item`, which is exactly the failure mode listed below.
 
-Here is a real entry from `ox_inventory`'s own `data/items.lua`, kept verbatim. Note `stack` is absent because it defaults to `true`, `weight` is in grams not kilograms, and `consume = 0.3` drains durability per use instead of removing a whole item:
+Here is the `testburger` entry from `ox_inventory`'s own `data/items.lua`, trimmed to two example buttons for readability (the real file adds three more grouped "Hamburger Puns" buttons). Note `stack` is absent because it defaults to `true`, `weight` is in grams not kilograms, and `consume = 0.3` drains durability per use instead of removing a whole item:
 
 ```lua
 ['testburger'] = {
@@ -270,8 +284,12 @@ You could store items in a plain Lua table and a database column. People do, and
   Prove the metadata stacking rule with your own eyes. Extend the command so it adds one plain burger and one burger with metadata, then prints the slot layout instead of just the count:
 
   ```lua
-  RegisterCommand('burger', function(source)
-      local src = source
+  RegisterCommand('burger', function(source, args)
+      local src = source > 0 and source or tonumber(args[1])
+      if not src or not GetPlayerName(src) then
+          print('[qu_inventories] usage from console: burger <playerId>')
+          return
+      end
       exports.ox_inventory:AddItem(src, 'burger', 1)
       exports.ox_inventory:AddItem(src, 'burger', 1, { quality = 100 })
 
@@ -290,6 +308,7 @@ You could store items in a plain Lua table and a database column. People do, and
   items={[
     { label: "ox_inventory server functions (AddItem, Search)", href: "https://overextended.dev/ox_inventory/Functions/Server" },
     { label: "ox_inventory item metadata guide", href: "https://overextended.dev/ox_inventory/Guides/metadata" },
+    { label: "ox_inventory source and releases", href: "https://github.com/overextended/ox_inventory" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}
 />

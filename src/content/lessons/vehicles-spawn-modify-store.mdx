@@ -63,15 +63,29 @@ client_script 'client.lua'
     ```lua
 local testVehicle
 
+local function loadModel(model)
+    if not IsModelInCdimage(model) or not IsModelAVehicle(model) then
+        return false
+    end
+
+    RequestModel(model)
+    local deadline = GetGameTimer() + 5000
+    while not HasModelLoaded(model) do
+        if GetGameTimer() > deadline then return false end
+        Wait(0)
+    end
+    return true
+end
+
 RegisterCommand('testvehicle', function()
     if testVehicle and DoesEntityExist(testVehicle) then
         DeleteEntity(testVehicle)
     end
 
     local model = joaat('sultan')
-    RequestModel(model)
-    while not HasModelLoaded(model) do
-        Wait(0)
+    if not loadModel(model) then
+        print('[qu_vehicles_spawn_modify_store] invalid vehicle model or load timeout')
+        return
     end
 
     local ped = PlayerPedId()
@@ -132,17 +146,14 @@ The car spawned. Now take the code apart so the next time you write a garage or 
 
 ```lua
 local model = joaat('sultan')
-RequestModel(model)
-while not HasModelLoaded(model) do
-    Wait(0)
-end
+if not loadModel(model) then return end
 ```
 
 A vehicle in GTA is built from a model: a bundle of meshes, textures, and physics data that the game keeps on disk, not in memory. `CreateVehicle` cannot build a car from a model that is not in memory yet, so you have to ask the engine to stream it in first. That is exactly what these three pieces do.
 
 `RequestModel(model)` tells the engine to start loading the Sultan. It does not wait. The load happens in the background over the next few frames, so the line after `RequestModel` runs long before the model is actually ready. If you called `CreateVehicle` immediately you would get a null entity, because the data simply is not there yet.
 
-That is why the `while` loop is there. `HasModelLoaded(model)` returns `false` until the streaming finishes, then `true`. The loop spins until that flip happens. `Wait(0)` is the important part: it hands control back to the engine for one frame on each pass. Without it you would lock the whole game thread in a tight loop and the model would never get a chance to finish loading, because you never gave the engine a turn. This request-then-poll-with-Wait shape is one of the most-used idioms in all of FiveM. You will see it again for peds, for props, for animation dictionaries, for anything the game streams.
+The helper also checks `IsModelInCdimage` and `IsModelAVehicle` before requesting, then gives streaming five seconds. `Wait(0)` yields each pass so the game keeps running. The timeout matters when a model is unavailable: without it, a yielding loop can wait forever even though it does not freeze the whole client.
 
 ### What joaat actually returns
 

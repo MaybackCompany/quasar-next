@@ -20,7 +20,7 @@
 />
 
 <Callout variant="fivem" title="Two ports, two jobs">
-  FiveM listens on TCP and UDP on the same port (default `30120`). The TCP side carries the connect handshake and the heartbeat to the server list. The UDP side carries the live gameplay. Both must be open and forwarded, or the server behaves in a confusing way: it can boot fine and even show in a list while no player can fully join. Separately, the txAdmin web panel runs on `40120`, which is a different port for a different audience.
+  A standard FiveM config binds both TCP and UDP on the same game port (default `30120`), and both protocols must be allowed by the host firewall. Do not reduce the whole connection flow to "TCP is the handshake, UDP is gameplay": FXServer exposes multiple HTTP/TCP and UDP services, and the public-list ingress behavior has changed over time. Separately, txAdmin uses its own web port, `40120` by default, and that port is configurable.
 </Callout>
 
 ## Build it
@@ -52,9 +52,10 @@ resources/qu_networking_basics/
     ```cfg
     endpoint_add_tcp "0.0.0.0:30120"
     endpoint_add_udp "0.0.0.0:30120"
+    set qu_game_port 30120
     ```
 
-    `0.0.0.0` means "listen on every network interface on this machine", and `30120` is the port players connect to. If you only ever see one of these lines in a guide, add the other. The TCP line alone gets you a handshake but no gameplay; the UDP line alone gets you gameplay the handshake never reaches.
+    `0.0.0.0` means "listen on every network interface on this machine", and `30120` is the port players connect to. The extra `qu_game_port` line is a lesson-owned convar so the probe below can report the number; keep it equal to the endpoint port. Cfx.re's default config binds both protocols, so allow both through the firewall.
   </Step>
 
   <Step num={4} title="Write fxmanifest.lua" outcome="FiveM knows which file to load.">
@@ -75,12 +76,12 @@ resources/qu_networking_basics/
 
     ```lua
     RegisterCommand('netinfo', function()
-        local port = GetConvarInt('netPort', 30120)
+        local port = GetConvarInt('qu_game_port', 0)
         local maxClients = GetConvarInt('sv_maxClients', 48)
         local oneSync = GetConvar('onesync', 'off')
 
         print('[qu_networking_basics] game port (TCP+UDP): ' .. port)
-        print('[qu_networking_basics] txAdmin panel port:  40120')
+        print('[qu_networking_basics] txAdmin panel port:  check txAdmin host settings (default 40120)')
         print('[qu_networking_basics] sv_maxClients:        ' .. maxClients)
         print('[qu_networking_basics] onesync:              ' .. oneSync)
     end, true)
@@ -108,7 +109,7 @@ resources/qu_networking_basics/
 
     <ExpectedOutput>
       [qu_networking_basics] game port (TCP+UDP): 30120
-      [qu_networking_basics] txAdmin panel port:  40120
+      [qu_networking_basics] txAdmin panel port:  check txAdmin host settings (default 40120)
       [qu_networking_basics] sv_maxClients:        48
       [qu_networking_basics] onesync:              on
     </ExpectedOutput>
@@ -124,38 +125,36 @@ You just printed the four numbers that decide whether players can reach you, how
 ### Reading your live config
 
 ```lua
-local port = GetConvarInt('netPort', 30120)
+local port = GetConvarInt('qu_game_port', 0)
 local maxClients = GetConvarInt('sv_maxClients', 48)
 local oneSync = GetConvar('onesync', 'off')
 ```
 
 `GetConvar` and `GetConvarInt` are the server-side way to read a configuration variable that was set in `server.cfg`. The first argument is the convar name. The second argument is a fallback default: if the convar was never set, you get that value instead of `nil`. `GetConvarInt` returns a number; `GetConvar` returns a string, which is why `onesync` (whose values are the words `off`, `on`, and `legacy`) is read as a string while the port and player cap are read as integers.
 
-The mental model: a convar is a setting that lives outside your code, in `server.cfg`, and your script asks for its value at runtime. One catch on the port. The bound game port comes from the `endpoint_add_udp` / `endpoint_add_tcp` directive string you wrote in Step 3, not from a `netPort` convar. `netPort` is initialized to zero and only consulted as a master-list and heartbeat override, so declaring an endpoint does not populate it. Because you never explicitly `set netPort`, `GetConvarInt('netPort', 30120)` falls back to the `30120` you passed as the default. So treat that `30120` as a documented constant you keep in sync with your endpoint line, not as proof of the live bound port. The convar read makes the port a visible number you can print and compare against your `endpoint_add` lines; the endpoint directive is the real source of truth for what the server binds.
+The mental model: a convar is a setting outside your code that a script can read. The bound port still comes from `endpoint_add_udp` and `endpoint_add_tcp`; `qu_game_port` is only a lesson-owned label that you keep in sync. It does not introspect the socket and is not proof that a firewall rule works. The real proof is the endpoint lines, the host firewall/provider rules, and an external connection test.
 
 ### Why the port needs both TCP and UDP
 
 This is the single most common reason a fresh server is unreachable. The connection happens in two phases on the same port number.
 
-The **TCP** half handles the handshake when a player clicks Connect, and it carries the heartbeat your server sends to the public server list so people can find you. The **UDP** half carries the actual gameplay once the player is in: positions, events, voice. They share the port `30120`, but they are two separate sockets that the firewall treats independently.
-
-So if your firewall or VPS forwards `30120/TCP` but not `30120/UDP`, the symptom is bizarre and beginners chase it for hours: the server appears in the list, a player can start to connect, and then it stalls or times out at the loading screen. The handshake got through; the gameplay never did. Forward both, always, on the same number.
+TCP and UDP are separate protocols, so firewalls treat `30120/TCP` and `30120/UDP` as separate rules even though the number matches. Cfx.re's default config binds both. If one is blocked, connection, file-service, discovery, or live-session behavior can fail in ways that vary by path and proxy. Open both on the same game port, then verify from outside the host network.
 
 ### Game port 30120 versus txAdmin port 40120
 
-These get confused constantly, so lock the distinction in. `30120` is the **game port**: this is what players put after your IP, and this is what you forward and protect. `40120` is the **txAdmin web panel port**: this is the admin dashboard you open in a browser at `http://your-ip:40120`. It is for you, not for players. You should not expose `40120` to the whole internet the way you do `30120`; lock it to your own IP or use it locally. Forwarding the wrong one means either players cannot join or your admin panel is open to strangers.
+These get confused constantly. `30120` is the conventional **game port** in the default config. `40120` is txAdmin's **default** web-panel port, but hosts can change it. The panel is for administrators, not players: restrict it with the provider firewall, VPN, or trusted source IPs where your hosting setup supports that.
 
 <Checkpoint question="A player says your server shows up in the list and starts connecting, but freezes at the loading screen and times out. The server console shows no errors. What is the most likely cause?">
-  The UDP port is closed or not forwarded, while TCP is open. The TCP handshake and the server-list heartbeat went through, which is why the server appears and the connection begins. But gameplay rides on UDP, so once the handshake finishes there is no channel for the actual session and it stalls. Open and forward `30120` on UDP as well as TCP, on the same port number, then have them retry.
+  First confirm that both `30120/TCP` and `30120/UDP` are allowed at the OS firewall, provider firewall, and any router/NAT, then test externally. A listing entry alone does not prove either inbound path is healthy. If both are open, continue with server console errors, proxy configuration, resource downloads, and client-specific issues.
 </Checkpoint>
 
 ### Telling a server problem from a network problem
 
 When players complain about lag, there are two completely different homes for the cause, and they need opposite fixes.
 
-**Server-side lag** is your scripts being slow. You read this with **resmon** (type `resmon` in F8 on a client, or watch the server thread time in txAdmin). Each resource shows a per-frame millisecond cost. If one resource is over budget, the whole server hitches for everyone at once, and no amount of network tuning helps. Fix the script.
+**Server-side lag** is your scripts being slow. You read this with **resmon**. Heads up: `resmon` and `netgraph` are *developer* commands. On a normal FiveM client the F8 console answers `Access denied for command resmon`. Enable developer mode first by launching FiveM with the extra argument `+set moo 31337` (add it to your FiveM shortcut, then reopen F8) -- only then will `resmon` open. As a no-dev-mode alternative, watch the server thread time in txAdmin instead. Each resource shows a per-frame millisecond cost. If one resource is over budget, the whole server hitches for everyone at once, and no amount of network tuning helps. Fix the script.
 
-**Network-side lag** is the connection between players and your machine: high ping, packet loss, jitter. You read this in-game with the **netgraph**. Turn it on with the client command `netgraph 1` (`netgraph true` also works) and watch the ping and packet-loss numbers. For a per-frame perf and packet-loss overlay, use `cl_drawperf 1`. If the server thread time is healthy in txAdmin but the netgraph shows high ping or dropped packets, the problem is the network, not your code, and that is when distance, bandwidth, and attacks come into play.
+**Network-side lag** is the connection between players and your machine: high ping, packet loss, jitter. You read this in-game with the **netgraph**. These are CLIENT commands: join the server, press F8 to open the FiveM client console (not the server or txAdmin console), and type `netgraph true` (`netgraph 1` also works) to watch the ping and packet-loss numbers. For an FPS/ping/packet-loss overlay in the screen corner, type `cl_drawperf true` in the same F8 console. If the server thread time is healthy in txAdmin but the netgraph shows high ping or dropped packets, the problem is the network, not your code, and that is when distance, bandwidth, and attacks come into play.
 
 The diagnostic order is always the same: check resmon and the server thread first, because that is the cause you can fix yourself. Only when the server side is healthy do you look at the network.
 
@@ -186,7 +185,7 @@ This is almost entirely a **hosting feature**. A beginner does not hand-build a 
 
 <FailureList
   items={[
-    { symptom: "Server boots, appears in the list, then players freeze on the loading screen", fix: "UDP is closed. TCP (handshake plus heartbeat) got through but UDP (gameplay) did not. Forward 30120 on BOTH TCP and UDP, same port number." },
+    { symptom: "Server boots, appears in the list, then players freeze on the loading screen", fix: "Verify BOTH TCP and UDP rules for the configured game port from outside the network. If both paths work, inspect console errors, proxy/file-server settings, and client-specific failures instead of assuming one protocol." },
     { symptom: "Nobody can find or reach the server at all", fix: "The endpoints are wrong or the port is fully blocked. Confirm endpoint_add_tcp and endpoint_add_udp are both set to 0.0.0.0:30120 and that the port is open to the public internet, not just your LAN." },
     { symptom: "Everyone lags or hitches at the same instant", fix: "Server-side, not network. Check resmon and the txAdmin server thread time. A resource over its per-frame budget freezes the whole server. Fix the script before touching the network." },
     { symptom: "Fine at 20 players, unplayable at 80", fix: "You are saturating your uplink. High sv_maxClients with onesync on is a heavy outbound bandwidth load. Confirm your host's bandwidth or lower the cap." },
@@ -199,8 +198,8 @@ This is almost entirely a **hosting feature**. A beginner does not hand-build a 
 
 <Recap
   items={[
-    "Declare both endpoint_add_tcp and endpoint_add_udp on 0.0.0.0:30120 and explain why TCP carries the handshake and heartbeat while UDP carries gameplay.",
-    "Tell the game port (30120, public) apart from the txAdmin panel port (40120, admin-only).",
+    "Declare both endpoint_add_tcp and endpoint_add_udp on the same game port and verify both firewall rules externally.",
+    "Tell the configured game port apart from txAdmin's separately configured admin web port.",
     "Diagnose lag in order: resmon and server thread time for server-side, the netgraph (netgraph 1) for ping and packet loss on the network side.",
     "Read sv_maxClients and onesync at runtime and explain why more players plus OneSync means more outbound bandwidth.",
     "Describe what a scrubbing center and a proxy do at the packet level: absorb the flood, forward clean UDP, hide the origin IP.",
@@ -212,7 +211,7 @@ This is almost entirely a **hosting feature**. A beginner does not hand-build a 
 <Exercise>
   Prove your own port is actually reachable, end to end. First, confirm the server is listening: restart `qu_networking_basics`, run `netinfo`, and read back your real `30120`, `sv_maxClients`, and `onesync` values from the console. Then test the UDP path specifically, which is the one beginners forget.
 
-  From a machine outside your network (a phone on mobile data works), point a UDP port checker at `your-public-ip:30120` and confirm UDP is open, not just TCP. If the checker reports TCP open but UDP closed, you have just reproduced the most common "boots but nobody can join" failure on purpose. Fix it by forwarding UDP on the same port, then re-run the check and confirm both are open.
+  Test from outside your network by connecting a FiveM client to the public address while watching the server console. Generic web port-check sites often test TCP only and cannot reliably prove a stateful UDP game service. Confirm the OS firewall, provider firewall, and router/NAT each allow both protocols on your configured game port, then record which layer was blocking the connection.
 
   Write down two lines: which ports your server reports listening on, and the result of the external UDP check (open or closed, and what you changed to fix it).
 </Exercise>
@@ -221,6 +220,8 @@ This is almost entirely a **hosting feature**. A beginner does not hand-build a 
   items={[
     { label: "Cfx.re docs · Server commands (endpoint_add_tcp / udp)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
     { label: "Cfx.re docs · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
-    { label: "Cfx.re docs · OneSync", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" }
+    { label: "Cfx.re docs · OneSync", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" },
+    { label: "Cfx.re docs · sv_maxClients & onesync slot thresholds (Server commands)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "Cfx.re docs · Client console commands (netgraph / resmon / cl_drawperf)", href: "https://docs.fivem.net/docs/client-manual/console-commands/" }
   ]}
 />

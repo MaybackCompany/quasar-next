@@ -45,7 +45,7 @@ resources/qu_functions/
   </Step>
 
   <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
-    Open `fxmanifest.lua` and paste this:
+    Open `fxmanifest.lua` in a plain-text editor (VS Code, or even Notepad) and paste this:
 
     ```lua
 fx_version 'cerulean'
@@ -54,7 +54,7 @@ game 'gta5'
 server_script 'server.lua'
     ```
 
-    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
+    No `lua54 'yes'` line. The official manifest docs mark that directive as deprecated and say you do not need to enable it: as of June 2025 Lua 5.3 was removed and all Lua scripts now run on Lua 5.4, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -89,19 +89,19 @@ end, true)
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Open `server.cfg` (it sits in your server-data root folder, the same folder that contains your `resources` folder) and add this line:
 
     ```text
     ensure qu_functions
     ```
 
-    Save, then run:
+    Save the file. Now switch to your server console (the txAdmin Live Console, or the FXServer console window). Type this there and press Enter:
 
     ```text
     restart qu_functions
     ```
 
-    Run this test:
+    Then, in that same server console, run the test command:
 
     ```text
     functiontest
@@ -212,9 +212,9 @@ This `local result, err = doThing(...)` shape is everywhere in real Lua, especia
 
 ### Why local function, not a global
 
-Every helper here is declared with `local function`, not just `function`. The `local` keyword limits the name to this file. Without it, `greet`, `classify`, and `divide` would become global names visible to every resource on the server at once.
+Every helper here is declared with `local function`, not just `function`. The `local` keyword limits the name to this file. Without it, `greet`, `classify`, and `divide` would become global names in this resource's global table.
 
-That matters more than it sounds. FiveM runs every resource in a shared Lua space for globals. If your resource defines a global `greet` and another resource also defines a global `greet`, one silently overwrites the other and you get a bug with no error message, the worst kind to chase. Marking helpers `local` keeps them private to the file that owns them, so names cannot collide across resources. The habit is simple: default to `local function` for everything, and only go global when you have a deliberate reason to expose a name. Lesson on exports covers the deliberate way to share code between resources.
+That matters more than it sounds. Each FiveM resource runs in its own isolated environment, so globals do not leak from one resource to another: a global `greet` in `qu_functions` is invisible to every other resource (that is exactly why sharing code requires the `exports` mechanism). The collisions to avoid are inside this resource, across its own files, which share one global table: if two of your files both define a global `greet`, one silently overwrites the other and you get a bug with no error message, the worst kind to chase. Marking helpers `local` keeps each name private to the file that owns it, so names cannot collide between your own files and nothing accidentally becomes part of the resource's public surface. The habit is simple: default to `local function` for everything, and only go global when you have a deliberate reason to expose a name. The lesson on exports covers the deliberate way to share code between resources.
 
 ### The anonymous function you already wrote
 
@@ -230,7 +230,7 @@ end, true)
 
 This is the deep idea: in Lua a function is a value, just like a string or a number. You can store it in a variable (that is what `local function greet` quietly does), and you can pass it as an argument to another function. `RegisterCommand` takes a command name, a function to run when that command fires, and the restricted flag. You do not need to name that function because nothing else ever calls it; only FiveM does, later, when someone types the command. So you define it inline and hand it over anonymously.
 
-The `true` at the end is the restricted flag. With `true`, the command requires an ace permission, which the server console has, so `functiontest` runs cleanly from txAdmin Live Console. Set it to `false` and any connected player could fire it from their chat box. For a server-side proof you do not want players triggering, `true` is the safe default.
+The `true` at the end is the restricted flag. With `true`, a connecting player needs the `command.functiontest` ace permission to run it, so ordinary players are blocked. The server console (and txAdmin's Live Console, which sends commands as the server itself) runs as the trusted system principal that bypasses these per-command checks, so `functiontest` runs cleanly there. Set it to `false` and any connected player could fire it from their chat box. For a server-side proof you do not want players triggering, `true` is the safe default.
 
 ### When you reach for functions
 

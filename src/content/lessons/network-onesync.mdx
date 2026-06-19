@@ -8,7 +8,7 @@
     { label: "Outcome", value: "You build a 4-player heist instance that is invisible to other players on the server, and you prove the invisibility with two test players" },
   ]}
 >
-  OneSync is the system that lets the server hold authority over entities across many clients. Routing buckets are the partition system that lets two players stand on the exact same coordinates without seeing each other. Together they unlock interiors, instances, and minigame arenas without trickery. This lesson builds a real instance and then verifies that players in different buckets cannot see one another.
+  OneSync extends server-side entity and player management. Routing buckets partition replicated game state so two groups can reuse the same coordinates without seeing each other's networked entities. They are designed for sessions and game modes, not as a generic interior system. This lesson builds a small instance and verifies the partition with two players.
 </LessonHero>
 
 <Prereq
@@ -92,6 +92,10 @@ RegisterCommand('mybucket', function(src)
     print(('[qu_network_onesync] %s is in bucket %d'):format(GetPlayerName(src), GetPlayerRoutingBucket(src)))
 end, false)
     ```
+
+    <Callout variant="warning" title="These commands are unrestricted on purpose, for the lesson only">
+      The `false` at the end of each `RegisterCommand` is the `restricted` flag set to off, so ANY connected player can run `/heist`, `/leaveheist`, and the `/heistwith` from the exercise. That is fine for a local test, but on a live server it means anyone can self-instance or pull another player into a bucket. Before shipping anything like this, set `restricted` to `true` and grant the command through an ACE permission (for example `add_ace group.admin command.heist allow` in `server.cfg`). Routing-bucket control should never be a public command.
+    </Callout>
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the txAdmin Live Console.">
@@ -101,22 +105,20 @@ end, false)
     ensure qu_network_onesync
     ```
 
-    Save, then run:
+    Save `server.cfg`. Then type this into the server console (the txAdmin Live Console, or the black FXServer console window if you run it directly) — not PowerShell and not the in-game chat:
 
     ```text
     restart qu_network_onesync
     ```
 
-    Join the server, then run this in the chat box (press T) or F8 console:
-
-    ```text
-    /heist then /mybucket
-    ```
+    Join the server. In the in-game chat (press T) type `/heist`, press Enter, then `/mybucket`. (In the F8 console you would type the same commands without the leading slash.) The printed lines appear in the server console, not on your screen:
 
     <ExpectedOutput>
       [qu_network_onesync] moved Alex (id 3) into heist bucket 10
 [qu_network_onesync] Alex is in bucket 10
     </ExpectedOutput>
+
+    `Alex` and `id 3` are illustrative: you will see your own in-game name and the server id you were assigned on join. The lines that must match exactly are the `[qu_network_onesync]` prefix and `bucket 10`.
   </Step>
 
   <Step num={6} title="Prove the invisibility" outcome="Two players confirm a routing bucket really partitions the world.">
@@ -140,7 +142,7 @@ You moved a player into a private slice of the world and proved no one outside i
 
 A routing bucket is a server-managed dimension. Picture the server holding several stacked copies of Los Santos. Bucket 0 is the default, shared world where everyone spawns. Bucket 10 is a separate copy sitting on top of it at the same coordinates. The rule that makes buckets useful is simple: a player in bucket A receives network traffic only for players and entities that are also in bucket A. Bucket 10 and bucket 0 share the same map geometry, but they do not share each other's players, vehicles, or spawned objects. Two players at coordinate (0, 0, 72), one in bucket 0 and one in bucket 10, are invisible to each other because the server never tells either client the other exists.
 
-This is why buckets, not teleporting players far away, are the correct tool for heist rooms, jail cells, racing lobbies, and apartment interiors. Distance tricks fall apart the moment two instances need the same physical building. Buckets let every instance reuse the same coordinates with zero interference.
+Buckets are useful for separate sessions, racing lobbies, and match instances. Cfx.re's routing-bucket guidance explicitly says not to use them for interiors; interior concealment has different requirements and uses conceal natives or an interior system designed for that job.
 
 ### `SetPlayerRoutingBucket`: the one line that moves a player
 
@@ -169,10 +171,10 @@ SetRoutingBucketEntityLockdownMode(bucket, 'strict')
 This native controls who is allowed to create networked entities inside the bucket. It takes one of three string modes:
 
 - `'inactive'` is the default. Any client may spawn networked entities, which is normal free-roam behavior.
-- `'relaxed'` lets clients create entity types the server expects, but blocks unexpected ones.
+- `'relaxed'` blocks client-created entities whose script owner is not the client, while allowing client-script-owned creation.
 - `'strict'` blocks all client-side entity creation. Only the server may spawn entities into the bucket.
 
-For a heist instance you want `'strict'`. It means a player cannot quietly spawn a tank or a wall of vehicles inside your locked room. The server stays the sole authority over what exists in that world, which is exactly the guarantee OneSync was built to give you. This is the first place the "server entities" idea from the lesson outcome becomes concrete: in a strict bucket, every networked entity has the server as its owner because the server is the only thing allowed to create them.
+For a controlled mission instance, `'strict'` prevents client-side creation of networked entities in that bucket. The server must create the entities the mission needs. Creation authority and simulation ownership are different: a server-created entity can still migrate to a client for simulation, so strict mode does not mean every entity permanently reports the server as its network owner.
 
 ### Where OneSync and entity ownership tie in
 
@@ -189,7 +191,7 @@ Once OneSync is on, the server owns the networked world. You can ask who current
 Routing buckets are the answer almost every time a server needs more than one copy of the same place. Three concrete cases:
 
 - **Instanced missions and heists.** Four players enter a vault. They should share a world with each other and no one else. Put the four of them in the same bucket, set it strict, disable population, and the vault is theirs alone.
-- **Interiors and apartments.** Ten different players each own apartment 7 in the same building. Give each owner their own bucket and they all walk into the identical interior without ever colliding.
+- **Separate match or mission sessions.** Two parties can run the same mission coordinates without sharing players, vehicles, or props. Do not copy this pattern for ordinary interiors; follow Cfx.re's conceal/interior guidance instead.
 - **Lobbies and arenas.** Race grids, deathmatch rooms, and waiting lobbies each get a bucket so countdowns, spawns, and props in one match never leak into another.
 
 ## If something went wrong
@@ -250,7 +252,7 @@ Routing buckets are the answer almost every time a server needs more than one co
 <Refs
   items={[
     { label: "SetPlayerRoutingBucket native", href: "https://docs.fivem.net/natives/?_0x6504EB38" },
-    { label: "SetRoutingBucketEntityLockdownMode native", href: "https://docs.fivem.net/natives/?_0xA0F2201F" },
+    { label: "SetRoutingBucketEntityLockdownMode native", href: "https://github.com/citizenfx/fivem/blob/master/ext/native-decls/SetRoutingBucketEntityLockdownMode.md" },
     { label: "OneSync overview", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}

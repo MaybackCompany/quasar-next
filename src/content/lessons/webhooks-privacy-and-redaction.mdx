@@ -57,18 +57,14 @@
   <Step num={2} title="Decide what NOT to log" outcome="No private or sensitive data goes to a channel.">
     Log events, not secrets. Never send license keys, passwords, full IPs, tokens, or anything that identifies a real person beyond what you actually need.
 
-    When you do need a stable identifier (to tell two players apart, or to follow one player across events), hash it with a server-side salt instead of posting the raw value. The salt lives in a convar and never leaves the server, so the channel shows a consistent tag you cannot reverse back into a real license.
+    Do not use FiveM's `GetHashKey` as privacy protection. It is a fast 32-bit game hash, not a cryptographic hash, so it can collide and does not provide a meaningful irreversible pseudonym. Keep raw identifiers in your access-controlled database when they are genuinely required. Post an internal audit-row id or a short-lived server source to Discord, then let authorized staff look up the private record.
 
     ```lua
-    local salt = GetConvar('logs_salt', '')
-
-    -- license looks like "license:0fa3c1..." from GetPlayerIdentifierByType
-    local function tag(license)
-        local digest = GetHashKey(salt .. license) -- never log the raw license
-        return ('player#%x'):format(digest & 0xFFFFFFFF)
-    end
-
-    sendLog('Ban issued', ('Target %s for cheating'):format(tag(license)))
+    -- The private database row contains the durable identifier and evidence.
+    -- Discord receives only the internal case id and current server slot.
+    local caseId = 1842
+    local src = source
+    sendLog('Ban issued', ('Case #%d, current source %d'):format(caseId, src))
     ```
   </Step>
 

@@ -4,7 +4,7 @@
   meta={[
     { label: "You'll build", value: "A reusable native practice script: print your own coordinates and health, then teleport yourself to a coordinate and land safely on the ground." },
     { label: "Time", value: "~22 minutes" },
-    { label: "You need", value: "Your qu_hello mental model from Module 02, plus the FiveM native docs and cfxnatives.dev open in your browser." },
+    { label: "You need", value: "Your qu_hello mental model from Module 02, plus the official FiveM native reference open in your browser." },
     { label: "You'll learn", value: "What a native is -> how to find one -> how to read the CLIENT/SERVER badge -> how to turn the docs into one small working script, line by line" },
   ]}
 >
@@ -27,9 +27,9 @@
 
 ## Find a native
 
-A **native** is a built-in game function FiveM gives you. There are thousands. Nobody memorizes them; everyone looks them up. Keep these four tabs open while you script. The first two are the native references, the third is the docs hub, the last is the Lua manual for the language around them.
+A **native** is a built-in game or Cfx function exposed to your script. There are thousands. Nobody memorizes them; look them up in the official reference, then use the Lua manual for the surrounding language behavior.
 
-<TechLinks ids={["natives", "cfxnatives", "fivem-docs", "lua"]} />
+<TechLinks ids={["natives", "fivem-docs", "lua"]} />
 
 When you open a native, read three things before you use it:
 
@@ -72,7 +72,7 @@ game 'gta5'
 client_script 'client.lua'
     ```
 
-    Every native this lesson uses reads or moves your local ped, so all the code lives in one `client_script`. There is no `server_script` here on purpose: the ped exists only on your own game instance, not on the server.
+    Every native this lesson uses is documented for the client API and acts on the local ped, so the code lives in one `client_script`. Under OneSync the server can also resolve a server-side ped handle, but it uses server-supported natives and a different handle namespace.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -117,7 +117,9 @@ end, false)
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Where each step happens: you edit `server.cfg` in your text editor; you type `restart qu_natives_toolbox` in the server console (the txAdmin Live Console or the FXServer window); and you run `/whereami` and `/tpsafe` in-game, either in the chat box (with `/`) or the F8 client console (without `/`). The script's `print` output appears in the F8 console because this is a `client_script`.
+
+    Open `server.cfg` in your text editor and add this line:
 
     ```text
     ensure qu_natives_toolbox
@@ -129,10 +131,11 @@ end, false)
     restart qu_natives_toolbox
     ```
 
-    Join the server so your ped exists, then run these tests from the F8 console:
+    Join the server so your ped exists. In chat run `/whereami` then `/tpsafe`, or in F8 type the same command names without `/`:
 
     ```text
-    /whereami then /tpsafe
+    Chat: /whereami then /tpsafe
+    F8: whereami then tpsafe
     ```
 
     <ExpectedOutput>
@@ -140,7 +143,7 @@ end, false)
 [qu_natives_toolbox] teleported to 215.00 -810.00 30.29
     </ExpectedOutput>
 
-    Your `/whereami` numbers depend on where you are standing, but the `/tpsafe` line should always land on the ground at `215.00 -810.00` near the Legion Square area, with a z close to `30.29`.
+    These lines are illustrative. Your `/whereami` numbers depend on where you are standing, and the exact health and ground z will vary by character and server build. What must always be true is the *shape*: `/whereami` prints one `x y z health` line, and `/tpsafe` prints one `teleported to 215.00 -810.00 <groundZ>` line where the x and y match the hard-coded spot near Legion Square and the z is whatever solid ground the game reports there (roughly 30, not 100.0 and not 0.0).
   </Step>
 </StepGroup>
 
@@ -160,7 +163,7 @@ local health = GetEntityHealth(ped)
 
 `GetEntityCoords(ped)` takes that handle and returns the entity's position. Look at the docs and the return type is a **vector3**: a single value bundling three numbers, an x, a y, and a z. You pull each one out with `coords.x`, `coords.y`, and `coords.z`. In GTA V, x and y are the flat map position and z is height above sea level. So `coords.z` going up means you are climbing a hill or standing on a roof.
 
-`GetEntityHealth(ped)` returns a plain number, not a vector. A healthy player ped reads `200`, and `0` means dead. Notice the shape of the pattern: you got a handle from one native, then fed that handle into two more natives to read facts about the same entity. That hand-off, one native produces a handle and others consume it, is the core rhythm of every FiveM client script you will ever write.
+`GetEntityHealth(ped)` returns a plain number, not a vector. The exact maximum depends on the ped and server setup; do not hard-code `200` as a universal full-health rule. Notice the shape of the pattern: one native produces a handle and other natives consume it.
 
 ### Building the output line: the :format method
 
@@ -202,7 +205,7 @@ while not found and tries < 20 do
 end
 ```
 
-`GetGroundZFor_3dCoord(x, y, z, includeWater)` returns **two values**: a boolean saying whether the ground was found, and the z height of that ground. Passing `false` for `includeWater` means the water surface is NOT treated as ground, so the ped lands on solid terrain. Right after a teleport the answer is often `false` for a frame or two, because the collision you requested has not finished streaming. So you loop: `Wait(50)` yields for fifty milliseconds, you ask again, and you stop the moment `found` becomes `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
+`GetGroundZFor_3dCoord(x, y, z, includeWater)` returns **two values**: a boolean saying whether the ground was found, and the z height of that ground. Passing `false` for `includeWater` means the water surface is NOT treated as ground, so the ped lands on solid terrain. Right after a teleport the answer is often `false` for a frame or two, because the collision you requested has not finished streaming. (`GetGroundZFor_3dCoord` also only returns a real height when the target x,y is within your streaming distance, which is why this pattern works for moving yourself but not for probing the ground far across the map.) So you loop: `Wait(50)` yields for fifty milliseconds, you ask again, and you stop the moment `found` becomes `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
 
 ```lua
 if found then
@@ -231,7 +234,7 @@ Reading a ped and moving it safely are the two most common things a client scrip
 
 <FailureList
   items={[
-    { symptom: "attempt to index a nil value (field 'x')", fix: "GetEntityCoords returned nil, usually because PlayerPedId() ran before your ped existed. Join the server and spawn in before running the command, then read coords.x." },
+    { symptom: "Coordinates read as 0,0,0 or the command behaves before spawn", fix: "Wait until your player has spawned and verify DoesEntityExist(PlayerPedId()) before reading the ped. GetEntityCoords is not documented to return nil for an invalid handle." },
     { symptom: "The command prints nothing in F8", fix: "This is a client_script, so output lands in the F8 console, not txAdmin. Open F8 in game after joining and run /whereami there." },
     { symptom: "tpsafe says 'ground not found, staying at safe height'", fix: "Collision did not stream in within one second, often a network or distance issue. Re-run /tpsafe once you are loaded, or raise the tries cap above 20." },
     { symptom: "After /tpsafe you fall through the map or land in terrain", fix: "You skipped the wait loop or guessed the z. Keep the RequestCollisionAtCoord call and only snap to groundZ after GetGroundZFor_3dCoord returns found = true." },

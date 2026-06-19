@@ -10,6 +10,8 @@
 >
   Every script you have built so far forgets everything on restart. Cooldowns, bank balances, notes -- all gone. A database is the fix. It is a separate program that stores rows of data on disk and gives them back when you ask. This lesson teaches you just enough SQL to make your FiveM scripts remember things forever, using oxmysql as the bridge between your Lua and the database.
 </LessonHero>
+<LessonVideo src="/lesson-videos/clase-5.mp4" caption="Quasar University: ped data + SQL (part 2)." />
+
 
 <YouTube id="wFlXFoQV50U" title="SQL, JS, Lua, and Git masterclass" caption="Alphi: SQL, JS, Lua, and Git masterclass." />
 
@@ -55,7 +57,7 @@ resources/qu_sql_from_zero/
     set mysql_connection_string "mysql://user:password@127.0.0.1:3306/database_name"
     ```
 
-    That single string carries the username, the password, the host and port the database listens on (MariaDB and MySQL default to `3306`), and the name of the database to use. If oxmysql cannot connect, every query in this lesson fails before it runs, so get this line right first.
+    That single string carries the username, the password, the host and port the database listens on (MariaDB and MySQL default to `3306`), and the name of the database to use. If oxmysql cannot connect, every query in this lesson fails before it runs, so get this line right first. Security note: this line contains your database password in plain text. Never commit `server.cfg` to a public Git repo and never paste it unredacted into Discord or a forum when asking for help -- replace the password with `xxxx` first. If you ever do leak it, change the database password immediately.
   </Step>
 
   <Step num={4} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and in what order.">
@@ -71,11 +73,11 @@ server_script 'server.lua'
 dependencies { 'oxmysql' }
     ```
 
-    The `@oxmysql/lib/MySQL.lua` line pulls oxmysql's `MySQL` API into your resource so the names `MySQL.insert`, `MySQL.single`, and `MySQL.update` exist. The `dependencies` line tells FiveM that oxmysql must be running before this resource starts.
+    The `@oxmysql/lib/MySQL.lua` line pulls oxmysql's `MySQL` API into your resource so the names `MySQL.insert`, `MySQL.single`, and `MySQL.update` exist. The `dependencies` line tells FiveM that oxmysql must already be started before this resource starts -- if it is not, your resource refuses to load. It does not start oxmysql for you, so oxmysql still needs its own `ensure oxmysql` line earlier in server.cfg.
   </Step>
 
   <Step num={5} title="Create the table" outcome="The database has a place to store rows.">
-    A table is the shape your data lives in. Run this SQL once against your database (in HeidiSQL, phpMyAdmin, the `mysql` command line, or txAdmin's database tool) before you start the resource:
+    A table is the shape your data lives in. Run this SQL once against your database (in HeidiSQL, phpMyAdmin, Adminer, or the `mysql` command line) before you start the resource:
 
     ```sql
 CREATE TABLE IF NOT EXISTS qu_sql_from_zero_rows (
@@ -119,13 +121,19 @@ end, true)
     ensure qu_sql_from_zero
     ```
 
-    Save, then run:
+    Save. Because this resource is brand new, the server does not know it exists yet. In the txAdmin Live Console, first rescan the resources folder, then start it:
 
     ```text
-    restart qu_sql_from_zero
+    refresh
     ```
 
-    Run this test in the console:
+    ```text
+    ensure qu_sql_from_zero
+    ```
+
+    `refresh` makes the new folder available; `ensure` starts it (or restarts it on later runs). Use `restart qu_sql_from_zero` only after it has already been started once -- on a stopped resource `restart` does nothing.
+
+    In the txAdmin Live Console (web panel sidebar -> Live Console) -- the same window where you ran `refresh` and `ensure`, NOT the in-game F8 console -- type:
 
     ```text
     dbtest
@@ -195,9 +203,9 @@ local affected = MySQL.update.await(
 
 ### What .await actually does
 
-Look at the `.await` on the end of every call. Without it, oxmysql gives you the result through a callback, a separate function that fires whenever the database replies, which scatters your logic across nested functions. `.await` flips that. It pauses the current fiber, lets the database do its work, and resumes your code on the very next line with the result already in hand. Your three queries read top to bottom like plain steps because `.await` is quietly waiting at each one.
+Look at the `.await` on the end of every call. Without it, oxmysql gives you the result through a callback, a separate function that fires whenever the database replies, which scatters your logic across nested functions. `.await` flips that. A fiber is just FiveM's name for a running task that is allowed to pause and pick back up later. `.await` pauses the current task, lets the database do its work, and resumes your code on the very next line with the result already in hand. Your three queries read top to bottom like plain steps because `.await` is quietly waiting at each one.
 
-This works because your code is running inside a command handler, which FiveM runs in a fiber that is allowed to yield. You do not have to wrap anything in `Citizen.CreateThread` here; `RegisterCommand` already gives you a context where `.await` is legal. The payoff is code you can read in order instead of a callback pyramid.
+This works because your code is running inside a command handler, which FiveM runs in a fiber that is allowed to yield. You do not have to wrap anything in `Citizen.CreateThread` here; `RegisterCommand` already gives you a context where `.await` is legal. The payoff is code you can read in order instead of a callback pyramid. (That trailing `true` is the `restricted` flag: it means a normal player typing `/dbtest` in chat is denied unless they hold the `command.dbtest` ace permission. The server console always bypasses that check, which is why your console test runs -- but keep it in mind before you expose a command to players.)
 
 <Checkpoint question="The INSERT query has VALUES (?, ?) but no actual values in the SQL string. Where do 'lesson' and 100 come from, and why are they kept out of the query text?">
   They come from the second argument, the Lua table `{ 'lesson', 100 }`. oxmysql fills the first `?` with `'lesson'` and the second `?` with `100`, in order. They are kept out of the SQL string on purpose. The database receives the query shape and the values down two separate channels, so a value can never be read as SQL. That is a parameterized query, and it is what stops SQL injection. The moment you build a query by gluing user input into the string with `..`, you have opened the door to injection. Always pass values through the params table.
@@ -238,6 +246,7 @@ INSERT, read back, UPDATE is the backbone of nearly every persistent feature in 
 <FailureList
   items={[
     { symptom: "Resource qu_sql_from_zero does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
+    { symptom: "You typed dbtest and nothing happened / 'command not registered'", fix: "The resource never started. A brand-new resource needs `refresh` first, then `ensure qu_sql_from_zero`. `restart` alone does nothing on a resource that was never started." },
     { symptom: "Failed to execute query ... no connection / ECONNREFUSED", fix: "oxmysql cannot reach the database. Fix the mysql_connection_string in server.cfg: check the user, password, host, port, and that the database name exists and MariaDB is running." },
     { symptom: "Table 'qu_sql_from_zero_rows' doesn't exist", fix: "You skipped Step 5. Run the CREATE TABLE statement against the same database your connection string points at, then rerun dbtest." },
     { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing or oxmysql is not started. Confirm both server_script lines exist and that oxmysql is ensured before this resource." },

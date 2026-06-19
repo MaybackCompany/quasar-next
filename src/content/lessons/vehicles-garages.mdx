@@ -56,11 +56,12 @@ server_script '@oxmysql/lib/MySQL.lua'
 server_script 'server.lua'
 
 dependencies {
-    'oxmysql'
+    'oxmysql',
+    '/onesync'
 }
     ```
 
-    `oxmysql` is a community library from the Overextended group, not a built-in Cfx.re resource, so it must already be installed and started before this resource. The `dependencies { 'oxmysql' }` block (the plural list form is the documented manifest directive) tells FiveM to refuse to start `qu_vehicles_garages` until `oxmysql` is up, so your queries never fire against a library that has not loaded yet.
+    `oxmysql` is a community library, not a built-in Cfx.re resource, so it must already be installed and started. The dependency list also uses Cfx.re's documented `/onesync` runtime constraint. FiveM refuses to start this lesson unless both requirements are available, which is clearer than letting the first query or server-side spawn fail later.
   </Step>
 
   <Step num={4} title="Create the table" outcome="The garage clipboard exists in your database.">
@@ -83,18 +84,30 @@ CREATE TABLE IF NOT EXISTS qu_owned_vehicles (
 
     ```lua
 local PLATE = 'QUCAR1'
-local MODEL = 'sultan'
+local MODEL_NAME = 'sultan'
+local MODEL_HASH = joaat(MODEL_NAME)
 
 local spawnedVehicle = nil
 
 RegisterCommand('takecar', function()
-    local vehicle = CreateVehicleServerSetter(MODEL, 'automobile', 215.0, -810.0, 30.0, 90.0)
+    if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+        print('[qu_vehicles_garages] refused: QUCAR1 is already out')
+        return
+    end
+
+    local vehicle = CreateVehicleServerSetter(MODEL_HASH, 'automobile', 215.0, -810.0, 30.0, 90.0)
+    if vehicle == 0 then
+        print('[qu_vehicles_garages] spawn failed')
+        return
+    end
+
+    SetEntityOrphanMode(vehicle, 2)
     SetVehicleNumberPlateText(vehicle, PLATE)
     spawnedVehicle = vehicle
 
     local rows = MySQL.update.await(
         'INSERT INTO qu_owned_vehicles (plate, model, state) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE state = ?',
-        { PLATE, MODEL, 'out', 'out' }
+        { PLATE, MODEL_NAME, 'out', 'out' }
     )
 
     print('[qu_vehicles_garages] took ' .. PLATE .. ' rows affected ' .. rows)
@@ -163,7 +176,7 @@ Making `plate` the primary key enforces that link at the database level. The dat
 ### The state column is the actual garage
 
 ```lua
-{ PLATE, MODEL, 'out', 'out' }
+{ PLATE, MODEL_NAME, 'out', 'out' }
 ```
 
 Beginners think the garage is the spawning. It is not. Spawning a car is one native call. The garage is the `state` column, and the entire feature is one question asked of one row: is this car `out` or in the `garage` right now?
@@ -179,11 +192,11 @@ Beginners think the garage is the spawning. It is not. Spawning a car is one nat
 ```lua
 MySQL.insert.await(
     'INSERT INTO qu_owned_vehicles (plate, model, state) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE state = ?',
-    { PLATE, MODEL, 'out', 'out' }
+    { PLATE, MODEL_NAME, 'out', 'out' }
 )
 ```
 
-Notice that the plate and the model never appear inside the SQL string. The string contains `?` placeholders, and the real values live in the table that follows. oxmysql substitutes them in order: the first `?` becomes `PLATE`, the second `MODEL`, the third the literal `'out'`, the fourth the `'out'` after `ON DUPLICATE KEY UPDATE`.
+Notice that the plate and model name never appear inside the SQL string. The string contains `?` placeholders, and the real values live in the table that follows. oxmysql binds them in order: the first `?` receives `PLATE`, the second receives `MODEL_NAME`, and the last two receive the state value `out`.
 
 This is a parameterized query, and it is a security fundamental, not a style choice. The dangerous alternative is to build the SQL by gluing the plate straight into the string. On a real server the plate often comes from a player or from a vehicle a player controls, which means it is untrusted input. If you concatenate untrusted input into a query, a crafted plate can close your string early and append its own SQL, and now an attacker is running commands against your database. That is SQL injection. Placeholders shut the door: oxmysql sends the SQL and the values to MariaDB separately, so a value is always treated as data and can never become code. Make every query you ever write use placeholders, even when the value looks safe today.
 
@@ -213,10 +226,10 @@ The `.await` on the end is the important part. A database query is not instant: 
 ### CreateVehicleServerSetter needs OneSync
 
 ```lua
-local vehicle = CreateVehicleServerSetter(MODEL, 'automobile', 215.0, -810.0, 30.0, 90.0)
+local vehicle = CreateVehicleServerSetter(MODEL_HASH, 'automobile', 215.0, -810.0, 30.0, 90.0)
 ```
 
-This is a server-side spawn. The server itself creates the car and owns it, and the handle it returns is a server entity handle, a reference that lives on the server, not on any one player's machine. That is a different world from the sibling lesson Vehicles: spawn, modify, store, where `CreateVehicle` runs on the client and the player who ran the command owns the entity locally.
+This is a server-side spawn. The first argument is a model **hash**, so the resource computes `joaat('sultan')` once as `MODEL_HASH`; passing the display string directly is not the documented native signature. The returned value is a server entity handle. `SetEntityOrphanMode(vehicle, 2)` asks the server to keep its server-created entity instead of dropping it when ownership changes.
 
 Server-side spawning only exists when OneSync is enabled, which is why it is a prereq for this lesson. OneSync is the networking model that lets the server be the authority over entities instead of delegating ownership to clients. Without it the server has no way to own a car it spawned, so `CreateVehicleServerSetter` has nothing to hand back. With it, the server holds the handle, which is exactly what a garage wants: the car belongs to the system, the system knows its plate, and the system can despawn it on store with `DeleteEntity` because the system is the owner.
 
@@ -238,7 +251,8 @@ The plate-keyed row with a state column is the spine of every persistent-ownersh
   items={[
     { symptom: "Failed to start resource qu_vehicles_garages: oxmysql failed to start", fix: "oxmysql must be installed and ensured before this resource. The dependencies block stops qu_vehicles_garages until oxmysql is up, so fix oxmysql first." },
     { symptom: "Table 'qu_owned_vehicles' doesn't exist", fix: "Run the CREATE TABLE SQL against your MariaDB database before starting the resource. The query in step 4 must succeed once." },
-    { symptom: "CreateVehicleServerSetter returns 0 and no car spawns", fix: "OneSync is not enabled. Server-side vehicle spawning requires set onesync on in server.cfg (the old onesync_enabled true form is deprecated), then a full server restart." },
+    { symptom: "Resource refuses to start because /onesync is missing", fix: "State awareness is disabled. Server-side vehicle spawning requires OneSync; enable it using the current server configuration for your deployment, then perform a full server restart." },
+    { symptom: "takecar prints spawn failed", fix: "The native returned handle 0. Confirm the model hash comes from joaat('sultan'), the vehicle type is automobile, and OneSync is active before debugging the database." },
     { symptom: "attempt to perform arithmetic on a nil value (concatenating rows)", fix: "The query did not return a number, usually because oxmysql is not actually running. Confirm oxmysql started and the dependencies block names it exactly." },
     { symptom: "Duplicate rows pile up for QUCAR1", fix: "The table has no primary key on plate, so the upsert never triggers. Recreate the table with PRIMARY KEY (plate)." },
   ]}

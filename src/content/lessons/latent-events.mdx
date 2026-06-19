@@ -64,8 +64,16 @@ server_script 'server.lua'
 
     ```lua
 RegisterNetEvent('qu_latent_events:upload', function(payload)
+    -- `source` is the server id of the player who triggered this event.
+    -- It is only valid right here, so copy it into a local before anything else.
     local src = source
+
+    -- SECURITY: any connected client can fire this event with any data,
+    -- not just the /latenttest command. Validate before you trust it.
+    if type(payload) ~= 'string' then return end          -- reject non-string input
     local size = #payload
+    if size > 6 * 1024 * 1024 then return end              -- cap the size you accept
+
     print('[qu_latent_events] server received ' .. size .. ' bytes from player ' .. src)
 
     -- Acknowledge back down to the client, also as a latent stream.
@@ -97,7 +105,7 @@ end)
     ensure qu_latent_events
     ```
 
-    Save, then run:
+    The `ensure` line makes the server start this resource every time it boots, but it only takes effect on the next boot. To load it now without rebooting, run this in your server console (the txAdmin Live Console, or the FXServer console window if you start the server directly):
 
     ```text
     restart qu_latent_events
@@ -250,8 +258,8 @@ For everything small, a chat line, a notification, a single number, stay with th
 
 <Refs
   items={[
-    { label: "TriggerLatentClientEvent reference", href: "https://docs.fivem.net/natives/?_0x70B35890" },
-    { label: "TriggerLatentServerEvent reference", href: "https://docs.fivem.net/natives/?_0x128737EA" },
+    { label: "TriggerLatentClientEvent reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/TriggerLatentClientEvent/" },
+    { label: "TriggerLatentServerEvent reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/TriggerLatentServerEvent/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}

@@ -107,13 +107,15 @@ The first cause is calling a client-only function on the server. `QBCore.Functio
 -- WRONG (in server/main.lua): GetPlayerData() with no source is CLIENT-ONLY.
 -- On the server there is no "current player", so this is nil regardless of load order.
 local QBCore = exports['qb-core']:GetCoreObject()
-local money = QBCore.Functions.GetPlayerData().money  -- indexing nil here
+local cash = QBCore.Functions.GetPlayerData().money.cash  -- indexing nil here
 
 -- FIX (server side): look the player up by source, then read PlayerData.
 -- Guard QBCore too, so a not-yet-loaded core object cannot crash you.
+-- Note: in QBCore, PlayerData.money is a TABLE ({ cash = 0, bank = 0 }),
+-- so read the field you want, not .money itself.
 if QBCore and QBCore.Functions then
     local Player = QBCore.Functions.GetPlayer(source)
-    local money = Player and Player.PlayerData.money or 0
+    local cash = Player and Player.PlayerData.money.cash or 0
 end
 ```
 
@@ -212,6 +214,8 @@ set mysql_connection_string "mysql://root@localhost/mydatabase"
 ```
 
 **`ER_NO_SUCH_TABLE` / `no such table`** is the opposite situation: the connection works fine, but the table the script asked for was never created. Almost every script that uses a database ships a `.sql` schema file. If you never imported it, the tables do not exist. The fix is to import that `.sql` file into your database once. Open your database tool (HeidiSQL is the common one), select your database, and run the script's `.sql` file against it.
+
+  Security note: `mysql_connection_string` stores your database password in plaintext inside `server.cfg`. Never commit `server.cfg` to a public repository, and never paste it into a Discord or a forum. And only import `.sql` files from scripts you trust, because a `.sql` file runs whatever SQL it contains against your database.
 
 A quick way to confirm the import landed: list the tables and look for the one the error named.
 
@@ -316,7 +320,7 @@ These are the failure modes that send beginners in the wrong direction even afte
     { symptom: "attempt to index a nil value (global 'QBCore')", fix: "The framework object was nil when the code used it. Ensure qb-core starts BEFORE this resource in server.cfg, and guard with if QBCore then before you index it." },
     { symptom: "attempt to call a nil value (global 'PlayerPedId')", fix: "You called a CLIENT native inside a server_script (or the reverse). PlayerPedId is client-only. Move the call to the correct side, matching the native's badge in the docs." },
     { symptom: "it depends on oxmysql, which couldn't be started", fix: "A dependency is missing or starts too late. Add ensure oxmysql to server.cfg ABOVE the resource that needs it. After adding a new folder, run refresh first, then ensure." },
-    { symptom: "Unable to establish a connection to the database", fix: "This is config, not code. Check mysql_connection_string in server.cfg, confirm MariaDB is running, and confirm the database name exists. Percent-encode reserved chars in the password or use the key=value form." },
+    { symptom: "Unable to establish a connection to the database", fix: "This is config, not code. Check mysql_connection_string in server.cfg, confirm MariaDB is running, and confirm the database name exists. If the password contains reserved characters like ; , / ? : @ & = + $ # , switch from the URI form to the key=value form (host=...;user=...;password=...;database=...)." },
     { symptom: "ER_NO_SUCH_TABLE / no such table", fix: "The connection works but the table was never created. Import the script's provided .sql file into your database once, then confirm the table appears in HeidiSQL." },
     { symptom: "requires a different version of game data", fix: "sv_enforceGameBuild does not match the client or the assets. Set the correct build in server.cfg (startup only) to match what your DLC assets were made for." },
     { symptom: "Could not load resource because it was already declared", fix: "The same folder name exists twice anywhere under resources. FiveM keys on folder name, not path. Delete or rename one copy so the name is unique, then refresh." },
@@ -368,7 +372,7 @@ These are the failure modes that send beginners in the wrong direction even afte
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" },
     { label: "FiveM server commands (ensure, refresh, restart)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
-    { label: "sv_enforceGameBuild convar", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-convars/" },
+    { label: "Cfx.re convars reference", href: "https://docs.fivem.net/docs/scripting-reference/convars/" },
     { label: "oxmysql connection setup", href: "https://overextended.dev/oxmysql" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}

@@ -10,6 +10,8 @@
 >
   Everything you see in the game world -- every car, every pedestrian, every traffic cone -- is an **entity**. In this lesson you learn how to create one from code, track it in a table, and delete it cleanly so it never lingers in the world. This is the foundation every prop, NPC, and vehicle spawner is built on.
 </LessonHero>
+<LessonVideo src="/lesson-videos/clase-4.mp4" caption="Quasar University: the ped system (part 1)." />
+
 
 <Prereq
   items={[
@@ -63,10 +65,26 @@ client_script 'client.lua'
     ```lua
 local objects = {}
 
+local function loadModel(model)
+    if not IsModelInCdimage(model) or not IsModelValid(model) then
+        return false
+    end
+
+    RequestModel(model)
+    local deadline = GetGameTimer() + 5000
+    while not HasModelLoaded(model) do
+        if GetGameTimer() > deadline then return false end
+        Wait(0)
+    end
+    return true
+end
+
 RegisterCommand('spawnbox', function()
     local model = joaat('prop_boxpile_07d')
-    RequestModel(model)
-    while not HasModelLoaded(model) do Wait(0) end
+    if not loadModel(model) then
+        print('[qu_spawning_entities_safely] model is invalid or timed out')
+        return
+    end
 
     local coords = GetEntityCoords(PlayerPedId())
     local object = CreateObject(model, coords.x + 2.0, coords.y, coords.z, false, false, false)
@@ -145,17 +163,16 @@ You spawned a box, cleared it, and watched a stray one delete itself. Now take t
 
 ```lua
 local model = joaat('prop_boxpile_07d')
-RequestModel(model)
-while not HasModelLoaded(model) do Wait(0) end
+if not loadModel(model) then return end
 ```
 
-A model in GTA is an asset on disk: a mesh, textures, a collision shape. You cannot place one in the world until the game has it loaded into memory. These three lines are the load lifecycle, and you will repeat this exact shape for every entity you ever spawn.
+A model in GTA is an asset on disk: a mesh, textures, and usually collision data. You cannot place one until the client has loaded it. The helper first rejects a name that is not a valid CD image model, then requests it, yields while it loads, and stops after five seconds instead of trapping the client in an endless loop.
 
 `joaat('prop_boxpile_07d')` turns the model **name** into a **hash**. The game does not look entities up by readable string names at runtime; it looks them up by a number called a joaat hash (the name comes from Jenkins one-at-a-time, the hashing algorithm Rockstar uses). `joaat` is the FiveM helper that computes that number for you from the string. You will also see `GetHashKey('prop_boxpile_07d')` in older code. It does the exact same thing and returns the exact same number. `joaat` is the newer, shorter name; prefer it, but treat the two as interchangeable.
 
 `RequestModel(model)` asks the engine to stream that model in. It does not block and it does not finish instantly. It just files the request and returns.
 
-`while not HasModelLoaded(model) do Wait(0) end` is the part beginners skip and then wonder why their prop never appears. `RequestModel` is a request, not a guarantee. You have to wait until the model is actually in memory before you spawn from it, or `CreateObject` runs against a model that is not ready and you get nothing. `HasModelLoaded` returns `true` once the load finishes. The loop keeps yielding one frame at a time with `Wait(0)` until that happens. `Wait(0)` is what makes this safe: it hands control back to the game each frame instead of freezing it, so the engine actually gets time to do the loading you asked for. A bare `while not HasModelLoaded(model) do end` with no `Wait` would hang the client.
+`RequestModel` is a request, not a guarantee. `HasModelLoaded` flips to `true` only when streaming finishes. `Wait(0)` yields each pass so the engine can continue loading. The deadline handles the other failure mode: an invalid or unavailable model must not leave a command waiting forever. A tight loop with no `Wait` freezes the client; an unbounded yielding loop does not freeze it, but it can leave that command stuck indefinitely.
 
 ### Creating the object
 
@@ -247,7 +264,7 @@ The number you printed is an **entity handle**: a runtime reference that is only
 Props are the gentlest entity to start with, but `CreateObject` is one of three siblings. Peds and vehicles load their models the exact same way and only differ in the create call:
 
 ```lua
--- A pedestrian: CreatePed(pedType, model, x, y, z, heading, isNetwork, netMissionEntity)
+-- A pedestrian: CreatePed(pedType, model, x, y, z, heading, isNetwork, scriptHostPed)
 local model = joaat('a_m_y_business_03')
 RequestModel(model)
 while not HasModelLoaded(model) do Wait(0) end
@@ -262,7 +279,162 @@ local veh = CreateVehicle(model, coords.x + 4.0, coords.y, coords.z, 90.0, false
 SetModelAsNoLongerNeeded(model)
 ```
 
-`CreatePed` takes a `pedType` as its first argument; `4` means a civilian network ped and is the safe default. `CreateVehicle` takes a `heading` in degrees so the car faces a direction. Everything else is identical: same load loop, same `SetModelAsNoLongerNeeded`, same idea of tracking the returned handle in a registry and deleting it the same way. Learn the prop and you have learned all three.
+`CreatePed` takes a `pedType` as its first argument; `4` is the conventional civilian value (it maps to `PED_TYPE_CIVMALE`). In practice FiveM ignores this argument and assigns the ped type from the model anyway, so any value works and `4` is just the customary choice. `CreateVehicle` takes a `heading` in degrees so the car faces a direction. Everything else is identical: same load loop, same `SetModelAsNoLongerNeeded`, same idea of tracking the returned handle in a registry and deleting it the same way. Learn the prop and you have learned all three.
+
+### Driving the spawn from a server command
+
+So far you typed `spawnbox` and the client spawned the prop itself. Real ped systems work differently: a player runs a command, the **server** decides whether they are allowed and where, then tells the client to do the spawn. The native `CreatePed` only exists on the client (it touches the local game world), so the server cannot call it directly. The server's job is to validate, then hand off.
+
+Add a tiny server file to the same resource. First update `fxmanifest.lua` so the resource has a server side too:
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+```
+
+Then create `server.lua`:
+
+```lua
+local Framework = GetConvar('qu:framework', 'standalone')
+local ESX, QBCore
+
+if Framework == 'esx' then
+    ESX = exports['es_extended']:getSharedObject()
+elseif Framework == 'qbcore' then
+    QBCore = exports['qb-core']:GetCoreObject()
+end
+
+local function getCharName(src)
+    if Framework == 'esx' and ESX then
+        local xPlayer = ESX.GetPlayerFromId(src)
+        return xPlayer and xPlayer.getName() or nil
+    elseif Framework == 'qbcore' and QBCore then
+        local player = QBCore.Functions.GetPlayer(src)
+        return player and player.PlayerData.charinfo.firstname or nil
+    end
+    return 'Player' .. src
+end
+
+RegisterCommand('spawnnpc', function(source, args)
+    if source == 0 then
+        print('[qu_spawning_entities_safely] run /spawnnpc in-game, not from the server console')
+        return
+    end
+
+    local model = args[1]
+    if not model then
+        print('[qu_spawning_entities_safely] usage: /spawnnpc [pedModel]')
+        return
+    end
+
+    local name = getCharName(source)
+    print(('[qu_spawning_entities_safely] %s requested ped %s'):format(name, model))
+    TriggerClientEvent('qu:spawnNpc', source, model)
+end, true)
+```
+
+Now add the matching handler at the bottom of `client.lua`, so the client actually spawns when the server says to:
+
+```lua
+RegisterNetEvent('qu:spawnNpc', function(modelName)
+    local model = joaat(modelName)
+    if not loadModel(model) then
+        print('[qu_spawning_entities_safely] ped model invalid or timed out: ' .. modelName)
+        return
+    end
+
+    local coords = GetEntityCoords(PlayerPedId())
+    local ped = CreatePed(4, model, coords.x + 2.0, coords.y, coords.z, 0.0, false, false)
+    objects[ped] = true
+    SetModelAsNoLongerNeeded(model)
+    print('[qu_spawning_entities_safely] spawned ped ' .. ped)
+end)
+```
+
+Restart the resource from the **txAdmin Live Console**:
+
+```text
+restart qu_spawning_entities_safely
+```
+
+Then join the server and run this in the **F8 client console** (not the server console, because it is a player command):
+
+```text
+spawnnpc a_m_y_business_03
+```
+
+<ExpectedOutput>
+[qu_spawning_entities_safely] PlayerName requested ped a_m_y_business_03   (server console)
+[qu_spawning_entities_safely] spawned ped 218   (F8 client console)
+</ExpectedOutput>
+
+Walk the path. `source` is the server id of the player who ran the command; `args[1]` is the word they typed after it. `source == 0` means the command came from the server console, where there is no player and no ped to spawn near, so you reject it. The `RegisterCommand` third argument is `true` here, marking the command **restricted**: state-changing commands that spawn things into the world should require an ACE permission so any player cannot flood the map (the server console always bypasses the check). `getCharName` resolves the framework once at startup from a convar instead of guessing, so the same file works on ESX or QBCore. The validated request then crosses the wire with `TriggerClientEvent('qu:spawnNpc', source, model)`, and the client's `RegisterNetEvent` runs the same load-then-create-then-register sequence you already know, dropping the new handle into the same `objects` registry so `clearboxes` and `onResourceStop` clean it up for free.
+
+<Callout variant="warning" title="Use the modern framework accessors, not the old ones">
+  Older guides (including the Feb 2025 source this lesson is built from) initialise ESX with `ESX = exports['es_extended']:getSharedObject()` and never validate the source. On es_extended 1.13.5 the modern accessor is `ESX.GetPlayerFromId(src)` for the player object, and `xPlayer.getName()` / `xPlayer.getAccount('money').money` for character data. On QBCore it is `exports['qb-core']:GetCoreObject()` then `QBCore.Functions.GetPlayer(src)`, with the character's first name at `PlayerData.charinfo.firstname` (note `PlayerData.name` is the account name, a different field). Resolve the framework from a convar once at boot, not per-command.
+</Callout>
+
+### Persisting spawns to the database
+
+The `objects` registry lives in memory. The moment the resource restarts, `onResourceStop` clears every ped and the registry is empty again, which is exactly what you want for *live* entities. But a real ped system usually wants a **record** that survives restarts: which player placed which ped, where, so you can respawn the scene next boot. That record belongs in the database, not in a Lua table. This is the SQL half the topic is named for.
+
+Use oxmysql, the maintained MySQL layer for FiveM. First create the table once, in your database tool (the **HeidiSQL query tab**, not any in-game console):
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_spawned_peds (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    owner_license VARCHAR(64) NOT NULL,
+    model VARCHAR(64) NOT NULL,
+    pos_x DOUBLE NOT NULL,
+    pos_y DOUBLE NOT NULL,
+    pos_z DOUBLE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Then wire oxmysql into the manifest and record each spawn from the server. Update `fxmanifest.lua`:
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script '@oxmysql/lib/MySQL.lua'
+server_script 'server.lua'
+
+dependencies {
+    'oxmysql'
+}
+```
+
+The server already knows who ran the command. Read the player's most stable identifier and insert a row inside the `spawnnpc` handler, right after you validate the model:
+
+```lua
+local license = GetPlayerIdentifierByType(source, 'license')
+if not license then
+    print('[qu_spawning_entities_safely] no license identifier for source ' .. source)
+    return
+end
+
+MySQL.insert.await(
+    'INSERT INTO qu_spawned_peds (owner_license, model, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?)',
+    { license, model, 0.0, 0.0, 0.0 }
+)
+print('[qu_spawning_entities_safely] recorded ped for ' .. license)
+```
+
+<ExpectedOutput>
+[qu_spawning_entities_safely] recorded ped for license:1a2b3c4d5e6f7a8b9c0d   (server console)
+</ExpectedOutput>
+
+Every line carries a reason. `GetPlayerIdentifierByType(source, 'license')` asks the server for one specific identifier rather than walking the whole list; `license` is account-changeable but always present, so it is a reasonable owner key for a teaching record (for bans Cfx recommends `fivem:` instead). `MySQL.insert.await` runs the INSERT and pauses this command handler until the database answers, which is safe because command handlers run in a coroutine. The `?` marks are **placeholders**: oxmysql substitutes the values from the second table safely, so a model name like `a_m_y'; DROP TABLE` is treated as data, never as SQL. **Never** build the query by gluing strings together with `..`; that is the SQL-injection hole the source guide leaves wide open. The position values are stubbed to `0.0` here because the server does not know the client's coordinates yet; in the exercise you send them back from the client so the row stores where the ped actually landed.
+
+<Callout variant="info" title="Memory registry and database row do different jobs">
+  Keep the two straight. The `objects` table tracks **live handles** so you can delete entities this session and clean up on restart; it is meant to be wiped. The `qu_spawned_peds` row is a **durable record** keyed by a stable identifier so the scene can be rebuilt after a restart. A ped system needs both: the registry for clean teardown now, the database for persistence later.
+</Callout>
 
 ### When you reach for this pattern
 
@@ -274,6 +446,134 @@ Registry-tracked spawning is not a beginner toy you leave behind. It is the back
 
 The discipline is always the same: load, create, register, guard, delete on stop. Once that loop is muscle memory you can spawn anything in GTA without leaking it into the world.
 
+### Persisting an entity choice: a server command + SQL
+
+Everything above spawns an entity *into the world* and tracks it *in memory*. But a registry table only lives as long as the resource runs. The moment the resource restarts, or the player reconnects, that knowledge is gone. The other half of "spawning safely" is the part that survives a restart: store the *decision* (which model a player should be) in the database, then re-apply it whenever they come back. The classic first build for this is a **ped system** -- an admin gives a player a saved character model, and that model sticks across reconnects.
+
+This flips the lesson in three ways, and each one is worth naming before you read the code:
+
+- **It runs on the server, not the client.** The command that grants a ped, and the database write, both belong on the server, because the server is the only place that can be trusted with "who is allowed to change whose appearance" and is the only place that talks to the database. The client never touches SQL.
+- **The command takes arguments.** `RegisterCommand` hands your callback `source` and `args`. `source` is the server ID of the player who typed it (`0` means the server console). `args` is a list of the words after the command, so `/addped 3 cop s_m_y_cop_01` arrives as `args[1] = "3"`, `args[2] = "cop"`, `args[3] = "s_m_y_cop_01"`. Every one of those is an *untrusted string typed by a person*, so you validate before you trust.
+- **The model change happens back on the client.** Only the client can call `SetPlayerModel` on its own character. So the flow is: client types command -> server validates and writes SQL -> server triggers a client event -> client loads the model and swaps its own ped. The model-load loop you already learned is reused verbatim on the client side.
+
+#### Build the server side: `server.lua`
+
+First, the database needs a table to hold each saved ped. Run this once in your SQL tool (HeidiSQL, the txAdmin database tab, or the `mysql` CLI) against your server's database:
+
+```sql
+CREATE TABLE IF NOT EXISTS qu_player_peds (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    identifier  VARCHAR(60) NOT NULL,
+    ped_name    VARCHAR(50) NOT NULL,
+    ped_model   VARCHAR(50) NOT NULL,
+    UNIQUE KEY uniq_player_ped (identifier, ped_name)
+);
+```
+
+The `UNIQUE KEY` means a given player cannot have two saved peds under the same name; re-adding the same name updates it instead of duplicating. Now the server resource. This assumes you already wired oxmysql with `server_script '@oxmysql/lib/MySQL.lua'` and a `dependencies { 'oxmysql' }` block in your `fxmanifest.lua` (the same wiring you used in the oxmysql lesson).
+
+```lua
+local function getLicense(src)
+    return GetPlayerIdentifierByType(src, 'license')
+end
+
+RegisterCommand('addped', function(source, args)
+    -- source 0 is the server console; this command needs a real player to target
+    if source == 0 then
+        print('[qu_player_peds] run /addped in-game, not the server console')
+        return
+    end
+
+    local targetId = tonumber(args[1])
+    local pedName = args[2]
+    local pedModel = args[3]
+
+    if not targetId or not pedName or not pedModel then
+        print('[qu_player_peds] usage: /addped [serverId] [name] [model]')
+        return
+    end
+
+    local identifier = getLicense(targetId)
+    if not identifier then
+        print('[qu_player_peds] no license for server id ' .. targetId .. ' (are they connected?)')
+        return
+    end
+
+    MySQL.insert.await(
+        'INSERT INTO qu_player_peds (identifier, ped_name, ped_model) VALUES (?, ?, ?) '
+        .. 'ON DUPLICATE KEY UPDATE ped_model = VALUES(ped_model)',
+        { identifier, pedName, pedModel }
+    )
+    print('[qu_player_peds] saved ped "' .. pedName .. '" (' .. pedModel .. ') for ' .. identifier)
+end, true) -- restricted = true: state-changing admin command, gate it with ACE
+
+RegisterCommand('useped', function(source, args)
+    local pedName = args[1]
+    if not pedName then
+        print('[qu_player_peds] usage: /useped [name]')
+        return
+    end
+
+    local identifier = getLicense(source)
+    if not identifier then return end
+
+    local row = MySQL.single.await(
+        'SELECT ped_model FROM qu_player_peds WHERE identifier = ? AND ped_name = ?',
+        { identifier, pedName }
+    )
+
+    if not row then
+        print('[qu_player_peds] no saved ped named "' .. pedName .. '" for you')
+        return
+    end
+
+    TriggerClientEvent('qu_player_peds:applyModel', source, row.ped_model)
+end, false) -- a player changing their own saved appearance is allowed for everyone
+```
+
+#### Build the client side: `client.lua`
+
+The client only ever receives a *model name string the server already approved*, then runs the exact model-load loop from the top of this lesson before swapping its own ped:
+
+```lua
+RegisterNetEvent('qu_player_peds:applyModel', function(pedModel)
+    local model = joaat(pedModel)
+    if not IsModelInCdimage(model) or not IsModelValid(model) then
+        print('[qu_player_peds] invalid model: ' .. tostring(pedModel))
+        return
+    end
+
+    RequestModel(model)
+    local deadline = GetGameTimer() + 5000
+    while not HasModelLoaded(model) do
+        if GetGameTimer() > deadline then
+            print('[qu_player_peds] model timed out: ' .. pedModel)
+            return
+        end
+        Wait(0)
+    end
+
+    SetPlayerModel(PlayerId(), model)
+    SetPedDefaultComponentVariation(PlayerPedId())
+    SetModelAsNoLongerNeeded(model)
+    print('[qu_player_peds] now playing as ' .. pedModel)
+end)
+```
+
+List both files in the manifest (`server_script` for `server.lua` plus the oxmysql import, `client_script` for `client.lua`), `ensure` the resource, then in the **server console** grant yourself ACE so the restricted `/addped` is allowed -- `add_principal identifier.license:<your-license> group.admin` and `add_ace group.admin command.addped allow`. Join the server, open **F8**, run `/addped <your-server-id> cop s_m_y_cop_01`, then `/useped cop`, and watch your character become a cop. Reconnect and run `/useped cop` again -- it still works, because the choice lives in the database, not in memory.
+
+#### How this half works -- and the why behind every guard
+
+- **Why the identifier, not the server ID.** A server ID like `3` is recycled the instant a player leaves; the next person to join might be `3`. You key the row on `GetPlayerIdentifierByType(src, 'license')` -- the platform-independent Rockstar license hash -- so the saved ped follows the *person* across sessions, not the slot. (`getplayeridentifiers` is **not** a console command; the natives are `GetPlayerIdentifier`, `GetPlayerIdentifierByType`, and `GetNumPlayerIdentifiers`.) For permanent records Cfx.re now recommends the `fivem:` identifier since `license` can change when someone switches Rockstar accounts, but `license` remains the most common anchor in framework code.
+- **Why `?` placeholders, never string concatenation.** Every value in the SQL goes through a `?` and the values array. `args[2]` is text a player typed; if you spliced it straight into the query string with `..`, a crafted name could rewrite your statement. That is SQL injection. The `?` placeholder makes oxmysql send the value as *data*, never as part of the command, so it cannot break out. This is non-negotiable on any query that touches user input.
+- **Why `restricted = true` on `/addped` but `false` on `/useped`.** `RegisterCommand`'s third argument is the restricted flag. `/addped` changes another player's saved state, so it is an admin action and must be gated behind ACE (`true`) -- only principals you explicitly allow can run it, and the server console always bypasses the gate. `/useped` only lets a player re-apply *their own* already-approved ped, so it is safe to leave open (`false`). The rule of thumb: any command that changes state someone else can see, or that an admin should control, is `true`.
+- **Why the server writes and the client applies.** The server is the authority: it decides who may grant a ped and it owns the database connection. The client cannot be trusted to tell the server "I'm allowed to be a cop now," so the client never writes SQL and never picks the model -- it only receives a model name the server already looked up and approved, then renders it. This is the server-authority rule that every money, item, and appearance system lives by.
+- **Why the model-load loop reappears on the client.** Changing your ped is still "spawn an entity from a model": you `joaat` the name, `RequestModel`, wait in a bounded `Wait(0)` loop until `HasModelLoaded`, then `SetModelAsNoLongerNeeded` once you are done. `SetPlayerModel` swaps your character to that model, and `SetPedDefaultComponentVariation` gives the fresh ped its default clothing so it does not spawn as an untextured dummy. Same lifecycle you learned at the top -- only the create call (`SetPlayerModel` instead of `CreateObject`) differs.
+
+<Callout variant="warning" title="Server-authority is the whole point">
+  The unsafe version of a ped system lets the *client* tell the server which model to apply, or splices a typed ped name straight into the SQL with `..`. Both hand control to the player. Always do the lookup and the permission check on the server, pass only an approved value to the client, and feed every user-supplied value through a `?` placeholder. If a command changes state that other players see, register it with `restricted = true` and gate it with ACE.
+</Callout>
+
 ## If something went wrong
 
 <FailureList
@@ -282,8 +582,16 @@ The discipline is always the same: load, create, register, guard, delete on stop
     { symptom: "Could not load resource qu_spawning_entities_safely", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports. The manifest must list client.lua." },
     { symptom: "The box never appears but no error prints", fix: "You skipped the load loop, or removed the Wait(0) inside it. CreateObject ran before the model finished streaming. Keep the while not HasModelLoaded(model) do Wait(0) end line exactly as written." },
     { symptom: "spawnbox prints nothing in F8", fix: "This is a client_script, so its print lands in the F8 client console, not txAdmin. Join the server, press F8, and run the command there." },
+    { symptom: "/addped types fine but nothing is saved and no error shows", fix: "You registered /addped with restricted = true (correct) but have not granted yourself ACE. In the server console run add_principal identifier.license:<your-license> group.admin and add_ace group.admin command.addped allow, or test from the server console which always bypasses ACE." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing from fxmanifest.lua or oxmysql is not started before this resource. Add the server_script import and a dependencies { 'oxmysql' } block." },
+    { symptom: "/useped does nothing and prints land in the server console, not F8", fix: "server.lua runs as a server_script, so its print goes to the txAdmin Live Console / server console, not F8. The client-side qu_player_peds:applyModel print is the one that lands in F8. Check both consoles." },
+    { symptom: "no license for server id X", fix: "GetPlayerIdentifierByType(src, 'license') returned nil because that server ID is not a connected player. Use the player's current server ID from the txAdmin Players list, and remember IDs are recycled when players leave." },
     { symptom: "Boxes stay in the world after you restart the resource", fix: "The onResourceStop handler is missing or the GetCurrentResourceName check is wrong. Without it, a restart orphans every box you already spawned." },
     { symptom: "attempt to perform arithmetic on a nil value", fix: "The concatenation print ran against a handle that is nil. Make sure object comes from CreateObject and that you print it on the same line you spawn it." },
+    { symptom: "spawnnpc says you do not have permission", fix: "The command is registered restricted (third arg true), so a normal player needs the ACE permission, or run it from the server console which bypasses the check. Grant it with an add_ace line in server.cfg for testing." },
+    { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The server_script '@oxmysql/lib/MySQL.lua' line is missing from fxmanifest.lua, or oxmysql is not started. Add that line plus the dependencies { 'oxmysql' } block so oxmysql loads first." },
+    { symptom: "spawnnpc spawns nothing and the F8 console is silent", fix: "The server received the command but the client never got the event. Check the event name matches exactly on both sides (qu:spawnNpc) and that the client RegisterNetEvent handler is present in client.lua." },
+    { symptom: "no license identifier for source", fix: "You called GetPlayerIdentifierByType from a context where source is 0 (the server console) or the player has disconnected. The command guards source == 0 already; make sure you are running it in-game as a connected player." },
   ]}
 />
 
@@ -297,6 +605,8 @@ The discipline is always the same: load, create, register, guard, delete on stop
     "Track spawned handles in a registry table and explain why a handle you do not store is a handle you can never delete.",
     "Guard every DeleteEntity with DoesEntityExist, and clean up on onResourceStop so a restart never orphans entities.",
     "Translate the same pattern to CreatePed and CreateVehicle.",
+    "Persist an entity choice in SQL with a server-side command that validates source and args, keys rows on the player's license identifier, and uses ? placeholders.",
+    "Apply a model on the client only after the server approves it, using TriggerClientEvent, the same model-load loop, SetPlayerModel, and SetPedDefaultComponentVariation -- and explain why state-changing commands are registered restricted = true.",
   ]}
 />
 
@@ -322,11 +632,45 @@ The discipline is always the same: load, create, register, guard, delete on stop
   Restart the resource, spawn one box and one car, then run `clearboxes`. Because both handles live in the same registry, the single clear loop deletes both and reports `removed 2`. That is the payoff of the pattern: one registry, one cleanup path, no matter how many entity types you add.
 </Exercise>
 
+<Exercise>
+  Extend the ped system with a read-back command so a player can see every ped saved to their account. Add a `/mypeds` command to `server.lua` that looks up the caller's license, selects **all** their rows (note: `MySQL.query.await` returns a list of rows, unlike `MySQL.single.await` which returns one), and triggers a client event that prints each name and model in F8:
+
+  ```lua
+  RegisterCommand('mypeds', function(source)
+      local identifier = GetPlayerIdentifierByType(source, 'license')
+      if not identifier then return end
+
+      local rows = MySQL.query.await(
+          'SELECT ped_name, ped_model FROM qu_player_peds WHERE identifier = ?',
+          { identifier }
+      )
+      TriggerClientEvent('qu_player_peds:listPeds', source, rows or {})
+  end, false)
+  ```
+
+  Then add the matching `RegisterNetEvent('qu_player_peds:listPeds', function(rows) ... end)` on the client that loops `rows` and prints `ped_name | ped_model` for each. Save two peds with `/addped`, run `/mypeds`, and confirm both appear in F8. You just proved you understand why a list query returns a table of tables (you index `row.ped_name` inside a loop) while a single-row lookup hands you one row directly -- and that this read path, like every other, runs the lookup on the server and only ships approved data to the client.
+</Exercise>
+
+<Exercise>
+  Right now the database row stores `0.0, 0.0, 0.0` for position because the server never learns where the ped actually spawned. Fix that by sending the real coordinates back. Modify the client `qu:spawnNpc` handler so that after `CreatePed` succeeds it fires a server event with the spawn position:
+
+  ```lua
+  TriggerServerEvent('qu:pedPlaced', modelName, coords.x + 2.0, coords.y, coords.z)
+  ```
+
+  Then on the server, register `qu:pedPlaced` and move the `MySQL.insert.await` call into it, using the real `x, y, z` it receives instead of the `0.0` stubs. Restart the resource, run `spawnnpc a_m_y_business_03` in F8, and confirm the new row in HeidiSQL holds your actual coordinates, not zeros.
+
+  One trap to reason about: the server event arguments come from the client, so they are **not trusted**. A malicious client could send absurd coordinates. For this teaching record that is acceptable, but note in a comment that a production system would clamp or validate the position server-side before storing it. That single habit -- treat every value the client sends as a claim, not a fact -- is the line between a spawner and an exploit.
+</Exercise>
+
 <Refs
   items={[
     { label: "FiveM CreateObject native", href: "https://docs.fivem.net/natives/?_0x509D5878EB39E842" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" },
+    { label: "FiveM SetPlayerModel native", href: "https://docs.fivem.net/natives/?_0x00A1CADD00108836" },
+    { label: "FiveM GetPlayerIdentifierByType native", href: "https://docs.fivem.net/natives/?_0xA61C8FCAF90C0782" },
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" }
   ]}
 />

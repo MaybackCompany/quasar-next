@@ -1,0 +1,322 @@
+<LessonHero
+  crumbs="Track B · Project · Player survey form"
+  title="/survey command: collect player feedback with an ox_lib dialog"
+  meta={[
+    { label: "You'll ship", value: "A /survey command that opens an in-game form, then sends the answers to the server, which re-checks them before logging." },
+    { label: "Time", value: "About 30 minutes if you go slow." },
+    { label: "You'll learn", value: "lib.inputDialog for a free NUI form, then why the client form is untrusted and the server has to re-validate every answer." },
+    { label: "Prereqs", value: "Module 04 done. ox_lib installed and ensured before any qu_ resource. You have met lib.inputDialog and TriggerServerEvent." },
+  ]}
+>
+  By the end of this lesson you type `/survey` in chat, fill in a three-question form that `ox_lib` draws for you, hit submit, and watch the validated answers print in the **server** console, not the client. You write zero HTML, JS, or CSS for the form.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output.",
+    "ox_lib is installed and ensured above my qu_ resources."
+  ]}
+/>
+
+<Callout variant="fivem" title="ox_lib is a community library, install it first">
+  This lesson uses `ox_lib`, a utility library from Overextended. It is a community resource, not a built-in Cfx.re one, so it does not ship with your server. Download the latest `ox_lib` release, drop the folder into `resources` (keep the name exactly `ox_lib`), and `ensure` it before `qu_survey`. If `ox_lib` is missing or started after your resource, the global `lib` is nil and the first `lib.inputDialog` line errors with `attempt to index a nil value (global 'lib')`.
+</Callout>
+
+<Callout variant="info" title="The form is free, the trust is not">
+  `lib.inputDialog` hands you a finished NUI panel: labelled fields, validation, a submit and a cancel flow. That saves you the entire interface. But the dialog runs on the **player's machine**, so the answers it returns are player-controlled. The whole second half of this lesson is about getting those answers to the server and re-checking them there before you believe a single one.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_survey
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_survey/
+  fxmanifest.lua
+  client.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load and that ox_lib must load first.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@ox_lib/init.lua'
+client_script 'client.lua'
+server_script 'server.lua'
+
+dependencies {
+    'ox_lib'
+}
+    ```
+
+    `fx_version 'cerulean'` is the current manifest format, so always use it. `game 'gta5'` says this resource targets GTA V. There is no `lua54 'yes'` line: that directive was removed in June 2025, Lua 5.4 is now the only runtime, so the line does nothing and you should not add it. The `shared_script '@ox_lib/init.lua'` line loads ox_lib's `lib` global into your resource, and `dependencies { 'ox_lib' }` blocks startup until ox_lib is running.
+  </Step>
+
+  <Step num={4} title="Write the client form" outcome="A command opens the dialog and sends the answers up to the server.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('survey', function()
+    local answers = lib.inputDialog('Player Feedback Survey', {
+        { type = 'input',    label = 'What is your favorite in-game activity?', required = true, max = 100 },
+        { type = 'number',   label = 'Rate the server performance (1-10)',      required = true, min = 1, max = 10 },
+        { type = 'checkbox', label = 'Would you recommend this server?' },
+    })
+
+    if not answers then
+        print('[qu_survey] survey cancelled')
+        return
+    end
+
+    TriggerServerEvent('qu_survey:submit', {
+        activity   = answers[1],
+        rating     = answers[2],
+        recommend  = answers[3],
+    })
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Write the server validator" outcome="The server re-checks every answer before it trusts or logs it.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu_survey:submit', function(data)
+    local src = source
+
+    if type(data) ~= 'table' then return end
+
+    local activity  = data.activity
+    local rating    = data.rating
+    local recommend = data.recommend
+
+    if type(activity) ~= 'string' or #activity == 0 or #activity > 100 then
+        print('[qu_survey] rejected ' .. GetPlayerName(src) .. ': bad activity')
+        return
+    end
+
+    rating = tonumber(rating)
+    if not rating or rating < 1 or rating > 10 then
+        print('[qu_survey] rejected ' .. GetPlayerName(src) .. ': rating out of range')
+        return
+    end
+
+    local recommendText = (recommend == true) and 'Yes' or 'No'
+
+    print('[qu_survey] ' .. GetPlayerName(src) .. ' | activity: ' .. activity
+        .. ' | rating: ' .. rating .. ' | recommend: ' .. recommendText)
+end)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The validated answers print in the server console.">
+    Make sure `ox_lib` starts first. Open `server.cfg` and add both lines in this order:
+
+    ```text
+    ensure ox_lib
+    ensure qu_survey
+    ```
+
+    Save, then run this in the **txAdmin Live Console** (the server console):
+
+    ```text
+    restart qu_survey
+    ```
+
+    Join the server, then run this from the in-game chat box (press T) (this is a client command):
+
+    ```text
+    /survey
+    ```
+
+    Type `Racing` for the activity, `8` for the rating, tick the recommend box, and submit.
+
+    <ExpectedOutput>
+      Server: [qu_survey] YourName | activity: Racing | rating: 8 | recommend: Yes
+    </ExpectedOutput>
+
+    The line appears in the **server** console, not F8, because the answers travelled up to `server.lua` to be validated before anything was logged.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You typed one command, a form drew itself, you filled it in, and a clean validated line landed on the server. Three things happened in order: ox_lib drew a NUI form for free, the client packaged the answers and shipped them up, and the server treated every answer as a lie until it proved otherwise. Take each piece apart so you can build your own surveys, application forms, or report tools later.
+
+### The dialog is a whole NUI layer you did not write
+
+```lua
+local answers = lib.inputDialog('Player Feedback Survey', {
+    { type = 'input',    label = 'What is your favorite in-game activity?', required = true, max = 100 },
+    { type = 'number',   label = 'Rate the server performance (1-10)',      required = true, min = 1, max = 10 },
+    { type = 'checkbox', label = 'Would you recommend this server?' },
+})
+```
+
+`lib.inputDialog` takes a heading and a list of field tables. Each `{ }` in the list is one row in the form. The `type` decides the control ox_lib renders: `input` is a text box, `number` is a numeric box with up/down arrows, `checkbox` is a tickbox. The `label` is the text the player reads above the field. `required = true` makes ox_lib refuse to submit until that field has a value, and the `min`/`max` on the number field draw a hint and stop the arrows going out of range. The `max = 100` on the text field caps its length in the UI.
+
+The input dialog supports far more than these three types: `select` and `multi-select` dropdowns, `slider`, `color`, `date`, `date-range`, `time`, and `textarea`, each with its own options. The three used here keep the example readable. The full list lives in the ox_lib docs linked at the bottom, and that is the page you return to when you want a dropdown or a date picker.
+
+The single most important fact about this call: it runs on the **client**. ox_lib NUI is the player's own browser layer rendered over their game. So the values that come back are values the player produced, on hardware you do not control. Hold that thought, it is the entire reason `server.lua` exists.
+
+### Why the answers come back as an ordered table, and the cancel guard
+
+```lua
+if not answers then
+    print('[qu_survey] survey cancelled')
+    return
+end
+```
+
+`lib.inputDialog` returns a table when the player submits, indexed in the order you declared the fields: `answers[1]` is the activity, `answers[2]` is the rating, `answers[3]` is the checkbox. If the player presses Escape or closes the dialog without submitting, it returns `nil` instead.
+
+That is why the guard comes first. If you skipped it and went straight to `answers[1]`, indexing a `nil` value throws `attempt to index a nil value (local 'answers')` every single time someone cancels. A cancelled dialog is a normal outcome, not an error, so you handle it before you touch any data and quietly stop.
+
+### Why the client hands answers off instead of acting on them
+
+```lua
+TriggerServerEvent('qu_survey:submit', {
+    activity   = answers[1],
+    rating     = answers[2],
+    recommend  = answers[3],
+})
+```
+
+This is the line that separates a toy from a real script. The naive version of this lesson stops at `print(answers[1])` on the client and calls it done. That prints to F8, on the player's own machine, where the player could already see and change everything anyway. It proves nothing and stores nothing.
+
+Instead the client packages the three answers into one named table and fires `TriggerServerEvent('qu_survey:submit', ...)`. `TriggerServerEvent` sends an event up to the server, and FiveM attaches the sender's identity automatically. Naming the fields (`activity`, `rating`, `recommend`) instead of passing a bare list means the server reads `data.rating` by name and never has to guess what `[2]` was supposed to be. The client's job ends here: it collected input and forwarded it. It deliberately makes no decision about whether the answers are valid, because a cheating client would simply lie in its own favour.
+
+### server.lua treats every answer as untrusted
+
+```lua
+RegisterNetEvent('qu_survey:submit', function(data)
+    local src = source
+
+    if type(data) ~= 'table' then return end
+```
+
+`RegisterNetEvent` listens for the event the client just fired. `source` is a FiveM global that, inside a net event handler, holds the server id of the player who triggered it. You copy it into a local `src` right away, because `source` can be overwritten by any `await` or wait inside the handler, and you want a stable reference to who sent this.
+
+The first check, `type(data) ~= 'table'`, is your front door. A normal client sends the table you built. A malicious client can call `TriggerServerEvent('qu_survey:submit', 'hello')` or send nothing at all, hand-crafting whatever payload it likes, because the event name is public the moment your resource ships. If `data` is not even a table, you bail before reading a field off it. This is the rule for every networked event: validate the shape of what arrived before you trust its contents.
+
+```lua
+    if type(activity) ~= 'string' or #activity == 0 or #activity > 100 then
+        print('[qu_survey] rejected ' .. GetPlayerName(src) .. ': bad activity')
+        return
+    end
+```
+
+The client UI said `required = true` and `max = 100`, but those rules only ran in the player's browser. A crafted payload never opened the dialog, so it never obeyed them. On the server you re-check the same rules from scratch: it must be a string, not empty, and not longer than 100 characters. The `#activity` operator is Lua's length operator, so `#activity` is the character count of the string. If any check fails, you log who sent the bad data and stop. Notice the rules are duplicated on purpose, once in the UI for the honest player's convenience, once on the server because that copy is the one that actually counts.
+
+```lua
+    rating = tonumber(rating)
+    if not rating or rating < 1 or rating > 10 then
+        print('[qu_survey] rejected ' .. GetPlayerName(src) .. ': rating out of range')
+        return
+    end
+```
+
+The number field had `min = 1, max = 10`, and again that range was only enforced in the UI. A forged event could send `rating = 9999` or `rating = "abc"`. `tonumber` converts the value to a number or returns `nil` if it cannot, so a non-numeric payload fails the `not rating` check. Then you re-assert the `1` to `10` range yourself. Never trust a client number field to stay between its `min` and `max`: re-check the range on the server, every time.
+
+```lua
+    local recommendText = (recommend == true) and 'Yes' or 'No'
+
+    print('[qu_survey] ' .. GetPlayerName(src) .. ' | activity: ' .. activity
+        .. ' | rating: ' .. rating .. ' | recommend: ' .. recommendText)
+end)
+```
+
+The checkbox arrives as a boolean. `(recommend == true) and 'Yes' or 'No'` is Lua's idiom for a ternary: it reads as "if recommend is exactly true, use 'Yes', otherwise 'No'." Writing `recommend == true` rather than just `recommend` means a forged string like `recommend = 'maybe'` does not count as a yes, only a real boolean true does. With all three answers validated, the final `print` logs them to the server console. In a finished resource this is where you would write to a database with an oxmysql `MySQL.insert` using `?` placeholders, never string concatenation, but a print is enough to prove the validated data arrived.
+
+### The mental model
+
+Picture the dialog as a comment card a player fills out at the door, and the server as the manager inside who reads it. The card is printed nicely (ox_lib drew it), the player writes their answers, and a runner carries the card inside (`TriggerServerEvent`). The manager does not assume the card is honest just because it is on official paper. They re-read every line: is the name field actually filled in, is the rating a number between 1 and 10, is the recommend box a real tick. Only cards that pass get filed. Whenever data leaves a player's machine and you intend to store it, count it, or act on it, the validation that matters happens on the server, because that is the one side the player cannot edit. The client form is a convenience for honest players, not a security boundary.
+
+<Checkpoint question="The number field already has min = 1, max = 10. Why does server.lua check the range again with tonumber and rating < 1 or rating > 10?">
+  Because `min` and `max` are enforced only in the ox_lib UI, which runs on the player's own machine. A cheating client never has to open the dialog at all, it can fire `TriggerServerEvent('qu_survey:submit', { rating = 9999 })` directly with any payload it wants, so the UI rules never run for them. The server is the only side the player cannot tamper with, so the range check on the server is the one that actually protects your data. `tonumber` first guards against a non-numeric value (it returns `nil`, which fails `not rating`), then the `1` to `10` comparison re-asserts the range. The UI copy is for the honest player's convenience, the server copy is the real rule.
+</Checkpoint>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "attempt to index a nil value (global 'lib')", fix: "ox_lib is not loaded into your resource. Confirm the manifest has shared_script '@ox_lib/init.lua' above client_script, the folder is named exactly ox_lib, and ensure ox_lib comes before ensure qu_survey in server.cfg." },
+    { symptom: "Unable to load resource qu_survey (dependency ox_lib)", fix: "ox_lib is not installed or not running. Download ox_lib from Overextended, place it in resources, and ensure it. The dependencies block blocks startup until it loads." },
+    { symptom: "attempt to index a nil value (local 'answers')", fix: "The cancel guard is missing. Add if not answers then ... return end right after lib.inputDialog, so pressing Escape or closing the dialog does not try to read answers[1]." },
+    { symptom: "/survey does nothing and no form appears", fix: "This is a client command. Join the server and run it from the in-game chat box (press T), not the txAdmin console. If the dialog still never opens, check F8 for a lib error." },
+    { symptom: "The form submits but nothing prints in the server console", fix: "The event names must match exactly. The client TriggerServerEvent and the server RegisterNetEvent must both read qu_survey:submit, character for character. Confirm server_script 'server.lua' is in the manifest and restart qu_survey." },
+    { symptom: "rejected ... : rating out of range even though you typed a valid number", fix: "You are reading the wrong field index, or the field order in lib.inputDialog does not match the keys you pass to TriggerServerEvent. activity is answers[1], rating is answers[2], recommend is answers[3], in the order the fields are declared." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Draw a full in-game form with lib.inputDialog by passing a heading and a list of field tables, and pick the type, label, required, min, and max for each field.",
+    "Read the answers back as an ordered table where answers[1] is the first field, and handle the cancel case with if not answers then return end before touching any value.",
+    "Explain that the dialog runs on the client, so its required, min, and max rules only protect honest players and cannot be trusted.",
+    "Forward the answers to the server with a named table and TriggerServerEvent instead of acting on them client-side.",
+    "Re-validate every answer on the server: check the payload is a table, the string is non-empty and bounded, and the number is really a number inside its range with tonumber.",
+    "State the rule that validation which matters happens on the server, because that is the only side the player cannot edit."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a fourth question with a fixed list of choices, and validate it on the server against that same list. A `select` field shows a dropdown, and you pass it an `options` list where each option has a `value` you get back and a `label` the player reads. In `client.lua`, add the select as a fourth field and forward its answer:
+
+  ```lua
+  local answers = lib.inputDialog('Player Feedback Survey', {
+      { type = 'input',    label = 'What is your favorite in-game activity?', required = true, max = 100 },
+      { type = 'number',   label = 'Rate the server performance (1-10)',      required = true, min = 1, max = 10 },
+      { type = 'checkbox', label = 'Would you recommend this server?' },
+      { type = 'select',   label = 'How long have you played here?', required = true, options = {
+          { value = 'new',     label = 'Less than a week' },
+          { value = 'regular', label = 'A few weeks' },
+          { value = 'veteran', label = 'Months or longer' },
+      } },
+  })
+  -- ...keep the cancel guard, then add tenure = answers[4] to the table you send up
+  ```
+
+  Then in `server.lua`, do not trust that the value is one of your three options just because the dropdown offered them, a forged event can send `tenure = 'admin'`. Re-check it against an allow-list:
+
+  ```lua
+  local allowedTenure = { new = true, regular = true, veteran = true }
+  if not allowedTenure[data.tenure] then
+      print('[qu_survey] rejected ' .. GetPlayerName(src) .. ': bad tenure')
+      return
+  end
+  ```
+
+  Restart `qu_survey`, run `/survey`, pick a tenure, and confirm the validated value prints on the server. Then prove the guard works: temporarily change the client to send `tenure = 'admin'` and confirm the server rejects it instead of logging it. You just learned that even a closed dropdown is still client input, and an allow-list on the server is how you pin a value to a known set.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "ox_lib input dialog (Overextended)", href: "https://overextended.dev/ox_lib/Modules/Interface/Client/input" },
+    { label: "ox_lib documentation home", href: "https://overextended.dev/ox_lib" },
+    { label: "FiveM events: triggering events", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

@@ -27,7 +27,7 @@
 
 ## The frameworks at a glance
 
-Each framework has its own docs and its own way of spelling the same ideas. Bookmark the ones you run. For a new 2026 server, start on **ESX Legacy** or **Qbox**; QBCore still works and has a huge catalog, but its core development has largely stalled, so Qbox is the actively maintained successor. `ox_lib` is the shared library all three lean on. Note that `ox_lib`, `oxmysql`, `ox_target`, and `ox_inventory` are made by the Overextended community, not by Cfx.re; they are the de facto 2026 standard, not an official platform feature.
+Each framework has its own docs and its own way of spelling the same ideas. Bookmark the one your server actually runs. Qbox describes itself as a QBCore successor and keeps a QB compatibility bridge; ESX Legacy and QBCore remain separate ecosystems. `ox_lib` is optional utility code, not a requirement of ESX or QBCore. The maintained 2026 `ox_lib`, `oxmysql`, `ox_target`, and `ox_inventory` repositories live under **Community Ox**. They are community resources, not Cfx.re platform features.
 
 <TechLinks ids={["esx", "qbox", "qbcore", "ox_lib"]} />
 
@@ -125,7 +125,7 @@ You ran it and a line appeared. The detection is the easy half. The valuable hal
 if GetResourceState('es_extended') == 'started' then return 'esx' end
 ```
 
-`GetResourceState` is a FiveM native. You hand it a resource name as a string and it tells you the lifecycle state of that resource: `missing`, `stopped`, `starting`, `started`, or `uninitialized`. The only state that means *this framework is live and its exports are callable* is `started`. So the probe is really asking, in order, is `qbx_core` started, then `qb-core`, then `es_extended`, and it returns the first match. The order matters: it checks Qbox first, then QBCore, then ESX, and returns the moment it finds one. On a server with none of them, every check fails and the function falls through to `return 'none'`. That is why a bare practice server prints `none`. Nothing is wrong; there is simply no framework resource in the `started` state to find.
+`GetResourceState` is a FiveM *native* — a built-in function the game server itself provides (as opposed to a framework export or an ox_lib call), so it works the same on every server regardless of which framework is installed. You hand it a resource name as a string and it tells you the lifecycle state of that resource. The documented states are `missing`, `started`, `starting`, `stopped`, `stopping`, `uninitialized`, and `unknown`. The only state that means *this framework is live and its exports are callable* is `started`. So the probe is really asking, in order, is `qbx_core` started, then `qb-core`, then `es_extended`, and it returns the first match. The order matters: it checks Qbox first, then QBCore, then ESX, and returns the moment it finds one. On a server with none of them, every check fails and the function falls through to `return 'none'`. That is why a bare practice server prints `none`. Nothing is wrong; there is simply no framework resource in the `started` state to find.
 
 The resource names are the real folder names each framework ships under, and they are easy to mix up:
 
@@ -165,9 +165,9 @@ You cannot read money or a job until you hold the player object. Each framework 
   caption="The single call that turns a server id into a player object. src is the server-side source."
 />
 
-Read it as one idea in three spellings. ESX grabs the shared object first, then calls `GetPlayerFromId`. QBCore grabs the core object, then calls `Functions.GetPlayer`. Qbox keeps the QBCore-style `Functions.GetPlayer` for compatibility but also exposes the leaner `exports.qbx_core:GetPlayer(src)` getter shown above. In every case `src` is the server-side `source`, and in every case the return value is `nil` until the framework has finished loading that player. That `nil` is the trap the load-events section below exists to close.
+Read it as one idea in three spellings. ESX grabs the shared object first, then calls `GetPlayerFromId`. QBCore grabs the core object, then calls `Functions.GetPlayer`. Qbox exposes the native `exports.qbx_core:GetPlayer(src)` getter and separately provides a QB compatibility surface for older resources. In every case `src` is the server-side `source`, and the return value can be `nil` until the character has loaded. Always keep a nil guard before reading the object.
 
-Here is each call on its own, with the line that proves you got a real object:
+Here is each call on its own, with the line that proves you got a real object. These three blocks are illustrative: they only run on a server that actually has that framework installed and a player loaded, so do not expect them to print on the bare practice server from the Build it section.
 
 ```lua
 -- ESX Legacy (server side)
@@ -180,18 +180,22 @@ print(xPlayer.getName())                  -- proves the object exists
 -- QBCore (server side)
 local QBCore = exports['qb-core']:GetCoreObject()
 local Player = QBCore.Functions.GetPlayer(src)
-print(Player.PlayerData.name)             -- proves the object exists
+print(Player.PlayerData.charinfo.firstname) -- the character's first name; proves the object loaded
 ```
 
 ```lua
 -- Qbox (server side)
 local player = exports.qbx_core:GetPlayer(src)
-print(player.PlayerData.name)             -- proves the object exists
+print(player.PlayerData.charinfo.firstname) -- same field in Qbox; proves the object loaded
 ```
 
 That getter is the spine of the next lesson, [How a script talks to a framework](/lessons/how-scripts-talk-to-frameworks), which turns this one call into a full framework-agnostic resource that gets the player, gives them money, and reads their job on all three. Here you just need to recognize the call. There you build the whole thing.
 
 Once you hold the object, reading money and job is the same job in each one. Here is the full pattern.
+
+<Callout variant="warn" title="Security: never ship an unvalidated giveCash event">
+  Any client can trigger a `RegisterNetEvent` handler. These giveCash snippets are illustrative of the money API only — never ship a net event that hands out money without server-side checks (who is allowed, how much, how often). An unvalidated giveCash event is a classic money-duplication exploit.
+</Callout>
 
 **ESX Legacy.** You grab the shared object, then ask it for a player by server id. The player object is usually called `xPlayer`.
 
@@ -201,7 +205,7 @@ local ESX = exports['es_extended']:getSharedObject()
 RegisterNetEvent('myscript:giveCash', function()
     local src = source
     local xPlayer = ESX.GetPlayerFromId(src)
-    local cash = xPlayer.getMoney()          -- cash on hand
+    local cash = xPlayer.getAccount('money').money -- cash on hand (getMoney() also works but ESX docs mark it backwards-compat only)
     xPlayer.addMoney(500)                     -- add 500 cash
     local job = xPlayer.job.name              -- e.g. 'police'
     print(('%s has $%d, job %s'):format(GetPlayerName(src), cash, job))
@@ -223,14 +227,14 @@ RegisterNetEvent('myscript:giveCash', function()
 end)
 ```
 
-**Qbox.** Qbox is the QBCore successor, so the shape is nearly identical to QBCore on purpose. The modern entry point is the `exports.qbx_core` getter, and the same `PlayerData` layout applies.
+**Qbox.** Qbox is a newer, ox-native fork of QBCore, so the shape is nearly identical to QBCore on purpose. The modern entry point is the `exports.qbx_core` getter, and the same `PlayerData` layout applies.
 
 ```lua
 RegisterNetEvent('myscript:giveCash', function()
     local src = source
     local player = exports.qbx_core:GetPlayer(src)
     local cash = player.PlayerData.money.cash
-    player.Functions.AddMoney('cash', 500)
+    exports.qbx_core:AddMoney(src, 'cash', 500, 'qu_frameworks example')
     local job = player.PlayerData.job.name
     print(('%s has $%d, job %s'):format(GetPlayerName(src), cash, job))
 end)
@@ -288,7 +292,7 @@ Framework detection plus the translation idioms is the foundation under almost e
     "Read and write the player + money + job idiom in ESX (ESX.GetPlayerFromId, getMoney), QBCore (GetCoreObject, PlayerData.money), and Qbox (qbx_core getter).",
     "Wait for the correct load event (esx:playerLoaded, QBCore:Client:OnPlayerLoaded) before touching the player object, and recognize the nil-index error you get when you do not.",
     "Use a real ox_lib call (lib.print.info) and name the everyday ox_lib tools: lib.notify, lib.callback, lib.progressBar, lib.registerContext.",
-    "Choose ESX Legacy or Qbox for a new 2026 server, and explain why QBCore's stalled development pushes new builds toward Qbox.",
+    "Distinguish the three ecosystems without treating one framework as an automatic drop-in replacement for another.",
   ]}
 />
 
@@ -327,8 +331,9 @@ Framework detection plus the translation idioms is the foundation under almost e
   items={[
     { label: "ESX Legacy documentation", href: "https://docs.esx-framework.org/" },
     { label: "Qbox documentation", href: "https://docs.qbox.re/" },
-    { label: "ox_lib documentation", href: "https://overextended.dev/ox_lib" },
+    { label: "Community Ox ox_lib documentation", href: "https://coxdocs.dev/ox_lib" },
+    { label: "Community Ox ox_lib repository", href: "https://github.com/communityox/ox_lib" },
     { label: "FiveM GetResourceState native", href: "https://docs.fivem.net/natives/?_0x4039B485" },
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" }
   ]}
 />

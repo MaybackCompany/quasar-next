@@ -71,10 +71,14 @@ dependencies {
 }
 ```
 
-When that resource is packaged for sale, FiveM's asset protection layer (you will see it referred to as `fxap`) encrypts every file *except* the ones named in `escrow_ignore`. At runtime the server decrypts and runs the protected core in memory, so the script works normally, but the buyer never sees that code on disk. If you open `config.lua` and it reads like plain settings, while `server/main.lua` is an unreadable blob, that is escrow doing exactly its job.
+When that resource is packaged for sale, FiveM's Asset Escrow system encrypts the protectable files *except* the ones named in `escrow_ignore`. You may also notice a small `.fxap` file inside an escrowed resource: that is the escrow manifest file the system writes in, and the resource needs it (plus a valid grant) to load. At runtime the protected core executes normally on the server, so the script works as intended, but the buyer never sees that code on disk in readable form. If you open `config.lua` and it reads like plain settings, while `server/main.lua` is an unreadable blob, that is escrow doing exactly its job.
 
 <Callout variant="fivem" title="What escrow does not do">
-  Escrow protects the source from being read and copied. It does not stop the resource from running, does not require an internet check on every start, and does not give the seller remote control of your server. It is code protection, not a kill switch.
+  Escrow protects the source from being read and copied; it does not give the seller remote control of your server. But it is not purely offline: an escrowed resource only runs when your server's Cfx.re license key holds a valid grant for that asset, and the runtime checks that entitlement when the resource loads. If the key has no grant you get a "You lack the required entitlement" error and the resource will not start. So it is code protection plus an ownership check, not a remote kill switch the seller can flip at will.
+</Callout>
+
+<Callout variant="warning" title="Escrow protects the seller, not you">
+  Escrow hides the core code from YOU as much as from anyone else. Because you cannot read an escrowed server file, you cannot verify what it does — a malicious author could hide a backdoor or an external HTTP call inside the protected core. Escrow is not a safety guarantee for the buyer. Only buy escrowed scripts from reputable authors through a legitimate marketplace (Tebex), and watch your server console and outbound connections after installing anything new.
 </Callout>
 
 ### How to read a listing before you buy

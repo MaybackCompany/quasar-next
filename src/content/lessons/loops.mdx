@@ -54,7 +54,7 @@ game 'gta5'
 server_script 'server.lua'
     ```
 
-    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime, so you leave it out.
+    No `lua54 'yes'` line. As of June 2025 the FiveM docs mark that directive as deprecated: Lua 5.3 was removed and every resource now runs Lua 5.4, so the directive has no effect and you simply leave it out. (See the official manifest reference and the "Removal of Lua 5.3 support" announcement.)
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -102,7 +102,7 @@ end, true)
     ensure qu_loops
     ```
 
-    Save, then run:
+    Save. Then, in the txAdmin Live Console (the same place you will type the test commands below, or the FXServer console window if you run it directly), type:
 
     ```text
     restart qu_loops
@@ -123,7 +123,22 @@ end, true)
 [qu_loops] Launch!
     </ExpectedOutput>
 
-    Then run `whilecount` and `tick` to see the other two loops. The `tick` output appears one line per second, not all at once, because the thread yields between each print.
+    Then run `whilecount`. You should see exactly:
+
+    ```text
+    [qu_loops] while 5
+    [qu_loops] while 4
+    [qu_loops] hit 3, stopping early
+    ```
+
+    Then run `tick`. You should see these lines arrive one per second, not all at once, because the thread yields between each print:
+
+    ```text
+    [qu_loops] tick 1
+    [qu_loops] tick 2
+    [qu_loops] tick 3
+    [qu_loops] thread done
+    ```
   </Step>
 </StepGroup>
 
@@ -178,6 +193,22 @@ end
 
 Sometimes you want out before the condition naturally goes false. `break` does exactly that: it stops the nearest loop immediately and jumps to the first line after it. In the `whilecount` command, the loop is built to run from 5 down to 1, but the `if i == 3` check fires `break` on the third pass, so you only ever see `while 5`, `while 4`, then the stop message. The numbers 2 and 1 never print. `break` works the same inside a `for` loop. It is how you write loops that scan for something and quit the instant they find it, instead of grinding through every remaining item.
 
+### repeat...until: the loop that always runs once
+
+There is a third loop shape the `countdown` and `whilecount` commands did not use, and it is worth knowing because it flips one thing around. A `while` checks its condition *before* the first pass, so if the condition is false from the start, the body never runs at all. A `repeat...until` checks *after* each pass, so the body always runs at least once before the condition is even looked at.
+
+```lua
+local counter = 0
+repeat
+    print('[qu_loops] pass ' .. counter)
+    counter = counter + 1
+until counter == 5
+```
+
+Read it backwards from a `while` and it clicks. A `while` says "keep going *while* this is true." A `repeat...until` says "keep going *until* this becomes true" -- the condition is the stop sign, not the green light. This loop prints passes 0, 1, 2, 3, 4 and stops the moment `counter` reaches 5.
+
+The one practical reason to reach for it: setup work that must happen once no matter what, then keep happening while a condition holds. Think of waiting for something to load -- you want to check at least once even if the thing might already be ready. For everything else, prefer `while`, because `while` makes the "might run zero times" case obvious to the next person reading your code. Like every loop here, a `repeat...until` that lives in a `Citizen.CreateThread` and could spin many times still needs a `Citizen.Wait` inside it -- the same rule you are about to meet applies to all three shapes.
+
 ### The FiveM Wait rule: the loop that freezes your server
 
 This is the part of the lesson nothing else teaches you. A loop that never pauses is fine in plain Lua. In FiveM it is a weapon pointed at your own server.
@@ -204,13 +235,42 @@ Citizen.CreateThread(function()
 end)
 ```
 
-`Citizen.Wait(ms)` is the yield. It pauses your loop for the given milliseconds and, crucially, hands the thread back to FiveM so everything else can run. After the wait, your loop picks up where it left off. The rule is absolute: **any loop that could run forever must call `Citizen.Wait` somewhere inside it.** `Citizen.CreateThread` is what lets a loop keep living after the command handler returns, which is exactly why an unyielded one is so dangerous, it would spin forever with no command to stop it.
+`Citizen.Wait(ms)` is the yield. It pauses your loop for the given milliseconds and, crucially, hands the thread back to FiveM so everything else can run. After the wait, your loop picks up where it left off. Note: most FiveM code you will read writes this as just `Wait(ms)` -- `Wait` is the built-in short alias for `Citizen.Wait`, so the two are interchangeable. The rule is absolute: **any loop that could run forever must call `Citizen.Wait` somewhere inside it.** `Citizen.CreateThread` is what lets a loop keep living after the command handler returns, which is exactly why an unyielded one is so dangerous, it would spin forever with no command to stop it.
 
 ### Why server loops and client loops are not the same
 
 On the client, the loop you write most often is a per-frame loop with `Citizen.Wait(0)`, which yields for the shortest possible time and resumes next frame. That is how you draw a marker or watch for a key press sixty times a second. The cost is paid on one player's machine.
 
-On the server there are no frames and there is no per-player machine. A server loop runs once for everyone, so a server-side `Citizen.Wait(0)` is far more expensive than it looks: it wakes up constantly on the one thread the whole server shares. Server loops should yield generously, `Citizen.Wait(1000)` or more, and most server logic should not poll in a loop at all. It should react to events, which is the next module. Use a `for` to process a known list, use a `while` with a real exit condition, and reach for an always-running thread only when you genuinely need a heartbeat.
+On the server, `Citizen.Wait(0)` resumes on the next server tick. The cost depends on the work in the loop body, but a tick-rate poll is unnecessary for most database, economy, and lifecycle logic. Choose an interval based on the feature and prefer events when work only needs to happen after a specific action. Use a `for` for a known list, a `while` with a real exit condition, and an always-running thread only when a periodic task is actually required.
+
+### Dynamic sleep: the optimization every real client loop uses
+
+The previous section said the cost of a loop depends on how often it wakes up. Dynamic sleep is how experienced scripters control that cost on the client. The idea: do not pick one fixed `Citizen.Wait`. Pick a *slow* wait when nothing interesting is happening, and only drop to a *fast* wait when the player is somewhere the loop actually needs to react.
+
+Here is the pattern, a client loop that watches the player's distance to a fixed point. This is client code, so it belongs in a `client_script`, and its prints land in the F8 client console, not the server console:
+
+```lua
+Citizen.CreateThread(function()
+    while true do
+        local sleep = 1000 -- idle default: only check once a second
+        local ped = PlayerPedId()
+        local coords = GetEntityCoords(ped)
+        local target = vector3(100.0, 200.0, 20.0)
+
+        if #(coords - target) < 10.0 then
+            -- player is close, react quickly this frame range
+            sleep = 0
+            print('[qu_loops] near target')
+        end
+
+        Citizen.Wait(sleep)
+    end
+end)
+```
+
+Read the flow and the why falls out. `sleep` starts at `1000`, so when the player is nowhere near the target the loop wakes only once a second and costs almost nothing. `PlayerPedId()` returns the local player's character ped, and `GetEntityCoords(ped)` returns its current position as a vector3. `#(coords - target)` is the FiveM idiom for distance: subtracting two vector3s gives a vector, and the `#` length operator turns that into the straight-line distance in metres -- so `< 10.0` reads as "within ten metres." Only then does the code set `sleep = 0`, which means "resume next frame," giving you up to sixty checks a second exactly when the player is close enough to need them. The single `Citizen.Wait(sleep)` at the bottom of the loop uses whichever value the pass decided on.
+
+The mistake this pattern fixes is the lazy `Citizen.Wait(0)` everywhere. A loop that runs every frame all the time, just to check a distance the player is nowhere near, burns client frames for nothing -- and a server full of resources each doing that is how a server quietly loses FPS. Idle slow, active fast: that one habit is the difference between a script that scales and one that drags. Note this is a client trick -- on the server the same `while true` still must yield, but you would tune the interval to the feature (a database poll measured in seconds, an event-driven check ideally never polling at all) rather than chasing frames.
 
 ### What the restricted flag actually does
 
@@ -233,6 +293,7 @@ That trailing `true` is the **restricted** flag, the same one from Lesson 01, an
     { symptom: "The loop prints one too many or one too few lines", fix: "Off-by-one. Read the for range or the while condition and count the first and last value by hand. Remember a for stop value is inclusive and the default step is +1." },
     { symptom: "whilecount prints forever and never stops", fix: "The counter is not changing. Make sure i = i - 1 is inside the while body so the condition eventually goes false." },
     { symptom: "A player typing /countdown in chat sees nothing happen", fix: "The restricted flag is true, so only the server console and aces may run it. Run countdown from the txAdmin Live Console, or pass false to RegisterCommand to open it to players." },
+    { symptom: "A repeat...until loop runs forever and never stops", fix: "A repeat checks its condition only AFTER each pass, so if the counter or flag inside never changes, the until line is never satisfied. Make sure the value the until tests is updated inside the loop body, and remember until names the STOP condition, not the continue condition." },
   ]}
 />
 
@@ -289,7 +350,7 @@ print("[qu_loops] Launch!")`} />
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM Citizen.Wait / scheduling", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Wait/" },
+    { label: "FiveM Citizen.Wait / scheduling", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/Citizen.Wait" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

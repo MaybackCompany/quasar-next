@@ -79,7 +79,8 @@ local function httpGet(url)
 end
 
 RegisterCommand('promisetest', function()
-    -- Await must run inside a thread, never bare in the handler.
+    -- Await needs a scheduler-managed coroutine. An explicit thread makes
+    -- that execution context unambiguous for this first example.
     Citizen.CreateThread(function()
         print('[qu_promises] start')
 
@@ -109,7 +110,7 @@ end, true)
     ensure qu_promises
     ```
 
-    Save, then run:
+    Save, then — in the txAdmin Live Console (or the FXServer server console window), not the in-game chat — run:
 
     ```text
     restart qu_promises
@@ -123,12 +124,12 @@ end, true)
 
     <ExpectedOutput>
       [qu_promises] start
-[qu_promises] got 3 responses, total bytes: 186
+[qu_promises] got 3 responses, total bytes: 180
 [qu_promises] reject path: ok=false err=HTTP 500 for https://httpbin.org/status/500
 [qu_promises] done
     </ExpectedOutput>
 
-    The byte count depends on the response bodies, so `186` is the realistic value for three `httpbin.org/uuid` JSON responses: each httpbin.org/uuid response is a pretty-printed JSON object of about 62 bytes, so three total roughly 186 bytes; the exact count can vary if the endpoint changes its formatting. What matters is that one number prints after all three awaits finished, and that the reject line reports `ok=false`.
+    The byte count comes from the response bodies: each `httpbin.org/uuid` reply is a pretty-printed JSON object of 60 bytes (`{` newline, two spaces + `"uuid": "<36-char value>"`, newline `}`), so three total 180 bytes. You may see 183 if the endpoint adds a trailing newline to each body. What matters is that one number near 180 prints after all three awaits finished, and that the reject line reports `ok=false` — the exact figure is not the point, the single combined print is.
   </Step>
 </StepGroup>
 
@@ -179,7 +180,7 @@ local a = Citizen.Await(httpGet('https://httpbin.org/uuid'))
 
 The word that matters is **pauses**, not **blocks**. A blocking call would freeze the entire server: no other resource could run, no player could move, until the network replied. `Await` does not do that. It yields the current coroutine back to the FiveM scheduler. The scheduler is then free to run every other thread on the server while your thread sits parked, waiting for its promise. When the promise settles, the scheduler wakes your thread back up exactly where it left off and hands you the value. That is why the line "feels synchronous while staying non-blocking": you read it top to bottom like normal code, but under the hood your thread stepped aside and let the server keep working.
 
-### Why Await must live inside a thread
+### Why Await needs a scheduler context
 
 Look at where the awaits sit:
 
@@ -192,7 +193,7 @@ RegisterCommand('promisetest', function()
 end, true)
 ```
 
-The awaiting work is wrapped in `Citizen.CreateThread(function() ... end)`. This is not decoration. `Citizen.Await` yields a coroutine, and yielding only works inside a coroutine that the FiveM scheduler owns. A command handler is invoked across a native C boundary, so awaiting *directly* in the handler body can fail with the error `attempt to yield across a C-call boundary`. The fix is the one shown here: the handler does nothing but spin up a thread, and all the awaiting happens inside that thread, which the scheduler does own. Whenever you await, ask yourself one question first: am I inside a `CreateThread`, an event handler the scheduler started, or a `lib.callback`? If the answer is no, wrap it.
+`Citizen.Await` yields the current coroutine, so the code must run in a context owned by the Cfx scheduler. `CreateThread`, `SetTimeout`, and registered event/command callbacks are scheduler contexts in the current Lua runtime. This example creates an explicit thread because it is easy to recognize and keeps the command callback small. The actual runtime assertion is about being outside the scheduler, not about command handlers specifically.
 
 ### Flattening the pyramid
 
@@ -235,7 +236,7 @@ end)
 
 You wrap a callback API in a promise whenever you have async work whose result you need before the next step can run. The three you will hit constantly in FiveM:
 
-- **HTTP requests.** `PerformHttpRequest`, exactly as built here. Calling an external API, a webhook, a license check.
+- **HTTP requests.** `PerformHttpRequest`, exactly as built here. Calling an external API, a webhook, a license check. Security: this runs on the server, so never build the URL from player-supplied input without validating it (an attacker who controls the URL can make your server hit internal/private addresses — SSRF). Treat the response body as untrusted: validate or json-decode it before using it, and never concatenate it into a SQL query. Keep webhook URLs and API keys in convars (GetConvar), never hardcoded in the resource.
 - **Database queries.** Modern libraries like oxmysql already return promises, so you can `Await` them directly. Older callback-style MySQL wrappers you wrap yourself, the same way you wrapped `PerformHttpRequest`.
 - **NUI callbacks and any "do this, get a result later" native.** If it hands you a callback instead of a return value, it is a candidate for promise-wrapping.
 
@@ -245,11 +246,12 @@ The rule of thumb: if two async steps depend on each other, promises plus `Await
 
 <FailureList
   items={[
-    { symptom: "attempt to yield across a C-call boundary", fix: "You called Citizen.Await directly in the command handler instead of inside Citizen.CreateThread. Wrap the awaiting work in a thread, as Step 4 does." },
+    { symptom: "Current execution context is not in the scheduler", fix: "Citizen.Await ran from a plain function call outside CreateThread, SetTimeout, or the event system. Move the awaiting work into a scheduler-managed context." },
     { symptom: "The command prints start and then nothing, forever", fix: "A promise was never settled. Every path through your callback must call p:resolve or p:reject. If PerformHttpRequest never fires its callback (bad URL, host unreachable), the promise stays pending and Await waits forever. Add a reject on the failure branch." },
     { symptom: "attempt to call a nil value (global 'promise')", fix: "promise.new is provided by the FiveM runtime, not a require. Confirm this is a real FiveM server resource started with ensure, not the in-browser Lua sandbox, which has no FiveM globals." },
     { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run it. Run promisetest from the txAdmin Live Console, not the in-game chat box (press T)." },
     { symptom: "An error stops the thread after a 500 response", fix: "You awaited a promise that rejected without wrapping it in pcall. Either wrap the await in pcall as Step 4 does, or make sure the endpoint cannot reject on the happy path." },
+    { symptom: "The success calls reject with HTTP 503 or 429, or hang, even though your code is correct", fix: "httpbin.org is a free public test service and is sometimes down, rate-limited, or blocked by your host's firewall. This is the endpoint failing, not your promise. Confirm reachability first by running this in the server console: it should print a 200. If httpbin is down, swap the three URLs for any other endpoint you control that returns 200, or retry later. A real resource should never depend on a free public test API in production." },
   ]}
 />
 
@@ -260,7 +262,7 @@ The rule of thumb: if two async steps depend on each other, promises plus `Await
     "Explain that a promise is a claim ticket for a value that does not exist yet, and name its three states: pending, resolved, rejected.",
     "Wrap a callback API like PerformHttpRequest in promise.new, resolving on success and rejecting on failure.",
     "Use Citizen.Await to pause a thread until a promise settles and read the value back into a local, without blocking the server.",
-    "Say why Await must run inside Citizen.CreateThread and recognise the attempt to yield across a C-call boundary error.",
+    "Say why Await needs a scheduler-managed coroutine and use CreateThread when the current context is uncertain.",
     "Chain three dependent async calls top to bottom instead of nesting them, and catch a rejected promise with pcall.",
   ]}
 />

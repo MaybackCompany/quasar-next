@@ -71,15 +71,15 @@ Two things to lock in before you write a line. First, the artifacts (`server/`) 
     ensure chat
     ensure spawnmanager
     ensure sessionmanager
-    ensure basic-gamemode
     ensure hardcap
     ensure rconlog
 
-    # Then dependencies BEFORE the resources that depend on them:
-    ensure oxmysql        # database layer (registers MySQL exports)
-    ensure ox_lib         # shared library (callbacks, UI, utils)
-    ensure es_extended    # framework, needs oxmysql + ox_lib above it
-    ensure my_job_script  # your script, needs es_extended above it
+    # Add only resources that actually exist in your resources folder.
+    # Follow the official recipe and each manifest: dependency before dependent.
+    # ensure oxmysql
+    # ensure ox_lib
+    # ensure es_extended
+    # ensure my_job_script
 
     ## --- ScriptHook (0 = blocked, the safe default) ---
     sv_scriptHookAllowed 0
@@ -98,7 +98,7 @@ Two things to lock in before you write a line. First, the artifacts (`server/`) 
     sets sv_projectDesc "A teaching server built from zero."
 
     ## --- Game build (STARTUP ONLY; pick a current build) ---
-    sv_enforceGameBuild 3407       # Agents of Sabotage; use 3751 for the newest
+    sv_enforceGameBuild 3751       # verify against the supported list before launch
 
     ## --- Icon / nested configs ---
     #load_server_icon myLogo.png   # 96x96 PNG next to server.cfg
@@ -135,7 +135,7 @@ Two things to lock in before you write a line. First, the artifacts (`server/`) 
     add_principal identifier.fivem:1 group.admin
     ```
 
-    Replace `changeme` with the real key from `https://portal.cfx.re`. Replace `identifier.fivem:1` with your own identifier. To find it, boot the server, join it, and run `status` in the console to print every connected player with their identifiers. Copy your `license:` or `fivem:` value and paste it in.
+    Replace `changeme` with the real key from `https://portal.cfx.re`. Replace `identifier.fivem:1` with your own identifier. To find it, join the server and open your player record in txAdmin's **Players** panel, then copy the full `fivem:` value. The `status` command shows a player's primary identifier, not every identifier type.
 
     <Callout variant="fivem" title="Treat the license key like a password">
       The license key is a secret. Do not commit it to a public repo and do not paste it in a Discord channel. If it ever leaks, regenerate it from the portal immediately. This is why many owners keep it in a separate `server_internal.cfg` that is `exec`'d but git-ignored.
@@ -143,7 +143,7 @@ Two things to lock in before you write a line. First, the artifacts (`server/`) 
   </Step>
 
   <Step num={4} title="Boot the server and read the console" outcome="The server starts clean and lands on your config.">
-    Launch the server from inside the `server-data` folder so it finds `server.cfg`:
+    The commands below are the **vanilla, non-txAdmin** launch path. If txAdmin manages this server, use txAdmin's Start/Restart action instead; launching FXServer with `+exec` directly bypasses the normal txAdmin startup path and can create a second server process.
 
     ```text
     # Windows, run from server-data:
@@ -156,15 +156,14 @@ Two things to lock in before you write a line. First, the artifacts (`server/`) 
     Watch the console as it executes the file top to bottom. You should see each `ensure` line start its resource in order, then the server settle and report it is listening.
 
     <ExpectedOutput>
-      Started resource mapmanager
+      # Illustrative — your exact lines and their wording depend on your
+# artifacts version and which resources you ensure. The shape is what matters:
+# resources start in the order you wrote them, then the key is authenticated.
+Authenticating server license key...
+Started resource mapmanager
 Started resource chat
 Started resource spawnmanager
 Started resource sessionmanager
-Started resource oxmysql
-Started resource ox_lib
-Started resource es_extended
-Server license key authentication succeeded.
-Authenticating server license key...
     </ExpectedOutput>
 
     The exact lines depend on your resources, but the shape is the goal: resources start in the order you wrote them, and the license key authenticates instead of refusing to boot.
@@ -197,7 +196,7 @@ ensure my_job_script  # your script, depends on es_extended
 
 This is the section the conceptual lesson hammered, and it is the one that bites beginners most. FXServer reads `server.cfg` from top to bottom, and that reading order is the load order. There is no separate priority field. A resource that needs another resource's exports or events must be `ensure`d below the one it depends on, because the dependency has to be running before the dependent tries to call it.
 
-The chain in this file is the standard one. `oxmysql` first, because it registers the database exports everything else uses. Then `ox_lib`, the shared utility library. Then your framework, `es_extended` here (it would be `qb-core` or `qbx_core` on a Qbox server), which calls into both of those on startup. Then your own scripts, which call into the framework. Flip any two of these and the higher one errors on boot with a missing export or event, because the thing it needs has not started yet.
+The commented chain is an example, not a universal dependency list. `oxmysql` must start before resources that declare or import it. `ox_lib` must start before resources that import `@ox_lib/init.lua`. A framework and your own scripts come after the specific dependencies their official recipe or manifest names. Do not install an ox resource merely because it appears in an example.
 
 Notice the directive is `ensure`, not `start`. `ensure` is idempotent: it starts the resource if it is stopped and restarts it if it is already running. `start` errors if the resource is already up and is useless on a live restart. Always reach for `ensure` in the config. And if you drop a brand-new resource folder in while the server is live, run `refresh` in the console first so FXServer rescans and loads its manifest, then `ensure` it.
 
@@ -228,14 +227,14 @@ This block is where the prefix matters more than the value. FiveM has three conv
 ```cfg
 set onesync on
 sv_maxclients 48
-sv_enforceGameBuild 3407
+sv_enforceGameBuild 3751
 ```
 
 `sv_maxclients` is your slot count and accepts 1 to 2048, though your practical ceiling depends on your OneSync tier and your hosting. The starter uses 48.
 
 `set onesync on` is the line that gets written wrong in old tutorials. The current syntax is `set onesync on`. The old `onesync_enabled true` form is deprecated and you should not copy it. OneSync has three values: `on` for full state awareness, which you need for server-side entity logic, for routing buckets, and for any server above 32 slots; `legacy` for a compatibility mode; and `off` for plain peer-to-peer. For a real server in 2026 you want `on`.
 
-`sv_enforceGameBuild` locks which GTA5 build clients load, so everyone is on the same game version as your content. The critical property of this convar is that it is startup-only. You cannot change it while the server runs; you set it here and restart. Pick a current build. As of 2026 the values you care about are `3258` (Bottom Dollar Bounties), `3407` (Agents of Sabotage), `3570` (Money Fronts), and `3751` (A Safehouse in the Hills). This file uses `3407`. Do not paste an outdated `2802` from a years-old guide unless your content specifically needs it.
+`sv_enforceGameBuild` locks which GTA V content build clients load. It is startup-only, so changing it requires a full server restart. This file uses `3751`, which appears in the supported game-build list at the time of this 2026 review. Verify the live Cfx.re list before launch and choose the build your assets require. Do not confuse this number with the FXServer artifact build shown on the artifact download page.
 
 ### Permissions: the ACE tree
 
@@ -249,7 +248,7 @@ FiveM permissions are an ACE tree. You build it with two directives. `add_ace [p
 
 Read the three lines as a story. The first gives the `group.admin` principal the right to run every command. The second carves out an exception: `group.admin` may run everything except `quit`, so an admin cannot accidentally shut the whole server down with a typo. The third line is the one you personalize: it puts a specific player, identified by `identifier.fivem:1`, into `group.admin`, so that player inherits the admin rights you just defined.
 
-The identifier is the part you change. Players can be identified by `identifier.fivem:`, `identifier.steam:`, `identifier.license:`, or `identifier.discord:`. You get the real value by running `status` in the live console, which prints every connected player with their identifiers. Frameworks layer their own naming on top of this same ACE system: ESX uses `group.admin` and `group.owner`, QBCore uses `qbcore.god` and `qbcore.admin`, and Qbox uses `group.admin`, `group.mod`, and `group.support`. They are all just principals in this same tree.
+The identifier is the part you change. Players can be identified by `identifier.fivem:`, `identifier.steam:`, `identifier.license:`, or `identifier.discord:`. Use txAdmin's player record to copy the full value you intend to grant; `status` shows only the primary identifier. Frameworks layer their own names on top of ACE: verify those names against the official recipe for the exact framework version you run.
 
 <Checkpoint question="You ran /addpermission or added a principal in the live console and it worked, but after a restart the admin is gone. Why?">
   Permissions added at runtime in the console are session-only ACE principals. They apply to the current run of the server and are not written back to `server.cfg`. When the server restarts it re-reads the config, and since your live grant was never saved there, the admin loses access. For a permanent admin you must add the matching `add_principal identifier.&lt;type&gt;:&lt;id&gt; group.admin` line to `server.cfg` (or to a `permissions.cfg` you `exec`). Runtime grants are for quick testing; the config file is the source of truth that survives a restart.
@@ -261,7 +260,7 @@ The identifier is the part you change. Players can be identified by `identifier.
 sv_licenseKey changeme
 ```
 
-This is the one required line. Without a valid key the server refuses to start. The starter ships the literal placeholder `changeme`, and leaving it is the number one reason a fresh server will not boot. Get your key from the Cfx.re portal at `https://portal.cfx.re`. The old `keymaster.fivem.net` URL still redirects, but `portal.cfx.re` is the current home.
+This is the one required line. Without a valid key the server refuses to start. The starter ships the literal placeholder `changeme`, and leaving it is the number one reason a fresh server will not boot. Get your key from the Cfx.re portal at `https://portal.cfx.re`. The old `keymaster.fivem.net` site was retired on 1 December 2025 and no longer works, so ignore any older tutorial that points you there. `portal.cfx.re` is the only current home for license keys.
 
 It sits at the bottom of this file by convention, but FiveM does not care where it appears. What matters is that it is present and valid. Because it is a secret, many owners move it out of the main `server.cfg` into a separate file they `exec` and keep out of version control, so the config can be shared without leaking the key.
 
@@ -274,7 +273,7 @@ It sits at the bottom of this file by convention, but FiveM does not care where 
     { symptom: "A framework or script errors on boot with a missing export or unknown event", fix: "A dependent resource is ensured above its dependency. Move it below: ensure oxmysql, then ox_lib, then the framework, then your script. Load order is the top-to-bottom order of the lines." },
     { symptom: "onesync_enabled true does nothing or warns it is deprecated", fix: "That is the old syntax. Use set onesync on. OneSync must be on for server-side state awareness, routing buckets, and any server above 32 slots." },
     { symptom: "Nobody can connect after you edited the endpoints", fix: "You changed the 0.0.0.0 IP. Put it back. 0.0.0.0 binds all interfaces and is correct for almost every host. Change only the port number, never the IP, unless the box has multiple network cards." },
-    { symptom: "sv_enforceGameBuild change is ignored until you restart", fix: "That convar is startup-only and cannot change at runtime. Set it in server.cfg, then fully restart the server. Pick a current build like 3407 or 3751, not an outdated one." },
+    { symptom: "sv_enforceGameBuild change is ignored until you restart", fix: "That convar is startup-only. Set a value from the live supported game-build list, then perform a full server restart. Do not use the FXServer artifact number." },
     { symptom: "Your admin works until the next restart, then loses access", fix: "You granted the principal in the live console, which is session-only. Add the add_principal line to server.cfg so it survives a restart." },
   ]}
 />
@@ -311,6 +310,7 @@ It sits at the bottom of this file by convention, but FiveM does not care where 
     { label: "FiveM setting up a server (vanilla)", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/" },
     { label: "FiveM server commands and convars", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
     { label: "sv_enforceGameBuild build list", href: "https://docs.fivem.net/docs/server-manual/server-commands/#sv_enforcegamebuild-build" },
-    { label: "Cfx.re portal (license keys)", href: "https://portal.cfx.re" }
+    { label: "Cfx.re portal (license keys)", href: "https://portal.cfx.re" },
+    { label: "txAdmin official repository · running txAdmin", href: "https://github.com/citizenfx/txAdmin#running-txadmin" }
   ]}
 />

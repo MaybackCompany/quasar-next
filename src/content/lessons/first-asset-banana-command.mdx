@@ -1,0 +1,174 @@
+<LessonHero
+  crumbs="Module 01 · Lesson 02"
+  title="Your first asset: a command in the game"
+  meta={[
+    { label: "You'll build", value: "Your first real asset: a /bananas command that prints \"Bananas are cool\" to the F8 console while you are in the game." },
+    { label: "Time", value: "~12 minutes" },
+    { label: "You need", value: "A local FiveM server you can join and restart, the FiveM client installed, and a text editor (VS Code is free)." },
+    { label: "You'll learn", value: "What an asset is, how a client_script differs from a server_script, and why a client command prints to F8 in-game and not the server console" },
+  ]}
+>
+  You printed a line to the **server** console already. Now build your first real **asset**, a resource you join the game and trigger yourself. You will type `/bananas` in-game and watch `Bananas are cool` appear in the F8 console on your own screen. Same `RegisterCommand` you already met, but this time the code runs on the **client**, so the proof shows up in a different place. That difference is the whole point of this lesson.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a local FiveM server I can join with connect 127.0.0.1:30120.",
+    "I can edit server.cfg and restart one resource from the txAdmin Live Console.",
+    "I know F8 opens the in-game client console.",
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds one client command as a working FiveM resource named `qu_bananas`. An **asset** is just a resource: a folder with an `fxmanifest.lua` that the server loads. Follow the folder names, file names, code, and steps exactly. Once `Bananas are cool` prints in your F8 console, the next section takes it apart so you know why it landed there and not in the server console.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this asset.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_bananas
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact layout:
+
+    ```text
+resources/qu_bananas/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which file to load, and on which side.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    The key word is `client_script`. It tells FiveM to send `client.lua` to each player's game and run it there, not on the server. (There is no `lua54 'yes'` line: as of June 2025 Lua 5.4 is the only runtime, so that directive is a deprecated no-op you leave out.)
+  </Step>
+
+  <Step num={4} title="Write the command" outcome="The asset is now runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('bananas', function()
+    print('[qu_bananas] Bananas are cool')
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start it, join, and run it" outcome="The line prints in your own F8 console.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_bananas
+    ```
+
+    Save, then in the **txAdmin Live Console** start the asset:
+
+    ```text
+    refresh
+    ensure qu_bananas
+    ```
+
+    `refresh` makes the server notice the new folder; `ensure` starts it. Now **join your own server** (in the FiveM client press F8 and type `connect 127.0.0.1:30120`, or use Direct Connect to the same address). Once you are in the world, press **F8** to open the in-game console and type:
+
+    ```text
+    bananas
+    ```
+
+    <ExpectedOutput>
+      [qu_bananas] Bananas are cool
+    </ExpectedOutput>
+
+    That line appears in **F8 on your screen**, not in the server console. You can also type `/bananas` in the in-game chat box (press T) and it runs the same way.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran it and the line showed up in F8. Now take it apart, because the *where* is the lesson.
+
+### Why this prints in F8, not the server console
+
+```lua
+print('[qu_bananas] Bananas are cool')
+```
+
+This is the same `print` you used before, and `print` always writes to the console of **whichever side the code is running on**. Last time the code was a `server_script`, so the line landed in the server console (the txAdmin Live Console). This time the manifest says `client_script`, so the code runs inside *your* game, and `print` writes to *your* client console, which is the one you open with **F8**. Nothing was sent across the network. The server never saw this line at all.
+
+Lock in the rule: **`server_script` output goes to the server console; `client_script` output goes to the F8 console of the player running it.** When a print "disappears," the first thing to check is which side the file is on and which console you are reading. Half of all early FiveM confusion is reading the wrong console.
+
+### The command, and the restricted flag
+
+```lua
+RegisterCommand('bananas', function()
+    print('[qu_bananas] Bananas are cool')
+end, false)
+```
+
+`RegisterCommand` wires the typed word `bananas` to the handler, exactly like before. The one change is the last argument:
+
+- `false` means the command is **not restricted**. Anyone can run it, including you from the F8 console and any connected player from the chat box. That is fine here because the command only prints a harmless line on the caller's own screen.
+- If you had passed `true`, the command would require an ACE permission, and an ordinary player typing `/bananas` in chat would be silently denied.
+
+The rule to carry forward: a harmless, local, cosmetic command can be `false`. The moment a command changes real state (money, items, health, jobs) it must be `true` and gated, because the client is attacker-controlled and anything a player can trigger, a cheater can trigger too.
+
+<Checkpoint question="You move the exact same code into a server_script instead of a client_script. You join, press F8, and type bananas, but nothing shows in F8. Where did the line go?">
+  To the **server console**. `print` writes to the console of the side the code runs on. As a `server_script`, the handler runs on the server, so the line prints in the txAdmin Live Console, not your F8. The code is not broken, you are reading the wrong console. This side-decides-the-console rule is the single most useful thing to internalize before you write anything bigger.
+</Checkpoint>
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Nothing prints in F8 when I type bananas", fix: "Confirm you are actually connected in-game (the F8 console only shows client output once your ped is in the world), and that the manifest line reads client_script 'client.lua' exactly. A server_script would print to the server console instead." },
+    { symptom: "could not find resource qu_bananas", fix: "You added the folder while the server was running and did not rescan. Run refresh in the Live Console, then ensure qu_bananas." },
+    { symptom: "attempt to call a nil value (global 'RegisterCommand')", fix: "Misspelled native. It is RegisterCommand, capital R and C. Lua is case sensitive." },
+    { symptom: "The line prints in the server console, not F8", fix: "Your manifest declares the file as a server_script (or you put the code in server.lua). Make it a client_script so it runs on the player and prints to F8." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain that an asset is just a resource: a folder with an fxmanifest.lua the server loads.",
+    "Use client_script to run code on the player and print to their F8 console.",
+    "State the rule: server_script prints to the server console, client_script prints to F8.",
+    "Say why a harmless cosmetic command can be restricted false, while a state-changing one must be true.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Make the command answer back with the player's own coordinates, so it prints something only the client could know:
+
+  ```lua
+  RegisterCommand('bananas', function()
+      local coords = GetEntityCoords(PlayerPedId())
+      print(('[qu_bananas] Bananas are cool, and you are at %.1f %.1f %.1f'):format(coords.x, coords.y, coords.z))
+  end, false)
+  ```
+
+  Restart `qu_bananas`, rejoin if needed, and run `bananas` in F8. The coordinates change as you walk around. `PlayerPedId()` and `GetEntityCoords` are **client** natives, which is exactly why this only works inside a `client_script`, the same side your print is already on. You just proved the client knows things the server would have to ask for.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM RegisterCommand reference", href: "https://docs.fivem.net/natives/?_0x5FA79B0F" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+    { label: "FiveM client console (F8) commands", href: "https://docs.fivem.net/docs/client-manual/console-commands/" },
+  ]}
+/>

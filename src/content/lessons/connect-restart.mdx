@@ -39,7 +39,7 @@
     localhost
     ```
 
-    The first connect downloads any resources your server added, so the loading screen takes a moment. `localhost` means "this same computer" because you run the server and the client on one PC. Real players join later with your public IP or a Cfx.re join code.
+    The first connect downloads any resources your server added, so the loading screen takes a moment. `localhost` means "this same computer" because you run the server and the client on one PC. Real players join later with your public IP or a Cfx.re join code. Security note: your Cfx.re license key in `server.cfg` is a secret. Never paste it in chat, screenshot it, or commit it to Git. And exposing your public IP / opening the game port (default 30120) means strangers can attempt to connect, so only do that behind a firewall once you understand it.
 
     <ExpectedOutput>
     Loading screen progresses, then you spawn in-game on the default map.
@@ -53,7 +53,7 @@
     tx
     ```
 
-    `tx` opens the txAdmin admin menu, the same txAdmin admin menu you can also open with the `/tx` (or `/txadmin`) command, or with a key you assign yourself under Game Settings > Key Bindings > FiveM ('(txAdmin) Menu: Open Main Page'). txAdmin sets no default keybind. Press `F8` again to close the console. F8 is also where you run client-side commands later, like your own `RegisterCommand` callbacks.
+    `tx` opens the txAdmin admin menu. In the F8 console you type commands without a leading slash, so `tx` here is the same registered command as `/tx` (or `/txadmin`) typed in the chat box, or with a key you assign yourself under Game Settings > Key Bindings > FiveM ('(txAdmin) Menu: Open Main Page'). txAdmin sets no default keybind. Press `F8` again to close the console. F8 is also where you run client-side commands later, like your own `RegisterCommand` callbacks.
 
     <ExpectedOutput>
     The txAdmin admin menu opens on screen (identical to running /tx or to your assigned txAdmin Menu keybind).
@@ -61,7 +61,7 @@
   </Step>
 
   <Step num={3} title="Learn ensure vs restart vs refresh" outcome="You can pick the right reload command without guessing.">
-    Three commands, three jobs. Run them from the txAdmin Live Console or from F8 in-game.
+    Three commands, three jobs. Run them from the **txAdmin Live Console or the FXServer server console**. They are server commands and do not run from a normal player's F8 client console.
 
     ```text
     ensure my-resource
@@ -73,7 +73,7 @@
     restart my-resource
     ```
 
-    `restart` stops then starts a running resource in one atomic step. Use it after you edit a Lua or JS file. Do not type `stop` then `start` as two separate commands; that leaves a window where the resource is dead.
+    `restart` stops then starts a running resource in one single step (it never leaves the resource off in between). Use it after you edit a Lua or JS file. Do not type `stop` then `start` as two separate commands; that leaves a window where the resource is dead.
 
     ```text
     refresh
@@ -90,13 +90,14 @@
     ```
 
     <ExpectedOutput>
+    Two lifecycle lines appear (exact text and spacing vary by artifact version, illustrative):
     [    info] Stopping resource chat
     [    info] Started resource chat
     </ExpectedOutput>
   </Step>
 
   <Step num={4} title="Read the server console one line at a time" outcome="You can label any console line as info, warn, or error.">
-    Open txAdmin, then Live Console. Lines look like the ones below. Read them top to bottom:
+    Open txAdmin, then Live Console. The sample lines below are illustrative (your real lines will name your own resources and players); read them top to bottom:
 
     ```text
     [    info] Console: Resource scoreboard started.
@@ -122,12 +123,12 @@
   </Step>
 
   <Step num={5} title="Find the logs on disk" outcome="You know where to look when the Live Console cannot show you something.">
-    The Live Console only keeps the most recent output. Older history is written to disk by txAdmin under `txData/<server>/`. The log folders are:
+    The Live Console only keeps the most recent output. Older history is written to disk by txAdmin under `txData/<profile>/` (the `<profile>` part is the name of your txAdmin data profile, which is `default` unless the server owner set a custom one). The log folders are:
 
     ```text
-    txData/<server>/logs/fxserver/    full FXServer console rolling log
-    txData/<server>/logs/admin/       admin actions: kick, ban, restarts
-    txData/<server>/logs/server/      server-side script and event logs
+    txData/<profile>/logs/fxserver/    full FXServer console rolling log
+    txData/<profile>/logs/admin/       admin actions: kick, ban, restarts
+    txData/<profile>/logs/server/      server-side script and event logs
     ```
 
     If you started txAdmin with a different profile or moved your data folder, the path shifts. The reliable move is to search for it. On Windows, run this in Command Prompt (it is `cmd.exe` syntax, not bash):
@@ -143,14 +144,14 @@
     ```
 
     <ExpectedOutput>
-    The search prints the logs folder under txData/&lt;server&gt;/logs.
+    The search prints the logs folder under txData/&lt;profile&gt;/logs.
     </ExpectedOutput>
   </Step>
 
   <Step num={6} title="Run the edit, restart, observe loop" outcome="You complete the loop you will repeat thousands of times.">
     Every script change from now on follows the same three beats. Practice it once on the `chat` resource:
 
-    1. **Edit** the Lua file in VS Code and save with `Ctrl`+`S`.
+    1. **Edit** one of your own resource's Lua files in VS Code and save with `Ctrl`+`S`. Do not edit the bundled `chat` resource for this exercise.
     2. **Restart** the resource. Two ways:
 
     ```text
@@ -159,7 +160,9 @@
 
     Or in txAdmin, open the Resources tab and click **Restart** on the row.
 
-    3. **Observe**. Watch the Live Console for the lifecycle lines, then trigger the feature you changed to confirm it works.
+    3. **Observe**. Watch the Live Console for the lifecycle lines, then trigger the feature you changed to confirm it works. If you only want to practise the command safely, restart `chat` without editing it.
+
+    Recover from a bad edit: if a red `error` line appears after you restart, your last edit broke something. Undo it in VS Code with `Ctrl`+`Z`, save again with `Ctrl`+`S`, and run `restart my-resource` once more. The error should clear.
 
     Keep VS Code on the left half of your screen and the Live Console on the right half. You edit on the left, save, and watch the right side react with no alt-tab.
 
@@ -178,7 +181,7 @@
     { symptom: "F8 does not open the console", fix: "Your keyboard layout may map F8 elsewhere. In FiveM go to Settings -> Key Bindings, search \"console\", and re-bind it." },
     { symptom: "could not find resource", fix: "Folder name typo, or you skipped refresh after dropping in a new folder. Run refresh first, then ensure my-resource. Names are case-sensitive on Linux." },
     { symptom: "I edited the file but the server still runs old code", fix: "Saving does not reload anything. Run restart my-resource so FXServer drops the cached version." },
-    { symptom: "FXServer window vanished or the server crashed", fix: "Open the newest log under txData/&lt;server&gt;/logs/fxserver; the bottom of the file shows the crash. Comment out suspect ensure lines in server.cfg, restart, and isolate the bad resource." },
+    { symptom: "FXServer window vanished or the server crashed", fix: "Open the newest log under txData/&lt;profile&gt;/logs/fxserver; the bottom of the file shows the crash. Comment out suspect ensure lines in server.cfg, restart, and isolate the bad resource." },
   ]}
 />
 
@@ -190,7 +193,7 @@
     "Open F8 for the client console and run tx to reach the txAdmin menu.",
     "Pick ensure for server.cfg, restart for a hot reload after editing, and refresh for a brand-new folder.",
     "Label every console line as info, warn, or error and fix the topmost red line first.",
-    "Find persistent logs under txData/&lt;server&gt;/logs, and search for them if the path moved.",
+    "Find persistent logs under txData/&lt;profile&gt;/logs, and search for them if the path moved.",
     "Run the edit -> restart -> observe loop that every later lesson assumes."
   ]}
 />
@@ -198,7 +201,7 @@
 ## Try it yourself
 
 <Exercise>
-  Run the full dev loop once end to end without looking back at the steps: direct-connect to `localhost`, open `F8` and run `tx` to confirm the menu opens, then run `restart chat` and find the `Started resource chat` info line in the Live Console. Write down the exact command you typed and the exact output line you saw.
+  Run the loop once end to end: direct-connect to `localhost`, open `F8` and run `tx` to confirm the menu opens, then switch to the **txAdmin Live Console**, run `restart chat`, and find the `Started resource chat` line. Write down which console accepted each command.
 </Exercise>
 
 <Refs

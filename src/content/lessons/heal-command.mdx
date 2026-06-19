@@ -8,8 +8,10 @@
     { label: "Prereqs", value: "You can start a FiveM server and edit a file. That is enough." },
   ]}
 >
-  By the end of this lesson you will type `/heal` in chat and watch your character refill to full health, on a real server, with cheating already blocked.
+  By the end of this lesson you will type `/heal` in chat and watch your character refill to full health, with this command's cooldown enforced on the server.
 </LessonHero>
+<LessonVideo src="/lesson-videos/clase-1.mp4" caption="Quasar University: the revive / heal command." />
+
 
 <Prereq
   items={[
@@ -97,13 +99,15 @@ end)
     ensure qu_heal_command
     ```
 
-    Save, then run:
+    Save. Now start the resource in the live console (txAdmin Live Console or the FXServer console window) by typing:
 
     ```text
-    restart qu_heal_command
+    ensure qu_heal_command
     ```
 
-    Run this test:
+    Use `ensure`, not `restart`, the first time: the line you just added to `server.cfg` is only read when the whole server boots, so on an already-running server the resource has not started yet. `restart` only works on a resource that is already running, so it would do nothing here. `ensure` starts the resource if it is stopped and restarts it if it is already running, so it always works.
+
+    Join your own server, wait until your character has spawned in, then open the in-game chat box (press the chat key, by default `T`) and type the command, then press Enter:
 
     ```text
     /heal
@@ -118,7 +122,7 @@ F8: [qu_heal_command] healed
 
 ## How it works
 
-You just built a command that crosses the network twice. The chat input lands on the server, the server decides, and the answer travels back to your game to apply the health. Most beginner heal scripts skip the server and heal directly on the client. That version works on your screen and breaks the moment a cheater opens a menu. This one is built the right way from the first line. Here is what every line does.
+You just built a command that crosses the network twice. The chat input lands on the server, the server decides whether this resource's cooldown passed, and the answer travels back to the client to apply health. This protects the command rule. It does not stop a modified client from changing its own health by another route, so a server-approved heal command is not an anti-cheat. Here is what every line does.
 
 ### The manifest is just a list of files
 
@@ -191,8 +195,106 @@ Picture two rooms. The server room holds the rulebook and never lets players in.
 
 When would you reach for this pattern again? Any time you write a command that grants something. A `/giveweapon`, a `/repair`, a `/revive`, a shop purchase. They all share this shape: the server validates, then the client or the database applies. Learn it once here and you will reuse it for the rest of your scripting.
 
+## Now revive someone else
+
+Your `/heal` always acts on you, the person who typed it, so it never had to ask "who?". A `/revive` is the next rung up: an admin types `/revive 3` and player 3 stands back up. That one change, acting on someone other than the caller, forces two new jobs the heal command never needed. First, the command now carries an argument (the target id) that the player typed, and anything a player types is untrusted, so the server must read it and check it before acting. Second, because reviving another player is a power, not a self-service convenience, the command must be locked to admins. We will add a `/revive` to the same `qu_heal_command` resource and reuse the exact same spine: the server validates, then the client acts.
+
+<Callout variant="warning" title="A targeted command is a privilege, not a feature">
+  `/heal` healing yourself is harmless. `/revive <id>` lets one player change another player's state, which is grief bait if any player can run it. So this command is registered `restricted` (the third `RegisterCommand` argument is `true`), which means only an identity with the right ace permission may run it. The server console always bypasses the restriction, so you can test from the live console even before you grant yourself the ace.
+</Callout>
+
+Add this to the bottom of `server.lua`:
+
+```lua
+RegisterCommand('revive', function(src, args)
+    local targetId = tonumber(args[1])
+    if not targetId then
+        print('[qu_heal_command] usage: /revive <id>')
+        return
+    end
+
+    if GetPlayerName(targetId) == nil then
+        print('[qu_heal_command] no player with id ' .. targetId)
+        return
+    end
+
+    TriggerClientEvent('qu_heal_command:revive', targetId)
+    print('[qu_heal_command] revived ' .. GetPlayerName(targetId))
+end, true)
+```
+
+Add this to the bottom of `client.lua`:
+
+```lua
+RegisterNetEvent('qu_heal_command:revive', function()
+    local ped = PlayerPedId()
+    if IsEntityDead(ped) then
+        SetEntityHealth(ped, GetEntityMaxHealth(ped))
+        ClearPedTasksImmediately(ped)
+        print('[qu_heal_command] revived')
+    end
+end)
+```
+
+In the live console (txAdmin Live Console or the FXServer window) type `ensure qu_heal_command` to reload the resource so both new blocks load. Then, from that same server console, type `revive 1` (use your own server id, which `status` will show in the live console). Because the server console bypasses the `restricted` flag, the revive runs without any ace grant.
+
+<ExpectedOutput>
+Server: [qu_heal_command] revived yourName
+F8: [qu_heal_command] revived
+</ExpectedOutput>
+
+If you instead type `/revive 1` in the in-game chat box as a normal player, nothing happens and the server console prints an access-denied line. That is the `restricted` flag doing its job. To let a specific person run it from chat, add an ace in `server.cfg` (read at boot), for example `add_ace identifier.fivem:1234567 command.revive allow`, then `ensure qu_heal_command`.
+
+### Why every new line earns its place
+
+```lua
+RegisterCommand('revive', function(src, args)
+```
+
+This time the function keeps a second parameter, `args`. FiveM splits whatever the player typed after `/revive` on spaces and hands it over as a Lua table (an array). `/revive 3` gives `args[1] == "3"`. `src` is still the trustworthy server id of the caller, filled in by FiveM, but `args` is raw player text and is trusted by nothing.
+
+```lua
+    local targetId = tonumber(args[1])
+    if not targetId then
+        print('[qu_heal_command] usage: /revive <id>')
+        return
+    end
+```
+
+`args[1]` is always a string, or `nil` if the player typed `/revive` with nothing after it. `tonumber` converts `"3"` to the number `3`, and returns `nil` for anything that is not a number, including the empty case. So this one check catches both "they typed nothing" and "they typed garbage". When `targetId` is `nil` we print the usage hint to the server console and `return`, so the command never proceeds on bad input. This is the validate-at-the-boundary habit: the boundary is the moment untrusted text enters your server code.
+
+```lua
+    if GetPlayerName(targetId) == nil then
+        print('[qu_heal_command] no player with id ' .. targetId)
+        return
+    end
+```
+
+A number that parses cleanly can still point at nobody, for example `/revive 99` when no player 99 is connected. `GetPlayerName` returns the player's name for a connected server id and `nil` for an id that is not in the game, so this is a reliable presence test you can trust. Do not use ping for this, an existence check on ping is a guess, not a fact. If the id is empty we print why and `return`, so the revive event is only ever sent to a real, connected target.
+
+```lua
+    TriggerClientEvent('qu_heal_command:revive', targetId)
+    print('[qu_heal_command] revived ' .. GetPlayerName(targetId))
+end, true)
+```
+
+Here is the whole point of a targeted command. The first heal command always passed `src` as the target, the caller. This one passes `targetId`, so the event lands on the player who was named, not the admin who typed the command. The trailing `true` is the `restricted` argument, the same slot that held `false` in `/heal`. `true` means an ace permission is required, which is why a state-changing command that affects other players must use it. The print goes to the server console, where your admin actions belong as an audit trail.
+
+```lua
+RegisterNetEvent('qu_heal_command:revive', function()
+    local ped = PlayerPedId()
+    if IsEntityDead(ped) then
+        SetEntityHealth(ped, GetEntityMaxHealth(ped))
+        ClearPedTasksImmediately(ped)
+        print('[qu_heal_command] revived')
+    end
+end)
+```
+
+This runs on the target's machine, because health and ped state are client-side, exactly as in the heal command. The new piece is the guard `IsEntityDead(ped)`: a revive only makes sense on a downed player, so we refill health and then `ClearPedTasksImmediately(ped)` to cancel the death animation and ragdoll so the body actually gets up instead of lying there at full health. `print` here goes to the target's F8 console, not the server console, because client scripts print to F8. If you want the admin to see confirmation, the server-side print above already gives them that.
+
 <Checkpoint question="Why is the cooldown table in server.lua instead of client.lua?">
-  Because the server is the only side a player cannot tamper with. If the cooldown lived in `client.lua`, anyone running a cheat menu could reset or fake the table and heal as often as they liked. Keeping the rule on the server means the answer is decided somewhere the player has no access to. The client only ever receives a yes or a no.
+  Because a client-side cooldown can be reset by the player. Keeping it on the server means calls through this command receive a real yes or no. It does not prevent a modified client from healing outside this resource.
 </Checkpoint>
 
 ## If something went wrong
@@ -203,6 +305,10 @@ When would you reach for this pattern again? Any time you write a command that g
     { symptom: "attempt to index a nil value (global 'cooldown')", fix: "The local cooldown line is missing or sits below RegisterCommand. Put it on the first line of server.lua so the table exists before the command uses it." },
     { symptom: "Nothing happens and there is no deny message either", fix: "You ran /heal again within 60 seconds, so the cooldown blocked it, but the deny listener is not loading. Confirm client.lua is listed in fxmanifest.lua, restart, then wait the full minute." },
     { symptom: "Health refills but the server line never prints", fix: "An older client only heal script is also running and answering /heal first. Stop it, then restart qu_heal_command so only this resource owns the command." },
+    { symptom: "Nothing happens at all: no server line, no F8 line, no deny", fix: "The resource never started. server.cfg is only read at server boot, so adding the ensure line does not start it on an already-running server. In the live console type ensure qu_heal_command (not restart, which only acts on an already-running resource), confirm you see the resource start, then run /heal again from in-game chat." },
+    { symptom: "A normal player runs /revive in chat and nothing happens, with an access-denied line in the server console", fix: "That is the restricted flag working. The command needs an ace. Test from the live server console (it bypasses restrictions) or add_ace command.revive allow for that player's identifier in server.cfg, then ensure qu_heal_command." },
+    { symptom: "Server prints 'no player with id N' even though that player is online", fix: "You passed the wrong number. /revive takes the server id, not a character name or Steam id. Run status in the live console to read the correct server id, then revive that number." },
+    { symptom: "The target reaches full health in F8 but stays lying on the ground", fix: "ClearPedTasksImmediately is missing or ran before SetEntityHealth. The ped is still in its death task. Set health first, then clear tasks, and restart qu_heal_command." },
   ]}
 />
 

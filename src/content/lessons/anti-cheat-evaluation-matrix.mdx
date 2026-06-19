@@ -29,7 +29,7 @@
   rows={[
     { cmd: "Server-side detection", desc: "Does it validate on the server, or just trust client reports a cheater can fake?" },
     { cmd: "Active maintenance", desc: "Updated within the last weeks/months? Cheats evolve; a stale anti-cheat is dead weight." },
-    { cmd: "Performance cost", desc: "What does it add to resmon? A heavy anti-cheat that tanks the server trades one problem for another." },
+    { cmd: "Performance cost", desc: "What does it add to resmon (the in-game resource monitor you open with the resmon console command, which shows each resource's CPU time in milliseconds)? A heavy anti-cheat that tanks the server trades one problem for another." },
     { cmd: "Transparency", desc: "Can you read what it checks, or is it an opaque blob you must blindly trust with full access?" },
     { cmd: "Support and community", desc: "Real docs, real updates, real responses, not just a hype thread." },
     { cmd: "Bypass history", desc: "How fast are public bypasses patched? Ask in neutral communities, not the seller's channel." },
@@ -42,8 +42,8 @@ The order here is deliberate. Each layer catches a class of attack the one above
 
 - **Server authority.** The client may request, only the server grants, after a check. This is the floor. A client that asks for money gets recomputed by the server, never trusted.
 - **Rate limits.** Cap how often an action can happen so spam and automation are blocked. A legitimate player robs a store every few minutes; a bot tries every frame.
-- **Integrity checks.** Detect tampered resources and unexpected events fired by an injected script.
-- **Logging and review.** Catch patterns after the fact and ban with evidence, not vibes.
+- **Server-side invariants.** Reject impossible state transitions, invalid event arguments, out-of-range actions, and requests that do not follow the expected server-owned sequence.
+- **Logging and review.** Catch patterns after the fact and ban with evidence, not vibes. In practice this means recording suspicious requests server-side (to your server console, the txAdmin Live Console, or a logging resource) so a ban can point to a logged event rather than a hunch.
 - **Anti-cheat product.** A layer for injected menus and known cheat signatures, sitting on top of all of the above. Never under it.
 
 ## How it works
@@ -54,7 +54,7 @@ The reason this lesson exists is that the words above stay abstract until you kn
 
 An **injected menu** (often called an external menu or mod menu) is a separate program the cheater runs alongside the game. It hooks into the game client's memory and calls game functions directly, or fires fake network events at your server. Nothing on your server gave it permission. It exists entirely inside the player's machine, which the cheater controls completely.
 
-**Resource tampering** is different. Here the cheater modifies a resource your server actually sent them, or runs an extra client resource that talks to your scripts. The attack rides on top of legitimate resources rather than bypassing them. An integrity layer is aimed at this case: it looks for client state that does not match what the server shipped.
+**Resource tampering** is different. Here the cheater modifies a resource your server actually sent them, or runs an extra client resource that talks to your scripts. The attack rides on top of legitimate resources rather than bypassing them. An integrity layer is aimed at this case: it looks for client state that does not match what the server shipped. (As the next section notes, ordinary Lua cannot reliably hash every client file, so treat any product's integrity claims as something to verify, not assume.)
 
 Knowing which is which tells you which layer does the work. Server authority and rate limits defend against both, because they live on the server and judge requests no matter where they came from. Integrity checks and a product anti-cheat are aimed mostly at the injected and tampered client.
 
@@ -64,15 +64,15 @@ This is the mechanism behind never trust the client. The cheater owns the client
 
 So a check that runs on the client and sends a clean here, nothing wrong message to the server is worthless on its own. A cheater simply makes that message always say clean. The same logic, run on the server against a request the client cannot forge, holds, because the server decides the outcome and the client cannot edit the server. That is the entire reason server authority sits at the bottom of the stack: it is the only place a check cannot be tampered out of existence.
 
-### What an integrity check actually inspects
+### What the server can actually inspect
 
-Integrity check is a buzzword until you know what it reads. A real one inspects concrete signals on the server side, where the client cannot rewrite them:
+Do not promise that ordinary Lua can reliably enumerate a cheater's private injected code or prove every client file hash. Focus first on behavior and state the server can observe and own:
 
-- **Unexpected event names.** Your resources fire a known set of net events. An injected script firing an event your code never registers, or firing one far more often than your UI ever could, is a flag.
-- **Resource hashes and lists.** The set of client resources is known. A client running a resource that was never sent, or whose contents do not match what the server shipped, is tampering.
-- **Impossible triggers.** A reward event that should only follow a verified server-side action, arriving without that action having happened, did not come from your code path.
+- **Invalid event arguments.** Reject wrong types, impossible quantities, invalid entity ownership, and coordinates outside the allowed interaction area.
+- **Rate and sequence violations.** A purchase arriving before the server opened a transaction, or hundreds of requests inside a legitimate cooldown, is server-observable evidence.
+- **Impossible state transitions.** A reward request without the server-recorded prerequisite, or movement/value changes outside allowed bounds, should be rejected and logged.
 
-None of these trust a self-report from the client. Each one watches what the client does from a vantage point the cheater cannot reach, which is exactly why it works and why a client-side scanner does not.
+None of these trust a clean/dirty self-report from the client. They validate the request against server-owned state. A commercial anti-cheat may add platform-specific detections, but evaluate those claims with evidence and do not replace these controls.
 
 ## Common mistakes
 
@@ -93,14 +93,15 @@ None of these trust a self-report from the client. Each one watches what the cli
     "State plainly that server authority beats any anti-cheat product, and explain why a client-side report can be faked.",
     "Tell an injected menu apart from resource tampering, and name which layer addresses each.",
     "Score an anti-cheat on detection, maintenance, performance, transparency, and bypass history.",
-    "Say what an integrity check actually inspects: unexpected events, resource hashes, and impossible triggers.",
+    "Name the server-observable checks that matter: event arguments, rates and sequences, entity ownership, and impossible state transitions.",
     "Avoid opaque, stale, or hype-only options, and treat any product as the layer on top of server authority, never the replacement for it.",
   ]}
 />
 
 <Refs
   items={[
-    { label: "Cfx.re docs · Server-side scripting and security", href: "https://docs.fivem.net/docs/scripting-manual/" },
+    { label: "Cfx.re docs · Server security (never trust the client)", href: "https://docs.fivem.net/docs/developers/server-security/" },
+    { label: "Cfx.re docs · Scripting guides (overview)", href: "https://docs.fivem.net/docs/scripting-manual/" },
     { label: "Cfx.re docs · OneSync and server authority", href: "https://docs.fivem.net/docs/scripting-reference/onesync/" }
   ]}
 />

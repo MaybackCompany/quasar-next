@@ -23,6 +23,10 @@
   This lesson builds a client request with a server-decided reward as a working FiveM resource named `qu_trust_and_authority`. The client begs for 999999. The server ignores that number and pays a fixed 100. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes it apart and shows you why this single pattern is the foundation of every safe feature you will ever write.
 </Callout>
 
+<Callout variant="tip" title="This proof does not move real money">
+  The demo sends a server-decided number back for display only. A real reward must mutate the framework or database balance on the server, then send the resulting balance or confirmation to the client. A client print saying "paid" is not proof that durable money changed.
+</Callout>
+
 ## Build it
 
 <StepGroup>
@@ -92,11 +96,14 @@ end)
     ensure qu_trust_and_authority
     ```
 
-    Save, then run:
+    Save. Because this folder is brand new, the server has not indexed it yet, so you cannot `restart` it directly. In your server console (the FXServer window, or the txAdmin Live Console), run these two commands in order:
 
     ```text
-    restart qu_trust_and_authority
+    refresh
+    ensure qu_trust_and_authority
     ```
+
+    `refresh` makes the server scan the resources folder and discover the new files. `ensure` then starts the resource. After this first start, editing the code and running `restart qu_trust_and_authority` will work for reloads.
 
     Join the server, then run this in the chat box (press T):
 
@@ -104,9 +111,11 @@ end)
     /claimreward
     ```
 
+    The first line prints in your **server console** (the FXServer window or the txAdmin Live Console). The second line prints in the **FiveM client F8 console** on your own machine (open it in-game by pressing F8):
+
     <ExpectedOutput>
-      Server: [qu_trust_and_authority] player 1 asked for 999999, ignoring it
-F8: [qu_trust_and_authority] server paid 100
+      Server console: [qu_trust_and_authority] player 1 asked for 999999, ignoring it
+F8 console: [qu_trust_and_authority] server paid 100
     </ExpectedOutput>
   </Step>
 </StepGroup>
@@ -132,7 +141,7 @@ RegisterNetEvent('qu_trust_and_authority:claim', function(clientAmount)
     local src = source
 ```
 
-On the server, `RegisterNetEvent` listens for that named event. The word **Net** is the important part. A plain `RegisterEvent` only hears events fired on the same side. `RegisterNetEvent` opts in to hearing events fired *across the network* by clients. The argument the client shipped arrives as `clientAmount`. The first thing the handler does is copy `source` into a local named `src`. On the server, `source` is the server ID of the player who triggered the event, and it is the one value here you can actually trust, because the FiveM server stamps it, not the client. Capture it into a local immediately, because `source` can be overwritten if the handler ever yields with `Wait`.
+On the server, `RegisterNetEvent` listens for that named event. The word **Net** is the important part: it opts in to receiving the event across the network. The first thing the handler does is copy `source` into `src`. FiveM stamps `source` with the connection that sent the event, so the client cannot substitute another source argument. That identifies the connection only; it does not prove permission, identity ownership, proximity, or that the requested action is valid. Capture it immediately because raw `source` is unsafe to reuse after yielding.
 
 ```lua
     local reward = 100
@@ -167,14 +176,14 @@ This is why the demo prints the client's number before throwing it away. You are
 A fixed 100 is the simplest possible server decision. Real features need a value that varies, but the principle never changes: the server treats client input as an *untrusted request* and decides the real answer from data only the server holds. There are three moves you will reach for constantly.
 
 - **Allow-lists.** The client sends an item name. Do not act on the string. Check it against a server-side table of valid items first, and reject anything not on the list. The client picks *from* your options. It does not invent them.
-- **Range clamps.** The client sends a quantity. Clamp it to a sane window on the server, for example `math.max(1, math.min(quantity, 10))`, so a request for 999999 of something becomes the maximum you actually allow.
+- **Range validation.** If the feature genuinely lets the player choose a quantity, parse it as a number and reject values outside the server's allowed range. Do not turn an impossible request into a valid purchase unless that behavior is intentional.
 - **Ownership checks.** The client asks to sell a vehicle by its plate. Before paying, the server looks up whether *that* player owns *that* vehicle in its own database. The client does not get to assert ownership. The server confirms it.
 
 Notice the shape is identical every time. The client names what it wants. The server, holding the real state, decides whether and how much. In this lesson the decision was a constant. In your features it will be a lookup or a calculation. The trust boundary is exactly the same.
 
 ### Server-authoritative vs client-authoritative
 
-A piece of game state is **server-authoritative** when the server holds the true value and the client only displays it. It is **client-authoritative** when the client holds the true value and the server believes whatever it reports. Anything a player can gain by lying must be server-authoritative. Money, inventory, job, position for anti-teleport checks, owned property, admin status. If the client is the source of truth for any of those, the server is one edited file away from being drained.
+A piece of game state is **server-authoritative** when the server decides the accepted value and the client only requests or displays it. Anything a player can gain by lying must be checked by the server: money, inventory, job, owned property, admin status, and movement rules. Some GTA entity state is network-owned by clients, so this does not mean every position originates on the server; it means the server validates the action and never grants value solely because a client reported it.
 
 Some state can safely live on the client, the things a player gains nothing by faking: which animation is playing on their own ped, a local camera angle, a UI preference. The test is simple. Ask, what does a cheater win if they lie about this? If the answer is anything of value, that state belongs on the server, and the server must compute it from its own data, exactly as you just did with the reward.
 
@@ -202,7 +211,7 @@ It is also the prereq for the next two lessons. **Trigger a server-to-client eve
   items={[
     "State the rule out loud: the client asks, the server decides, and explain why the demo pays 100 while the client begged for 999999.",
     "Treat every argument arriving in a RegisterNetEvent handler as attacker-controlled, because the player owns the machine that sent it.",
-    "Capture local src = source on the first line of a server net handler, and know that src is the one value the client cannot forge.",
+    "Capture local src = source on the first line of a server net handler, and know that it identifies the sending connection but does not replace authorization or state validation.",
     "Compute an outcome from server-held data instead of from client input, and name the three tools: allow-lists, range clamps, ownership checks.",
     "Decide which game state must be server-authoritative by asking what a cheater wins if they lie about it.",
   ]}
@@ -219,12 +228,21 @@ It is also the prereq for the next two lessons. **Trigger a server-to-client eve
   TriggerClientEvent('qu_trust_and_authority:paid', src, clientAmount)
   ```
 
-  Restart, run `/claimreward`, and watch F8 print `server paid 50000000`. You just paid yourself fifty million by editing a file on your own machine. That is exactly what an exploiter does to a careless script. Revert the server back to `reward`, and add a range clamp so the lesson sticks: `local reward = math.max(1, math.min(clientAmount, 100))`. Now a request for 50000000 is clamped to 100, but a request for 50 pays 50. The client still cannot exceed what the server allows.
+  Restart, run `/claimreward`, and watch F8 print `server paid 50000000`. The demo still only prints, but it proves the trust failure. Revert the reply to `reward`, then validate the diagnostic input without using it for payout:
+
+  ```lua
+  if type(clientAmount) ~= 'number' or clientAmount < 1 or clientAmount > 100 then
+      print(('[qu_trust_and_authority] rejected invalid amount from %d'):format(src))
+  end
+  local reward = 100 -- still derived from the server's rule
+  ```
+
+  Validation can reject malformed input, but it must not turn attacker-controlled input into authoritative money. In a real resource, derive `reward` from server-held mission state, an allow-listed reward table, and a one-time completion record.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM RegisterNetEvent reference", href: "https://docs.fivem.net/natives/?_0x812B01F9F47A4A3F" },
+    { label: "FiveM RegisterNetEvent reference", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/RegisterNetEvent/" },
     { label: "FiveM TriggerClientEvent reference", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/triggering-events/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
   ]}

@@ -41,9 +41,9 @@
     sv_hostname "My ESX Server"
     sv_maxclients 48
 
-    # Pin the game build. Use a current build from the live artifacts list,
-    # never a stale number copied from an old guide.
-    sv_enforceGameBuild <current-build>
+    # GTA content build, not the FXServer artifact number. Keep the recipe's
+    # value unless an asset requires another supported build.
+    sv_enforceGameBuild 3095   # a real GTA content build number. Keep the value your install recipe sets, e.g. 3095.
 
     set mysql_connection_string "mysql://root:PASSWORD@127.0.0.1/fivem?charset=utf8mb4"
     set mysql_slow_query_warning 150
@@ -67,7 +67,7 @@
 
     - `sv_licenseKey` is your **Cfx.re Portal** key. Get it free at `portal.cfx.re` (this is the current portal; older guides call it Keymaster). It is required even for a local test server.
     - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn you about any query slower than 150 ms.
-    - `sv_enforceGameBuild` pins which GTA build players load. Pull a **current** build number from the live FiveM artifacts list; never paste a stale build from a 2024 tutorial.
+    - `sv_enforceGameBuild` pins which GTA content build players load. The FXServer artifacts page lists **server software** builds, not GTA content builds. Keep the official recipe's value unless your assets require another build, then use the supported list in the Cfx.re server-command reference.
 
     <Callout variant="fivem" title="Two of these lines are secrets">
       `sv_licenseKey` and `mysql_connection_string` contain secrets. Never paste their real values into Discord, public GitHub, screenshots, videos, or support tickets. Blur them first. If one leaks, revoke the key in the Cfx.re Portal and rotate the database password immediately.
@@ -84,7 +84,7 @@
     # 2. Shared helper library second
     ensure ox_lib
 
-    # 3. Framework core third (ESX or Qbox for a new 2026 server)
+    # 3. Framework core third
     ensure es_extended
 
     # 4. Core gameplay systems after the framework
@@ -96,6 +96,8 @@
     ```
 
     A script that calls `lib.` functions needs `ox_lib` above it, because `lib` does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
+
+    First, one word you need: an **export** is a function one resource publishes so other resources can call it (the FiveM way resources talk to each other). A resource can only answer an export call after it has started.
 
     Here is the same idea reduced to its smallest form, so you can see exactly what flips. `es_extended` calls `oxmysql` exports the moment it starts. Put the database layer first and those exports already exist. Put the framework first and it reaches for exports that have not been registered yet:
 
@@ -111,13 +113,13 @@
 
     The fix is never "restart it again" or "ensure it twice." The fix is to move the dependency line **above** the line that needs it, save, and reload. Order is the whole mechanism.
 
-    Here is the full chain in the order it must appear: database bridge, then shared library, then framework, then a script that depends on all three. One line each, with the reason it sits where it does:
+    Here is an **example** chain for a script whose own README and manifest name all three dependencies. Do not assume every framework needs every ox resource; install only what the official recipe and the resource manifest require.
 
     ```cfg
     ensure oxmysql        # database bridge, registers MySQL exports first
     ensure ox_lib         # shared library, defines the global lib used by the rest
-    ensure es_extended    # framework, needs oxmysql + ox_lib already loaded above it
-    ensure qs-smartphone-pro  # your script, needs the framework + ox_lib above it
+    ensure es_extended    # framework; its recipe requires oxmysql
+    ensure qs-smartphone-pro  # example only: place it after every dependency its docs name
     ```
 
     <Callout variant="fivem" title="Organize it into sections">
@@ -155,7 +157,7 @@
         return 'pong'
     end)
 
-    print('[qu_dep_provider] export ready')
+    print('[qu_dep_provider] export ready')  -- this text appears in the txAdmin Live Console when the resource starts
     ```
 
     `qu_dep_consumer/fxmanifest.lua`:
@@ -183,7 +185,7 @@
     end)
     ```
 
-    Notice neither manifest has a `lua54` line. Lua 5.4 is the only runtime in 2026, so that line is deprecated and ignored. Leave it out.
+    Notice neither manifest has a `lua54` line. Lua 5.4 is the only runtime in 2026 (Lua 5.3 was removed in June 2025), so the `lua54` setting is deprecated and you do not need to enable it. Leave it out.
   </Step>
 
   <Step num={5} title="Run the order test, then break it on purpose" outcome="You watch one console line flip when the order is wrong.">
@@ -194,21 +196,25 @@
     ensure qu_dep_consumer
     ```
 
-    Open txAdmin and go to the **Live Console**. Restart the provider, then the consumer:
+    Open txAdmin in your browser, click **Live Console** in the left sidebar, then type each command into the input box at the bottom of that page and press Enter (one line at a time). Stop both resources first, then start the provider and consumer in that order:
 
     ```text
-    restart qu_dep_provider
-    restart qu_dep_consumer
+    stop qu_dep_consumer
+    stop qu_dep_provider
+    start qu_dep_provider
+    start qu_dep_consumer
     ```
 
-    The consumer found the provider because it loaded second:
+    The consumer found the provider because it loaded second. Your exact lines may print in a slightly different order, and may carry a resource-name prefix the console adds, but the meaning is what matters (illustrative):
 
     <ExpectedOutput>
     [qu_dep_provider] export ready
     [qu_dep_consumer] provider found: pong
     </ExpectedOutput>
 
-    Now break it. Swap the two lines so the consumer is ensured **first**, save, and restart both again:
+    Note: a resource's exports only become callable after FXServer's first scheduler tick, which is why the consumer waits inside CreateThread before calling the provider.
+
+    Now break it. Swap the two lines so the consumer is ensured **first**, save, then stop both and start them in the wrong order. Merely restarting the consumer while the provider is still running would not test startup order.
 
     ```text
     ensure qu_dep_consumer
@@ -216,11 +222,13 @@
     ```
 
     ```text
-    restart qu_dep_consumer
-    restart qu_dep_provider
+    stop qu_dep_consumer
+    stop qu_dep_provider
+    start qu_dep_consumer
+    start qu_dep_provider
     ```
 
-    The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early:
+    The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early (illustrative; line order and any console prefix may vary):
 
     <ExpectedOutput>
     [qu_dep_consumer] provider MISSING (wrong ensure order)
@@ -277,7 +285,7 @@
 <Recap
   items={[
     "Read server.cfg top to bottom and explain what every important line does, including the two that hold secrets.",
-    "Order an ensure block as a dependency map: oxmysql, then ox_lib, then framework, then systems, then your scripts.",
+    "Order an ensure block from each resource's declared dependencies, putting every named dependency above its dependent.",
     "Build a throwaway provider and consumer to prove ensure order without risking a live server.",
     "Open any script's fxmanifest.lua, read its dependencies and shared_script lines, and place it correctly in server.cfg by inspection alone."
   ]}
