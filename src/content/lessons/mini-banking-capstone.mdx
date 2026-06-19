@@ -68,7 +68,7 @@ dependencies {
   </Step>
 
   <Step num={4} title="Create the balance table" outcome="The database has one row per player, keyed so it cannot duplicate.">
-    Run this SQL in your database before starting the resource. oxmysql speaks to MariaDB, which is the recommended engine for FiveM in 2026:
+    Run this SQL in your database before starting the resource. oxmysql works with both MySQL and MariaDB; MariaDB is the most common choice for FiveM servers and benchmarks fastest in oxmysql's own tests:
 
     ```sql
 CREATE TABLE IF NOT EXISTS qu_bank_accounts (
@@ -154,10 +154,10 @@ end, true)
     ensure qu_bank
     ```
 
-    Save, then run:
+    Save. If this is the first time you are starting the resource this session, type `ensure qu_bank` in the txAdmin Live Console to start it. After any later edit to the files, use `restart qu_bank` to reload it:
 
     ```text
-    restart qu_bank
+    ensure qu_bank
     ```
 
     Now run these four commands in order, from the txAdmin Live Console:
@@ -279,12 +279,22 @@ In every one of these, the rule is the same: the server reads its own data, deci
 <Exercise>
   Add a `transfer` action so a player can move money to another account, with the server enforcing every rule. Extend the command to accept `bank transfer &lt;toCitizenid&gt; &lt;amount&gt;`:
 
+  Because the command's opening guard runs `tonumber(args[2])` on every non-`balance` action, a transfer (where `args[2]` is the target id, not a number) is rejected before this branch runs. Add `transfer` to the guard exemption first, the same way `balance` is exempt:
+
+  ```lua
+  -- change the top-level guard so transfer is not blocked by the amount check
+  if action ~= 'balance' and action ~= 'transfer' and (not amount or amount <= 0 or amount ~= math.floor(amount)) then
+      print('[qu_bank] amount must be a positive whole number')
+      return
+  end
+  ```
+
   ```lua
   elseif action == 'transfer' then
       local target = args[2]
       local moveAmount = tonumber(args[3]) or 0
-      if moveAmount <= 0 then
-          print('[qu_bank] transfer amount must be positive')
+      if moveAmount <= 0 or moveAmount ~= math.floor(moveAmount) then
+          print('[qu_bank] transfer amount must be a positive whole number')
           return
       end
       if moveAmount > balance then
@@ -299,6 +309,36 @@ In every one of these, the rule is the same: the server reads its own data, deci
 
   Restart `qu_bank`, run `bank deposit 200`, then `bank transfer XYZ99999 250` and confirm it is rejected, then `bank transfer XYZ99999 50` and confirm both balances move. Notice you added two server-side checks: the amount must be positive, and it cannot exceed the balance. A real transfer also needs the two updates to succeed or fail together as a transaction, which is the next thing to learn after this.
 </Exercise>
+
+## Connecting it to real money (ESX and QBCore)
+
+The ledger above is deliberately standalone so you could prove the validation rule in isolation. To make `/bank` move a player's **actual** pocket cash and bank balance, you stop storing your own balance and instead read and write the **framework's** money. The server-authority rule does not change: the server reads the real balance, validates, then moves it. Only the storage moves from your table to the framework.
+
+Detect the framework once, then branch. Both blocks below run **server-side** and validate before moving anything:
+
+```lua
+-- ESX (es_extended) deposit: cash -> bank, validated on the server
+local xPlayer = ESX.GetPlayerFromId(src)          -- ESX.Player is the modern accessor
+if not xPlayer then return end
+local cash = xPlayer.getAccount('money').money     -- 'money' is the cash account in ESX
+if amount > 0 and cash >= amount then
+    xPlayer.removeAccountMoney('money', amount)
+    xPlayer.addAccountMoney('bank', amount)
+end
+```
+
+```lua
+-- QBCore deposit: cash -> bank, validated on the server
+local Player = QBCore.Functions.GetPlayer(src)
+if not Player then return end
+local cash = Player.Functions.GetMoney('cash')     -- QBCore money types: cash, bank, crypto
+if amount > 0 and cash >= amount then
+    Player.Functions.RemoveMoney('cash', amount, 'bank-deposit')
+    Player.Functions.AddMoney('bank', amount, 'bank-deposit')
+end
+```
+
+The validation is identical to your ledger: positive amount, sufficient balance, decided on the server, never trusting a number the client sent. Withdraw is the mirror image (check `bank >= amount`, then `RemoveMoney('bank', ...)` and `AddMoney('cash', ...)`). The full Quasar University banking project wraps this in a NUI front-end with deposit, withdraw, and transfer, but the rule never changes: **the server is the only place a balance moves.** Reach for a real database table (the pattern above) only when you need balances the framework does not already track.
 
 <Refs
   items={[

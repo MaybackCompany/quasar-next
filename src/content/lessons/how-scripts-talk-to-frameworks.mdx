@@ -4,7 +4,7 @@
   meta={[
     { label: "You'll build", value: "A server script that detects whether the server runs ESX, QBCore, or Qbox, gets the player object, gives them $100, and prints their job. The same action, three frameworks, one file." },
     { label: "Time", value: "~24 minutes" },
-    { label: "You need", value: "A local server running ONE framework you can restart (es_extended, qb-core, or qbx_core), plus the natives toolbox and command/print habits from earlier modules." },
+    { label: "You need", value: "A local server running ONE framework you can restart (es_extended, qb-core, or qbx_core), the FiveM client so you can join it in-game with `connect 127.0.0.1:30120`, plus the natives toolbox and command/print habits from earlier modules." },
     { label: "You'll learn", value: "How to get the player object in each framework -> how to read money and job -> the export style vs the event style -> why real scripts detect the framework first and then branch" },
   ]}
 >
@@ -101,6 +101,8 @@ elseif GetResourceState('qb-core') == 'started' then
     FrameworkName = 'qbcore'
 end
 
+-- `%s` is a placeholder: :format(FrameworkName) drops the value of
+-- FrameworkName into the %s slot, so this prints e.g. "...framework: esx".
 print(('[qu_framework_talk] detected framework: %s'):format(FrameworkName))
 
 RegisterCommand('fwtest', function(source)
@@ -144,6 +146,10 @@ end, true)
     add_ace group.admin command.fwtest allow
     ```
 
+    <Callout variant="warning" title="Why this command is locked down">
+      `/fwtest` gives a player $100. The `true` as the last argument to `RegisterCommand` marks the command **restricted**, and `add_ace group.admin command.fwtest allow` grants it only to the admin ACE group. Without both, ANY connected player could run `/fwtest` and print/grant themselves money. Any command that changes money, items, or permissions must be restricted server-side and gated by an ACE -- never trust that a command is hidden just because players do not know its name.
+    </Callout>
+
     Save, then in the txAdmin Live Console run:
 
     ```text
@@ -156,19 +162,19 @@ end, true)
       [qu_framework_talk] detected framework: esx
     </ExpectedOutput>
 
-    Now join with a txAdmin administrator account so the command has both a real player and the `command.fwtest` ACE. Open F8 and run:
+    Now connect to your own server and spawn in as a character (you must be fully loaded in the world, not on the loading screen). Join with the same account that is a txAdmin administrator, so the command has both a real player AND the `command.fwtest` ACE permission. Then press the **F8** key to open the in-game console (a black overlay at the top of the FiveM window), click into it, and type the command and press Enter:
 
     ```text
     /fwtest
     ```
 
-    Watch txAdmin. On ESX, with the default unemployed job, you see:
+    Watch txAdmin. The exact line depends on which framework you run; on an ESX server with the default unemployed job you see (illustrative -- your framework's wording will differ):
 
     <ExpectedOutput>
       [qu_framework_talk] ESX gave $100, job is unemployed
     </ExpectedOutput>
 
-    Open your wallet or inventory and confirm your cash went up by $100. On QBCore or Qbox the wording changes to match, and the job prints as `unemployed`, which is QBCore's and Qbox's default job name. The cash increase is the real proof: your script just changed live player state through the framework.
+    On QBCore the line reads `QBCore gave $100, job is unemployed`; on Qbox, `Qbox gave $100, job is unemployed`. `unemployed` is the default job on all three (it is the documented default in QBCore/Qbox PlayerData and ESX's default job). The real, framework-independent proof is two things together: (1) the printed line names your framework, and (2) your in-game cash goes UP by exactly $100 from whatever it was before. Note the starting balance first, run /fwtest, then re-check -- the delta is the proof, not any specific total, because each server configures its own starting cash.
   </Step>
 </StepGroup>
 
@@ -226,7 +232,7 @@ Player.Functions.AddMoney('cash', 100) -- QBCore
 exports.qbx_core:AddMoney(src, 'cash', 100, 'example') -- Qbox native API
 ```
 
-Here the dialects diverge. ESX uses named accounts such as `money` and `bank`. QBCore uses configured money types through `Player.Functions`. Qbox has a similar data model but its native API is the `qbx_core` money export, which also accepts a reason for the audit log. Do not assume optional money types such as `crypto` exist unless the server's framework configuration defines them.
+Here the dialects diverge. ESX uses named accounts such as `money` and `bank`. QBCore uses configured money types through `Player.Functions`. Qbox has a similar data model but its native API is the `qbx_core` money export, which also accepts a reason for the audit log. Stick to `cash` and `bank`, which all three frameworks define out of the box. Qbox's `AddMoney` also documents a built-in `crypto` type, but on ESX and QBCore extra accounts like `black_money` or `crypto` only exist if the server's framework configuration adds them -- so do not assume an account exists before you confirm it.
 
 > On ESX Legacy you will still see the shorter `xPlayer.addMoney(100)` and `xPlayer.removeMoney(100)` in older scripts. Those are backwards-compatibility shortcuts; `addAccountMoney('money', ...)` and `removeAccountMoney('money', ...)` are the current API, so write those today.
 

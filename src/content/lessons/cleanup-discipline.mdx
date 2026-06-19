@@ -61,6 +61,8 @@ dependencies {
 }
     ```
 
+    The `dependencies { '/onesync' }` line tells the server to refuse to start this resource unless OneSync (state awareness) is on. The drop-cleanup path later in this lesson resolves networked entities on the server, which only works with state awareness enabled, so this guard fails loudly at start instead of silently misbehaving later.
+
     There is no `lua54 'yes'` line. As of June 2025 that directive is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
@@ -215,7 +217,7 @@ end)
     /spawnbox then /clearboxes
     ```
 
-    The spawn print and the tracking print share one handle and net id pair, so your real numbers will differ from the sample below. The point is the shape: a spawn line, a server tracking line, and a cleared line, with no timeout line because you cleared first.
+    The spawn print and the tracking print share one handle and net id pair, so your real numbers will differ from the sample below. The point is the shape: a spawn line, a server tracking line, and a cleared line, with no timeout line because you cleared first. The server may report `deleted 0 boxes` even though cleanup worked: the client deletes its box locally first and then fires the event, so the server can find nothing left to delete by the time it resolves the net id. A zero count here means the client already cleaned up, not that cleanup failed.
 
     <ExpectedOutput>
       F8: [qu_cleanup_discipline] spawned object 524292 netId 8
@@ -324,7 +326,7 @@ for netId in pairs(owned) do
 end
 ```
 
-`NetworkGetEntityFromNetworkId` is the reverse of what the client did: it turns the net id back into a server-side entity handle. It returns `0` when no entity matches, for example because the box was already cleaned by the timeout, so you check `entity ~= 0` before the existence guard. Delete each one, drop the player's whole bucket, and the server returns to baseline. A crashed player no longer leaks.
+`NetworkGetEntityFromNetworkId` is the reverse of what the client did: it turns the net id back into a server-side entity handle. This resolution only works because OneSync (state awareness) is on, which is why the manifest depends on `/onesync`. It returns `0` when no entity matches, for example because the box was already cleaned by the timeout, so you check `entity ~= 0` before the existence guard. Delete each one, drop the player's whole bucket, and the server returns to baseline. A crashed player no longer leaks.
 
 <Checkpoint question="Why can the player-drop cleanup not just live in client.lua next to the other two handlers?">
   Because client handlers only run while that player's game is running. A crash or hard disconnect stops its code immediately. The server remains alive, so it validates each reported net id while the player is connected, stores only entities matching the expected owner and model, and deletes that set when `playerDropped` fires. Its timeout is also the fallback when the client never runs local cleanup.

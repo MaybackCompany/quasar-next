@@ -136,10 +136,15 @@ local dui          -- the DUI object handle (from CreateDui)
 local txd          -- the runtime texture dictionary (from CreateRuntimeTxd)
 local active = false
 
--- The texture we will replace. prop_billboard_03 ships with a texture
--- dictionary and texture name we can override with our DUI texture.
-local TARGET_TXD = 'prop_billboard_03'
-local TARGET_TXN = 'P_Billboard_03'
+-- The texture we will replace. NOTE: these two values are a texture
+-- DICTIONARY name and a texture name, NOT the prop's model name, and they
+-- must be looked up per-prop in CodeWalker or OpenIV. prop_billboard_03 is
+-- used here as an example target; if the swap appears to do nothing even
+-- though all three console lines print, the most likely cause is that one
+-- of these two strings does not match the prop's real embedded texture.
+-- Verify them in CodeWalker before relying on the visible result.
+local TARGET_TXD = 'prop_billboard_03'  -- confirm in CodeWalker/OpenIV
+local TARGET_TXN = 'P_Billboard_03'     -- confirm in CodeWalker/OpenIV
 
 local RUNTIME_TXD = 'qu_dui_txd'
 local RUNTIME_TXN = 'qu_dui_tex'
@@ -260,7 +265,7 @@ dui = CreateDui(url, 512, 256)
 
 The width and height matter. They are the resolution of the offscreen buffer, and they are why the HTML body was set to 512 by 256. Match the page to the buffer and the texture is sharp. Mismatch them and the browser renders at one size while the texture samples at another, which is the usual cause of a blurry or squashed DUI.
 
-You can point DUI at a remote URL too, not just a local file, but a local page you ship is the predictable choice: it loads instantly, works offline, and you control every pixel.
+You can point DUI at a remote URL too, not just a local file, but a local page you ship is the predictable choice: it loads instantly, works offline, and you control every pixel. Security note: a remote URL renders externally-controlled web content (and whatever JavaScript it runs) inside the player's game-client browser. Only ever point DUI at a URL you control; never at a player-supplied or third-party address, and never interpolate untrusted text into the URL.
 
 ### Link 2: GetDuiHandle hands the texture system a pointer
 
@@ -294,7 +299,7 @@ AddReplaceTexture(TARGET_TXD, TARGET_TXN, RUNTIME_TXD, RUNTIME_TXN)
 
 Now you have a live texture, but nothing in the world is using it yet. `AddReplaceTexture(origTxd, origTxn, newTxd, newTxn)` tells the renderer: anywhere the game would draw the original texture (`prop_billboard_03` / `P_Billboard_03`), draw mine instead (`qu_dui_txd` / `qu_dui_tex`). From that moment, every model on screen that samples the billboard texture shows your page. A texture replacement does not automatically map the player's cursor or world aim to browser coordinates. FiveM exposes DUI mouse-move, button, and wheel natives, but an advanced script must calculate the surface point and translate it to DUI pixels. This beginner proof is display-only.
 
-There is a second way to send DUI output into the world that the docs cover: drawing the runtime texture onto a **render target** that a specific model is set up to use, with the named render-target natives. `AddReplaceTexture` is the broadest and simplest path and the right one to learn first, because it works on any prop without the model needing a pre-declared render target.
+There are other documented ways to send DUI output into the world: the DUI docs themselves point at drawing the runtime texture with DRAW_SPRITE in 2D, drawing onto a game **render target** that a specific model is set up to use, or rendering it through a specialized Scaleform. `AddReplaceTexture` is not the path the DUI page shows, but it is a real, widely-used texture-replacement native and the broadest, simplest one to learn first because it works on any prop without the model needing a pre-declared render target.
 
 ### Driving it after it is live: SendDuiMessage and SetDuiUrl
 
@@ -333,7 +338,7 @@ The rule of thumb stays the same as the top of the lesson: looked-at-in-the-worl
 
 <FailureList
   items={[
-    { symptom: "The billboard never changes but the console prints all three success lines", fix: "The chain ran on a prop_billboard_03 that is not in your view. The texture swap is global to that texture name, so it worked; you just cannot see a matching prop. Spawn the prop yourself in front of you, or point TARGET_TXD and TARGET_TXN at a prop you can see." },
+    { symptom: "The billboard never changes but the console prints all three success lines", fix: "Two possible causes. (1) The prop_billboard_03 is not in your view: the swap targets a texture name globally, so it ran, you just cannot see a matching prop -- spawn one yourself in front of you. (2) TARGET_TXD or TARGET_TXN does not match the prop's real embedded texture: AddReplaceTexture does not error on a wrong name, it silently replaces nothing, so all three lines still print. Verify the dictionary and texture name in CodeWalker/OpenIV, then point TARGET_TXD and TARGET_TXN at a prop you can see." },
     { symptom: "The DUI surface is blurry or stretched", fix: "The HTML page size does not match the CreateDui width and height. Set the body to the same pixel dimensions you pass CreateDui (512 by 256 here) so the browser renders at the texture's resolution." },
     { symptom: "attempt to call a nil value (global 'CreateDui')", fix: "The native name is misspelled or the call is in the wrong file. DUI natives are CLIENT side. Keep this code in client_script, and check the capitals: CreateDui, GetDuiHandle, CreateRuntimeTxd, CreateRuntimeTextureFromDuiHandle." },
     { symptom: "dui_label does nothing and the page never updates", fix: "You passed a Lua table to SendDuiMessage. Unlike SendNUIMessage, SendDuiMessage takes a JSON string, so wrap the table in json.encode first. Also confirm the page's window message listener checks the same type string you send." },

@@ -189,7 +189,7 @@ end)
       txAdmin: [qu_ox_target_interactions] validated 1 -> 2 for $100
     </ExpectedOutput>
 
-    The ATM line prints in F8 because `onSelect` runs on the client. The give cash line prints in txAdmin Live Console because that work was sent to the server. The numbers `1` and `2` are server ids, so they will match whoever is actually connected.
+    The ATM line prints in F8 because `onSelect` runs on the client. The give cash line prints in the server console (and txAdmin's Live Console mirrors it) because that work was sent to the server. FiveM also forwards server prints back to the triggering player's F8, so you may see the give cash line there too. The numbers `1` and `2` are server ids, so they will match whoever is actually connected.
   </Step>
 </StepGroup>
 
@@ -226,7 +226,7 @@ exports.ox_target:addBoxZone({
 
 A box zone is an invisible 3D box sitting in the world. When the player aims inside it, the options appear. The box is defined by three things:
 
-- `coords` is the centre point of the box, a `vec3` of world coordinates `(x, y, z)`. `vec3` is the ox_lib short form; FiveM also exposes the same value as `vector3`. They are interchangeable here, and `vec3` is what Overextended resources use.
+- `coords` is the centre point of the box, a `vec3` of world coordinates `(x, y, z)`. `vec3` is a built-in FiveM Lua global (the CfxLua runtime ships it); `vector3` is the same value, and the two are interchangeable. `vec3` is the shorter form Overextended resources tend to use.
 - `size` is a `vec3` of the box dimensions in metres along each axis: width, depth, height. `vec3(2.0, 2.0, 2.0)` is a two metre cube. A flat counter would be wide and shallow, like `vec3(2.0, 0.6, 1.2)`.
 - `rotation` spins the box around its vertical axis in degrees. `0.0` leaves it aligned to the world. You set this when the thing you are wrapping, a counter or a desk, sits at an angle.
 
@@ -250,7 +250,7 @@ exports.ox_target:addGlobalPlayer({
         name = 'qu_give_cash',
         onSelect = function(data)
             local serverId = GetPlayerServerId(NetworkGetPlayerIndexFromPed(data.entity))
-            TriggerServerEvent('qu_ox_target_interactions:giveCash', serverId, 100)
+            TriggerServerEvent('qu_ox_target_interactions:giveCash', serverId)
         end
     }
 })
@@ -258,7 +258,7 @@ exports.ox_target:addGlobalPlayer({
 
 `addGlobalPlayer` attaches options to the ped of every other player, with no entity or model to name. This is the line that delivers the give cash outcome. The interesting work is in `onSelect`, and it is where the lesson becomes correct rather than convenient.
 
-When you aim at a player, `data.entity` is their ped, which is a local game handle that means nothing to the server. The server thinks in server ids, not ped handles. So you translate: `NetworkGetPlayerIndexFromPed` turns the ped into a local player index, and `GetPlayerServerId` turns that index into the server id the server understands. Giving someone cash is a server decision. The client therefore sends only the selected target id. It does not choose the amount, because a modified client could send any number it wanted.
+When you aim at a player, `data.entity` is their ped, which is a local game handle that means nothing to the server. The server thinks in server ids, not ped handles. (One caveat: this is only true inside a client `onSelect` like ours. If you instead point an option at a `serverEvent`, ox_target replaces `data.entity` with the entity's network id, so the ped-to-index conversion below would no longer apply.) So you translate: `NetworkGetPlayerIndexFromPed` turns the ped into a local player index, and `GetPlayerServerId` turns that index into the server id the server understands. Giving someone cash is a server decision. The client therefore sends only the selected target id. It does not choose the amount, because a modified client could send any number it wanted.
 
 On the server, `RegisterNetEvent` receives that untrusted request. The `source` global is the player who sent it. The handler rejects a missing, disconnected, or self target, limits each sender to one request per second, and uses server-side coordinates to reject players more than three metres apart. The amount is the server constant `TRANSFER_AMOUNT`, never client input. This lesson deliberately stops at a validated print: it does not pretend money moved. A real implementation must next read the sender's balance on the server and call the installed framework's server-side debit and credit functions as one controlled operation.
 

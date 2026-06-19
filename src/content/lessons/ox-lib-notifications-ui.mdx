@@ -174,7 +174,7 @@ lib.registerContext({
 lib.showContext('qu_ox_lib_notifications_ui_menu')
 ```
 
-A context menu is built in two moves. `lib.registerContext` defines the menu and stores it under an `id`. `lib.showContext` then opens the menu by that same `id`. Splitting definition from display means you can register a menu once and reopen it as many times as you like.
+A context menu is built in two moves. `lib.registerContext` defines the menu and stores it under an `id`, and in this resource it runs once at the top of `client.lua` when the resource loads. `lib.showContext` then opens the menu by that same `id`, and in this resource it lives inside the `/oxdemo` command handler so the menu opens each time you run the command. Splitting definition from display means you register the menu once on load and reopen it as many times as you like.
 
 Each entry in `options` is one row in the menu. Our row has a `title` and an `event`. When the player clicks it, ox_lib fires a local client event, which is why the code listens with `AddEventHandler`. Nothing crosses the network, so `RegisterNetEvent` would unnecessarily expose a local UI action as network-callable. The static context is registered once when the resource loads and the command only opens it, matching the ox_lib guidance not to re-register static menus repeatedly.
 
@@ -205,6 +205,10 @@ print('[qu_ox_lib_notifications_ui] saved ' .. input[1])
 ```
 
 `lib.progressCircle` shows a circular timer and, importantly, it blocks until the timer finishes. `duration = 1000` means it waits one thousand milliseconds, one second, before the code continues. So the `print` on the next line does not run until the circle completes. This is why the order on screen is exactly: dialog closes, circle spins for a second, line prints. If you put the progress circle before `lib.inputDialog`, the player would watch a bar fill before you even asked them anything, which makes no sense. The pattern is collect the input first, then show progress while you pretend to do the work, then report the result. In a real script the gap during the progress bar is where you would actually save to a database or call the server.
+
+<Callout variant="warning" title="Anything typed into inputDialog is untrusted client input">
+  The value you read from `input[1]` comes from the player's own machine, so a player can send anything at all, not just what your dialog seems to allow. In this lesson it only goes to a local `print`, which is safe. The moment a real script sends that value to the server, the server must treat it as untrusted: check the type and length, reject what does not fit, and when it reaches a database use a parameterized query (the `?` placeholder form) rather than building the SQL string by gluing the value in. Trusting raw client input server-side is how servers get money duped, items spawned, and databases broken.
+</Callout>
 
 <Checkpoint question="A teammate moves the lib.progressCircle call above the lib.inputDialog call. What does the player experience, and why?">
   The progress circle runs first, blocking for a full second while the screen shows a spinner, and only after it finishes does the input dialog appear asking for the name. The behaviour is backwards because `lib.progressCircle` blocks until its `duration` elapses, so whatever you place after it waits. You want the bar to represent work done on data you already have, so the input has to be collected before the circle, not after.

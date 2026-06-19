@@ -132,7 +132,20 @@ This lesson builds the item in ox_inventory first because it is free and open, s
   </Step>
 
   <Step num={5} title="Give the item to a player and check capacity first" outcome="The item lands in a player's inventory the safe way.">
-    Now hand the item to a player. Put this command in any server-side file (a `server_script`). It checks capacity first, then adds, then reports failure if it failed:
+    Now hand the item to a player. You need a tiny resource of your own to hold this command. Create one like this:
+
+    1. Make a folder `resources/[local]/qu_items/` (the `[local]` folder is just an organizational bracket folder; any subfolder works).
+    2. Inside it create two files: `fxmanifest.lua` and `server.lua`.
+    3. Put this in `fxmanifest.lua` (this is what tells FXServer the file is a SERVER script):
+
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
+
+    server_script 'server.lua'
+    ```
+
+    4. Put the command below in `server.lua`. It checks capacity first, then adds, then reports failure if it failed:
 
     ```lua
 RegisterCommand('givewater', function(source, args)
@@ -155,7 +168,13 @@ RegisterCommand('givewater', function(source, args)
 end, true)
     ```
 
-    Join the server so you have an inventory, find your server id, then run `givewater 1` from the server or txAdmin console, replacing `1` with your id. The command is restricted; console execution is allowed, while in-game execution requires the `command.givewater` ACE permission.
+    Add your new resource to `server.cfg` (anywhere AFTER `ensure ox_inventory`) so it starts:
+
+    ```cfg
+    ensure qu_items
+    ```
+
+    Restart the server (or `ensure qu_items` from the console), join the server so you have an inventory, find your server id (type `status` in the FXServer or txAdmin Live Console — it lists every connected player with their id, name and identifier), then run `givewater 1` from the server or txAdmin Live Console, replacing `1` with your id. The `true` at the end of `RegisterCommand` makes the command RESTRICTED. This matters for safety: a command that hands out items must never be runnable by ordinary players, or anyone can spawn unlimited items and wreck your economy. The server console can always run it; an in-game player can only run it if they hold the `command.givewater` ACE permission, which you grant explicitly in server.cfg, e.g. `add_ace group.admin command.givewater allow`. Leave it restricted (`true`) until you have set that up.
 
     <ExpectedOutput>
       [qu_items] added water to player 1
@@ -348,7 +367,7 @@ if exports['qs-inventory']:CanCarryItem(src, 'water_bottle', 5) then
 end
 ```
 
-To make a qs item actually do something when used, flag it `useable = true` and register a handler (the QBCore style), unless you wired behavior through `client.status` / `client.export`:
+To make a qs item actually do something when used, flag it `useable = true` and register a handler with `CreateUsableItem` (the QBCore style), or wire it through your framework's consumables config. (Unlike ox_inventory, a qs item has no `client.status` / `client.export` block to fall back on — the behavior always lives in code.)
 
 ```lua
 -- Wires the 'use' action for an item flagged useable = true
@@ -439,6 +458,9 @@ qs-inventory item configs support a `rare` rarity tier that some UI skins render
       local maxHealth = GetEntityMaxHealth(ped)
       local health = GetEntityHealth(ped)
       if health < maxHealth then
+          -- useItem runs ox_inventory's built-in server check + progress bar,
+          -- then calls back with a truthy result ONLY if the use completed
+          -- (i.e. the player did not cancel mid-progress-bar).
           exports.ox_inventory:useItem(data, function(result)
               if result then
                   SetEntityHealth(ped, math.min(maxHealth, health + 50))

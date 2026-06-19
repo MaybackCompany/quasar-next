@@ -62,6 +62,8 @@ client_script 'client.lua'
   <Step num={4} title="Declare the convars in server.cfg" outcome="The server has two config values it can read.">
     Open `server.cfg` and add these two lines **above** the line that ensures this resource. You will add the `ensure` line in Step 6.
 
+    `server.cfg` is NOT inside the `resources` folder. It lives in your server's base data directory, the same folder you launch FXServer from, one level above `resources`. (If you set the server up with txAdmin, you can also open it from the txAdmin **Settings** page.)
+
     ```text
 set qu_convars_cash 750
 setr qu_convars_debug true
@@ -97,7 +99,7 @@ end, false)
     ensure qu_convars_server_cfg
     ```
 
-    Save, then use txAdmin's **Restart Server** action so FXServer re-reads `server.cfg`. A resource restart alone does not execute changed cfg lines.
+    Save, then restart the whole server so FXServer re-reads `server.cfg`. txAdmin is the web control panel that manages your server; open it in a browser at `http://<your-server-ip>:40120` (use `http://localhost:40120` if you are on the machine running the server) and log in. In the left sidebar open the txAdmin dashboard and click **Restart** (the server restart action, not a single-resource restart). A resource restart alone does NOT re-execute changed `server.cfg` lines, so the new convar values would not load.
 
     Run the first test in the txAdmin Live Console:
 
@@ -105,7 +107,7 @@ end, false)
     cashcfg
     ```
 
-    Join the server, open the F8 console, and run the second test there:
+    Join the server. While you are in-game, press the **F8** key to open the FiveM developer console (a text overlay that drops down over the game). This is where client-side `print` output appears and where you type client commands. With it open, run the second test there:
 
     ```text
     debugcfg
@@ -175,7 +177,7 @@ Convars are how you stop hard-coding the things that differ between your test se
 
 - **A debug switch.** Wrap your noisy `print` calls in `if GetConvarBool('myresource_debug', false) then`. Flip `setr myresource_debug true` while you investigate, flip it off in production, and you never ship a build to change logging.
 - **Per-server tuning.** Starting balance, max stack size, payout rates. One resource, many servers, each with its own numbers in its own `server.cfg`.
-- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`, so the value never replicates to a client that could read it.
+- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`. A `setr` convar is copied to every connected client, where the value lives in client memory and can be read or extracted by any player, so declaring a secret with `setr` is a real credential leak, not just a cosmetic one. Keep secrets as `set` so they never leave the server.
 
 ## If something went wrong
 
@@ -232,6 +234,6 @@ Convars are how you stop hard-coding the things that differ between your test se
   items={[
     { label: "FiveM convars reference", href: "https://docs.fivem.net/docs/scripting-reference/convars/" },
     { label: "FiveM server.cfg / setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" }
   ]}
 />

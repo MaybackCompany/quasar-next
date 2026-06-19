@@ -110,7 +110,7 @@ end, true)
     ensure qu_promises
     ```
 
-    Save, then run:
+    Save, then — in the txAdmin Live Console (or the FXServer server console window), not the in-game chat — run:
 
     ```text
     restart qu_promises
@@ -124,12 +124,12 @@ end, true)
 
     <ExpectedOutput>
       [qu_promises] start
-[qu_promises] got 3 responses, total bytes: 186
+[qu_promises] got 3 responses, total bytes: 180
 [qu_promises] reject path: ok=false err=HTTP 500 for https://httpbin.org/status/500
 [qu_promises] done
     </ExpectedOutput>
 
-    The byte count depends on the response bodies, so `186` is the realistic value for three `httpbin.org/uuid` JSON responses: each httpbin.org/uuid response is a pretty-printed JSON object of about 62 bytes, so three total roughly 186 bytes; the exact count can vary if the endpoint changes its formatting. What matters is that one number prints after all three awaits finished, and that the reject line reports `ok=false`.
+    The byte count comes from the response bodies: each `httpbin.org/uuid` reply is a pretty-printed JSON object of 60 bytes (`{` newline, two spaces + `"uuid": "<36-char value>"`, newline `}`), so three total 180 bytes. You may see 183 if the endpoint adds a trailing newline to each body. What matters is that one number near 180 prints after all three awaits finished, and that the reject line reports `ok=false` — the exact figure is not the point, the single combined print is.
   </Step>
 </StepGroup>
 
@@ -236,7 +236,7 @@ end)
 
 You wrap a callback API in a promise whenever you have async work whose result you need before the next step can run. The three you will hit constantly in FiveM:
 
-- **HTTP requests.** `PerformHttpRequest`, exactly as built here. Calling an external API, a webhook, a license check.
+- **HTTP requests.** `PerformHttpRequest`, exactly as built here. Calling an external API, a webhook, a license check. Security: this runs on the server, so never build the URL from player-supplied input without validating it (an attacker who controls the URL can make your server hit internal/private addresses — SSRF). Treat the response body as untrusted: validate or json-decode it before using it, and never concatenate it into a SQL query. Keep webhook URLs and API keys in convars (GetConvar), never hardcoded in the resource.
 - **Database queries.** Modern libraries like oxmysql already return promises, so you can `Await` them directly. Older callback-style MySQL wrappers you wrap yourself, the same way you wrapped `PerformHttpRequest`.
 - **NUI callbacks and any "do this, get a result later" native.** If it hands you a callback instead of a return value, it is a candidate for promise-wrapping.
 
@@ -251,6 +251,7 @@ The rule of thumb: if two async steps depend on each other, promises plus `Await
     { symptom: "attempt to call a nil value (global 'promise')", fix: "promise.new is provided by the FiveM runtime, not a require. Confirm this is a real FiveM server resource started with ensure, not the in-browser Lua sandbox, which has no FiveM globals." },
     { symptom: "The command does nothing when a player runs it in chat", fix: "The restricted flag is true, so only the server console and aces may run it. Run promisetest from the txAdmin Live Console, not the in-game chat box (press T)." },
     { symptom: "An error stops the thread after a 500 response", fix: "You awaited a promise that rejected without wrapping it in pcall. Either wrap the await in pcall as Step 4 does, or make sure the endpoint cannot reject on the happy path." },
+    { symptom: "The success calls reject with HTTP 503 or 429, or hang, even though your code is correct", fix: "httpbin.org is a free public test service and is sometimes down, rate-limited, or blocked by your host's firewall. This is the endpoint failing, not your promise. Confirm reachability first by running this in the server console: it should print a 200. If httpbin is down, swap the three URLs for any other endpoint you control that returns 200, or retry later. A real resource should never depend on a free public test API in production." },
   ]}
 />
 

@@ -16,7 +16,8 @@
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
     "I can read txAdmin Live Console output.",
-    "I have ox_inventory installed and started, with a 'burger' item defined."
+    "I have ox_inventory installed and started.",
+    "I have a 'burger' item defined in ox_inventory's data/items.lua (the lesson tells you how, and restart ox_inventory after adding it). If you skip this, the command fails with invalid_item."
   ]}
 />
 
@@ -94,7 +95,7 @@ end, true)
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the server console.">
-    Open `server.cfg` and add this line below your `ensure ox_inventory` line:
+    In a text editor (VS Code), open `server.cfg` — it lives in your server data folder (the folder you point FXServer at with `+exec`), NOT inside `resources`. Add this line below your `ensure ox_inventory` line:
 
     ```text
     ensure qu_inventories
@@ -117,6 +118,8 @@ end, true)
     </ExpectedOutput>
 
     The command is server-side and restricted, so it runs from the console. The console is source zero and has no inventory of its own, which is why you target a connected player id. We will unpack why in the next section.
+
+    Security note: the `true` at the end of `RegisterCommand(..., true)` marks the command **restricted**, so a connected player can only run it if they hold the `command.burger` ACE permission. Keep any command that grants items restricted — an item-giving command that any player can call is a free item-duplication exploit. Verify with primary docs before trusting third-party command code.
   </Step>
 </StepGroup>
 
@@ -173,7 +176,7 @@ Metadata is the per-item data attached to a single stack: durability, a weapon s
 
 `AddItem(src, 'burger', 5)` only works if `'burger'` already exists. The name is not magic. It is a key in `ox_inventory`'s `data/items.lua`, a single Lua table where each key is the canonical item name and each value is that item's config. If you call `AddItem` with a name that is not in this table, it fails with `invalid_item`, which is exactly the failure mode listed below.
 
-Here is a real entry from `ox_inventory`'s own `data/items.lua`, kept verbatim. Note `stack` is absent because it defaults to `true`, `weight` is in grams not kilograms, and `consume = 0.3` drains durability per use instead of removing a whole item:
+Here is the `testburger` entry from `ox_inventory`'s own `data/items.lua`, trimmed to two example buttons for readability (the real file adds three more grouped "Hamburger Puns" buttons). Note `stack` is absent because it defaults to `true`, `weight` is in grams not kilograms, and `consume = 0.3` drains durability per use instead of removing a whole item:
 
 ```lua
 ['testburger'] = {
@@ -281,8 +284,12 @@ You could store items in a plain Lua table and a database column. People do, and
   Prove the metadata stacking rule with your own eyes. Extend the command so it adds one plain burger and one burger with metadata, then prints the slot layout instead of just the count:
 
   ```lua
-  RegisterCommand('burger', function(source)
-      local src = source
+  RegisterCommand('burger', function(source, args)
+      local src = source > 0 and source or tonumber(args[1])
+      if not src or not GetPlayerName(src) then
+          print('[qu_inventories] usage from console: burger <playerId>')
+          return
+      end
       exports.ox_inventory:AddItem(src, 'burger', 1)
       exports.ox_inventory:AddItem(src, 'burger', 1, { quality = 100 })
 

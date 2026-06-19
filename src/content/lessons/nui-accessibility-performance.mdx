@@ -48,6 +48,10 @@
 
 The four steps above are advice until you see them in code. Here are the three patterns that carry the weight: one close path, one idle-render fix, and one scaling rule. Wire these into the resource you already have.
 
+<Callout variant="info" title="Where these files live and how to apply changes">
+  Open your resource folder (inside your server's `resources/` directory) in VS Code. The browser files sit in the resource's `html/` folder (for example `html/script.js` and the CSS file the page loads); `client.lua` sits in the resource root. After you save an edit, switch to your FXServer console (or the txAdmin Live Console) and run `restart <your-resource-name>` so the new code loads. Then rejoin or re-open the UI to test.
+</Callout>
+
 ### One close path, called from everywhere
 
 The frozen-player bug happens because focus is released on some close paths but not others. The fix is to never release focus inline. Funnel every close through a single `closeUI()` function, then call that one function from the X button, the Escape key, and any server-driven close. If focus release lives in one place, no path can forget it.
@@ -81,13 +85,28 @@ Use `https://${GetParentResourceName()}/<endpoint>` so renaming the resource doe
 
 ```lua
 -- client.lua
+
+-- OPEN path (shown for context): grab focus AND show the page.
+-- Without this there is nothing to release, so the freeze bug can't even happen.
+RegisterCommand('openui', function()
+    SetNuiFocus(true, true)               -- keyboard + cursor go to the UI
+    SendNUIMessage({ type = 'open' })     -- tell the page to show itself
+end)
+
+-- CLOSE path: release focus. cb('ok') MUST be called or the fetch hangs.
 RegisterNUICallback('close', function(data, cb)
-    SetNuiFocus(false, false)
+    SetNuiFocus(false, false)             -- give keyboard + cursor back to the game
     cb('ok')
 end)
 ```
 
+`SetNuiFocus(true, true)` is what routes the keyboard and mouse to your page in the first place; `SetNuiFocus(false, false)` is what gives them back. The freeze bug is releasing the second one on only some close paths.
+
 Now Escape, the X button, and a server `forceClose` all release focus through the same line. Test all three.
+
+<Callout variant="warning" title="Treat every callback payload as hostile">
+  The NUI page runs in a browser the player fully controls, so anything it sends to a `RegisterNUICallback` is untrusted client input. A `close` callback carrying no data is harmless, but the moment a callback carries an item id, an amount, or a target player, you MUST re-check it server-side (does the player own the item? is the amount within range? are they allowed?). Never trust a NUI payload to move money, grant permissions, or spawn anything. The browser can send any value it likes.
+</Callout>
 
 ### Stop the loop when the page is hidden
 
@@ -143,6 +162,8 @@ NUI has no responsive viewport meta tweaks to lean on. It renders at the player'
 <FailureList
   items={[
     { symptom: "Player frozen after closing the UI", fix: "A close path skipped SetNuiFocus(false, false). Route every close through one closeUI() that hits the same callback, so escape, the X button, and server-driven closes cannot forget it." },
+    { symptom: "You froze yourself while testing and can't move", fix: "Recovery: open the F8 console and run a command bound to SetNuiFocus(false, false), or restart the resource from the FXServer/txAdmin console (restart <resource>), which drops its focus. Keep an admin/dev close command bound while developing." },
+    { symptom: "UI still mis-scales on a 4K monitor even with vw/vh", fix: "Known engine limitation: NUI does not respect the Windows 'Scale & layout' setting (citizenfx/fivem issue #2995), so a 3840x2160 display set above 100% scale can still render the UI wrong. vw/vh + clamp is still correct; just test on a 4K machine and don't assume display scaling is applied." },
     { symptom: "UI is tiny or huge on different monitors", fix: "Fixed pixel widths render as a fixed fraction of the game resolution. Replace them with vw/vh/rem and clamp so the panel keeps its share of the screen." },
     { symptom: "Frame drops while the menu is closed", fix: "An animation loop is still running off-screen. Gate requestAnimationFrame on a visible flag and set it false on close, or clearInterval your timers." },
     { symptom: "Players cannot read it", fix: "Raise contrast and font size, add clear button focus states, and never use color as the only signal." },
@@ -163,6 +184,8 @@ NUI has no responsive viewport meta tweaks to lean on. It renders at the player'
 <Refs
   items={[
     { label: "Cfx.re docs · NUI", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/" },
-    { label: "Cfx.re docs · SetNuiFocus", href: "https://docs.fivem.net/natives/?_0x5B98AE30" }
+    { label: "Cfx.re docs · SetNuiFocus", href: "https://docs.fivem.net/natives/?_0x5B98AE30" },
+    { label: "Cfx.re docs · NUI callbacks (GetParentResourceName + RegisterNuiCallback)", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/nui-callbacks/" },
+    { label: "Cfx.re docs · Fullscreen NUI (renders as a full-screen iframe)", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/full-screen-nui/" }
   ]}
 />

@@ -117,7 +117,9 @@ end, false)
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Open `server.cfg` and add this line:
+    Where each step happens: you edit `server.cfg` in your text editor; you type `restart qu_natives_toolbox` in the server console (the txAdmin Live Console or the FXServer window); and you run `/whereami` and `/tpsafe` in-game, either in the chat box (with `/`) or the F8 client console (without `/`). The script's `print` output appears in the F8 console because this is a `client_script`.
+
+    Open `server.cfg` in your text editor and add this line:
 
     ```text
     ensure qu_natives_toolbox
@@ -141,7 +143,7 @@ end, false)
 [qu_natives_toolbox] teleported to 215.00 -810.00 30.29
     </ExpectedOutput>
 
-    Your `/whereami` numbers depend on where you are standing, but the `/tpsafe` line should always land on the ground at `215.00 -810.00` near the Legion Square area, with a z close to `30.29`.
+    These lines are illustrative. Your `/whereami` numbers depend on where you are standing, and the exact health and ground z will vary by character and server build. What must always be true is the *shape*: `/whereami` prints one `x y z health` line, and `/tpsafe` prints one `teleported to 215.00 -810.00 <groundZ>` line where the x and y match the hard-coded spot near Legion Square and the z is whatever solid ground the game reports there (roughly 30, not 100.0 and not 0.0).
   </Step>
 </StepGroup>
 
@@ -203,7 +205,7 @@ while not found and tries < 20 do
 end
 ```
 
-`GetGroundZFor_3dCoord(x, y, z, includeWater)` returns **two values**: a boolean saying whether the ground was found, and the z height of that ground. Passing `false` for `includeWater` means the water surface is NOT treated as ground, so the ped lands on solid terrain. Right after a teleport the answer is often `false` for a frame or two, because the collision you requested has not finished streaming. So you loop: `Wait(50)` yields for fifty milliseconds, you ask again, and you stop the moment `found` becomes `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
+`GetGroundZFor_3dCoord(x, y, z, includeWater)` returns **two values**: a boolean saying whether the ground was found, and the z height of that ground. Passing `false` for `includeWater` means the water surface is NOT treated as ground, so the ped lands on solid terrain. Right after a teleport the answer is often `false` for a frame or two, because the collision you requested has not finished streaming. (`GetGroundZFor_3dCoord` also only returns a real height when the target x,y is within your streaming distance, which is why this pattern works for moving yourself but not for probing the ground far across the map.) So you loop: `Wait(50)` yields for fifty milliseconds, you ask again, and you stop the moment `found` becomes `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
 
 ```lua
 if found then

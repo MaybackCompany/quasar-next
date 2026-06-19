@@ -154,13 +154,13 @@ body { margin: 0; display: grid; place-items: center; min-height: 100vh; font-fa
     ensure qu_nui_from_scratch
     ```
 
-    Save, then run:
+    Save, then run this in your server console (the FXServer window, or the txAdmin **Live Console** if you run txAdmin):
 
     ```text
     restart qu_nui_from_scratch
     ```
 
-    Join the server, then run this test:
+    Now join the server. Run this test from the in-game chat box (press T to open it, type the command, press Enter):
 
     ```text
     /openui, then click "Send to Lua and close"
@@ -263,13 +263,15 @@ The page talks back to Lua by making an HTTP request. The current documented for
 On the Lua side, `RegisterNUICallback('buttonClicked', function(data, cb) ... end)` is the listener for that endpoint. The handler is handed two arguments:
 
 - `data` is the request body, already parsed from JSON into a Lua table. The `{ label: '...' }` object the `fetch` sent arrives as `data.label`. That is how you read the value the button carried. Defaulting with `data.label or 'unknown'` guards against a malformed body.
+
+  Security note: a NUI callback body is client input, so treat it as untrusted. `data.label or 'unknown'` only guards against a *missing* value, not a malicious one. The moment a callback does anything that matters (gives an item, moves money, fires a server event), validate every field server-side and never trust a value just because your own page sent it.
 - `cb` is the response function. The browser's `fetch` is a promise waiting on a reply, and `cb({ ok = true })` is that reply. Until you call `cb`, the `fetch` promise never resolves, so the `.then` that hides the menu never runs. You must call `cb` exactly once in every callback, even if you only send `cb({})`. A callback that forgets `cb` leaves the page hanging on every click.
 
 The chat line is the visible proof the data crossed: `TriggerEvent('chat:addMessage', ...)` fires the built-in `chat` resource's message event on the client and prints the `label` the JS sent. If that text shows up in chat, the round-trip is real. An empty request body that the callback ignored, which is what the old lesson shipped, could never produce it.
 
 ### Attaching Chrome devtools to a live NUI page
 
-NUI is a real Chromium instance, so it has the same devtools you use in a browser. With the game running, open `http://localhost:13172` in Chrome on the same machine. You get the standard inspector pointed at every live NUI page: the Console tab shows your JS errors and `console.log` output, the Network tab shows each callback request and its response, and Elements lets you tweak CSS live. The moment a NUI feature misbehaves, this is the first place to look, because a JS error that the game would otherwise swallow shows up here in red.
+NUI is a real Chromium instance, so it has the same devtools you use in a browser. With the game running, open `http://localhost:13172` in Chrome on the same machine. (You can also open the inspector from inside the game by typing `nui_devTools` in the F8 console, once FiveM's developer mode is on.) You get the standard inspector pointed at every live NUI page: the Console tab shows your JS errors and `console.log` output, the Network tab shows each callback request and its response, and Elements lets you tweak CSS live. The moment a NUI feature misbehaves, this is the first place to look, because a JS error that the game would otherwise swallow shows up here in red.
 
 <Checkpoint question="The button click fires the fetch, but the menu never closes and the chat line never appears, with no error in F8. Where do you look first, and what is the most likely cause?">
   Open the NUI devtools at `http://localhost:13172` and check the Network tab. The most likely cause is a mismatch between the `fetch` URL and the registered callback: the URL should use `GetParentResourceName()` and the endpoint string after the slash must match `RegisterNUICallback` (`buttonClicked` in both places). A failed or pending request confirms it. If the request succeeds but the menu still does not close, the Lua callback ran but never called `cb`, so the `fetch` promise that hides the menu in `.then` never resolves.

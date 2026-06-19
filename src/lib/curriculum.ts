@@ -107,6 +107,7 @@ export const PATHS: Path[] = [
         lessons: [
           { num: "Primer", title: "Debug class for beginners", blurb: "What nil, missing exports, and SQL errors actually mean. Optional, useful again later.", slug: "debug-class", tag: "Debugging", bonus: true },
           { num: "01", title: "Your first line of Lua", blurb: "Print to the server console. Variables, strings, the most-used function in Lua.", slug: "first-line-of-lua", tag: "Lua core" },
+          { num: "Asset", title: "Your first asset: a command in the game", blurb: "Build a /bananas command that prints to the F8 console in-game. Client vs server, your first real resource.", slug: "first-asset-banana-command", tag: "Lua core" },
           { num: "02", title: "Variables, numbers, strings", blurb: "Store, change, combine. The three data types you use 95% of the time.", slug: "variables-numbers-strings", tag: "Lua core" },
           { num: "03", title: "If, else, elseif", blurb: "Conditions, comparison operators, and nil vs false.", slug: "if-else-elseif", tag: "Lua core" },
           { num: "04", title: "Loops: for, while, when to stop", blurb: "Repeat actions and why a loop without Wait freezes the server.", slug: "loops", tag: "Lua core" },
@@ -150,6 +151,7 @@ export const PATHS: Path[] = [
           { num: "Bonus", title: "Latent events", blurb: "Streaming big payloads without overflow.", slug: "latent-events", tag: "Events", bonus: true },
           { num: "Bonus", title: "Cancelling events", blurb: "Stop an event before other handlers see it.", slug: "cancelling-events", tag: "Events", bonus: true },
           { num: "17", title: "ox_lib: notifications and UI", blurb: "Notifications, inputs, progress bars, and context menus.", slug: "ox-lib-notifications-ui", tag: "ox_lib" },
+          { num: "Project", title: "Player survey form with ox_lib", blurb: "A /survey command that draws a free NUI form, then re-validates every answer server-side.", slug: "survey-command", tag: "ox_lib", bonus: true },
           { num: "18", title: "Callbacks", blurb: "Ask and wait for an answer with lib.callback.", slug: "callbacks", tag: "Callbacks" },
           { num: "Bonus", title: "State bags", blurb: "Shared state without events.", slug: "state-bags", tag: "State", bonus: true },
           { num: "Bonus", title: "Built-in resources: chat, spawnmanager, baseevents", blurb: "The stock resources every server runs and their hooks.", slug: "built-in-resources-chat-spawnmanager-baseevents", tag: "Built-ins", bonus: true },
@@ -179,6 +181,7 @@ export const PATHS: Path[] = [
           { num: "26", title: "Server-only banking and audit", blurb: "Persist balances, audit-log every transaction.", slug: "server-only-banking-audit", tag: "Capstone" },
           { num: "27", title: "Jobs framework", blurb: "Clock-in, grades, a payroll loop that never double-pays.", slug: "jobs-framework", tag: "Gameplay" },
           { num: "Bridge", title: "How scripts talk to frameworks", blurb: "Get the player object, money, and job in ESX, QBCore, and Qbox side by side.", slug: "how-scripts-talk-to-frameworks", tag: "Frameworks", bonus: true },
+          { num: "Project", title: "Player-to-player trade system", blurb: "Build a server-authoritative trade with ox_inventory: ownership + proximity checks, both-confirm, anti-dupe lock.", slug: "trade-system", tag: "Build", bonus: true },
         ],
       },
       {

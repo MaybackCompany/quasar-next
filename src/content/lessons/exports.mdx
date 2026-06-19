@@ -115,12 +115,14 @@ end, true)
     ensure qu_money_consumer
     ```
 
-    Save, then restart both, provider first:
+    Save. If this is the first time you are loading these resources, start them with `ensure` (provider first); `restart` only works on a resource that is already running. Run these in the txAdmin Live Console:
 
     ```text
-    restart qu_money
-    restart qu_money_consumer
+    ensure qu_money
+    ensure qu_money_consumer
     ```
+
+    Later, after you edit a file, re-load with `restart qu_money` then `restart qu_money_consumer`.
 
     Run this test from the txAdmin Live Console:
 
@@ -204,6 +206,10 @@ Use this decision rule.
 
 Frameworks lean on exports constantly for exactly the first reason: `exports.ox_inventory:GetItemCount(src, 'water')` reads a number and you use it immediately. Once you internalize "exports return values, events do not," most of FiveM's resource wiring stops being mysterious.
 
+<Callout variant="warning" title="Security note">
+  Two things here are security-relevant. The final `true` on `RegisterCommand` makes the command **restricted**: it only runs for a caller that holds the matching ACE permission (the server console always does, which is why the test works from the Live Console). Second, an export like `AddBalance`/`RemoveBalance` mutates a balance and can be called by **any** server-side resource with no check. In a real money system, keep mutation exports private to a trusted set of resources and validate the caller/arguments; do not expose an unguarded "add money" function.
+</Callout>
+
 ## If something went wrong
 
 <FailureList
@@ -260,6 +266,6 @@ Frameworks lean on exports constantly for exactly the first reason: `exports.ox_
   items={[
     { label: "FiveM exports reference", href: "https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+    { label: "Lua 5.4 reference manual (FiveM's only Lua runtime since June 2025)", href: "https://www.lua.org/manual/5.4/" }
   ]}
 />

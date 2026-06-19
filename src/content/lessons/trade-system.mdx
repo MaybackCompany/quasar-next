@@ -1,0 +1,527 @@
+<LessonHero
+  crumbs="Track B · Project · Trade system"
+  title="Build a Player-to-Player Trade System"
+  meta={[
+    { label: "Difficulty", value: "Intermediate" },
+    { label: "Time", value: "60-90 min" },
+    { label: "Framework", value: "QBCore / ESX / Qbox" },
+    { label: "Stack", value: "ox_inventory + ox_lib" },
+  ]}
+>
+A trade lets two players hand items to each other in the world: you offer 5 bandages, they accept, the items move. The hard part is not the menu — it is making the swap impossible to cheat. This lesson builds a trade where the **server** owns every decision, both players must confirm, and a lock stops the classic "accept twice and duplicate the item" exploit.
+</LessonHero>
+
+<LessonVideo src="/lesson-videos/clase-6.mp4" caption="Quasar University: building the trade system end to end." />
+
+<Prereq
+  items={[
+    "A working FiveM server you can restart from txAdmin or the server console (you reach it with `connect 127.0.0.1:30120` in the F8 console, and you type server commands in the txAdmin live console or the terminal window the server runs in).",
+    "QBCore, ESX Legacy, or Qbox installed and a test character that can spawn items.",
+    "ox_inventory and ox_lib running and listed in your server.cfg with `ensure`.",
+    "You finished a basic resource before (you know what fxmanifest.lua, client_script, and server_script do).",
+    "Two ways to connect two players: a second PC, a friend, or two game clients. A trade needs two `source` IDs.",
+  ]}
+/>
+
+## The mental model: who is allowed to decide what
+
+Before any code, get this picture straight, because it is the whole lesson.
+
+In FiveM there are two worlds. The **client** is each player's own game — it runs on their PC, and a cheater can rewrite anything it sends. The **server** is the one machine you control. The rule that keeps every economy script safe is one sentence:
+
+> The client may *ask*. Only the server may *decide* and *act*.
+
+A trade has two people. Call them the **initiator** (the one who runs the command) and the **target** (the one who receives the request). The dangerous version — the one the old guide taught — let the client say "give me 50 gold from player 12." The server believed it. That is a free money printer.
+
+Here is what the server must verify itself, never trusting the client's word:
+
+- **Does the initiator actually own the item and amount they are offering?** Ask the inventory, do not trust the menu's number box.
+- **Are the two players close enough to trade?** Measure the distance server-side so nobody trades across the map.
+- **Did *both* players confirm?** A trade is an agreement, not a one-sided grab.
+- **Is this trade already being processed?** Lock it so a double-click cannot run the swap twice (that is how duplication bugs happen).
+
+Everything below is built around those four checks. The NUI menu is just a polite way to collect a "yes" — it never moves an item.
+
+<Callout variant="fivem" title="ox_inventory is the item authority">
+This lesson uses **ox_inventory** for item operations because it is the modern standard and its functions run server-side, which is exactly the trust boundary we want. The three calls you need:
+
+- `exports.ox_inventory:GetItemCount(source, item)` returns how many of `item` a player holds. Server-side.
+- `exports.ox_inventory:RemoveItem(source, item, count)` removes items and returns `true`/`false`.
+- `exports.ox_inventory:AddItem(source, item, count)` adds items and returns `true`/`false`.
+
+If your server uses qb-inventory or a framework's built-in inventory, the *shape* of the lesson is identical — only those three export names change. The security logic does not.
+</Callout>
+
+## Build it
+
+You will create one resource called `trade`. Make a folder `resources/[local]/trade` with this layout, then paste each file exactly.
+
+```text
+trade/
+  fxmanifest.lua
+  config.lua
+  server/main.lua
+  client/main.lua
+  html/index.html
+  html/style.css
+  html/app.js
+```
+
+<StepGroup>
+
+<Step num={1} title="Manifest" outcome="The server loads your resource with the right files in the right realm.">
+
+Create `fxmanifest.lua`. The `fx_version` and `game` lines are required by every modern resource. `shared_script` loads on both realms; `server_script` only prints to the **server console**; `client_script` only prints to the player's **F8 console**.
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+author 'Quasar University'
+description 'Player-to-player trade system'
+version '1.0.0'
+
+shared_script 'config.lua'
+
+server_script 'server/main.lua'
+client_script 'client/main.lua'
+
+ui_page 'html/index.html'
+
+files {
+  'html/index.html',
+  'html/style.css',
+  'html/app.js',
+}
+```
+
+Notice there is **no `lua54 'yes'` line**. Lua 5.4 has been the only runtime since June 2025; the directive is a dead no-op. Leaving it out is correct.
+
+</Step>
+
+<Step num={2} title="Config" outcome="One place to tune the trade rules without touching logic.">
+
+Create `config.lua`. We hardcode no magic numbers in the logic; they all live here.
+
+```lua
+Config = {}
+
+-- How close (in game units) the two players must be to trade.
+Config.MaxTradeDistance = 3.0
+
+-- How long (seconds) a pending request stays open before it auto-expires.
+Config.RequestTimeout = 20
+
+-- Most items a single trade may move. A sanity cap, not a balance rule.
+Config.MaxItemCount = 100
+```
+
+</Step>
+
+<Step num={3} title="Server logic — the only place a trade actually happens" outcome="A request can be created, accepted, validated, and executed safely. The client cannot move items on its own.">
+
+Create `server/main.lua`. This is the heart of the system. Read it once top to bottom, then we explain every block.
+
+```lua
+-- Pending requests, keyed by the TARGET's server id.
+-- pending[targetId] = { from, item, count, expires }
+local pending = {}
+
+-- Trades currently mid-swap, keyed by initiator id, to block double-execution.
+local locking = {}
+
+-- Resolve the framework player so we can read their world position.
+-- We only need GetPlayer for the ped/coords; item ops go through ox_inventory.
+local function getPlayerPed(src)
+  return GetPlayerPed(src) -- server-side native: returns the player's ped
+end
+
+-- Server-measured distance between two players. Never trust a client distance.
+local function playersAreClose(a, b)
+  local pa = GetEntityCoords(getPlayerPed(a))
+  local pb = GetEntityCoords(getPlayerPed(b))
+  return #(pa - pb) <= Config.MaxTradeDistance
+end
+
+-- 1) INITIATOR runs the command. We validate, then send a request to the target.
+RegisterCommand('trade', function(source, args)
+  local src = source
+  local targetId = tonumber(args[1])
+  local item = args[2]
+  local count = tonumber(args[3])
+
+  -- Validate shape first. Bad input is the most common attack and the most common typo.
+  if not targetId or not item or not count or count <= 0 then
+    TriggerClientEvent('trade:notify', src, 'usage: /trade [id] [item] [count]', 'error')
+    return
+  end
+  if count > Config.MaxItemCount then
+    TriggerClientEvent('trade:notify', src, 'amount too high', 'error')
+    return
+  end
+  if targetId == src then
+    TriggerClientEvent('trade:notify', src, 'you cannot trade with yourself', 'error')
+    return
+  end
+  if not GetPlayerName(targetId) then
+    TriggerClientEvent('trade:notify', src, 'that player is not online', 'error')
+    return
+  end
+  if not playersAreClose(src, targetId) then
+    TriggerClientEvent('trade:notify', src, 'move closer to trade', 'error')
+    return
+  end
+
+  -- Does the INITIATOR actually own what they claim to offer? Ask the inventory.
+  if exports.ox_inventory:GetItemCount(src, item) < count then
+    TriggerClientEvent('trade:notify', src, 'you do not have that item', 'error')
+    return
+  end
+
+  -- Store the offer server-side. The client never holds the source of truth.
+  pending[targetId] = {
+    from = src,
+    item = item,
+    count = count,
+    expires = os.time() + Config.RequestTimeout,
+  }
+
+  -- Ask the TARGET to confirm. We send display data only; the server keeps the real offer.
+  TriggerClientEvent('trade:prompt', targetId, src, item, count)
+  TriggerClientEvent('trade:notify', src, ('request sent to player %d'):format(targetId), 'inform')
+end, false)
+
+-- 2) TARGET clicks Accept. This is a REQUEST to finish, not the finish itself.
+RegisterNetEvent('trade:accept', function()
+  local targetId = source -- source is set by the engine, NOT by the client payload
+  local offer = pending[targetId]
+
+  -- No offer, or it expired: refuse. Re-reading server state means the client cannot fake it.
+  if not offer then
+    TriggerClientEvent('trade:notify', targetId, 'no trade to accept', 'error')
+    return
+  end
+  if os.time() > offer.expires then
+    pending[targetId] = nil
+    TriggerClientEvent('trade:notify', targetId, 'trade expired', 'error')
+    return
+  end
+
+  local initiator = offer.from
+
+  -- LOCK: if this initiator's trade is already running, bail. Stops double-accept dupes.
+  if locking[initiator] then return end
+  locking[initiator] = true
+
+  -- Re-validate EVERYTHING at execution time. The world changed since the request.
+  local ok = GetPlayerName(initiator)
+    and GetPlayerName(targetId)
+    and playersAreClose(initiator, targetId)
+    and exports.ox_inventory:GetItemCount(initiator, offer.item) >= offer.count
+
+  if not ok then
+    pending[targetId] = nil
+    locking[initiator] = nil
+    TriggerClientEvent('trade:notify', targetId, 'trade no longer valid', 'error')
+    TriggerClientEvent('trade:notify', initiator, 'trade failed', 'error')
+    return
+  end
+
+  -- Remove FIRST, add SECOND. If remove fails, nothing was given. No dupes possible.
+  local removed = exports.ox_inventory:RemoveItem(initiator, offer.item, offer.count)
+  if not removed then
+    pending[targetId] = nil
+    locking[initiator] = nil
+    TriggerClientEvent('trade:notify', initiator, 'trade failed', 'error')
+    return
+  end
+
+  local added = exports.ox_inventory:AddItem(targetId, offer.item, offer.count)
+  if not added then
+    -- Refund: the target's inventory was full. Give the items back to the initiator.
+    exports.ox_inventory:AddItem(initiator, offer.item, offer.count)
+    pending[targetId] = nil
+    locking[initiator] = nil
+    TriggerClientEvent('trade:notify', targetId, 'your inventory is full', 'error')
+    TriggerClientEvent('trade:notify', initiator, 'trade refunded', 'error')
+    return
+  end
+
+  -- Success. Clear state and tell both players.
+  pending[targetId] = nil
+  locking[initiator] = nil
+  TriggerClientEvent('trade:notify', initiator, ('you gave %dx %s'):format(offer.count, offer.item), 'success')
+  TriggerClientEvent('trade:notify', targetId, ('you received %dx %s'):format(offer.count, offer.item), 'success')
+end)
+
+-- 3) TARGET clicks Decline. Just drop the offer.
+RegisterNetEvent('trade:decline', function()
+  local targetId = source
+  if pending[targetId] then
+    local initiator = pending[targetId].from
+    pending[targetId] = nil
+    TriggerClientEvent('trade:notify', initiator, 'request declined', 'inform')
+  end
+end)
+
+-- Clean up state if a player drops so locks/offers do not leak.
+AddEventHandler('playerDropped', function()
+  local src = source
+  pending[src] = nil
+  locking[src] = nil
+  for targetId, offer in pairs(pending) do
+    if offer.from == src then pending[targetId] = nil end
+  end
+end)
+```
+
+</Step>
+
+<Step num={4} title="Client logic — collect a yes/no and show notifications" outcome="The target sees a menu, clicks a button, and the server hears about it. The client moves zero items.">
+
+Create `client/main.lua`. The client's whole job is UI plumbing.
+
+```lua
+-- The server tells THIS player they were offered a trade. Open the menu.
+RegisterNetEvent('trade:prompt', function(fromId, item, count)
+  SetNuiFocus(true, true) -- give the cursor to the NUI so the player can click
+  SendNUIMessage({
+    action = 'show',
+    fromId = fromId,
+    item = item,
+    count = count,
+  })
+end)
+
+-- The NUI 'Accept' button calls back here. We just relay intent to the server.
+RegisterNUICallback('accept', function(_, cb)
+  SetNuiFocus(false, false)
+  TriggerServerEvent('trade:accept') -- NOTE: we send NOTHING. Server already has the offer.
+  cb('ok')
+end)
+
+RegisterNUICallback('decline', function(_, cb)
+  SetNuiFocus(false, false)
+  TriggerServerEvent('trade:decline')
+  cb('ok')
+end)
+
+-- Server-driven notifications. Uses ox_lib's notify; swap for your own if needed.
+RegisterNetEvent('trade:notify', function(message, kind)
+  lib.notify({ description = message, type = kind or 'inform' })
+end)
+```
+
+</Step>
+
+<Step num={5} title="The NUI menu — three files" outcome="A clean accept/decline card appears, populated by the server's data, and the buttons report back.">
+
+Create `html/index.html`:
+
+```text
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="card" class="hidden">
+    <h2>Trade request</h2>
+    <p>Player <span id="from"></span> offers you:</p>
+    <p class="offer"><span id="count"></span>x <span id="item"></span></p>
+    <div class="row">
+      <button id="accept">Accept</button>
+      <button id="decline">Decline</button>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+Create `html/style.css`:
+
+```text
+* { box-sizing: border-box; font-family: system-ui, sans-serif; }
+body { margin: 0; background: transparent; }
+.hidden { display: none; }
+#card {
+  width: 320px;
+  margin: 18vh auto 0;
+  padding: 20px;
+  background: #16181d;
+  color: #f2f4f8;
+  border-radius: 10px;
+  text-align: center;
+}
+.offer { font-size: 1.2rem; font-weight: 600; color: #4fb0ff; }
+.row { display: flex; gap: 10px; margin-top: 16px; }
+button {
+  flex: 1; padding: 10px; border: 0; border-radius: 6px;
+  cursor: pointer; color: #fff; font-weight: 600;
+}
+#accept { background: #1f8f4e; }
+#decline { background: #b23b3b; }
+```
+
+Create `html/app.js`. The fetch URL is built with `GetParentResourceName()` so it works no matter what you name the folder — never hardcode the resource name here.
+
+```text
+const resource = GetParentResourceName();
+
+function post(name, body) {
+  return fetch(`https://${resource}/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify(body || {}),
+  });
+}
+
+const card = document.getElementById('card');
+
+window.addEventListener('message', (e) => {
+  const data = e.data;
+  if (data.action === 'show') {
+    document.getElementById('from').textContent = data.fromId;
+    document.getElementById('item').textContent = data.item;
+    document.getElementById('count').textContent = data.count;
+    card.classList.remove('hidden');
+  }
+});
+
+document.getElementById('accept').addEventListener('click', () => {
+  card.classList.add('hidden');
+  post('accept');
+});
+
+document.getElementById('decline').addEventListener('click', () => {
+  card.classList.add('hidden');
+  post('decline');
+});
+
+// Let Escape decline, so the player is never stuck with a locked cursor.
+document.addEventListener('keyup', (ev) => {
+  if (ev.key === 'Escape' && !card.classList.contains('hidden')) {
+    card.classList.add('hidden');
+    post('decline');
+  }
+});
+```
+
+</Step>
+
+<Step num={6} title="Start it" outcome="The resource is live and the command exists.">
+
+Add `ensure trade` to your `server.cfg` (after ox_lib and ox_inventory so the exports exist when `trade` loads). Then in the **server console** (the txAdmin live console or the terminal the server runs in) type:
+
+```text
+ensure trade
+```
+
+`ensure` starts the resource, or restarts it if it was already running, so you can use it again after every edit. To confirm it loaded, run `status` in that same server console and look for it in the resource list.
+
+</Step>
+
+</StepGroup>
+
+<ExpectedOutput>
+Two players stand next to each other. `/trade` is a **chat** command, not an F8 one, so Player A (id 1) presses `T` (or `/`) to open the chat box and types:
+
+```text
+/trade 2 water 3
+```
+
+Player A sees a notification "request sent to player 2". Player B's screen shows the trade card: "Player 1 offers you: 3x water" with Accept / Decline buttons. B clicks **Accept**. Both see green notifications — A: "you gave 3x water", B: "you received 3x water". Open both inventories: 3 water moved from A to B. If A only had 2 water, the command is rejected up front with "you do not have that item" and no menu ever appears for B.
+</ExpectedOutput>
+
+## How it works — every decision, and why
+
+**Why the command lives on the server, not the client.** `RegisterCommand('trade', fn, false)` registers a chat command on the **server** realm (this file is a `server_script`). The `false` is the `restricted` flag — `false` means any player may run it, which is correct for a trade since both sides are ordinary players. State-changing *admin* commands should pass `true` and gate behind ACE, but a normal trade is not an admin action. The key point: because the handler runs server-side, the `source` argument is the real player id set by the engine, not something the client typed.
+
+**Why we validate shape before anything else.** The first `if` block rejects missing or non-numeric arguments and zero/negative counts. A negative count is a classic exploit attempt ("give -5 means take 5"). Catching it here means the rest of the function can assume clean input.
+
+**Why distance is measured on the server.** `playersAreClose` reads both peds' coordinates with `GetEntityCoords` server-side and compares with `#(a - b)`, the vector-length operator. If we asked the client "are you close?" a cheater would always answer yes. The server has its own copy of where every ped is, so it cannot be lied to.
+
+**Why `GetItemCount` is the source of truth, not the menu.** The old design let the client send the item name *and the amount*. That means a cheater types `999` and the server hands over 999. Here, the menu's number box never reaches the swap. The server asks `ox_inventory:GetItemCount(src, item)` and only proceeds if the initiator genuinely holds that many. We check it **twice**: once when the request is made, and again at execution, because the player could have dropped the items in the seconds between.
+
+**Why the offer is stored server-side keyed by target id.** `pending[targetId] = { from, item, count, expires }` keeps the real offer on the machine the client cannot touch. When the target clicks Accept, the client sends `trade:accept` with **no payload at all**. The server looks up the offer it already saved. This is the single most important pattern in the lesson: if the acceptance carried the item and count, a cheater would just send `trade:accept` with `gold, 1000000`. By carrying nothing, there is nothing to forge.
+
+**Why `source` is trustworthy inside the net event.** In `RegisterNetEvent('trade:accept', ...)`, `source` is set by the FiveM engine to the id of the player who fired the event. The client cannot overwrite it. That is why `local targetId = source` is safe and why we never accept an id from the event arguments.
+
+**Why the lock exists.** `locking[initiator]` is the anti-duplication guard. Picture the target spamming Accept, or a laggy client firing the event twice. Without the lock, two executions could both pass validation before either removes the items, and the target receives the items twice while the initiator loses them once — a dupe. Setting `locking[initiator] = true` before any inventory change and clearing it on every exit path means a second event finds the lock set and returns immediately.
+
+**Why remove happens before add.** `RemoveItem` returns `true`/`false`. We remove from the initiator first and only add to the target if the removal succeeded. If we added first and the remove failed, the item would exist in two inventories — a dupe. Remove-then-add can only ever destroy or move items, never multiply them. And if the target's inventory is full so `AddItem` returns `false`, we **refund** by adding the items back to the initiator, so no one loses anything.
+
+**Why we re-validate at execution time.** Between the request and the click, players move, disconnect, and drop items. So before the swap we re-check both players are online, still close, and the initiator still owns the goods. A request is a snapshot; execution must trust the present, not the past.
+
+**Why `playerDropped` cleans up.** If a player disconnects mid-trade, their entry in `pending` and `locking` would linger. The handler wipes their offers and lock so a future player who reuses that server id is not blocked by a ghost lock.
+
+**Why `GetParentResourceName()` builds the fetch URL.** In `app.js`, NUI callbacks must POST to `https://<resource>/<callback>`. Hardcoding the folder name breaks the moment someone renames it. `GetParentResourceName()` returns the real name at runtime, so the URL is always right.
+
+<Callout variant="info" title="Framework swap cheat-sheet">
+The logic above never calls a framework for items — ox_inventory handles that and works under QBCore, ESX, and Qbox alike. You only touch the framework if you want to gate trades by job, or read a character name for a fancier notification. The accessors, for reference:
+
+- **QBCore**: `local QBCore = exports['qb-core']:GetCoreObject()` then `QBCore.Functions.GetPlayer(src)`. Character first name is `Player.PlayerData.charinfo.firstname`; the account name is `Player.PlayerData.name` (both exist — do not confuse them).
+- **Qbox**: `exports.qbx_core:GetPlayer(src)`, same `PlayerData` shape.
+- **ESX Legacy**: `local xPlayer = ESX.GetPlayerFromId(src)`.
+
+If you wanted to trade *money* instead of items, that is where the framework matters — QBCore uses `Player.Functions.RemoveMoney('cash', amount, 'trade')` / `AddMoney`, and ESX uses `xPlayer.removeAccountMoney('money', amount)` / `addAccountMoney`. Same server-authority rules apply: validate the balance server-side, lock, remove-then-add.
+</Callout>
+
+## Failure modes and recovery
+
+<FailureList
+  items={[
+    { symptom: "Command does nothing, server console prints `attempt to index a nil value (field 'ox_inventory')` or `No such export`.", fix: "ox_inventory is not started, or `trade` starts before it. In server.cfg put `ensure ox_lib` and `ensure ox_inventory` ABOVE `ensure trade`, then run `ensure trade` again in the server console." },
+    { symptom: "`/trade` says nothing at all and no notification appears.", fix: "`lib.notify` is undefined because ox_lib is not loaded for the client. Confirm ox_lib is ensured, and that you did not accidentally put the notify code in the server file. client_script prints to F8; check the F8 console for a red Lua error." },
+    { symptom: "Menu opens but Accept does nothing.", fix: "Open the F8 console with NUI dev tools (`nui_devTools` in F8 while the server is in dev mode) and watch the Network tab. A 404 on the POST means the fetch URL is wrong — confirm `app.js` uses `GetParentResourceName()` and that `RegisterNUICallback('accept', ...)` matches the string you POST to." },
+    { symptom: "Items disappear from the initiator but never reach the target.", fix: "The target's inventory was full so AddItem returned false. The refund branch should have returned them — if it did not, you removed the refund block. Restore the `if not added then ... AddItem(initiator ...) end` branch." },
+    { symptom: "A player reports duplicated items after spamming Accept.", fix: "Your lock is missing or cleared too early. `locking[initiator] = true` must be set BEFORE the first inventory call and cleared on EVERY return path, including the failure branches." },
+    { symptom: "`you do not have that item` even though you do.", fix: "Item name mismatch. ox_inventory item names are the database key (e.g. `water`, not `Water` or `bottle_of_water`). Check the exact name in your ox_inventory items list and type it lowercase." },
+    { symptom: "Trade works across the whole map.", fix: "You are not measuring distance, or you compared client-reported positions. Confirm `playersAreClose` uses server-side `GetEntityCoords` on both peds and that you call it both at request and execution." },
+  ]}
+/>
+
+## Checkpoint
+
+<Checkpoint question="The target clicks Accept. What data does the client send to the server, and why is that the most important security choice in the whole system?">
+The client sends **nothing** — `TriggerServerEvent('trade:accept')` carries no item, no count, no player id. The server already stored the real offer in `pending[targetId]` when the request was made, and it reads the firing player from the engine-set `source`. This matters because anything the client sends, a cheater can forge. If acceptance carried the item and amount, a modder would simply fire `trade:accept` with `gold, 999999`. By making the acceptance an empty "yes" and keeping the offer server-side, there is nothing to tamper with. The client asks; the server decides and acts.
+</Checkpoint>
+
+## Exercise
+
+<Exercise>
+Right now a trade is one-directional: the initiator gives, the target receives, and only the target confirms. Turn it into a **two-sided trade** where both players put up an item and both must accept before anything moves.
+
+Concretely, modify the code so that:
+
+1. The `/trade` command no longer executes anything — it only opens a "trade window" between the two players and records the initiator's offered item/count in server state (e.g. `session[pairId] = { a = {...}, b = {...}, aReady = false, bReady = false }`).
+2. The target gets a command or NUI input to set *their* offered item/count, which the server validates with `GetItemCount` exactly like the initiator's.
+3. Each player has a **Ready** button. The swap only runs when `aReady` and `bReady` are both true.
+4. The swap moves items in **both** directions, still remove-then-add, still behind a single lock, and if either `AddItem` fails the **entire** trade rolls back (refund both sides).
+
+The point of the exercise: notice that every new piece of data the target supplies (their item, their count, their ready state) must be validated server-side at execution time, and that "both ready" is just a second confirmation gate built from the same pattern you already used once. When you can roll back a two-leg swap with no dupes, you understand server-authoritative state.
+</Exercise>
+
+<Recap
+  items={[
+    "The client asks; only the server decides and acts. Every economy script lives or dies by this line.",
+    "Store the offer server-side and make acceptance an empty 'yes' — there is nothing to forge if the client carries no data.",
+    "Validate ownership, distance, and online status with server-side reads, both when the request is made and again at execution.",
+    "A per-trade lock plus remove-before-add makes duplication impossible; refund on a failed add so nobody loses items.",
+    "ox_inventory's GetItemCount/RemoveItem/AddItem run server-side and work under QBCore, ESX, and Qbox; the framework only matters if you trade money instead.",
+    "NUI is just a way to collect a click — build fetch URLs with GetParentResourceName() and never let the menu's numbers reach the swap.",
+  ]}
+/>
+
+<Refs
+  items={[
+    { label: "ox_inventory — exports (GetItemCount / AddItem / RemoveItem)", href: "https://overextended.dev/ox_inventory" },
+    { label: "ox_lib — lib.notify", href: "https://overextended.dev/ox_lib/Modules/Notify/Client" },
+    { label: "FiveM — NUI callbacks & GetParentResourceName", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/" },
+    { label: "FiveM — RegisterCommand & server events", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" },
+    { label: "QBCore — player & money functions", href: "https://docs.qbcore.org/qbcore-documentation/qbcore-resources/qb-core" },
+    { label: "ESX — xPlayer accounts", href: "https://documentation.esx-framework.org/" },
+  ]}
+/>

@@ -63,7 +63,7 @@ game 'gta5'
 server_script 'server.lua'
     ```
 
-    Everything in this lesson runs on the server, so there is one `server_script` and no client file. The `playerConnecting` event and the player's identifiers only exist server side. Note there is no `lua54 'yes'` line: as of June 2025 that directive is deprecated and ignored, because Lua 5.4 is now the only runtime.
+    Everything in this lesson runs on the server, so there is one `server_script` and no client file. The `playerConnecting` event and the player's identifiers only exist server side. Note there is no `lua54 'yes'` line: the official manifest reference states this directive is deprecated and you no longer need to enable it, because as of June 2025 all Lua scripts run on Lua 5.4 by default. The line still works if present; it is simply unnecessary. (See https://docs.fivem.net/docs/scripting-reference/resource-manifest/ )
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -110,7 +110,7 @@ end)
     ensure qu_connection_gate
     ```
 
-    Save, then run:
+    Save. Then, in the **txAdmin Live Console** (or the FXServer console window if you run it directly) — the same console you watch player connects in, not the in-game F8 console and not the chat box — type this server command and press Enter:
 
     ```text
     restart qu_connection_gate
@@ -122,7 +122,7 @@ end)
       [qu_connection_gate] REJECT YourName (license:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b)
     </ExpectedOutput>
 
-    The console line shows your real `license` identifier in the parentheses. Copy that exact string, paste it into the `allowedLicenses` table in place of the placeholder, save, run `restart qu_connection_gate`, and connect again. This time you pass:
+    The 40-hex-character string after `license:` is illustrative — yours will be a different value unique to your Cfx account, and `YourName` will be your actual connecting name. Copy the **exact** `license:...` string from your own console line, paste it into the `allowedLicenses` table in place of the `license:0000...` placeholder, save, run `restart qu_connection_gate`, and connect again. This time you pass (again, your real values, not these):
 
     <ExpectedOutput>
       [qu_connection_gate] ALLOW YourName (license:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b)
@@ -174,7 +174,7 @@ The `Wait(0)` before it yields for a single frame. Calling `defer` and then imme
 local license = GetPlayerIdentifierByType(source, 'license')
 ```
 
-This is the heart of the gate. `GetPlayerIdentifierByType(source, kind)` is a server native that returns one of the player's identifiers as a string. Ask for `'license'` and you get back something like `license:1a2b3c...`, a stable id tied to the player's Rockstar/Cfx account. A license does not change when the player reboots or moves house, which is exactly why it is the standard handle for an allowlist. A player has several identifier types (`steam`, `discord`, `ip`, and more), but `ip` changes and `steam` can be absent, so `license` is the dependable one to gate on.
+This is the heart of the gate. `GetPlayerIdentifierByType(source, kind)` is a server native that returns one of the player's identifiers as a string. Ask for `'license'` and you get back something like `license:1a2b3c...`, the Cfx license id tied to the player's Rockstar/Social Club account. It is platform-independent and convenient, which is why many starter whitelists use it. But be clear-eyed: it is **not** unchangeable. If a player connects with a different Rockstar/Social Club account, their `license` changes, so a license-only allowlist can be bypassed. Cfx classifies identifiers by *variance* (how likely the id is to change) and *trust* (how hard it is to spoof); for real bans Cfx recommends the `fivem` (Cfx.re user) identifier, not `license`. A player also has `steam`, `discord`, `ip`, and more, each with different variance and trust. For this lesson `license` is fine because it is always present on a Cfx account and easy to read, but for a production whitelist you should pin a player to the `fivem` identifier (or store several).
 
 Because you are reading this server side during `playerConnecting`, the value is trustworthy. The player cannot hand you a fake license here. Compare that to anything the client sends you over a net event, which you must always treat as a claim, not a fact.
 

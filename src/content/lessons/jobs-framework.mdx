@@ -193,7 +193,7 @@ if GetResourceState('qbx_core') == 'started' then
 The order is deliberate because Qbox provides a QB compatibility surface. Check the native `qbx_core` resource before the compatibility name `qb-core`, then check a standalone QBCore install, then ESX. This detects an installed stack; it is not a recommendation that one framework is automatically right for every server.
 
 <Checkpoint question="Your server runs Qbox, but the resource keeps printing 'no framework player'. What is the first thing to check?">
-  Check that `qbx_core` actually started before `qu_jobs_framework`, and that you joined with a fully loaded character. `GetResourceState('qbx_core')` only returns `started` once Qbox has finished loading, and `exports.qbx_core:GetPlayer(src)` only returns a player object after that character is selected and loaded in. If you call `/clockin` from the bare server console (source 0) or before your character loads, there is no framework player for that source and `getJob` correctly returns `nil`. Put `ensure qu_jobs_framework` below the framework's `ensure` line in `server.cfg`.
+  Check that `qbx_core` actually started before `qu_jobs_framework`, and that you joined with a fully loaded character. `GetResourceState('qbx_core')` only returns `started` once Qbox has finished loading, and `exports.qbx_core:GetPlayer(src)` only returns a player object after that character is selected and loaded in. If you call `clockin` from the bare server console (source 0) or before your character loads, there is no framework player for that source and `getJob` correctly returns `nil`. Put `ensure qu_jobs_framework` below the framework's `ensure` line in `server.cfg`.
 </Checkpoint>
 
 ### Reading job and grade out of each framework
@@ -235,6 +235,8 @@ end
 ```
 
 This is the point of reading both the job name and grade. A grade number alone is not permission because an unrelated job can also have grade 2. This demo requires the `police` job and then checks `BOSS_GRADE`. The early return keeps the protected action below one clear gate.
+
+Security note: this is a demo gate, not real authorization. Because `/jobaudit` is registered with `RegisterCommand(..., false)`, any player can type it, and the only thing stopping them is the job/grade your framework reports for that source. For an action that actually matters (emptying a boss stash, firing an employee, paying real money), enforce authority on the server: gate it with an ACE permission via `IsPlayerAceAllowed(src, 'group.boss')` (registered with `add_ace`/`add_principal` in your server.cfg) or your framework's own boss-permission check, and never trust a value the client could influence. Treat the job/grade read here as convenience, not a security boundary.
 
 ### The payroll loop
 

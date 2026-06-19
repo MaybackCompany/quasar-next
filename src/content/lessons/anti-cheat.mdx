@@ -27,7 +27,7 @@
 
 <StepGroup>
   <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
-    Inside your server's `resources` folder, create this folder:
+    Inside your server's `resources` folder, create this folder. If your `resources` folder uses bracketed category folders such as `[local]`, you can put it inside one of those instead -- FiveM still finds it. Either way the name you use in `server.cfg` is just the folder name `qu_anticheat`, never the bracket path:
 
     ```text
     resources/qu_anticheat
@@ -153,7 +153,12 @@ end)
       [qu_anticheat] approved: approved 250 (demo only)
     </ExpectedOutput>
 
-    Run `claimreward` a second time within ten seconds. The server prints a blocked line, fires your Discord webhook, and your F8 console prints `denied: on cooldown`.
+    Run `claimreward` a second time within ten seconds. The server prints a blocked line, fires your Discord webhook, and your F8 console prints the denied result. The exact lines you should see are:
+
+    <ExpectedOutput>
+      [qu_anticheat] blocked yourName (id 1): reward spam
+      [qu_anticheat] denied: on cooldown
+    </ExpectedOutput>
   </Step>
 </StepGroup>
 
@@ -219,7 +224,7 @@ This is the line the old lesson was missing, and leaving it out is a real bug. S
 local webhook = GetConvar('qu_ac_webhook', '')
 ```
 
-This reads the convar you set with `set qu_ac_webhook ...`. The second argument is the fallback when the convar is unset, so an empty webhook simply skips the Discord post instead of crashing. The security point is the word `set`. A plain `set` convar lives only on the server and is never sent to clients. If you had written `setr` (the replicated variant), FiveM would push that value to every connected client, and any player could read your webhook URL straight out of their own game and spam your Discord channel with garbage. An audit webhook is a secret. It belongs in a plain `set` convar, or better still an environment variable, and never in a `setr` convar, a `client_script`, or a `shared_script`.
+This reads the convar you set with `set qu_ac_webhook ...`. The second argument is the fallback when the convar is unset, so an empty webhook simply skips the Discord post instead of crashing. The security point is the word `set`. A plain `set` convar lives only on the server and is never sent to clients. If you had written `setr` (the replicated variant), FiveM would push that value to every connected client, and any player could read your webhook URL straight out of their own game and spam your Discord channel with garbage. An audit webhook is a secret. It belongs in a plain `set` convar, or better still an environment variable, and never in a `setr` convar, a `client_script`, or a `shared_script`. Treat the URL like a password: if it ever leaks (committed to a public repo, pasted in chat), delete the webhook in Discord and create a new one -- changing the convar alone does not revoke a leaked URL.
 
 ### The audit log
 

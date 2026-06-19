@@ -133,7 +133,7 @@ ensure es_extended    # 3. framework, needs oxmysql + ox_lib (both already up)
 ensure ox_inventory   # 4. the script, needs all three above (all already up)
 ```
 
-If you flip two lines, the console tells you immediately. Put `ensure ox_inventory` above `ensure oxmysql` and on boot you get a red line like `attempt to index a nil value` or `Failed to load resource ox_inventory: it depends on oxmysql`, because `ox_inventory` reached for the database exports before `oxmysql` had registered them.
+If you flip two lines, the console tells you immediately. Put `ensure ox_inventory` above `ensure oxmysql` and on boot you get a red line like `attempt to index a nil value` (the script reached for the database exports before `oxmysql` had registered them). If `ox_inventory` declares `oxmysql` as a manifest dependency, you instead see a line naming the missing one, such as `Could not find dependency oxmysql for resource ox_inventory` followed by `Couldn't start resource ox_inventory`.
 
 <Checkpoint question="ox_inventory failed on boot with attempt to index a nil value, but the folder name and spelling are correct. What is the most likely cause?">
   A dependency loads too late, or not at all. `ox_inventory` calls into `oxmysql` and `ox_lib` the instant it starts, so if either of them is `ensure`d **below** `ox_inventory` in `server.cfg` (or missing entirely), those exports do not exist yet and indexing them returns nil. Fix the order: `ensure oxmysql` and `ensure ox_lib` must sit above `ensure ox_inventory`. The same logic applies to the framework. Reorder the lines, then `restart ox_inventory`.
@@ -149,7 +149,7 @@ dependencies {
 }
 ```
 
-When a manifest declares `dependencies`, FiveM refuses to start the resource until those resources are running, and the error names exactly which one is missing. That turns a silent nil into a readable message. It still does not reorder `server.cfg` for you, so the top-to-bottom rule above is what actually controls startup.
+The `dependencies` key tells the server those resources must load before this one; the docs describe it as "Requires the specified resource to load before the current resource." If a listed dependency is missing or fails to start, the console usually names it (a line like `Could not find dependency oxmysql for resource ox_inventory`) instead of leaving you with a silent nil. It still does not reorder `server.cfg` for you, so the top-to-bottom rule above is what actually controls startup.
 
 <Callout variant="fivem" title="Want the full click-by-click version?">
   This lesson covers the mechanics and the load-order rule. For a single script installed slowly from download to in game, with every file path and console line shown, follow the [install a script walkthrough](/lessons/install-a-script-walkthrough). For every red console line you might hit and its exact fix, keep the [FiveM error catalog](/lessons/fivem-error-catalog) open in another tab.

@@ -8,7 +8,7 @@
     { label: "You'll learn", value: "The built-in key-value store, the typed get and set natives, deleting and listing keys, and the exact line where KVS stops being enough and you reach for MariaDB plus oxmysql instead." },
   ]}
 >
-  Most beginners think the only way to make data survive a restart is a database. It is not. FiveM ships a per-resource **key-value store**, the KVS, that writes small values straight to disk for you. No schema, no connection string, no SQL. In this lesson you build a counter that climbs every time you run a command, then survives a full server restart untouched. Once it works, you will know exactly when the KVS is the right tool and when it is the wrong one.
+  Most beginners think the only way to make data survive a restart is a database. It is not. FiveM ships a per-resource **key-value store**, the KVS, that writes small values straight to disk for you. No schema, no connection string, no SQL. One caution up front: the KVS stores values as plain, unencrypted data on the server's disk. Never put secrets in it (no passwords, API keys, Tebex/Discord tokens, or webhook URLs) -- those belong in environment-controlled config, not the KVS. In this lesson you build a counter that climbs every time you run a command, then survives a full server restart untouched. Once it works, you will know exactly when the KVS is the right tool and when it is the wrong one.
 </LessonHero>
 
 <Prereq
@@ -93,11 +93,14 @@ end, true)
     ensure qu_kvs_counter
     ```
 
-    Save, then run this in the txAdmin Live Console:
+    Save, then run these two lines in the txAdmin Live Console, in order. `refresh` makes the server notice the new folder you just created; `ensure` then starts it:
 
     ```text
-    restart qu_kvs_counter
+    refresh
+    ensure qu_kvs_counter
     ```
+
+    (If the resource was already running from a previous attempt, `restart qu_kvs_counter` reloads it instead. But a brand-new resource needs `refresh` first, or the console replies that it cannot find the resource.)
 
     Run the counter up three times, then check it:
 
@@ -116,7 +119,7 @@ end, true)
 [qu_kvs_counter] current count: 3
     </ExpectedOutput>
 
-    Now the real proof. Fully stop the server process and start it again. This is not a `restart qu_kvs_counter`, it is a cold boot of the whole server, the thing a database is supposed to survive. When the resource loads, watch the startup line:
+    Now the real proof: a cold boot of the whole server, the thing a database is supposed to survive. This is NOT `restart qu_kvs_counter`. Do a real full restart of the FXServer process: in the txAdmin web panel, open the dashboard and click **Restart** (the server-control button at the top), or in a raw console window press **Ctrl+C** to stop FXServer and then launch it again. When the resource loads, watch the startup line:
 
     <ExpectedOutput>
       [qu_kvs_counter] loaded count from KVS: 3
@@ -200,7 +203,7 @@ RegisterCommand('countkeys', function()
 end, true)
 ```
 
-`StartFindKvp(prefix)` opens a search over every key in this resource's store whose name begins with the prefix string. An empty `''` prefix matches every key. It hands back a **handle**, a number that points at the search, the same idea as the ped handle from the natives lesson. `FindKvp(handle)` returns the next matching key name each time you call it, and returns `nil` once there are no more, which is why the `if not key then break end` line ends the loop. `EndFindKvp(handle)` closes the search and frees it. Always pair a `StartFindKvp` with an `EndFindKvp`, the same way you pair `function` with `end`, or you leak the handle.
+`StartFindKvp(prefix)` opens a search over every key in this resource's store whose name begins with the prefix string. An empty `''` prefix matches every key. It hands back a **handle**: a number that is a ticket pointing at this specific search. You pass that same number to the next two calls so they know which search you mean. `FindKvp(handle)` returns the next matching key name each time you call it, and returns `nil` once there are no more, which is why the `if not key then break end` line ends the loop. `EndFindKvp(handle)` closes the search and frees it. Always pair a `StartFindKvp` with an `EndFindKvp`, the same way you pair `function` with `end`, or you leak the handle.
 
 The find natives return key **names**, not their values. To read each one you take the returned key and call the matching getter, for example `GetResourceKvpInt(key)`. The iterator finds the drawers; you still open each drawer yourself.
 
@@ -280,6 +283,6 @@ This is the line that separates this lesson from **Persistence: cache plus write
     { label: "FiveM native reference (search StartFindKvp)", href: "https://docs.fivem.net/natives/" },
     { label: "FiveM player identifiers", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/functions/GetPlayerIdentifiers/" },
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "oxmysql documentation (Overextended)", href: "https://overextended.dev/oxmysql" }
+    { label: "oxmysql documentation (CommunityOx)", href: "https://coxdocs.dev/oxmysql" }
   ]}
 />

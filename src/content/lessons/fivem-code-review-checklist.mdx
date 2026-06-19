@@ -31,7 +31,7 @@
     { cmd: "Server authority", desc: "Does the server validate every money/item/job/admin action, or trust a client event?" },
     { cmd: "Event safety", desc: "Are net events validated for source and inputs? No raw client value used as truth." },
     { cmd: "SQL", desc: "Parameterized queries via oxmysql only. No string-concatenated SQL." },
-    { cmd: "Secrets", desc: "No keys, passwords, or webhooks in the code. Read from convars." },
+    { cmd: "Secrets", desc: "No keys, passwords, or webhooks in the code. Read from convars. A hardcoded Discord webhook or DB password ships to every buyer and can be abused the moment the resource leaks." },
   ]}
 />
 
@@ -74,7 +74,7 @@ RegisterNetEvent('bank:deposit', function(amount)
 end)
 ```
 
-The client decided the amount, so a player editing the trigger can deposit nine hundred thousand. The fix is to make the server the source of truth and recompute from server-held state, never from the payload:
+The client decided the amount, so a player editing the trigger can deposit nine hundred thousand. The fix is to make the server the source of truth and recompute from server-held state, never from the payload (the `getCash`/`removeCash`/`addBank` helpers below are illustrative placeholders for whatever your framework provides; the pattern, not the exact names, is what matters):
 
 ```lua
 -- server.lua  (server authority)
@@ -89,14 +89,14 @@ RegisterNetEvent('bank:deposit', function(amount)
 end)
 ```
 
-Note that `source` is only trustworthy because the server fills it in, not the client. On a FiveM review, this is the first pass you make: trace every value-bearing net event back to whoever decided the number. If the answer is the client, that is the bug, no matter how clean the rest reads.
+Note that `source` is only trustworthy because the server fills it in, not the client -- that is what 'validate source' on the checklist means: use the server-set `source`, never an id the client passed inside the payload, and confirm that player is actually allowed to perform the action before you act on it. On a FiveM review, this is the first pass you make: trace every value-bearing net event back to whoever decided the number. If the answer is the client, that is the bug, no matter how clean the rest reads.
 
 ### Parameterized queries, in practice
 
 The SQL row on the checklist exists to stop one specific attack. Concatenating a player-supplied value straight into a query string lets that value break out of the data and become SQL. Compare the two forms:
 
 ```lua
--- Vulnerable: the name is glued into the query string
+-- Vulnerable: `name` is a player-supplied value glued straight into the query string
 MySQL.query('SELECT * FROM users WHERE name = "' .. name .. '"')
 
 -- Safe: oxmysql sends the value as a parameter, never as code
@@ -107,7 +107,7 @@ In the first line, a name of `" OR "1"="1` turns the query into one that matches
 
 ### resmon and the tick budget, in practice
 
-The performance section assumes two terms from earlier in the track, so here they are in one line each. resmon is the in-game resource monitor you open with the `resmon` command in F8; it shows each resource's CPU time per tick in milliseconds. The tick budget is the time a single client frame allows: at 60 frames per second a frame is about 16 milliseconds, shared across every running resource, so any one resource sitting at a fraction of a millisecond at idle is healthy and anything climbing toward a full millisecond while nothing is happening needs a longer `Wait` or distance gating. With those two numbers in hand, the resmon row becomes a concrete check rather than a vibe: read the millisecond figure at idle, then under load, and confirm both stay small.
+The performance section assumes two terms from earlier in the track, so here they are in one line each. resmon is the in-game resource monitor you open from the FiveM client console (press F8 in-game to open that console) by typing the `resmon 1` command (type `resmon 0` to close it again); it shows each resource's CPU time per tick in milliseconds. One catch: `resmon` is a developer command. On a normal client it returns `Access denied for command resmon`. To use it you must run the client in developer mode -- launch FiveM with the `+set moo 31337` argument, or use a Beta/Latest update channel -- then reopen the F8 console and run `resmon 1` again. The tick budget is the time a single client frame allows: at 60 frames per second a frame is about 16 milliseconds, shared across every running resource, so any one resource sitting at a fraction of a millisecond at idle is healthy and anything climbing toward a full millisecond while nothing is happening needs a longer `Wait` or distance gating. With those two numbers in hand, the resmon row becomes a concrete check rather than a vibe: read the millisecond figure at idle, then under load, and confirm both stay small.
 
 ## Common mistakes
 

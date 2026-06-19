@@ -79,6 +79,10 @@ RegisterCommand('canceltest', function(_, args)
     TriggerEvent('qu_cancelling_events:check', name)
     print('[qu_cancelling_events] caller saw cancelled = ' .. tostring(WasEventCanceled()))
 end, true)
+-- The final `true` is the "restricted" flag: it locks this command behind the
+-- command.canceltest ACE permission. The server console (txAdmin Live Console
+-- or the FXServer window) always has permission, so run `canceltest` THERE,
+-- not from in-game chat, where a normal player would be silently denied.
     ```
   </Step>
 
@@ -89,7 +93,7 @@ end, true)
     ensure qu_cancelling_events
     ```
 
-    Save, then run:
+    Save, then type this into the server console (the txAdmin Live Console, or the FXServer.exe window if you launched it directly):
 
     ```text
     restart qu_cancelling_events
@@ -186,6 +190,10 @@ AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
     end
 end)
 ```
+
+<Callout variant="warning" title="Which identifier to ban on">
+  This example matches on `license:` because it is platform-independent and easy to read. Be aware the `license` id can change if the player switches their Rockstar / Social Club account, so it is not a perfect ban key. For real ban lists Cfx recommends the `fivem` identifier (the player's Cfx.re user id). No single identifier is guaranteed always-present or unspoofable, so production ban systems usually store several.
+</Callout>
 
 Read it against everything above. `playerConnecting` runs a handler chain just like your test event did, and the engine itself checks `WasEventCanceled()` after the chain finishes: if any handler raised the flag, the connection is refused. `CancelEvent()` here raises that flag, and `setKickReason` is the callback FiveM hands you to attach the message the player sees. The `deferrals` argument is the third parameter and lets you hold the player on the loading screen while you run a slow check, for example a database lookup, before deciding; you call `deferrals.defer()` to start, `deferrals.update('message')` to show progress, and `deferrals.done()` or `deferrals.done('reason')` to admit or reject. The mechanics are identical to your two-handler toy: a flag, read downstream. The only difference is that downstream the reader is the engine, and the consequence is a real kick instead of a skipped print.
 

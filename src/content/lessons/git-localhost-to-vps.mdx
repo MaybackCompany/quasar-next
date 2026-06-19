@@ -32,7 +32,6 @@
     ```text
 # secrets and machine-specific files, never committed
 *.env
-.env
 license-key.txt
 db-creds.txt
 config.secret.lua
@@ -68,7 +67,7 @@ print('license key loaded:', key ~= 'unset')
   </Step>
 
   <Step num={3} title="Install Git on the VPS and clone into resources" outcome="A first copy of the resource exists on the VPS, pulled from GitHub.">
-    Open an SSH session to your VPS. Install Git if it is missing (`sudo apt update && sudo apt install -y git` on Ubuntu/Debian). Because the repo is private, GitHub will not accept your account password on clone. You need a credential the VPS can use. The fastest one to create is a fine-grained personal access token:
+    Open an SSH session to your VPS (on Windows, type `ssh user@your-vps-ip` in PowerShell or Windows Terminal; or use the browser-based console in your VPS provider's control panel). Install Git if it is missing (`sudo apt update && sudo apt install -y git` on Ubuntu/Debian). Because the repo is private, GitHub will not accept your account password on clone. You need a credential the VPS can use. The fastest one to create is a fine-grained personal access token:
 
     1. On github.com, go to **Settings -> Developer settings -> Personal access tokens -> Fine-grained tokens -> Generate new token**.
     2. Scope it to **Only select repositories** and pick this one repo. Under **Repository permissions**, set **Contents** to **Read-only**. That token can pull this repo and nothing else.
@@ -82,6 +81,8 @@ print('license key loaded:', key ~= 'unset')
 cd /home/fivem/server-data/resources
 git clone https://github.com/your-username/your-resource.git qu_deploy_demo
     ```
+
+    The last word, `qu_deploy_demo`, is the folder name Git creates on the VPS (it overrides the repo's own name). Every command later in this lesson uses that exact name, so if you pick a different folder name, swap it in everywhere `qu_deploy_demo` appears.
 
     A read-only token is the safer choice for a deploy box: even if the VPS is compromised, the attacker can only read one repo, never push or touch your account. An SSH deploy key (a keypair added to the repo's **Deploy keys**) achieves the same scoping and avoids token expiry if you prefer keys. Then `ensure qu_deploy_demo` in `server.cfg` and restart the server once so it loads.
 
@@ -109,6 +110,7 @@ restart qu_deploy_demo
     ```
 
     <ExpectedOutput>
+      Example only — your hashes and filenames will differ:
       Updating a1b2c3d..e4f5g6h
       Fast-forward
        client.lua | 2 +-
@@ -123,6 +125,8 @@ restart qu_deploy_demo
 git log --oneline -n 5
 git reset --hard <good_commit_hash>
     ```
+
+    `git log --oneline -n 5` lists your last five commits, newest first; each line starts with a short hash like `a1b2c3d` followed by its message. Replace `<good_commit_hash>` with the short hash from the line of the last commit you know worked (read the messages to find it). Do not type the angle brackets.
 
     Then `restart qu_deploy_demo`. The resource is back to that exact known-good state. This is why you push working code in small commits: every commit is a save point you can return to.
 
@@ -160,7 +164,7 @@ A `.gitignore` pattern is matched against file paths: `*.env` blocks any file en
     { symptom: "git: command not found on the VPS", fix: "Install Git: sudo apt install -y git (Debian/Ubuntu). Confirm with git --version." },
     { symptom: "fatal: not a git repository", fix: "You are in the wrong folder. cd into the cloned resource folder (the one that contains a hidden .git folder) before git pull." },
     { symptom: "Authentication failed on clone/pull", fix: "Private repos reject account passwords. Use a GitHub personal access token or an SSH deploy key for the VPS." },
-    { symptom: "git pull says 'local changes would be overwritten'", fix: "Someone edited files directly on the VPS. That breaks the loop. Note that git reset --hard origin/main will permanently discard those VPS edits to match GitHub, so first copy out anything you want to keep. If the edit matters, paste it into your PC copy, commit and push, then pull on the VPS instead. After that, only ever edit on your PC." },
+    { symptom: "git pull says 'local changes would be overwritten'", fix: "Someone edited files directly on the VPS. That breaks the loop. Note that git reset --hard origin/<your-branch> (your default branch is usually main, but some repos use master; run git branch to see it) will permanently discard those VPS edits to match GitHub, so first copy out anything you want to keep. If the edit matters, paste it into your PC copy, commit and push, then pull on the VPS instead. After that, only ever edit on your PC." },
     { symptom: "Pulled but nothing changed in game", fix: "You forgot the restart. git pull only updates files; restart qu_deploy_demo loads them." },
   ]}
 />

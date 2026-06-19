@@ -97,13 +97,15 @@ end)
     ensure qu_heal_command
     ```
 
-    Save, then run:
+    Save. Now start the resource in the live console (txAdmin Live Console or the FXServer console window) by typing:
 
     ```text
-    restart qu_heal_command
+    ensure qu_heal_command
     ```
 
-    Run this test:
+    Use `ensure`, not `restart`, the first time: the line you just added to `server.cfg` is only read when the whole server boots, so on an already-running server the resource has not started yet. `restart` only works on a resource that is already running, so it would do nothing here. `ensure` starts the resource if it is stopped and restarts it if it is already running, so it always works.
+
+    Join your own server, wait until your character has spawned in, then open the in-game chat box (press the chat key, by default `T`) and type the command, then press Enter:
 
     ```text
     /heal
@@ -203,6 +205,7 @@ When would you reach for this pattern again? Any time you write a command that g
     { symptom: "attempt to index a nil value (global 'cooldown')", fix: "The local cooldown line is missing or sits below RegisterCommand. Put it on the first line of server.lua so the table exists before the command uses it." },
     { symptom: "Nothing happens and there is no deny message either", fix: "You ran /heal again within 60 seconds, so the cooldown blocked it, but the deny listener is not loading. Confirm client.lua is listed in fxmanifest.lua, restart, then wait the full minute." },
     { symptom: "Health refills but the server line never prints", fix: "An older client only heal script is also running and answering /heal first. Stop it, then restart qu_heal_command so only this resource owns the command." },
+    { symptom: "Nothing happens at all: no server line, no F8 line, no deny", fix: "The resource never started. server.cfg is only read at server boot, so adding the ensure line does not start it on an already-running server. In the live console type ensure qu_heal_command (not restart, which only acts on an already-running resource), confirm you see the resource start, then run /heal again from in-game chat." },
   ]}
 />
 

@@ -178,7 +178,7 @@ A database table is a spreadsheet with strict rules. `id INT AUTO_INCREMENT PRIM
 RegisterCommand('dbtest', function(src)
 ```
 
-This registers a server console command named `dbtest`. Everything inside the function runs when you type `dbtest`. The `true` at the very end (you will see it below) restricts the command to admins and the console, which is what you want for a database test that should never be player-triggered.
+This registers a server console command named `dbtest`. Everything inside the function runs when you type `dbtest`. The `true` at the very end (you will see it below) marks the command as *restricted*: a regular player can only run it if they have been granted the `command.dbtest` ACE permission. The server console, RCON, and resources always bypass that check, so you can run `dbtest` from the console even with no ACE set up. By default no player has the permission, which is exactly what you want for a database test that should never be player-triggered.
 
 ```lua
 local id = MySQL.insert.await('INSERT INTO qu_oxmysql_crud_rows (name, amount) VALUES (?, ?)', { 'lesson', 100 })
@@ -213,7 +213,7 @@ This is the update. `MySQL.update.await` returns how many rows it changed (here,
 end, true)
 ```
 
-The `true` is the `restricted` flag on `RegisterCommand`. When `true`, the command is admin-and-console only. A database write command must never be runnable by any player who guesses the name, so this flag matters even in a teaching example.
+The `true` is the `restricted` flag on `RegisterCommand`. When `true`, only the server console, RCON, resources, or a player who has been granted the `command.dbtest` ACE permission can run it; an ordinary player who guesses the name cannot. (Being an in-game admin does not grant it automatically — the ACE has to be allowed for that group.) A database write command must never be runnable by any random player, so this flag matters even in a teaching example.
 
 ### The mental model: .await means "wait here for the answer"
 
@@ -244,7 +244,7 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
 <FailureList
   items={[
     { symptom: "attempt to index a nil value (global 'MySQL')", fix: "The @oxmysql/lib/MySQL.lua line is missing or misspelled in fxmanifest.lua, or oxmysql is not started. Add the line, add the dependencies { 'oxmysql' } block, and ensure oxmysql loads before this resource." },
-    { symptom: "oxmysql could not connect / no connection string", fix: "oxmysql has no database to talk to. Set mysql_connection_string in server.cfg pointing at your MariaDB, and confirm the database is running." },
+    { symptom: "oxmysql could not connect / no connection string", fix: "oxmysql has no database to talk to. Set mysql_connection_string in server.cfg pointing at your MariaDB, and confirm the database is running. This line contains your database username and password, so never commit server.cfg to a public repo or paste it into a support chat without redacting the credentials first." },
     { symptom: "Unknown column or Table doesn't exist", fix: "You skipped the CREATE TABLE step or ran it against the wrong database. Run the SQL from step 3 against the same database in your connection string." },
     { symptom: "attempt to index a nil value (local 'row')", fix: "MySQL.single returned nil because no row matched. Confirm the insert ran first and that you are passing the returned id into the WHERE id = ? slot." },
     { symptom: "Parameter count mismatch / bind error", fix: "The number of ? placeholders does not match the values in the table. Count them: two question marks need exactly two values, in order." },
@@ -274,7 +274,7 @@ Do not reach for the database for throwaway, per-session, or high-frequency data
   print('[qu_oxmysql_crud] after delete, row is ' .. tostring(gone))
   ```
 
-  Restart `qu_oxmysql_crud`, run `dbtest`, and confirm the last line prints `after delete, row is nil`. You just proved the read returns `nil` when no row matches, and you used the same `WHERE id = ?` discipline on a delete that would otherwise wipe the whole table. Note that `oxmysql` runs `DELETE` through `MySQL.update.await`, which returns the number of rows removed.
+  Restart `qu_oxmysql_crud`, run `dbtest`, and confirm the last line prints `after delete, row is nil`. You just proved the read returns `nil` when no row matches, and you used the same `WHERE id = ?` discipline on a delete that would otherwise wipe the whole table. Note that `MySQL.update.await` is fine for a `DELETE` too: like an `UPDATE`, it returns the number of rows affected (here, the number removed).
 </Exercise>
 
 <Refs

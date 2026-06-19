@@ -121,11 +121,14 @@ end)
     ensure qu_teleport_menu
     ```
 
-    Save, then run:
+    Save, then run this in the server console (txAdmin Live Console or the FXServer console). Because this resource has never started yet, use `ensure`, which starts it if it is stopped (`restart` only works once a resource is already running):
 
     ```text
-    restart qu_teleport_menu
+    refresh
+    ensure qu_teleport_menu
     ```
+
+    After this first start, you can use `restart qu_teleport_menu` whenever you edit the code and want to reload it.
 
     Join the server, then run this test in the chat box (press T):
 
@@ -214,7 +217,7 @@ The four lines after that are a small choreography, and the order matters:
 
 - `DoScreenFadeOut(500)` fades the screen to black over 500 milliseconds. The number is the duration in ms.
 - `Wait(600)` pauses this handler for 600 ms. Net event handlers run in a thread that can yield, so `Wait` is allowed here. This number is deliberately larger than the fade. You want the screen fully black **before** you move the player, so they never see the world snap. If you teleport at 400 ms while the fade is still finishing, the player catches a glimpse of the jump. Wait longer than the fade, always.
-- `SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false)` does the move. `PlayerPedId()` returns the handle of the player's own character on this client. The three coordinates are the destination. The four `false` flags are, in order, `alive`, `deadFlag`, `ragdollFlag`, and `clearArea`. For a plain on-foot teleport, all false is fine.
+- `SetEntityCoords(PlayerPedId(), c.x, c.y, c.z, false, false, false, false)` does the move. `PlayerPedId()` returns the handle of the player's own character on this client. The three coordinates are the destination. The four `false` flags are, in order, `alive`, `deadFlag`, `ragdollFlag` (low-level physics flags the engine uses for dead and ragdolling peds; `alive` is effectively unused), and `clearArea` (when true, clears nearby entities at the destination). For a plain on-foot teleport, all four false is fine. (Some third-party docs mislabel the first three as `xAxis/yAxis/zAxis`; FiveM's native reference names them `alive/deadFlag/ragdollFlag`.)
 - `DoScreenFadeIn(500)` fades back from black now that the player is standing in the new spot.
 
 So the sequence reads: black out, wait until fully black, move, fade back in. The teleport hides inside the black frame, which is what makes it feel smooth instead of jarring.
@@ -274,7 +277,7 @@ When the action is purely cosmetic and local, like opening a settings panel, you
 <Refs
   items={[
     { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "Community Ox context menu documentation", href: "https://coxdocs.dev/ox_lib/Modules/Interface/Client/context" },
+    { label: "Community Ox context menu documentation", href: "https://overextended.dev/ox_lib/Modules/Interface/Client/context" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" }
   ]}
 />
