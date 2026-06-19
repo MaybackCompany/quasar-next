@@ -43,7 +43,7 @@
 
     # GTA content build, not the FXServer artifact number. Keep the recipe's
     # value unless an asset requires another supported build.
-    sv_enforceGameBuild <supported-game-build>
+    sv_enforceGameBuild 3095   # a real GTA content build number. Keep the value your install recipe sets, e.g. 3095.
 
     set mysql_connection_string "mysql://root:PASSWORD@127.0.0.1/fivem?charset=utf8mb4"
     set mysql_slow_query_warning 150
@@ -96,6 +96,8 @@
     ```
 
     A script that calls `lib.` functions needs `ox_lib` above it, because `lib` does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
+
+    First, one word you need: an **export** is a function one resource publishes so other resources can call it (the FiveM way resources talk to each other). A resource can only answer an export call after it has started.
 
     Here is the same idea reduced to its smallest form, so you can see exactly what flips. `es_extended` calls `oxmysql` exports the moment it starts. Put the database layer first and those exports already exist. Put the framework first and it reaches for exports that have not been registered yet:
 
@@ -155,7 +157,7 @@
         return 'pong'
     end)
 
-    print('[qu_dep_provider] export ready')
+    print('[qu_dep_provider] export ready')  -- this text appears in the txAdmin Live Console when the resource starts
     ```
 
     `qu_dep_consumer/fxmanifest.lua`:
@@ -183,7 +185,7 @@
     end)
     ```
 
-    Notice neither manifest has a `lua54` line. Lua 5.4 is the only runtime in 2026, so that line is deprecated and ignored. Leave it out.
+    Notice neither manifest has a `lua54` line. Lua 5.4 is the only runtime in 2026 (Lua 5.3 was removed in June 2025), so the `lua54` setting is deprecated and you do not need to enable it. Leave it out.
   </Step>
 
   <Step num={5} title="Run the order test, then break it on purpose" outcome="You watch one console line flip when the order is wrong.">
@@ -194,7 +196,7 @@
     ensure qu_dep_consumer
     ```
 
-    Open txAdmin and go to the **Live Console**. Stop both resources first, then start the provider and consumer in that order:
+    Open txAdmin in your browser, click **Live Console** in the left sidebar, then type each command into the input box at the bottom of that page and press Enter (one line at a time). Stop both resources first, then start the provider and consumer in that order:
 
     ```text
     stop qu_dep_consumer
@@ -203,12 +205,14 @@
     start qu_dep_consumer
     ```
 
-    The consumer found the provider because it loaded second:
+    The consumer found the provider because it loaded second. Your exact lines may print in a slightly different order, and may carry a resource-name prefix the console adds, but the meaning is what matters (illustrative):
 
     <ExpectedOutput>
     [qu_dep_provider] export ready
     [qu_dep_consumer] provider found: pong
     </ExpectedOutput>
+
+    Note: a resource's exports only become callable after FXServer's first scheduler tick, which is why the consumer waits inside CreateThread before calling the provider.
 
     Now break it. Swap the two lines so the consumer is ensured **first**, save, then stop both and start them in the wrong order. Merely restarting the consumer while the provider is still running would not test startup order.
 
@@ -224,7 +228,7 @@
     start qu_dep_provider
     ```
 
-    The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early:
+    The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early (illustrative; line order and any console prefix may vary):
 
     <ExpectedOutput>
     [qu_dep_consumer] provider MISSING (wrong ensure order)

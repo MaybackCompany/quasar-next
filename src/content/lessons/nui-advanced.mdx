@@ -204,7 +204,7 @@ files {
   </Step>
 
   <Step num={6} title="Build the ui, then start the resource" outcome="A dist/ folder exists and the proof appears in F8.">
-    From a terminal, install dependencies and build once. Run these inside the `ui/` folder:
+    Open a terminal on the machine where your server files live. On Windows that is PowerShell (Start menu, type 'PowerShell'); on Linux or macOS it is the Terminal app; inside VS Code it is the integrated terminal (View > Terminal). The first command below moves into the project: it assumes you start from your server's `resources` folder, so adjust the path if you started somewhere else. Then install dependencies and build once:
 
     ```text
     cd resources/qu_nui_react/ui
@@ -220,17 +220,15 @@ files {
     ensure qu_nui_react
     ```
 
-    Save, then run:
+    Save. Then, in the server console (the FXServer window, or the txAdmin Live Console in your browser), type:
 
     ```text
     restart qu_nui_react
     ```
 
-    Join the server, then run this test:
+    Join the server. Then press T to open the in-game chat box and run this test:
 
-    ```text
-    /phone, then click Close
-    ```
+    Type `/phone` in the chat box and press Enter. The React panel appears. Then click the Close button.
 
     <ExpectedOutput>
       [qu_nui_react] open sent, focus captured
@@ -306,7 +304,7 @@ function nuiPost(endpoint, body) {
 }
 ```
 
-This is the same callback scope as before, wrapped in a helper so you write the URL once. The official form is `https://${GetParentResourceName()}/&lt;endpoint&gt;`. FiveM provides `GetParentResourceName()` inside NUI, and it returns the resource that owns the page. That avoids a hardcoded folder name and keeps the callback working if the resource is renamed. The endpoint still has to match `RegisterNUICallback('close', ...)` exactly.
+This is the same callback scope as before, wrapped in a helper so you write the URL once. The official form is `https://${GetParentResourceName()}/<endpoint>`. FiveM provides `GetParentResourceName()` inside NUI, and it returns the resource that owns the page. That avoids a hardcoded folder name and keeps the callback working if the resource is renamed. The endpoint still has to match `RegisterNUICallback('close', ...)` exactly.
 
 On the Lua side `RegisterNUICallback('close', function(data, cb) ... end)` answers that endpoint. The endpoint string after the last slash must match the registered name exactly. The contract on `cb` is identical to the raw lesson: the `fetch` promise stays pending until you call `cb` exactly once, so the `.then(() => setOpen(false))` that hides the panel never runs if you forget it. `SetNuiFocus(false, false)` on the first line of the callback releases the cursor the instant the click arrives.
 
@@ -316,7 +314,7 @@ A boundary rule worth carrying past this lesson: the React app can only ever *re
 
 This is the workflow that catches everyone moving up from raw HTML. With loose files, you edited `app.js`, ran `restart`, and the change was live. With a build pipeline there is an extra step, and skipping it makes you debug a change that was never compiled.
 
-The loop is: edit source under `ui/src`, run `npm run build` in `ui/`, then refresh the page in-game. Refreshing in-game means either `restart qu_nui_react`, or, if only the UI changed, the faster path is to press F8 and run `nui_devtools` or simply re-trigger the page. The rebuild is the non-negotiable part. The game serves `dist/`, and `dist/` does not change until `npm run build` regenerates it. Edit `App.jsx`, forget to rebuild, restart the resource, and you will stare at the old UI convinced your code is broken when in fact the game never saw it.
+The loop is: edit source under `ui/src`, run `npm run build` in `ui/`, then refresh the page in-game. Refreshing in-game means either `restart qu_nui_react`, or, if only the UI changed, the faster path is to press F8 and run `nui_devTools` (note the capital T) or simply re-trigger the page. The rebuild is the non-negotiable part. The game serves `dist/`, and `dist/` does not change until `npm run build` regenerates it. Edit `App.jsx`, forget to rebuild, restart the resource, and you will stare at the old UI convinced your code is broken when in fact the game never saw it.
 
 When you want a tight inner loop without rebuilding every keystroke, run `npm run dev` in a second terminal. Vite serves the app at a local URL with hot reload, so you can iterate on layout in a normal browser tab. Just remember the game still loads `dist/`, so a final `npm run build` is what ships the change into FiveM.
 

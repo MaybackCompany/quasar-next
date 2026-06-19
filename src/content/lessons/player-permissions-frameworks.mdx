@@ -51,7 +51,7 @@ add_principal  identifier.license:9a3f...  group.admin
 
 <StepGroup>
   <Step num={1} title="Read the player's identifier" outcome="You have a real license string to grant.">
-    `add_principal` binds to an identifier, never to a display name or temporary server ID. With the player connected, open txAdmin's **Players** panel, open that player, and copy the full `license:` or `fivem:` identifier. The Cfx `status` command shows only a primary identifier, so do not expect it to list license, Discord, Steam, and FiveM identifiers together. A truncated value silently grants nothing.
+    `add_principal` binds to an identifier, never to a display name or temporary server ID. With the player connected, open txAdmin in your browser (the web panel, not the black FXServer console window), click **Players** in the left sidebar, click that player's row, and copy the full `license:` or `fivem:` identifier. The Cfx `status` command shows only a primary identifier, so do not expect it to list license, Discord, Steam, and FiveM identifiers together. A truncated value silently grants nothing.
   </Step>
 
   <Step num={2} title="Create permissions.cfg" outcome="Admin lives in its own file, not buried in server.cfg.">
@@ -112,7 +112,7 @@ exec permissions.cfg
     Replace the example license with the real one from your file. Cfx.re documents `test_ace` specifically for checking whether a principal is allowed or denied an object.
 
     <ExpectedOutput>
-The result reports ALLOW for the player's `command` object.
+The console prints a short resolution trace ending in an allow decision for the `command` object (exact wording varies by artifact version; look for the line that resolves to `allow`, not `deny`).
     </ExpectedOutput>
 
     If access is denied, the license in `add_principal` does not match the connected player. Re-copy the complete value from txAdmin's player record and run `exec permissions.cfg` again.
@@ -139,7 +139,7 @@ add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.admin
 
 `add_principal child parent` makes the child inherit the parent. Here the child is one real player, identified by license, and the parent is `group.admin`. The instant this resolves, that player can do everything the group can do. This is also how group hierarchies are built: `add_principal group.admin group.mod` would make admin inherit everything mod can do. Inheritance always flows child gets parent.
 
-The identifier prefix matters. `identifier.license:` is the Rockstar license hash and is the most stable choice. You can also use `identifier.steam:`, `identifier.discord:`, or `identifier.fivem:`, but steam needs the Steam client running and ip is spoofable, so license is the one to reach for.
+The identifier prefix matters. `identifier.license:` is the Rockstar license hash. It is platform-independent -- it resolves whether or not the player launched through Steam -- which is why most ACE examples reach for it. You can also use `identifier.steam:`, `identifier.discord:`, or `identifier.fivem:`. `identifier.steam:` only resolves when the player launched through Steam, so `identifier.license:` is the safer default for an allow-list. One caveat: `license` can change if a player switches Rockstar/Social Club accounts, so for permanent bans Cfx.re recommends the `fivem:` identifier (the player's Cfx.re user ID), which is tied to their Cfx account rather than the game copy.
 
 ### Why a file you exec, not lines pasted live
 
@@ -160,6 +160,8 @@ Modern ESX Legacy (es_extended `1.13.5`, fx_version `cerulean`) has no separate 
 ```cfg
 # permissions.cfg — ESX layer (these are still just ACE lines)
 add_ace group.admin command allow
+# ESX default admin tiers are owner + admin (Config.AdminGroups). Grant owner for full control:
+add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.owner
 add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.admin
 ```
 
