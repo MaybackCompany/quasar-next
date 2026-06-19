@@ -1,0 +1,105 @@
+<LessonHero
+  crumbs="Track A · Server Ops"
+  title="Protect your server from common cheaters"
+  meta={[
+    { label: "You'll build", value: "A hardened server.cfg with ConVars and ACE permissions that block the most common cheat vectors — explosions, peds, teleporting, sound spam." },
+    { label: "Time", value: "~15 minutes" },
+    { label: "You need", value: "Access to server.cfg and the ability to restart the server." },
+    { label: "You'll learn", value: "sv_enableNetworkedSounds, disabling explosive types, ACE privilege restrictions, and server-side validation patterns." },
+  ]}
+>
+  Most cheat attacks on FiveM servers are not sophisticated — they exploit defaults that are trivial to lock down. In ten minutes you can block the majority of common cheats (explosions, ped spam, teleporting, sound attacks) with server ConVars and ACE permissions alone. No external anti-cheat required.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can edit server.cfg and restart the server.",
+    "I can read txAdmin Live Console.",
+    "I understand what a ConVar is (see the server.cfg lesson if not).",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Disable networked sounds" outcome="Cheaters cannot spam sirens and loud audio.">
+    Add this to your server.cfg:
+
+    ```bash server.cfg
+# Block networked sound exploits
+sv_enableNetworkedSounds false
+    ```
+
+    This disables the `PlaySoundFrom*` natives that cheaters use to blast audio at every player. Most legitimate scripts use NUI or external audio resources instead — those are not affected.
+
+    <ExpectedOutput>
+      After restart, cheaters who try to play networked sounds get no result. Legitimate NUI-based audio still works.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Disable dangerous explosive types" outcome="Cheaters cannot spawn explosions.">
+    Add these to server.cfg:
+
+    ```bash server.cfg
+# Disable explosive types cheaters abuse
+setr sv_disableExplosiveType_0 true   # grenade
+setr sv_disableExplosiveType_1 true   # rocket
+setr sv_disableExplosiveType_2 true   # molotov
+setr sv_disableExplosiveType_3 true   # sticky bomb
+    ```
+
+    If your server legitimately needs a specific explosive type, omit that line.
+
+    <ExpectedOutput>
+      Explosions are blocked. Scripts that need explosives (heists, events) can still use them via server-side spawning, which is not affected.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Restrict sensitive ACE permissions" outcome="Only your resources have Start/Stop privilege.">
+    Cheaters often try to stop anti-cheat resources. Lock it down:
+
+    ```bash server.cfg
+# ACE restrictions — only trusted resources can stop other resources
+add_ace resource.YourAntiCheat command.stop allow
+add_ace resource.YourAdminMenu command.stop allow
+add_ace resource.YourCoreResource command.stop allow
+    ```
+
+    Replace the resource names with your actual resources. This prevents any untrusted resource from calling `stop` on your protections.
+
+    <ExpectedOutput>
+      A cheat resource that calls `StopResource('YourAntiCheat')` is denied with an ACE permission error in console.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Validate client input server-side" outcome="The server rejects impossible actions.">
+    Never trust data from the client. Add server-side validation to your event handlers:
+
+    ```lua server.lua
+RegisterNetEvent('myresource:giveMoney', function(amount)
+    local src = source
+    -- Reject if amount is negative or absurdly large
+    if amount < 0 or amount > 100000 then
+        print(('Cheat attempt: player %s tried to give %s money'):format(src, amount))
+        return
+    end
+    -- Proceed with valid amount
+    exports.ox_inventory:AddItem(src, 'money', amount)
+end)
+    ```
+
+    This pattern applies to health, weapons, teleport coordinates, and any value the client sends.
+
+    <ExpectedOutput>
+      A cheater who sends `giveMoney(-9999999)` gets nothing. The server logs the attempt.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Legitimate explosions (heists) stopped working | The `sv_disableExplosiveType` blocks your script | Remove that specific explosive type line, or spawn explosives via server-side code |
+| `add_ace` command not recognized | Server build is old | Update to current Recommended artifacts |
+| Anti-cheat still gets stopped | ACE was set but resource name was spelled wrong | Check exact resource folder name — it must match |

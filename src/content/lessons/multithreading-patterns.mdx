@@ -1,0 +1,105 @@
+<LessonHero
+  crumbs="Track B · Pro Path"
+  title="Multi-threading for advanced scripts"
+  meta={[
+    { label: "You'll build", value: "A resource that offloads heavy computation to a separate thread so the main game loop stays responsive." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, familiarity with Citizen.CreateThread and Citizen.Wait." },
+    { label: "You'll learn", value: "When multi-threading helps, how to use Citizen.SetTimeout for deferred work, and why Citizen.Wait(0) in a separate thread behaves differently." },
+  ]}
+>
+  Some work is too heavy to run inside the main game tick — database queries, HTTP calls, complex math, large table processing. FiveM lets you offload this work to separate threads. This is an advanced technique. Use it only when you have already applied distance checks, Wait tuning, and throttling and still need more headroom.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have read the resource performance lesson.",
+    "I understand Citizen.CreateThread and Citizen.Wait.",
+    "I have a resource that legitimately needs heavy computation (not just a tight loop).",
+  ]}
+/>
+
+<Callout variant="warn" title="Multi-threading is the last resort">
+  Before reaching for multi-threading, try: distance checks, increasing Wait intervals, throttling with timers, and caching results. Multi-threading adds complexity and can cause race conditions. Reserve it for genuinely heavy work like large data processing or external API calls.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource" outcome="A basic resource with heavy and light threads.">
+    ```text
+resources/qu_multithread_demo/
+  fxmanifest.lua
+  client.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+client_script 'client.lua'
+    ```
+
+    ```lua client.lua
+-- Main thread: keep this light
+Citizen.CreateThread(function()
+    while true do
+        -- light work here: UI updates, proximity checks
+        Citizen.Wait(0)
+    end
+end)
+
+-- Heavy thread: offload expensive work here
+Citizen.CreateThread(function()
+    while true do
+        -- Heavy computation that doesn't need per-frame precision
+        -- Example: processing a large table of data
+        local allVehicles = GetGamePool('CVehicle')
+        for _, v in ipairs(allVehicles) do
+            -- Heavy processing here
+        end
+        Citizen.Wait(1000)  -- once per second is fine for background work
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={2} title="Understand thread scheduling" outcome="You know why two threads beat one heavy thread.">
+    FiveM schedules threads cooperatively. Each `Citizen.Wait()` yields control. A single thread with heavy work blocks EVERYTHING until it yields. Two threads mean:
+
+    - **Main thread**: yields every frame (Wait(0)), stays responsive
+    - **Heavy thread**: yields every second (Wait(1000)), does bulk work in between
+
+    The game loop, rendering, and other resources all share time with your threads. Keeping the main thread fast is the goal.
+
+    <ExpectedOutput>
+      The game stays smooth even while heavy processing runs in the background.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Use SetTimeout for deferred one-shot work" outcome="Heavy work runs once, not in a loop.">
+    Sometimes you don't need a loop — you need to defer a single heavy operation:
+
+    ```lua client.lua
+-- Defer heavy work without blocking the current tick
+Citizen.SetTimeout(0, function()
+    -- This runs on the NEXT tick, not this one
+    local result = ProcessHeavyData()
+    SendNUIMessage({type = 'dataReady', data = result})
+end)
+    ```
+
+    `SetTimeout(0, fn)` is the FiveM equivalent of `setTimeout(fn, 0)` in JavaScript. It defers execution to the next available tick without blocking the current one.
+
+    <ExpectedOutput>
+      The current tick finishes instantly. The heavy work runs on the next tick without users noticing a stutter.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Race condition: two threads read/write same data | No synchronization between threads | Use a single thread for shared state, or use a queue pattern |
+| Thread never yields (no Wait call) | Infinite loop with no Citizen.Wait() | Every loop MUST have Citizen.Wait() — even Wait(0) is enough |
+| resmon shows high tick time despite two threads | Both threads doing heavy work in the same tick | Stagger the Wait intervals: thread 1 at 0ms offset, thread 2 at 500ms offset |

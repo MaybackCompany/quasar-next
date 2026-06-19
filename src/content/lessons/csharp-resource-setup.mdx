@@ -1,0 +1,106 @@
+<LessonHero
+  crumbs="Track B · Scripting"
+  title="Setting up C# and creating a basic resource"
+  meta={[
+    { label: "You'll build", value: "A FiveM resource written in C# that prints to console and responds to a command." },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You need", value: "A local FiveM server, Visual Studio or VS Code, .NET SDK installed." },
+    { label: "You'll learn", value: "When C# makes sense over Lua, how to set up a C# resource project, the BaseScript lifecycle, and accessing FiveM natives from C#." },
+  ]}
+>
+  FiveM supports C# resources alongside Lua. C# gives you type safety, better IDE support, and access to the full .NET ecosystem — useful for complex logic, external API calls, or when your team already knows C#. This lesson sets up a C# resource from scratch, covering the project structure, the BaseScript class, and how FiveM natives work in C#.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a local FiveM server.",
+    "I have the .NET SDK installed (dotnet --version works).",
+    "I know basic C# (classes, methods, async/await).",
+  ]}
+/>
+
+<Callout variant="warn" title="When to use C# vs Lua">
+  Use **C#** for: complex business logic, type-safe APIs, heavy computation, or when your team is C#-first. Use **Lua** for: rapid prototyping, simple resources, or when you need maximum FiveM community compatibility. Most servers run 90% Lua. C# is a power tool — reach for it when Lua's dynamic typing becomes a liability.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the C# project" outcome="A .NET class library ready for FiveM.">
+    In your resources folder:
+
+    ```bash
+mkdir resources/qu_csharp_demo
+cd resources/qu_csharp_demo
+dotnet new classlib --framework netstandard2.1
+dotnet add package CitizenFX.Core --version 1.0.*
+    ```
+
+    Rename `Class1.cs` to `MainScript.cs` and open it.
+  </Step>
+
+  <Step num={2} title="Write the script" outcome="The resource prints to console and responds to a command.">
+    ```csharp MainScript.cs
+using CitizenFX.Core;
+
+namespace QuCsharpDemo
+{
+    public class MainScript : BaseScript
+    {
+        public MainScript()
+        {
+            Debug.WriteLine("C# resource started!");
+
+            // Register a chat command
+            API.RegisterCommand("csharp_hello", new Action<int, List<object>, string>((source, args, raw) =>
+            {
+                Debug.WriteLine($"Player {source} said: {string.Join(" ", args)}");
+            }), false);
+        }
+
+        // Tick runs every frame — like Citizen.CreateThread with Wait(0)
+        [Tick]
+        public async Task OnTick()
+        {
+            if (Game.IsControlJustPressed(0, Control.Pickup))
+            {
+                Debug.WriteLine("E key pressed in C#!");
+            }
+            await Task.FromResult(0);
+        }
+    }
+}
+    ```
+  </Step>
+
+  <Step num={3} title="Create the fxmanifest" outcome="FiveM loads your C# resource.">
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'qu_csharp_demo.net.dll'
+    ```
+
+    The `.net.dll` is the compiled assembly. FiveM loads it as a script and discovers all `BaseScript` subclasses automatically.
+
+    <ExpectedOutput>
+      After `ensure qu_csharp_demo`, the server console prints: `C# resource started!`
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Test the command and key press" outcome="Both the chat command and E key work.">
+    In-game: type `/csharp_hello testing C#` → server console prints the message. Press E → console prints "E key pressed in C#!"
+
+    <ExpectedOutput>
+      Both triggers work. The C# resource behaves identically to a Lua resource.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `Could not load file or assembly` | Wrong .NET version or missing package | Target `netstandard2.1`, install `CitizenFX.Core` nuget |
+| Resource loads but nothing happens | No `BaseScript` subclass found | Your class MUST inherit from `BaseScript` |
+| `API.RegisterCommand` not found | Missing `using static CitizenFX.Core.Native.API` or full namespace | Use `API.RegisterCommand` from `CitizenFX.Core` |

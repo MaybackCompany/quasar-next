@@ -1,0 +1,112 @@
+<LessonHero
+  crumbs="Track B · Core Concepts"
+  title="How to use State Bags"
+  meta={[
+    { label: "You'll build", value: "A resource that sets, gets, and reacts to State Bag changes — sharing data between resources without events." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, one resource you can edit." },
+    { label: "You'll learn", value: "Player vs entity State Bags, setting and getting values, reacting to changes with handlers, and when to use State Bags vs events." },
+  ]}
+>
+  State Bags are FiveM's built-in key-value store attached to players and entities. They sync automatically, let any resource read values without triggering events, and fire callbacks when values change. In 2026 they are the standard way to share non-critical state (hunger, thirst, job name, radio channel) between resources.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can create and restart a FiveM resource.",
+    "I understand client vs server scripts (see the Two Worlds lesson).",
+    "I know what a callback function is.",
+  ]}
+/>
+
+<Callout variant="fivem" title="State Bags vs events — when to use which">
+  Use **State Bags** for non-critical, frequently-read data: player job, hunger level, radio channel. Any resource can read it at any time. Use **events** for actions: "give this player money," "spawn this vehicle." State Bags are read-heavy; events are action-heavy.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource" outcome="A new resource folder with the basic files.">
+    ```text
+resources/qu_statebag_demo/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_script 'server.lua'
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={2} title="Set a State Bag value (server)" outcome="The player's State Bag has a 'job' key.">
+    On the server, set a State Bag value for a player:
+
+    ```lua server.lua
+-- Set a State Bag value for a player
+local playerId = 1  -- replace with actual player ID
+local playerState = Player(playerId).state
+
+playerState:set('job', 'police', true)  -- true = replicate to all clients
+print(('Set player %s job to police'):format(playerId))
+    ```
+
+    The third argument (`true`) controls replication. Set it `true` so other clients can read this value. Set it `false` for server-only state.
+
+    <ExpectedOutput>
+      The server console prints "Set player 1 job to police."
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Read a State Bag value (client)" outcome="Any client can read the player's job.">
+    On the client, read another player's State Bag:
+
+    ```lua client.lua
+-- Read another player's State Bag
+local targetId = GetPlayerFromServerId(1)  -- server ID → client ID
+local job = Player(targetId).state.job
+print(('Player 1 job: %s'):format(job or 'not set'))
+
+-- Read your own State Bag
+local myJob = LocalPlayer.state.job
+print(('My job: %s'):format(myJob or 'not set'))
+    ```
+
+    `LocalPlayer.state` reads your own State Bag without needing a server ID lookup.
+
+    <ExpectedOutput>
+      F8 console prints the job value for both players.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="React to State Bag changes" outcome="Your code fires automatically when a value changes.">
+    Add a change handler so your code runs whenever the job changes:
+
+    ```lua client.lua
+-- Handler fires every time 'job' changes on any player
+AddStateBagChangeHandler('job', nil, function(bagName, key, value)
+    local playerId = GetPlayerFromStateBagName(bagName)
+    if playerId == 0 then return end  -- bagName is not a player
+    print(('Player %s job changed to: %s'):format(playerId, value))
+end)
+    ```
+
+    The handler runs on every change — you don't need to poll or trigger events.
+
+    <ExpectedOutput>
+      When the server changes a player's job, the handler prints the update instantly.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `attempt to index a nil value (local 'playerState')` | Player ID is invalid or player is not connected | Check the player exists before accessing state |
+| Handler fires for non-player State Bags | Entities and vehicles also have State Bags | Filter with `GetPlayerFromStateBagName()` — returns 0 for non-players |
+| Other clients can't read the value | `replicate` was set to `false` | Pass `true` as third argument to `:set()` |

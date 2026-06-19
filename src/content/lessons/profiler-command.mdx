@@ -1,0 +1,108 @@
+<LessonHero
+  crumbs="Track B · Pro Path"
+  title="Use the profiler to find slow scripts"
+  meta={[
+    { label: "You'll build", value: "A captured profiler trace that pinpoints the exact function and line causing hitch warnings on your server." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server with at least one script running, Google Chrome installed." },
+    { label: "You'll learn", value: "Capturing a client and server profile, reading the flame graph, and identifying which function spends the most time." },
+  ]}
+>
+  FiveM ships with a built-in profiler that shows exactly which lines of code are eating CPU time. In 2026 it works on both client (`F8 profiler`) and server (txAdmin profiler). This lesson teaches you to capture a trace, open it in Chrome's built-in viewer, and read the flame graph so you stop guessing and start measuring.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a local FiveM server with at least one resource loaded.",
+    "I can open F8 console in-game.",
+    "I have Google Chrome installed (for viewing `.cpuprofile` files).",
+    "My FiveM client and server artifacts are up to date.",
+  ]}
+/>
+
+<Callout variant="fivem" title="Profiler vs resmon — when to use which">
+  **resmon** (`F8 → resmon true`) gives you a live dashboard of all resource tick times. Use it to spot *which* resource is slow. **profiler** captures a detailed trace of *what exactly* inside that resource is slow — down to the function name and line number.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Capture a client-side profile" outcome="A .cpuprofile file is saved to your FiveM data folder.">
+    Join your server, open F8, and start profiling:
+
+    ```text
+profiler record start
+    ```
+
+    Let it run for 5-10 seconds while your resource is doing work. Then stop:
+
+    ```text
+profiler record stop
+    ```
+
+    FiveM saves the trace to your FiveM application data folder:
+
+    ```text
+%localappdata%/FiveM/FiveM.app/data/profiles/
+    ```
+
+    The file is named with a timestamp, like `profile-20260619-120000.cpuprofile`.
+
+    <ExpectedOutput>
+      A `.cpuprofile` file appears in the profiles folder. The F8 console prints the save path.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Capture a server-side profile" outcome="A server-side trace is saved for txAdmin inspection.">
+    For server-side profiling, use txAdmin's built-in profiler instead of F8:
+
+    1. Open txAdmin → click your server → **Profiler** tab
+    2. Click **Start Profiling**
+    3. Let it run while server activity happens (players join, resources load)
+    4. Click **Stop Profiling**
+
+    txAdmin opens the flame graph directly in your browser.
+
+    <ExpectedOutput>
+      txAdmin shows a flame graph with function names, file paths, and time spent per function.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Read the flame graph" outcome="You can identify which function is the bottleneck.">
+    Open the `.cpuprofile` file in Chrome:
+
+    1. Open Chrome → F12 DevTools
+    2. Go to **Performance** tab
+    3. Click the upload arrow icon (top-left of the panel)
+    4. Select your `.cpuprofile` file
+
+    The flame graph appears. Key reading rules:
+
+    - **Width** = time spent. Wide blocks are your target.
+    - **Stack order** = call chain. Bottom calls top.
+    - **Look for wide blocks** with Lua file names — those are your resources.
+
+    Common offenders: `Citizen.Wait(0)` loops with no distance check, `GetGamePool` calls every frame, un-throttled `TriggerEvent`.
+
+    <ExpectedOutput>
+      You can point at a wide block in the flame graph and say "this function in this file at this line is eating 60% of the tick."
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Fix and verify" outcome="The offender disappears from the flame graph.">
+    Apply one fix from the resource-performance lesson (distance check, Wait tuning, or throttling), restart the resource, and capture a new profile. The wide block should now be narrow or absent.
+
+    <ExpectedOutput>
+      Second profile shows the hot function is gone or significantly smaller.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `profiler: command not found` | Client or server artifacts are out of date | Update to latest Recommended artifacts |
+| Chrome shows empty/blank profile | Profiler was stopped immediately after start | Let it run at least 5 seconds before stopping |
+| Flame graph shows only `???` entries | Resource is compiled/obfuscated | Profiler can't read minified code — test with a plain Lua file first |
+| txAdmin profiler tab is missing | Server version is old | Update server artifacts to current Recommended build |

@@ -1,0 +1,115 @@
+<LessonHero
+  crumbs="Track B · Networking"
+  title="Adapt your scripts to OneSync"
+  meta={[
+    { label: "You'll build", value: "A resource updated for OneSync: entity ownership checks, routing buckets, and scoped events." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, a resource that creates or manipulates entities." },
+    { label: "You'll learn", value: "What OneSync changed (entity ownership, scoping), how to check if you own an entity before modifying it, routing buckets, and scoped event triggers." },
+  ]}
+>
+  OneSync is FiveM's entity synchronization system, enabled by default since 2020. It changed fundamental rules: entities are owned by specific players, scoping distance is 424 meters, and events must target the right players. If your resource predates OneSync or you learned from an old tutorial, this lesson fixes the patterns that silently fail.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a resource that creates or manipulates entities (vehicles, peds, objects).",
+    "I understand client vs server scripts.",
+    "I know what TriggerEvent and TriggerClientEvent do.",
+  ]}
+/>
+
+<Callout variant="fivem" title="The #1 OneSync mistake">
+  Trying to delete or modify an entity you don't own on the client. Under OneSync, a client can only modify entities it has network ownership of. If you don't own it, the native silently fails or throws an error.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Check entity ownership before modifying" outcome="You only modify entities you own.">
+    The wrong way:
+
+    ```lua client.lua
+-- WRONG: may fail silently if another player owns this vehicle
+local veh = GetVehiclePedIsIn(PlayerPedId(), false)
+DeleteEntity(veh)  -- only works if YOU own it
+    ```
+
+    The right way:
+
+    ```lua client.lua
+-- RIGHT: check ownership first
+local veh = GetVehiclePedIsIn(PlayerPedId(), false)
+local netId = NetworkGetNetworkIdFromEntity(veh)
+local owner = NetworkGetEntityOwner(veh)
+
+if owner == PlayerId() then
+    DeleteEntity(veh)
+else
+    -- Ask the server to request ownership transfer
+    TriggerServerEvent('myresource:requestDelete', netId)
+end
+    ```
+
+    Server-side:
+    ```lua server.lua
+RegisterNetEvent('myresource:requestDelete', function(netId)
+    local entity = NetworkGetEntityFromNetworkId(netId)
+    if entity and DoesEntityExist(entity) then
+        DeleteEntity(entity)  -- server can always delete
+    end
+end)
+    ```
+
+    Rule: modify entities on the side that created them, or ask the server to do it.
+  </Step>
+
+  <Step num={2} title="Use scoped events instead of broadcast" outcome="Events only reach relevant players.">
+    Old pattern (broadcasts to everyone):
+
+    ```lua server.lua
+-- WRONG: sends to ALL players, even ones 10km away
+TriggerClientEvent('myresource:updateHUD', -1, data)
+    ```
+
+    New pattern (scoped to a routing bucket or nearby players):
+
+    ```lua server.lua
+-- RIGHT: send only to players in a specific bucket
+local bucket = GetPlayerRoutingBucket(source)
+TriggerClientEvent('myresource:updateHUD', bucket, data)
+
+-- Or send to players within render distance of the entity
+TriggerClientEvent('myresource:updateHUD', NetworkGetEntityOwner(entity), data)
+    ```
+
+    Use `-1` only for truly global events (announcements, weather changes). Everything else should be scoped.
+  </Step>
+
+  <Step num={3} title="Use routing buckets for instances" outcome="Players in different instances don't see each other's entities.">
+    Routing buckets isolate players into separate worlds:
+
+    ```lua server.lua
+-- Put a player into an instance (e.g., an apartment interior)
+local bucketId = 100 + apartmentId
+SetPlayerRoutingBucket(source, bucketId)
+
+-- Later, return them to the default world
+SetPlayerRoutingBucket(source, 0)
+    ```
+
+    Players in different buckets cannot see each other, cannot interact, and their events are isolated. Use this for apartments, heists, and any instanced content.
+
+    <ExpectedOutput>
+      Two players in bucket 100 see each other. A player in bucket 0 (default) does not see them.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Entity vanishes when another player drives it | Ownership transferred to the other player, and your code deleted it | Check ownership before deleting: `NetworkGetEntityOwner(entity) == PlayerId()` |
+| Events fire but nothing happens | Event target player is in a different routing bucket | Check routing bucket with `GetPlayerRoutingBucket(src)` and target the bucket ID |
+| `SetEntityCoords` does nothing on client | You don't own the entity | Move entity modification to the server, or request ownership transfer first |

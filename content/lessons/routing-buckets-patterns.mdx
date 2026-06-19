@@ -1,0 +1,111 @@
+<LessonHero
+  crumbs="Track B · Networking"
+  title="How to use Routing Buckets for instanced content"
+  meta={[
+    { label: "You'll build", value: "An apartment system where each apartment is a separate routing bucket — players in different apartments don't see or hear each other." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server with OneSync enabled (default)." },
+    { label: "You'll learn", value: "What routing buckets are, how to assign and remove players from buckets, how to target events to a bucket, and the lockdown mode that prevents bucket-hopping." },
+  ]}
+>
+  Routing buckets are OneSync's built-in instance system. They let you create separate "worlds" where only players in the same bucket can see each other. This is how apartment interiors, heist lobbies, and instanced missions work. This lesson builds a simple apartment entry system using routing buckets.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have read the OneSync adaptation lesson.",
+    "I understand server-side scripting and events.",
+    "My server has OneSync enabled (it is by default).",
+  ]}
+/>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource" outcome="A server script that manages routing buckets.">
+    ```text
+resources/qu_buckets_demo/
+  fxmanifest.lua
+  server.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={2} title="Enter an apartment (assign bucket)" outcome="The player enters an instanced world.">
+    ```lua server.lua
+-- Map of apartment ID → bucket ID
+local apartmentBuckets = {}
+
+RegisterNetEvent('qu_buckets:enterApartment', function(apartmentId)
+    local src = source
+
+    -- Create or reuse a bucket for this apartment
+    if not apartmentBuckets[apartmentId] then
+        -- Bucket IDs should be above 100 to avoid conflicts
+        apartmentBuckets[apartmentId] = 100 + apartmentId
+    end
+
+    local bucket = apartmentBuckets[apartmentId]
+    SetPlayerRoutingBucket(src, bucket)
+
+    print(('Player %s entered apartment %s (bucket %s)'):format(src, apartmentId, bucket))
+end)
+    ```
+
+    <ExpectedOutput>
+      After triggering `enterApartment`, the player disappears from the main world. Other players in the same apartment (same bucket) can see them.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Lock down the bucket" outcome="Players cannot switch buckets without your code.">
+    Add lockdown to prevent exploits:
+
+    ```lua server.lua
+-- Lock down the bucket so only your code can move players
+SetRoutingBucketEntityLockdownMode(bucket, 'strict')
+    ```
+
+    Modes: `'strict'` (no bucket switching without code), `'relaxed'` (entities can be pulled across buckets), `'inactive'` (no lockdown).
+
+    ```lua server.lua
+RegisterNetEvent('qu_buckets:enterApartment', function(apartmentId)
+    local src = source
+    if not apartmentBuckets[apartmentId] then
+        apartmentBuckets[apartmentId] = 100 + apartmentId
+    end
+    local bucket = apartmentBuckets[apartmentId]
+    SetPlayerRoutingBucket(src, bucket)
+    SetRoutingBucketEntityLockdownMode(bucket, 'strict')
+end)
+    ```
+  </Step>
+
+  <Step num={4} title="Leave the apartment (return to default)" outcome="The player returns to the main world.">
+    ```lua server.lua
+RegisterNetEvent('qu_buckets:leaveApartment', function()
+    local src = source
+    SetPlayerRoutingBucket(src, 0)  -- 0 = default world
+    print(('Player %s returned to default world'):format(src))
+end)
+    ```
+
+    Bucket `0` is the default world where all players start.
+
+    <ExpectedOutput>
+      The player reappears in the main world. Other players see them again.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| Players can see each other across apartments | Two apartments got the same bucket ID | Use a unique ID scheme (e.g., `100 + apartmentId`) |
+| `SetRoutingBucketEntityLockdownMode` fails | Passing numeric mode (0/1/2) instead of string | Use `'strict'`, `'relaxed'`, or `'inactive'` |
+| Player can't see anyone after leaving apartment | They were assigned bucket 0 but entities didn't scope back | Players in bucket 0 auto-scope with other bucket-0 players. Wait a tick or teleport slightly to trigger re-scoping |

@@ -225,6 +225,23 @@ export const PATHS: Path[] = [
           { num: "03", title: "QBCore to Qbox migration", blurb: "The ox stack, the bridge, and a staged cutover.", slug: "qbcore-to-qbox-migration", tag: "Migration", bonus: true },
         ],
       },
+      {
+        num: "B10",
+        title: "Deep dives",
+        desc: "Advanced techniques every serious FiveM developer needs: performance tuning, profiling, server hardening, State Bags, multi-threading, NUI from scratch, C# resources, OneSync adaptation, and routing buckets.",
+        lessons: [
+          { num: "01", title: "Improve your resource performance", blurb: "Distance checks, throttled loops, Wait tuning, and verifying your fix with resmon.", slug: "resource-performance-tune", tag: "Performance", bonus: true },
+          { num: "02", title: "Use the profiler to find slow scripts", blurb: "Capture client and server profiles, read flame graphs, pinpoint the hot function.", slug: "profiler-command", tag: "Debugging", bonus: true },
+          { num: "03", title: "Protect your server from common cheaters", blurb: "ConVars and ACE permissions that block explosions, ped spam, sound attacks, and teleporting.", slug: "server-hardening", tag: "Security", bonus: true },
+          { num: "04", title: "How to use State Bags", blurb: "Set, get, and react to State Bag changes — share data between resources without events.", slug: "state-bags-patterns", tag: "State", bonus: true },
+          { num: "05", title: "Multi-threading for advanced scripts", blurb: "Offload heavy computation to separate threads, use Citizen.SetTimeout for deferred work.", slug: "multithreading-patterns", tag: "Performance", bonus: true },
+          { num: "06", title: "Create a basic FiveM script from zero", blurb: "The minimum files, a thread, a chat command, and a key-press detector.", slug: "first-resource-skeleton", tag: "Scripting", bonus: true },
+          { num: "07", title: "Use NUI: create UI with HTML, CSS, and JS", blurb: "A full NUI overlay with two-way Lua↔JS messaging, SetNuiFocus, and NUICallback.", slug: "nui-html-css-js", tag: "NUI", bonus: true },
+          { num: "08", title: "Setting up C# for FiveM resources", blurb: "When C# beats Lua, the .NET project setup, BaseScript lifecycle, and calling natives from C#.", slug: "csharp-resource-setup", tag: "Scripting", bonus: true },
+          { num: "09", title: "Adapt your scripts to OneSync", blurb: "Entity ownership checks, scoped events, and the patterns that changed with OneSync.", slug: "onesync-migration", tag: "Networking", bonus: true },
+          { num: "10", title: "How to use Routing Buckets", blurb: "Instanced worlds: assign players to buckets, lock them down, and return to default.", slug: "routing-buckets-patterns", tag: "Networking", bonus: true },
+        ],
+      },
     ],
   },
   {

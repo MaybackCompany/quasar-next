@@ -1,0 +1,123 @@
+<LessonHero
+  crumbs="Track B · Pro Path"
+  title="Improve your resource performance"
+  meta={[
+    { label: "You'll build", value: "A resource that passes the slow-resource warning check, with measured before-and-after proof that your changes work." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A local FiveM server, a resource you can edit, and F8 console access." },
+    { label: "You'll learn", value: "Distance checks, throttled loops, when Citizen.Wait(0) is fine vs when it burns CPU, and how to verify your fix with resmon." },
+  ]}
+>
+  In 2026 FiveM flags resources that run slow with a red warning every player sees. This guide teaches the patterns that prevent the warning — not by guessing, but by measuring. You will take a resource that triggers the warning, profile it, apply the right fix, and prove the warning disappears.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output.",
+    "I have read the resmon and profiling lesson.",
+  ]}
+/>
+
+<Callout variant="fivem" title="The slow-resource warning">
+  When a resource takes too long in a single tick, FiveM prints: `[warning] Resource <name> is slow (X ms)`. This warning appears for every player and damages trust in your server. The threshold is ~10ms per tick on client and ~5ms on server.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Find a slow resource" outcome="You know which resource triggers the warning.">
+    Join your server and watch the chat/console for the slow-resource warning. Note the resource name. If you don't have one, create a test resource:
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+client_script 'client.lua'
+    ```
+
+    ```lua client.lua
+Citizen.CreateThread(function()
+    while true do
+        -- This loop runs every frame with no distance check — deliberately slow
+        local coords = GetEntityCoords(PlayerPedId())
+        local vehicles = GetGamePool('CVehicle')
+        for _, v in ipairs(vehicles) do
+            local vcoords = GetEntityCoords(v)
+            local dist = #(coords - vcoords)
+            print(dist)
+        end
+        Citizen.Wait(0)
+    end
+end)
+    ```
+
+    Restart the resource and watch for the warning.
+  </Step>
+
+  <Step num={2} title="Add a distance check" outcome="The loop skips work when nothing is nearby.">
+    The most common performance killer: doing work for entities the player can't even see. Wrap expensive logic in a distance check:
+
+    ```lua client.lua
+Citizen.CreateThread(function()
+    while true do
+        local coords = GetEntityCoords(PlayerPedId())
+        local vehicles = GetGamePool('CVehicle')
+        for _, v in ipairs(vehicles) do
+            local dist = #(coords - GetEntityCoords(v))
+            if dist < 50.0 then  -- only process vehicles within 50 meters
+                print(dist)
+            end
+        end
+        Citizen.Wait(0)
+    end
+end)
+    ```
+
+    <ExpectedOutput>
+      The slow-resource warning appears less frequently or disappears entirely. In resmon your resource's tick time drops.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Tune the Wait interval" outcome="The loop runs only as often as it needs to.">
+    A `Wait(0)` means "run every frame" (60 times per second). Most logic doesn't need that. Bump the wait:
+
+    ```lua client.lua
+Citizen.CreateThread(function()
+    while true do
+        local coords = GetEntityCoords(PlayerPedId())
+        local vehicles = GetGamePool('CVehicle')
+        for _, v in ipairs(vehicles) do
+            local dist = #(coords - GetEntityCoords(v))
+            if dist < 50.0 then
+                print(dist)
+            end
+        end
+        Citizen.Wait(500)  -- run twice per second instead of 60 times
+    end
+end)
+    ```
+
+    Rule of thumb: UI updates need ~0ms wait. Game logic (checking nearby entities) works fine at 100-500ms. Background data sync can be 1000ms+.
+
+    <ExpectedOutput>
+      The warning is gone. The resource uses a fraction of the CPU it did before.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Verify with resmon" outcome="You have measured proof the fix worked.">
+    Open F8 and type `resmon true`. Find your resource. Note the tick time before and after your changes. A healthy client resource stays under 1-2ms per tick.
+
+    <ExpectedOutput>
+      resmon shows your resource at &lt;1ms per tick. No slow-resource warning in chat.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `[warning] Resource myresource is slow (15 ms)` | Loop body too heavy, or no distance check | Add distance guard or increase Wait value |
+| Warning appears only when many players are on | Shared state or global loops scale with player count | Move per-player logic into per-player threads with distance checks |
+| resmon shows 0ms but warning still fires | Warning fires on the server, resmon shows client | Check server-side loops too — `profiler` in txAdmin |

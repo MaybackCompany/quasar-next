@@ -1,0 +1,175 @@
+<LessonHero
+  crumbs="Track C · NUI"
+  title="Use NUI: create UI with HTML, CSS, and JavaScript"
+  meta={[
+    { label: "You'll build", value: "A FiveM resource that shows an HTML overlay with a button, sends data between Lua and JavaScript, and closes cleanly." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A local FiveM server, basic knowledge of HTML and JavaScript." },
+    { label: "You'll learn", value: "Setting up NUI in fxmanifest, sending messages with SendNUIMessage, receiving with RegisterNUICallback, and focusing input correctly with SetNuiFocus." },
+  ]}
+>
+  NUI (Native UI) is how you render HTML, CSS, and JavaScript on top of the GTA V game world. Every custom HUD, inventory screen, phone UI, and menu in FiveM runs through NUI. This lesson builds a functional NUI overlay from scratch — the foundation for every interface you will ever build.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can create a FiveM resource with client.lua and fxmanifest.lua.",
+    "I know basic HTML (div, button, input) and JavaScript (addEventListener, fetch).",
+    "I have read the Two Worlds lesson (client vs server).",
+  ]}
+/>
+
+<Callout variant="fivem" title="NUI runs in a browser">
+  NUI is a Chromium Embedded Framework (CEF) browser instance rendered on top of the game. Your HTML/CSS/JS runs exactly like a web page — `console.log` goes to the F8 console, and `fetch` can call external APIs (with CSP configured).
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource skeleton" outcome="The folder structure and manifest are ready.">
+    ```text
+resources/qu_nui_demo/
+  fxmanifest.lua
+  client.lua
+  html/
+    index.html
+    style.css
+    script.js
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+
+ui_page 'html/index.html'
+
+files {
+    'html/index.html',
+    'html/style.css',
+    'html/script.js',
+}
+    ```
+
+    `ui_page` tells FiveM which HTML file to load. `files {}` lists every file NUI needs so the client downloads them.
+  </Step>
+
+  <Step num={2} title="Build the HTML page" outcome="A basic overlay with a button and a text display.">
+    ```html html/index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>NUI Demo</h1>
+        <p id="message">Waiting for game data...</p>
+        <button id="closeBtn">Close</button>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
+    ```
+
+    ```css html/style.css
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    color: white;
+}
+#app {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.85);
+    padding: 32px;
+    border-radius: 8px;
+    text-align: center;
+}
+button {
+    padding: 10px 24px;
+    background: #0fb6c4;
+    border: none;
+    color: black;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-top: 12px;
+}
+    ```
+  </Step>
+
+  <Step num={3} title="Open NUI from Lua" outcome="Pressing a key opens the overlay.">
+    ```lua client.lua
+-- Open NUI when player presses F2
+Citizen.CreateThread(function()
+    while true do
+        if IsControlJustPressed(0, 38) then  -- 38 = E key
+            SetNuiFocus(true, true)  -- keyboard focus + cursor
+            SendNUIMessage({
+                type = 'open',
+                message = 'Hello from Lua!'
+            })
+        end
+        Citizen.Wait(0)
+    end
+end)
+    ```
+
+    `SetNuiFocus(true, true)` — first arg = keyboard input, second arg = mouse cursor. Both `true` so the player can type and click inside NUI.
+  </Step>
+
+  <Step num={4} title="Receive messages in JavaScript" outcome="The overlay shows data sent from Lua.">
+    ```javascript html/script.js
+// Listen for messages from Lua
+window.addEventListener('message', function(event) {
+    const data = event.data;
+    if (data.type === 'open') {
+        document.getElementById('app').style.display = 'block';
+        document.getElementById('message').textContent = data.message;
+    }
+});
+
+// Send data back to Lua
+document.getElementById('closeBtn').addEventListener('click', function() {
+    fetch('https://cfx-nui-' + GetParentResourceName() + '/closeNUI', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'button click' })
+    });
+    document.getElementById('app').style.display = 'none';
+});
+    ```
+
+    The `fetch` URL uses `GetParentResourceName()` — this is how NUI calls back to Lua.
+  </Step>
+
+  <Step num={5} title="Handle NUI callbacks in Lua" outcome="Lua receives the close signal and releases focus.">
+    Add to `client.lua`:
+
+    ```lua client.lua
+-- Handle the close callback from NUI
+RegisterNUICallback('closeNUI', function(data, cb)
+    print(('NUI closed: %s'):format(data.reason))
+    SetNuiFocus(false, false)  -- release keyboard and cursor
+    cb('ok')  -- respond to the NUI callback
+end)
+    ```
+
+    <ExpectedOutput>
+      Press E → overlay appears with "Hello from Lua!" → Click Close → overlay hides, F8 prints "NUI closed: button click".
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| NUI shows but can't click | SetNuiFocus(false, true) — cursor true but keyboard false | Use SetNuiFocus(true, true) for interactive NUI |
+| fetch to callback URL fails | Missing `files {}` entry for the JS file | List every file in fxmanifest `files {}` |
+| NUI callback not firing | Callback name mismatch | The fetch URL path after resource name MUST match RegisterNUICallback name exactly |
+| CSP blocks external fetch | Content Security Policy in next.config.ts | Add the external domain to the CSP |

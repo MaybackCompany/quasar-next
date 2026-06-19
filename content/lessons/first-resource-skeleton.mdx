@@ -1,0 +1,104 @@
+<LessonHero
+  crumbs="Track B · Workflow"
+  title="Create a basic FiveM script from zero"
+  meta={[
+    { label: "You'll build", value: "A resource that prints to console, registers a chat command, and responds to a key press." },
+    { label: "Time", value: "~15 minutes" },
+    { label: "You need", value: "A local FiveM server, a text editor, and access to your resources folder." },
+    { label: "You'll learn", value: "The minimum files every resource needs, how to create a thread that runs on start, RegisterCommand for chat commands, and IsControlJustPressed for key binds." },
+  ]}
+>
+  Every FiveM resource starts with three things: a folder, a manifest, and a script. This lesson builds the simplest possible resource — one that prints to console, responds to a chat command, and detects a key press. By the end you understand the skeleton that every other lesson builds on.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a running FiveM server with a resources folder.",
+    "I can edit files and restart resources.",
+    "I have read the Two Worlds lesson or know the difference between client and server scripts.",
+  ]}
+/>
+
+<Callout variant="fivem" title="This is the foundation">
+  Every complex resource — inventory systems, banking, vehicle shops — starts with this exact structure. Master these three files and you can build anything.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the folder and manifest" outcome="FiveM recognizes your resource.">
+    ```text
+resources/qu_first_script/
+  fxmanifest.lua
+  client.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    Restart the resource: `ensure qu_first_script` in server console or txAdmin Live Console.
+  </Step>
+
+  <Step num={2} title="Print to console on resource start" outcome="F8 console shows your message.">
+    ```lua client.lua
+-- Runs once when the resource starts
+Citizen.CreateThread(function()
+    print('Hello from my first script!')
+end)
+    ```
+
+    Open F8 in-game. Restart the resource with `ensure qu_first_script`. You should see your message.
+
+    <ExpectedOutput>
+      F8 console prints: `Hello from my first script!`
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Add a chat command" outcome="Typing /hello in chat prints a response.">
+    ```lua client.lua
+-- Register a command players can type in chat
+RegisterCommand('hello', function(source, args)
+    print('Player typed /hello')
+    print('Arguments: ' .. json.encode(args))
+end, false)
+    ```
+
+    In-game, open chat (T) and type `/hello world`. The `args` table contains everything after the command name.
+
+    <ExpectedOutput>
+      F8 prints: `Player typed /hello` then `Arguments: ["world"]`
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Detect a key press" outcome="Pressing a key triggers your code.">
+    ```lua client.lua
+-- Check for key presses every frame
+Citizen.CreateThread(function()
+    while true do
+        if IsControlJustPressed(0, 38) then  -- 38 = E key
+            print('E key pressed!')
+        end
+        Citizen.Wait(0)
+    end
+end)
+    ```
+
+    `IsControlJustPressed` returns `true` only on the frame the key was first pressed — it won't spam. Full control list: https://docs.fivem.net/docs/game-references/controls/
+
+    <ExpectedOutput>
+      Pressing E prints `E key pressed!` once per press in F8.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Common failures
+
+| Exact error | Cause | Fix |
+|---|---|---|
+| `couldn't start resource qu_first_script` | fxmanifest has a syntax error or missing comma | Check every line ends with a comma or newline where expected |
+| `/hello` does nothing in chat | Missing the `false` arg in RegisterCommand (restricted) | Third arg `false` means anyone can use it. `true` requires ACE permissions |
+| Key press not detected | The thread doesn't have Citizen.Wait(0) | Every key-check loop MUST yield with Citizen.Wait(0) |
