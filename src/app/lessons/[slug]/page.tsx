@@ -6,7 +6,8 @@ import { notFound } from "next/navigation";
 
 import { SiteNav } from "@/components/fqs/site-nav";
 import { LessonShell, type ShellModule } from "@/components/fqs/lesson-shell";
-import { getLessonLookup } from "@/lib/curriculum";
+import { LessonProgress } from "@/components/fqs/lesson-progress";
+import { getLessonLookup, PATHS } from "@/lib/curriculum";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -91,6 +92,7 @@ export default async function LessonPage({ params }: PageProps) {
         aiBody={item.ai}
       >
         <MdxContent />
+        <LessonProgress slug={slug} trackSlugs={modules.flatMap((m: ShellModule) => m.lessons.map((l: { slug: string }) => l.slug))} />
       </LessonShell>
     </div>
   );
