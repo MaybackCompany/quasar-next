@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Sun, Moon, ChevronDown, ArrowRight } from "lucide-react";
 import { PATHS } from "@/lib/curriculum";
 import { NavUser } from "@/components/fqs/nav-user";
+import { LessonSearch } from "@/components/fqs/lesson-search";
 
 const TRACK_LETTER: Record<string, string> = { server: "A", scripts: "B", gameworld: "C" };
 const TRACK_SUB: Record<string, string> = {
@@ -96,6 +97,7 @@ export function SiteNav({ active }: SiteNavProps) {
           </Link>
         </nav>
         <div className="nav-right">
+          <LessonSearch />
           <div className="nav-util">
             <NavUser />
             <button
