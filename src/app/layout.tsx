@@ -5,6 +5,7 @@ import "./globals.css";
 
 import { JsonLd } from "@/components/seo/json-ld";
 import { SiteAnalytics } from "@/components/seo/analytics";
+import { ProgressProvider } from "@/lib/progress";
 import {
   COACH_URL,
   DISCORD_INVITE,
@@ -103,8 +104,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body className="min-h-full">
-        <JsonLd data={[organizationLd, websiteLd]} />
-        <MotionConfig reducedMotion="user">{children}</MotionConfig>
+        <ProgressProvider>
+          <JsonLd data={[organizationLd, websiteLd]} />
+          <MotionConfig reducedMotion="user">{children}</MotionConfig>
+        </ProgressProvider>
         <SiteAnalytics />
       </body>
     </html>
