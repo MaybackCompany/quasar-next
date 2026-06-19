@@ -1,112 +1,237 @@
 <LessonHero
-  crumbs="Step 00 · Start here"
-  title="FiveM in 2026: how it all fits together"
+  crumbs="Track A · Step 1 · Start here"
+  title="Plan your first FiveM server"
   meta={[
-    { label: "You'll do", value: "Get the map before you touch a single file: what FiveM is, the four layers every server runs on, and which tool does which job in 2026." },
-    { label: "Time", value: "~15 minutes. No installs yet, just bookmarks and bearings." },
-    { label: "You need", value: "Nothing but a browser. This is the lesson that stops you wasting money on the wrong scripts and the wrong hosting." },
-    { label: "You'll learn", value: "What FiveM is -> the 2026 stack -> framework vs library vs resource -> where the database fits -> which official docs to trust" },
+    { label: "You'll build", value: "A one-page server plan and dependency map you can use before buying hosting or installing scripts." },
+    { label: "Time", value: "20-30 minutes. No installs yet." },
+    { label: "You need", value: "A browser and a blank file named server-plan.md." },
+    { label: "Pass condition", value: "Your plan names the server idea, hosting route, framework shortlist, required systems, dependencies, install order, and first test." },
+    { label: "Verified", value: "June 2026 against current Cfx.re, txAdmin, ESX, QBCore, Qbox, and Community Ox sources." },
   ]}
 >
-  Most beginners start by buying scripts. That is the expensive way. Before any of that, you need the map: a FiveM server is just four layers stacked together. Learn the layers once and every tutorial, every script, every error message starts making sense. This lesson hands you that map and the official links to bookmark.
+  Do not start by downloading 30 scripts. Start by deciding what you are building and what each part depends on. This lesson gives a complete beginner the map first, then sends you to the detailed installation lessons in the right order.
 </LessonHero>
 
 <Prereq
   items={[
-    "I want to run a server, write scripts, or sell on Tebex, and I want the lay of the land first.",
-    "I have a Windows PC for the playable FiveM client.",
-    "I am willing to read official docs instead of guessing from random videos."
+    "I want to own or operate a FiveM server, even if I have never configured one before.",
+    "I can create and edit one plain-text or Markdown file.",
+    "I will check official documentation before trusting an old video, copied config, or Discord message."
   ]}
 />
 
-<Callout variant="fivem" title="The one idea to hold onto">
-  A FiveM server is four layers: the **platform** (FiveM + txAdmin), the **language** (Lua), the **framework** (ESX, QBCore, or Qbox), and the **data** (a MariaDB database your scripts talk to through oxmysql). Every resource you ever install plugs into those four layers. Learn the layers, not the scripts.
+<Callout variant="fivem" title="Your first deliverable is a plan, not a server">
+  By the end, `server-plan.md` will tell you what to install, why you need it, and what must load first. That small file prevents incompatible framework purchases, missing dependencies, and random `server.cfg` ordering later.
 </Callout>
 
-## Watch: install and configure a server
+## The map in plain English
 
-Here is the full walkthrough that installs a server and configures it end to end. Watch it once for the big picture, then follow the written steps across this track at your own pace.
+A roleplay server is a stack of parts. Each part has one job:
 
-<LessonVideo loomId="81886632cbdd481e8f29e48ab88e167f" title="Install and configure a FiveM server" caption="Full server install and configuration walkthrough." />
+| Part | What it does | Typical 2026 choice |
+| --- | --- | --- |
+| FiveM server platform | Runs FXServer, networking, resources, and player connections. | Cfx.re FXServer with txAdmin |
+| Database | Keeps money, characters, vehicles, jobs, and inventories after a restart. | MariaDB |
+| Database connector | Lets server-side resources query the database. | oxmysql |
+| Framework | Gives resources a shared model for players, jobs, accounts, and callbacks. | ESX Legacy, QBCore, or Qbox |
+| Libraries and systems | Add reusable menus, targeting, inventory, voice, and other shared features. | ox_lib, ox_target, inventory choice, pma-voice |
+| Gameplay resources | Add the actual jobs, housing, garages, phones, maps, and other features. | Compatible resources you choose |
 
-## The 2026 stack
+The order matters because upper layers depend on the layers below them. A garage resource cannot save a vehicle if its database tables or connector do not exist. A QBCore job resource cannot run on an ESX server unless the author explicitly supports both.
 
-This is the platform itself: the thing your players connect to, and the panel you run it from. Both are made by Cfx.re and both are free.
+## Build your server plan
 
-<TechLinks ids={["fivem", "txadmin", "cfxportal"]} />
-
-This is the language and the libraries. Your server logic is written in Lua. In 2026 almost every modern resource also leans on Overextended's libraries.
-
-<TechLinks ids={["lua", "ox", "oxmysql"]} />
-
-This is where your data lives. The database is a separate program from FiveM; your scripts reach it through the `oxmysql` resource.
-
-<TechLinks ids={["mariadb", "heidisql"]} />
-
-## Build it
-
-You are building your bearings, not a resource yet. Each step ends with something concrete: a bookmark or a sentence you can say out loud.
+Create a blank file called `server-plan.md`, then complete each step below. The examples are starting points, not decisions made for you.
 
 <StepGroup>
-  <Step num={1} title="Name the platform layer" outcome="You can say what FiveM and txAdmin each do, and you have the portal bookmarked.">
-    **FiveM** is the multiplayer platform built on top of GTA V by Cfx.re. **txAdmin** is the web panel that ships *inside* FXServer, the FiveM server process itself, and lets you start, stop, and watch it from your browser. You do not install txAdmin separately; it is already there the moment you run FXServer. Your free server license key comes from the **Cfx.re Portal**, not from any "keymaster" page or Discord link.
+  <Step num={1} title="Write the server promise" outcome="a stranger can understand the server in one sentence.">
+    Write who the server is for, the style of roleplay, and what players should spend most of their time doing.
 
-    Bookmark the portal now. You will need a free key before your server will boot.
+    ```md
+    # My FiveM server plan
 
-    <TechLink id="cfxportal" />
+    ## Server promise
+    A beginner-friendly serious-roleplay city for 32 players, built around police,
+    EMS, mechanic work, player-owned businesses, and a controlled economy.
+    ```
+
+    Avoid vague promises such as "the best city" or "everything included." A useful promise limits the first version so you can actually test it.
   </Step>
 
-  <Step num={2} title="Name the language layer" outcome="You know scripts are Lua 5.4, and you have the two reference sites bookmarked.">
-    Most beginner resources in this course are written in **Lua 5.4**. FiveM also supports two other languages, JavaScript and C#, so a downloaded resource you buy later may be written in one of those instead of Lua. You do not need to learn them now. You do not need to memorize functions. You need to know how to look up the built-in game functions, called **natives**. Bookmark the official docs and the natives reference; you will live in these.
+  <Step num={2} title="Choose local or hosted" outcome="you know where the first working server will run.">
+    Pick one route for the first setup:
 
-    <TechLinks ids={["lua", "fivem-docs", "natives"]} />
+    | Choose | Use it when | First proof |
+    | --- | --- | --- |
+    | Local Windows PC | You are learning alone and want cheap, safe testing. | FiveM connects to `127.0.0.1:30120`. |
+    | Hosted server or VPS | Staff or remote testers need access now. | A second PC connects using the hosted address. |
+
+    Add the decision and reason to your plan:
+
+    ```md
+    ## Hosting route
+    Route: Local Windows PC
+    Why: I am learning alone and do not need public access yet.
+    Move to hosting when: two remote testers are ready.
+    ```
+
+    Do not mix a Windows-local tutorial with Linux VPS paths. The concepts are the same, but folders, permissions, firewall setup, and service management differ.
   </Step>
 
-  <Step num={3} title="Pick a framework lane" outcome="You can explain the difference between ESX, QBCore, and Qbox, and which one to start on in 2026.">
-    A **framework** answers the boring questions for every script: who is this player, how much money do they have, what job are they on. You install one framework and your scripts build on it. Three matter:
+  <Step num={3} title="Map the platform and data layers" outcome="you can name the program behind each basic server job.">
+    Record these roles in your own words:
 
-    - **ESX Legacy** has the largest script catalog and the most copy-paste tutorials, especially in the EU.
-    - **QBCore** remains widely used and has its own official documentation and repository.
-    - **Qbox** began as a fork of QBCore (a copy of QBCore's code taken in its own direction), describes itself as its successor, integrates the ox resources, and offers an official txAdmin recipe (a one-click installer, run from the txAdmin panel, that downloads and wires up the whole framework for you).
+    - **FXServer artifact:** the Cfx.re server program. Pin the build you test successfully so you can roll back after an update.
+    - **txAdmin:** the browser control panel included with FXServer. It starts, stops, monitors, and configures the server.
+    - **Cfx.re Portal:** the current place to create and manage the server license key. Use `https://portal.cfx.re`, not old Keymaster instructions.
+    - **MariaDB:** the database engine that stores persistent server data.
+    - **HeidiSQL:** a desktop database client used to inspect MariaDB and import SQL files.
+    - **oxmysql:** a FiveM resource that lets server-side scripts query MariaDB.
 
-    For a brand-new server, compare the official recipes and the compatibility requirements of the scripts you plan to use. This course demonstrates ESX Legacy and Qbox most often, but there is no single correct framework for every server.
+    <TechLinks ids={["fivem", "txadmin", "cfxportal", "mariadb", "heidisql", "oxmysql"]} />
 
-    <TechLinks ids={["esx", "qbox", "qbcore"]} />
+    Add this section:
+
+    ```md
+    ## Foundation
+    Platform: FXServer with txAdmin
+    License management: Cfx.re Portal
+    Database: MariaDB
+    Database viewer: HeidiSQL
+    Database connector: oxmysql
+    Artifact rollback record: artifacts.md
+    ```
   </Step>
 
-  <Step num={4} title="Name the library layer" outcome="You can explain what ox_lib and friends give you, and why nearly every modern resource depends on them.">
-    A **framework** is the base; a **library** is a shared toolbox that many resources reuse. **Overextended (ox)** maintains the 2026 standard set: `ox_lib` (menus, notifications, callbacks), `ox_inventory`, `ox_target`, and `oxmysql` (the database connector). When a script's install guide says "dependency: ox_lib", this is what it means.
+  <Step num={4} title="Shortlist a framework" outcome="you compare compatibility instead of choosing from hype.">
+    A framework gives resources shared concepts such as players, jobs, money, and callbacks. Use one primary framework.
 
-    <TechLinks ids={["ox", "oxmysql"]} />
+    - **ESX Legacy:** established ecosystem and broad third-party script availability.
+    - **QBCore:** established QB ecosystem with its own conventions and resources.
+    - **Qbox:** a QBCore-derived framework that is built around the ox ecosystem and provides an official txAdmin recipe.
+
+    There is no universal winner. Check the official recipe, documentation, maintenance activity, and every must-have resource you plan to use. Do not buy an ESX-only package before choosing Qbox, or a QB-only package before choosing ESX.
+
+    <TechLinks ids={["esx", "qbcore", "qbox"]} />
+
+    ```md
+    ## Framework shortlist
+    Candidate 1:
+    Candidate 2:
+    Must-have resources checked for compatibility:
+    Final choice: Not chosen until compatibility checks are complete
+    ```
   </Step>
 
-  <Step num={5} title="Name the data layer" outcome="You can explain the database vs the client vs the connector, in one sentence each.">
-    Player money, vehicles, jobs, and inventory survive a restart because they live in a **database**. Three names, three jobs:
+  <Step num={5} title="Separate must-have systems from later ideas" outcome="the first playable version has a controlled scope.">
+    Make two lists. The first list contains only what is required for a player to join and complete your server's basic roleplay loop. Everything else waits.
 
-    - **MariaDB** is the database engine that stores the data.
-    - **HeidiSQL** is the visual window you browse and edit that data through.
-    - **oxmysql** is the FiveM resource your scripts use to talk to MariaDB safely.
+    ```md
+    ## Must have for the first playable test
+    - Framework and character system
+    - Database connector
+    - Inventory
+    - Voice
+    - One legal job and one emergency job
+    - One vehicle shop and garage path
 
-    <TechLinks ids={["mariadb", "heidisql", "oxmysql"]} />
+    ## Add after the first test passes
+    - Housing
+    - Custom phone
+    - Extra jobs
+    - Paid maps and vehicle packs
+    ```
+
+    This is scope control, not a permanent restriction. A small server that starts cleanly is useful. A huge resource folder with 200 errors is not.
+  </Step>
+
+  <Step num={6} title="Build the dependency map" outcome="each resource has an owner, source, and prerequisites before installation.">
+    For each must-have system, record the exact resource, official source, supported framework, database needs, and dependencies.
+
+    ```md
+    ## Dependency map
+    | System | Resource | Framework support | Needs | SQL included | Official source checked |
+    | --- | --- | --- | --- | --- | --- |
+    | Database connector | oxmysql | Framework independent | MariaDB | No | Yes |
+    | Shared UI/library | ox_lib | Check each resource | None | No | Yes |
+    | Inventory | To decide | To verify | Framework, ox_lib, oxmysql | To verify | No |
+    | Voice | pma-voice | Standalone | OneSync/audio config | No | No |
+    ```
+
+    Never assume a dependency from a folder name. Read the current README, documentation, release notes, and `fxmanifest.lua` for the exact version you will install.
+  </Step>
+
+  <Step num={7} title="Turn dependencies into an install order" outcome="you have a safe sequence and a test after every layer.">
+    Install the foundation before gameplay resources. The exact names vary, but the reasoning stays stable:
+
+    ```text
+    FXServer + txAdmin
+      -> database and connection string
+      -> database connector
+      -> framework recipe and framework dependencies
+      -> shared libraries
+      -> inventory, target, voice, and other core systems
+      -> one gameplay resource
+      -> test, back up, then add the next resource
+    ```
+
+    Do not copy that diagram directly into `server.cfg`. Official recipes often manage multiple resources and category folders for you. The later `server.cfg` lesson teaches the real `ensure` order for the stack you install.
+
+    ```md
+    ## Install and test order
+    1. Start the base recipe and confirm txAdmin has no repeating errors.
+    2. Confirm the database connection before installing database-backed scripts.
+    3. Join with one clean test account.
+    4. Install one resource.
+    5. Restart that resource and check txAdmin plus F8.
+    6. Back up the working state before adding another resource.
+    ```
+  </Step>
+
+  <Step num={8} title="Define the first proof" outcome="you know exactly when planning is finished and setup can begin.">
+    Finish your file with a pass condition:
+
+    ```md
+    ## First proof
+    [ ] Hosting route chosen
+    [ ] Framework shortlist checked against must-have resources
+    [ ] Foundation tools named
+    [ ] Dependencies recorded from official sources
+    [ ] Install order written
+    [ ] First test defined: one player connects and creates a character
+    [ ] Rollback rule: back up before every new resource or update
+    ```
 
     <ExpectedOutput>
-      You can now finish these sentences without looking:
-      - "FiveM is the platform; txAdmin is the panel that runs it."
-      - "Scripts are written in Lua; I look functions up in the natives docs."
-      - "A framework is ESX, QBCore, or Qbox; a library is ox_lib and friends."
-      - "Data lives in MariaDB; HeidiSQL views it; oxmysql connects to it."
+      `server-plan.md` explains what you are building, where it will run, which framework candidates fit, what the required systems depend on, and what you will test first.
     </ExpectedOutput>
   </Step>
 </StepGroup>
+
+## What happens next
+
+Your plan is the map. Track A now implements it one controlled layer at a time:
+
+1. Install the FiveM client.
+2. Install the owner tools and database.
+3. Install and pin FXServer artifacts, then configure txAdmin through an official recipe.
+4. Learn `server.cfg` and dependency order.
+5. Connect, restart one resource, and read the correct console.
+6. Add one script at a time with a backup and a test.
+
+<Callout variant="warn" title="Advice from the external tutorial that was deliberately corrected">
+  The current license-key home is the Cfx.re Portal. Do not blindly choose the newest artifact for an existing server: record the working build, test the update, and keep a rollback copy. Do not use copied Steam identifier ACE lines as an admin recipe. The permissions lesson teaches current principals and ACE objects separately.
+</Callout>
 
 ## If something went wrong
 
 <FailureList
   items={[
-    { symptom: "I already bought scripts before I had a server", fix: "Stop installing them. Stand up a base server with a framework first (next steps), then add one paid script at a time and test each restart." },
-    { symptom: "I cannot tell a framework from a library", fix: "You install exactly one framework (ESX or Qbox). You install many libraries and resources on top of it. ox_lib is a library, not a framework." },
-    { symptom: "A guide says 'get a key from the keymaster'", fix: "That page is retired. Generate your free key at portal.cfx.re instead. Same key, current home." },
-    { symptom: "I do not know which track to start", fix: "This course is split into three tracks. Want to host and run a server -> Track A (server hosting). Want to write code -> Track B (scripting). Want to build the game world (mapping, MLOs, props) -> Track C, after the Track B basics." },
+    { symptom: "I cannot choose a framework yet", fix: "Leave two candidates in the shortlist. Check your must-have resources against both official ecosystems before deciding." },
+    { symptom: "I already bought scripts", fix: "Record each package in the dependency map. Do not install it until its supported framework, required libraries, SQL, and documented load order are known." },
+    { symptom: "I want local testing and hosted staff access immediately", fix: "Pick one first proof. Build locally if you are learning alone; choose hosted if remote access is required now. Move only after the first route works." },
+    { symptom: "A guide sends me to Keymaster", fix: "Use portal.cfx.re for current server management and license keys." },
+    { symptom: "My plan contains dozens of launch-day systems", fix: "Move everything that is not required for the first playable loop into the later list." },
   ]}
 />
 
@@ -114,26 +239,29 @@ You are building your bearings, not a resource yet. Each step ends with somethin
 
 <Recap
   items={[
-    "Describe a FiveM server as four layers: platform, language, framework, data.",
-    "Name what FiveM, txAdmin, and the Cfx.re Portal each do.",
-    "Compare ESX Legacy, QBCore, and Qbox using their official docs and your scripts' compatibility requirements.",
-    "Explain the difference between a framework, a library (ox_lib), and a single resource.",
-    "Point to the database (MariaDB), the viewer (HeidiSQL), and the connector (oxmysql).",
-    "Open the official docs and natives reference instead of guessing from videos."
+    "Explain the platform, database, connector, framework, libraries, and gameplay-resource layers.",
+    "Choose local or hosted setup based on who needs access now.",
+    "Compare ESX Legacy, QBCore, and Qbox using compatibility and official sources.",
+    "Map dependencies before writing resource order into server.cfg.",
+    "Limit the first playable version and test one resource at a time.",
+    "Use portal.cfx.re and keep an artifact rollback record."
   ]}
 />
 
 ## Try it yourself
 
 <Exercise>
-  From memory, write one sentence for each of the four layers and name the tool you would open for it: the **platform** layer (FiveM plus txAdmin), the **language** layer (Lua 5.4 plus the natives docs), the **framework** layer (ESX Legacy, QBCore, or Qbox), and the **data** layer (MariaDB viewed in HeidiSQL, reached through oxmysql). If you can name all four without looking, you are ready for Step 01: installing the FiveM client. If a layer feels fuzzy, reread that step and click its link.
+  Give `server-plan.md` to someone who knows nothing about your idea. Ask them these four questions: What kind of server is this? Where will it run first? Which framework choices are still being considered? What must be installed before the first gameplay resource? If the file answers all four without you explaining it, your plan is ready and you can continue to the FiveM client lesson.
 </Exercise>
 
 <Refs
   items={[
-    { label: "FiveM official site", href: "https://fivem.net/" },
-    { label: "Cfx.re docs · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
-    { label: "Cfx.re Portal · free license key", href: "https://portal.cfx.re/" },
-    { label: "Overextended (ox) libraries", href: "https://overextended.dev/" }
+    { label: "Cfx.re · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "Cfx.re Portal · license keys", href: "https://portal.cfx.re/" },
+    { label: "txAdmin · official repository", href: "https://github.com/citizenfx/txAdmin" },
+    { label: "ESX Legacy · official documentation", href: "https://docs.esx-framework.org/" },
+    { label: "QBCore · official documentation", href: "https://docs.qbcore.org/" },
+    { label: "Qbox · official documentation", href: "https://docs.qbox.re/" },
+    { label: "Community Ox · official documentation", href: "https://coxdocs.dev/" }
   ]}
 />
