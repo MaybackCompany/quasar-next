@@ -13,6 +13,23 @@ const STACK = [
   "Qbox", "ESX", "txAdmin", "OneSync", "NUI", "anti-cheat",
 ];
 
+const FEATURED_GUIDES = [
+  {
+    eyebrow: "SERVER OWNER",
+    title: "Build your first FiveM server",
+    description: "Plan the stack, install the foundation, configure txAdmin, understand server.cfg, and add resources safely.",
+    href: "/lessons/fivem-2026-orientation",
+    meta: "20 verified chapters",
+  },
+  {
+    eyebrow: "SCRIPT SELLER",
+    title: "Build and grow a Tebex store",
+    description: "Set up packages, prove compatibility, test delivery, structure offers, publish videos, and measure growth.",
+    href: "/lessons/tebex-store-growth",
+    meta: "14 verified chapters",
+  },
+] as const;
+
 function TrackCard({ id }: { id: string }) {
   const t = PATHS.find((p) => p.id === id)!;
   const count = t.modules.reduce((n, m) => n + m.lessons.length, 0);
@@ -73,6 +90,33 @@ export default function HomePage() {
                 I know my goal — pick a track
               </a>
             </div>
+          </div>
+        </section>
+        <hr className="hairline" />
+
+        <section className="wrap" style={{ padding: "48px 28px" }} aria-labelledby="featured-guides-heading">
+          <div className="eyebrow" style={{ marginBottom: 8 }}>START WITH A COMPLETE GUIDE</div>
+          <h2 id="featured-guides-heading" className="fqs-h" style={{ fontSize: 30, marginBottom: 10 }}>
+            Two guided starting points.
+          </h2>
+          <p style={{ color: "var(--muted)", fontSize: 15, marginBottom: 24, maxWidth: 640 }}>
+            Open the guide that matches what you are trying to ship. Both use the same lesson design, progress tools,
+            navigation, videos, and verified references as the rest of the school.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
+            {FEATURED_GUIDES.map((guide) => (
+              <Link key={guide.href} className="track-card" href={guide.href}>
+                <span className="eyebrow">{guide.eyebrow}</span>
+                <h3 className="fqs-h">{guide.title}</h3>
+                <p style={{ fontSize: 14, color: "var(--muted)", margin: "2px 0 0" }}>{guide.description}</p>
+                <div className="tc-foot">
+                  <span className="tc-count">{guide.meta}</span>
+                  <span className="tc-go">
+                    Open guide <CtaCursor />
+                  </span>
+                </div>
+              </Link>
+            ))}
           </div>
         </section>
         <hr className="hairline" />
