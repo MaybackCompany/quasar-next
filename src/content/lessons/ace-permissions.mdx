@@ -1,0 +1,180 @@
+<LessonHero
+  crumbs="Track A · Server Ops"
+  title="FiveM ACE permissions and principals"
+  meta={[
+    { label: "You'll build", value: "A permission system using ACE and principals — give admins, moderators, and trusted players exactly the powers they need and nothing more." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A FiveM server with server.cfg access. No resources or frameworks required — ACE is built into FiveM itself." },
+    { label: "You'll learn", value: "What ACE permissions are, how principals connect players to groups, how allow and deny work together, wildcard permissions, and how to build a clean staff permission system." },
+  ]}
+>
+  ACE is FiveM's built-in permission system. It decides who can use admin commands, who can restart resources, and who can ban players. It works the same on every server — vanilla, ESX, QBCore, Qbox — because it's part of FiveM itself, not any framework.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can edit server.cfg and restart the server.",
+    "I know my license identifier (find it in txAdmin → Players → your name → Identifiers).",
+    "I understand the difference between server and client (see the Two Worlds lesson if not).",
+  ]}
+/>
+
+<Callout variant="fivem" title="Three words you need to know">
+  **Principal** = who gets the permission (a player or a group). **ACE** = what permission they get (allow or deny a specific command or resource). **Inheritance** = groups can pass permissions to other groups. Think of it as: **Player → Group → Permissions**.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Understand the three parts" outcome="You can explain each piece of the permission system.">
+    Every ACE line has three parts:
+
+    ```text
+    add_ace <principal> <permission> <allow|deny>
+    ```
+
+    - **Principal** — who. A group (`group.admin`), an individual (`identifier.license:abc123`), or everyone (`builtin.everyone`)
+    - **Permission** — what. `command.kick`, `command.ban`, `resource.myresource`, or custom like `i.am.cool`
+    - **Allow/Deny** — whether they can or can't
+
+    Groups are the most common principal. Instead of giving permissions to 10 different admins one by one, you give them to `group.admin` once, then add each admin to that group.
+
+    <ExpectedOutput>
+      You can look at any server.cfg's ACE section and say: which group, what permission, allowed or denied.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Add a player to a group (principals)" outcome="Your player is in the admin group.">
+    A principal connects a player to a group:
+
+    ```bash server.cfg
+add_principal identifier.license:abc123def456 group.admin
+    ```
+
+    The identifier format is `identifier.<type>:<value>`. Common types:
+    - `license` — tied to your Cfx.re account (most stable, use this)
+    - `steam` — tied to your Steam account
+    - `fivem` — old format, still works but license is preferred
+
+    Find yours in txAdmin → Players → click your name → Identifiers.
+
+    Groups can also inherit from each other. This means admins get moderator powers automatically:
+
+    ```bash server.cfg
+add_principal group.moderator group.admin
+    ```
+
+    Now everything `group.admin` can do, `group.moderator` can do too.
+
+    <ExpectedOutput>
+      In txAdmin Players panel, your name shows `group.admin` under principas.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Give permissions to a group (ACEs)" outcome="Admins can kick and ban, moderators can only kick.">
+    ACE lines grant or deny specific permissions:
+
+    ```bash server.cfg
+# Admin gets everything
+add_ace group.admin command.kick allow
+add_ace group.admin command.ban allow
+add_ace group.admin command.restart allow
+
+# Moderator gets kick only — not ban
+add_ace group.moderator command.kick allow
+add_ace group.moderator command.ban deny
+    ```
+
+    By default, everything is denied. You only get what you explicitly allow.
+
+    **Deny is stronger than allow.** If a player is in two groups and one denies `command.ban`, they cannot ban — even if another group allows it. Deny always wins.
+
+    <ExpectedOutput>
+      An admin can `/kick`, `/ban`, and `/restart`. A moderator can only `/kick`. A regular player gets "no permission" from all three commands.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Use wildcards for bulk permissions" outcome="One line can grant multiple permissions.">
+    Wildcards give access to everything under a category:
+
+    ```bash server.cfg
+# Give admins ALL commands
+add_ace group.admin command allow
+    ```
+
+    `command` without a dot means "all command.* permissions." This grants `command.kick`, `command.ban`, `command.restart`, and every other command permission.
+
+    Be careful with this. Only give broad wildcards to owners. For staff, grant specific permissions one by one.
+
+    Other useful wildcards:
+
+    ```bash server.cfg
+# Give a resource full access
+add_ace resource.my_admin_menu command allow
+
+# Block everything from a dangerous resource
+add_ace resource.suspicious_script command deny
+    ```
+
+    <ExpectedOutput>
+      A single `command allow` line gives an admin every command permission on the server.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## The complete starter template
+
+Copy this into your server.cfg, replace the placeholders, and you have a working staff permission system:
+
+```bash server.cfg
+## --- Staff groups ---
+# Add yourself as admin (replace with YOUR license identifier)
+add_principal identifier.license:YOUR_LICENSE_HERE group.admin
+
+# Moderators inherit from admin (optional — remove if admins and mods are separate)
+# add_principal group.moderator group.admin
+
+## --- Admin permissions ---
+add_ace group.admin command.kick allow
+add_ace group.admin command.ban allow
+add_ace group.admin command.restart allow
+
+## --- Moderator permissions (replace with your mod's license) ---
+# add_principal identifier.license:MOD_LICENSE_HERE group.moderator
+# add_ace group.moderator command.kick allow
+
+## --- Check current permissions ---
+# list_aces
+# list_principals
+```
+
+## Useful commands
+
+| Command | What it does |
+|---|---|
+| `add_principal child parent` | Adds a player or group into another group |
+| `remove_principal child parent` | Removes a player or group from a parent group |
+| `add_ace principal permission allow` | Grants a permission |
+| `add_ace principal permission deny` | Denies a permission |
+| `remove_ace principal permission` | Removes a previously granted/denied permission |
+| `list_aces` | Shows all current ACE permissions (run in server console) |
+| `list_principals` | Shows all current principal assignments |
+
+## Common failures
+
+| What you see | What it means | How to fix it |
+|---|---|---|
+| `/kick` says "no permission" even though you added yourself | Wrong identifier or group name typo | Check your license identifier matches exactly. `add_principal` must come BEFORE `add_ace` in server.cfg |
+| Admin can't do anything after restart | ACE lines are below the admin `ensure` lines, or wrong order | Put ALL ACE lines in one section near the top of server.cfg, before any `ensure` lines |
+| Moderator can still ban even though you added `deny` | They're also in a group that `allow`s it, or the deny line is misspelled | `deny` always wins IF it's on the same permission. Check the exact permission name matches |
+| `builtin.everyone` gave permissions to everyone | You used `builtin.everyone` as a principal | Never use `builtin.everyone` for dangerous permissions. Remove it immediately |
+| Identifier changed after Cfx.re account change | License identifiers are tied to your Cfx.re account | Update the identifier in server.cfg. Always use license identifiers — they're the most stable |
+
+## ⚠ Safety rules
+
+- Never give dangerous permissions to `builtin.everyone`
+- Never paste random ACE lines from tutorials without understanding what they do
+- Never give admin permissions to players you don't trust
+- Always use `identifier.license` when possible — it's tied to Cfx.re accounts, not hardware
+- Keep permission groups organized with comments in server.cfg
+- Test permissions with ONE player before giving them to your whole staff team

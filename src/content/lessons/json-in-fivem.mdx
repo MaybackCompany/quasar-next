@@ -1,0 +1,192 @@
+<LessonHero
+  crumbs="Track B · Core Concepts"
+  title="Using JSON in FiveM"
+  meta={[
+    { label: "You'll build", value: "A resource that saves and loads player data using JSON — name, money, and job — and survives server restarts." },
+    { label: "Time", value: "~20 minutes" },
+    { label: "You need", value: "A local FiveM server, one resource folder, basic Lua knowledge." },
+    { label: "You'll learn", value: "What JSON is, json.encode() and json.decode(), SaveResourceFile and LoadResourceFile, real multi-player patterns, and when JSON beats a database." },
+  ]}
+>
+  JSON is how simple data survives a server restart without setting up a database. Many scripts use it for config files, settings, whitelists, and temporary storage. This lesson teaches you to save, load, and update JSON files — the lightweight way to give your resource a memory.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can create a FiveM resource with server.lua and fxmanifest.lua.",
+    "I know what a Lua table is (see the Tables lesson if not).",
+    "I can read the server console output.",
+  ]}
+/>
+
+<Callout variant="fivem" title="JSON is just text that remembers structure">
+  Think of JSON like a sticky note. You write data down as text, stick it in a file, and read it back later. The text has a strict format that Lua can convert to a table and back. `json.encode()` writes the note. `json.decode()` reads it back.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource" outcome="A resource folder with a server script.">
+    ```text
+resources/qu_json_demo/
+  fxmanifest.lua
+  server.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+server_script 'server.lua'
+    ```
+  </Step>
+
+  <Step num={2} title="Save data to JSON" outcome="A .json file appears with your data inside.">
+    ```lua server.lua
+-- Create a Lua table with player data
+local playerData = {
+    name = "John",
+    money = 5000,
+    job = "police"
+}
+
+-- Convert to JSON and save to a file
+SaveResourceFile(
+    GetCurrentResourceName(),       -- which resource owns this file
+    "playerdata.json",              -- the filename
+    json.encode(playerData),        -- convert table → JSON text
+    -1                              -- length: -1 means "all of it"
+)
+
+print("Data saved to playerdata.json")
+    ```
+
+    Line by line:
+    - `GetCurrentResourceName()` — returns `qu_json_demo`, so the file lives inside this resource
+    - `SaveResourceFile()` — writes content to a file on disk. Only works server-side
+    - `json.encode()` — converts a Lua table to JSON text. Tables become `{}`, strings get quotes, numbers stay numbers
+    - `-1` — tells FiveM to figure out the length automatically
+
+    <ExpectedOutput>
+      The server console prints "Data saved." A file `resources/qu_json_demo/playerdata.json` appears with: `{"name":"John","money":5000,"job":"police"}`
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Load data from JSON" outcome="You can read the saved data back into Lua.">
+    ```lua server.lua
+-- Load the file contents
+local file = LoadResourceFile(
+    GetCurrentResourceName(),
+    "playerdata.json"
+)
+
+-- Convert JSON text → Lua table
+local data = json.decode(file)
+
+-- Use the data like any Lua table
+print("Name: " .. data.name)
+print("Money: " .. data.money)
+print("Job: " .. data.job)
+    ```
+
+    - `LoadResourceFile()` — reads a file's content as a string. Returns `nil` if the file doesn't exist
+    - `json.decode()` — converts JSON text back to a Lua table. After this, `data.name` works like any table field
+
+    <ExpectedOutput>
+      The server console prints: `Name: John`, `Money: 5000`, `Job: police`
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Update and re-save data" outcome="The file reflects your changes.">
+    Loading, editing, and saving is the full loop:
+
+    ```lua server.lua
+-- 1. Load existing data
+local file = LoadResourceFile(GetCurrentResourceName(), "playerdata.json")
+local data = json.decode(file)
+
+-- 2. Edit the values
+data.money = data.money + 500   -- give the player 500 more
+data.job = "detective"          -- promote them
+
+-- 3. Save back to the file
+SaveResourceFile(
+    GetCurrentResourceName(),
+    "playerdata.json",
+    json.encode(data),
+    -1
+)
+
+print("Updated: money=" .. data.money .. " job=" .. data.job)
+    ```
+
+    JSON files are fully rewritten every time you save — you can't edit one field in place. Load the whole file, change what you need, save the whole file.
+
+    <ExpectedOutput>
+      The console prints `Updated: money=5500 job=detective`. The .json file now shows the new values.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Store data for multiple players" outcome="Each player has their own data, keyed by license.">
+    Real servers store data per-player using identifiers as keys:
+
+    ```lua server.lua
+-- Register a command so players can save their data
+RegisterCommand('savemydata', function(source)
+    local license = GetPlayerIdentifierByType(source, 'license')
+
+    -- Load existing data (or start fresh)
+    local file = LoadResourceFile(GetCurrentResourceName(), "players.json")
+    local allData = file and json.decode(file) or {}
+
+    -- Write this player's data
+    allData[license] = {
+        name = GetPlayerName(source),
+        money = 5000,
+        job = "unemployed"
+    }
+
+    -- Save everything back
+    SaveResourceFile(GetCurrentResourceName(), "players.json", json.encode(allData), -1)
+    print(GetPlayerName(source) .. " data saved")
+end, false)
+    ```
+
+    The resulting JSON looks like:
+
+    ```json
+{
+  "license:abc123": { "name": "John", "money": 5000, "job": "police" },
+  "license:def456": { "name": "Jane", "money": 2500, "job": "medic" }
+}
+    ```
+
+    Each license is a unique key, so data never mixes between players.
+
+    <ExpectedOutput>
+      Type `/savemydata` in chat. A `players.json` file appears with your data.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## JSON vs databases — when to use which
+
+| Use JSON for | Use MariaDB/MySQL for |
+|---|---|
+| Config files and settings | Player inventories |
+| Whitelists | Character data |
+| Small amounts of data (under 1000 entries) | Money and banking systems |
+| Resource-level configuration | Anything that needs to be queried (search, filter, sort) |
+| Temporary save systems | Data shared across multiple resources |
+| Quick prototypes | Large amounts of data (thousands of entries) |
+
+Rule of thumb: if you need to search, sort, or filter the data, use a database. If you need a simple config or a small key-value store, JSON is faster to set up.
+
+## Common failures
+
+| What you see | What it means | How to fix it |
+|---|---|---|
+| `attempt to index a nil value (local 'data')` | `json.decode()` got `nil` because the file is empty or doesn't exist | Check `if file then` before decoding. Use `or {}` as a fallback |
+| `json.encode() expects a table, got nil` | You passed `nil` to `json.encode()` instead of a table | Make sure your table variable is not nil before encoding |
+| File doesn't update after saving | The resource needs a restart to see the change, or you're reading from the wrong path | `SaveResourceFile` and `LoadResourceFile` use the resource folder. Check you're loading from the same resource that saved |
+| JSON file has wrong data after server crash | The file was being written when the crash happened | JSON files aren't transactional. For critical data, use a database |
+| `SaveResourceFile` doesn't work on client | This function only works server-side | Move your file operations to `server.lua` |

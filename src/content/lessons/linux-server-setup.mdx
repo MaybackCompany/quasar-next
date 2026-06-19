@@ -1,0 +1,195 @@
+<LessonHero
+  crumbs="Track A · Server Setup"
+  title="How to set up a FiveM server on Linux"
+  meta={[
+    { label: "You'll build", value: "A working FiveM server on a Linux VPS — artifacts, server.cfg, resources, and a screen session to keep it online." },
+    { label: "Time", value: "~45 minutes" },
+    { label: "You need", value: "A Linux VPS with Ubuntu (root access), SSH client, a Cfx.re account, and a license key from portal.cfx.re." },
+    { label: "You'll learn", value: "Why Linux for production, the artifacts vs data split, server.cfg line by line, screen to keep the server alive, and the resource-install workflow." },
+  ]}
+>
+  Most production FiveM servers run on Linux. It's cheaper, faster, and once you learn the five-command workflow you'll never go back to a Windows server eating RAM in the background. This lesson takes you from an empty Ubuntu VPS to a joinable server in under an hour.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a Linux VPS with Ubuntu 22.04 or newer and root/sudo access.",
+    "I can SSH into the VPS (ssh root@your-server-ip).",
+    "I have a Cfx.re account and a license key from portal.cfx.re.",
+  ]}
+/>
+
+<Callout variant="fivem" title="Why Linux for production?">
+  Linux uses less RAM (no desktop GUI), costs less for VPS hosting, handles more players on the same hardware, and most hosting providers default to Ubuntu. Windows servers are fine for learning, but almost every large FiveM community runs on Linux.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Update the server" outcome="All system packages are current.">
+    Before installing anything, update Ubuntu:
+
+    ```bash
+apt update && apt upgrade -y
+    ```
+
+    This downloads the latest package lists and upgrades everything. It prevents "package not found" errors later.
+
+    <ExpectedOutput>
+      The terminal scrolls through updated packages. No red error lines.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={2} title="Create the folder structure" outcome="Two clean folders: one for binaries, one for your data.">
+    ```bash
+mkdir -p /home/fxserver
+mkdir -p /home/server-data
+    ```
+
+    - `/home/fxserver/` — the FiveM server binaries (the engine). You update this folder when FiveM releases a new build.
+    - `/home/server-data/` — **your** content: `resources/` folder and `server.cfg`. This is what you back up and version-control.
+
+    Keeping them separate means updating the engine never touches your scripts.
+
+    <ExpectedOutput>
+      Two empty folders exist at `/home/fxserver/` and `/home/server-data/`.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Download and extract the artifacts" outcome="FXServer is ready to run.">
+    Go to the Linux artifacts page and copy the URL for the **Recommended** (green) build:
+
+    ```text
+https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/
+    ```
+
+    Download and extract:
+
+    ```bash
+cd /home/fxserver
+wget <paste-the-download-url-here>
+tar -xf fx.tar.xz
+rm fx.tar.xz
+    ```
+
+    Artifacts are the actual FiveM server software. Scripts don't work without them — they're the engine everything runs on.
+
+    <ExpectedOutput>
+      `/home/fxserver/run.sh` exists. Running it would start a bare server.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Get the server data" outcome="The resources folder and starter config are ready.">
+    ```bash
+cd /home/server-data
+git clone https://github.com/citizenfx/cfx-server-data.git .
+    ```
+
+    Git is a tool that downloads code from GitHub. The `cfx-server-data` repo contains the starter resources (chat, mapmanager, spawnmanager) and an example server.cfg.
+
+    <ExpectedOutput>
+      `/home/server-data/resources/` exists with starter resources inside.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Write your server.cfg" outcome="The server has a name, endpoints, license, and resources.">
+    Open `/home/server-data/server.cfg` and replace everything with:
+
+    ```bash server.cfg
+## --- Endpoints (how players connect) ---
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+
+## --- Server identity ---
+sv_hostname "My Linux FiveM Server"
+sv_maxclients 32
+onesync on
+
+## --- License key (REQUIRED — server won't boot without it) ---
+sv_licenseKey "PASTE_YOUR_KEY_HERE"
+
+## --- Built-in resources ---
+ensure mapmanager
+ensure chat
+ensure spawnmanager
+ensure sessionmanager
+
+## --- Admin permissions ---
+add_ace group.admin command allow
+add_principal identifier.license:YOUR_LICENSE_HERE group.admin
+    ```
+
+    `ensure` tells FiveM: "start this resource when the server boots." Resources listed higher start first.
+
+    <ExpectedOutput>
+      The file is saved. Every line has a purpose you can explain.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Start the server" outcome="Players can connect.">
+    ```bash
+cd /home/server-data
+bash /home/fxserver/run.sh +exec server.cfg
+    ```
+
+    This runs the FXServer binary and hands it your config. The console prints each resource starting in order, then "Server ready."
+
+    <ExpectedOutput>
+      The console shows resources starting in order, then a ready message. Open FiveM, press F8, type `connect YOUR_SERVER_IP:30120`.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={7} title="Keep the server alive with screen" outcome="The server stays online after you close SSH.">
+    When you close your SSH terminal, any process running in it dies. `screen` fixes this:
+
+    ```bash
+apt install screen -y
+screen -S fivem
+cd /home/server-data
+bash /home/fxserver/run.sh +exec server.cfg
+    ```
+
+    Now press **Ctrl+A, then D** to detach. The server keeps running. To rejoin later:
+
+    ```bash
+screen -r fivem
+    ```
+
+    <ExpectedOutput>
+      You close your SSH terminal. The server is still online. Friends can still connect.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## Installing resources — the workflow
+
+Every resource follows the same five steps:
+
+1. **Download** the resource and place it in `/home/server-data/resources/`
+2. **Read the README** — note dependencies, framework, and SQL files
+3. **Add dependencies** first, then add `ensure resource_name` to server.cfg AFTER its dependencies
+4. **Import any `.sql` files** using HeidiSQL or the mysql command line
+5. **Restart the server** or run `ensure resource_name` in the console
+
+## Recommended modern stack
+
+| Tool | What it does |
+|---|---|
+| Ubuntu 22.04+ | The operating system |
+| txAdmin | Web dashboard for server management (starts at `:40120`) |
+| MariaDB | The database that stores player data |
+| oxmysql | The connector between FiveM and MariaDB |
+| HeidiSQL | Desktop tool to view and edit the database |
+| GitHub | Where resources are hosted and version-controlled |
+| VS Code | Code editor for editing configs and scripts |
+
+## Common failures
+
+| What you see | What it means | How to fix it |
+|---|---|---|
+| Server won't start — "Invalid license key" | Key is wrong or missing | Re-copy from portal.cfx.re. No extra spaces |
+| "Could not find resource X" | Resource folder missing or misspelled | Check `/home/server-data/resources/X/fxmanifest.lua` exists |
+| Players can't connect — "Connection timed out" | Port 30120 blocked by firewall | Run `ufw allow 30120/tcp` and `ufw allow 30120/udp`. Check your VPS provider's firewall too |
+| Server dies when you close SSH | You didn't use screen | Always start the server inside `screen -S fivem` |
+| `Permission denied` when running run.sh | Script isn't executable | Run `chmod +x /home/fxserver/run.sh` |
+| `apt: command not found` | You're not on Ubuntu/Debian | This guide is for Ubuntu. For CentOS/RHEL, use `yum` instead of `apt` |

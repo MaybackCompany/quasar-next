@@ -1,0 +1,198 @@
+<LessonHero
+  crumbs="Track B · Core Concepts"
+  title="State Bags in FiveM: what they are and why they matter"
+  meta={[
+    { label: "You'll build", value: "Three working State Bags — player duty status, vehicle lock state, and a global double-XP flag — read from multiple resources." },
+    { label: "Time", value: "~25 minutes" },
+    { label: "You need", value: "A local FiveM server with OneSync enabled (it is by default), basic Lua knowledge." },
+    { label: "You'll learn", value: "Player vs Entity vs Global State Bags, setting and reading values, replication, change handlers, and why State Bags replaced constant event spam." },
+  ]}
+>
+  Before State Bags, every script that needed to know if a player was on duty had to ask the server: "Is this player on duty?" — over and over. State Bags let you attach the answer directly to the player. Any script reads it instantly, and you only hear about it when it changes. This is how modern FiveM servers share data between resources.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can create a FiveM resource with client.lua, server.lua, and fxmanifest.lua.",
+    "I understand the difference between client and server (see the Two Worlds lesson).",
+    "I know what a Lua table is.",
+  ]}
+/>
+
+<Callout variant="fivem" title="State Bags in one sentence">
+  A State Bag is data you attach to a player, an entity, or the whole server — and it syncs automatically to everyone who needs it.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Create the resource" outcome="A resource with client and server scripts.">
+    ```text
+resources/qu_statebags/
+  fxmanifest.lua
+  server.lua
+  client.lua
+    ```
+
+    ```lua fxmanifest.lua
+fx_version 'cerulean'
+game 'gta5'
+server_script 'server.lua'
+client_script 'client.lua'
+    ```
+  </Step>
+
+  <Step num={2} title="Set a player State Bag (server)" outcome="Any script can read this player's duty status.">
+    ```lua server.lua
+-- When a player connects, set their duty status
+AddEventHandler('playerJoining', function()
+    local src = source
+    local playerState = Player(src).state
+
+    -- Set initial values
+    playerState:set('onduty', false, true)   -- true = replicate to all clients
+    playerState:set('job', 'unemployed', true)
+
+    print('Player ' .. src .. ' joined — state initialized')
+end)
+    ```
+
+    - `Player(src).state` — get the State Bag for this player
+    - `:set('key', value, replicate)` — set a value. Third arg `true` = sync to everyone
+    - Set `false` for server-only data that clients don't need to see
+
+    <ExpectedOutput>
+      The server console prints the join message. The State Bag now holds `onduty=false` and `job='unemployed'` for this player.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Read a player State Bag (client)" outcome="Any script on any client can read it instantly.">
+    ```lua client.lua
+-- Read your own State Bag
+Citizen.CreateThread(function()
+    while true do
+        local duty = LocalPlayer.state.onduty
+        local job = LocalPlayer.state.job
+
+        -- Show on screen
+        SetTextFont(0)
+        SetTextScale(0.4, 0.4)
+        SetTextColour(255, 255, 255, 255)
+        SetTextEntry('STRING')
+        AddTextComponentString(('Duty: %s | Job: %s'):format(
+            duty and 'ON' or 'OFF', job or 'none'
+        ))
+        DrawText(0.4, 0.05)
+
+        Citizen.Wait(0)
+    end
+end)
+    ```
+
+    `LocalPlayer.state` reads your own State Bag. No server callbacks needed. No events to listen to. The data is just... there.
+
+    <ExpectedOutput>
+      The top-left of your screen shows "Duty: OFF | Job: unemployed."
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={4} title="Change the state and watch it sync" outcome="Toggle duty status from the server.">
+    Add a command on the server to toggle duty:
+
+    ```lua server.lua
+RegisterCommand('toggleduty', function(source)
+    local playerState = Player(source).state
+    local current = playerState.onduty or false
+    playerState:set('onduty', not current, true)
+    print(('Player %s duty: %s'):format(source, not current and 'ON' or 'OFF'))
+end, true)  -- true = restricted (only admins)
+    ```
+
+    Type `/toggleduty` in chat. The client display updates instantly — no event, no callback, no polling.
+
+    <ExpectedOutput>
+      The screen display flips from "Duty: OFF" to "Duty: ON" immediately.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="React to changes with a handler" outcome="Your code runs ONLY when the value changes.">
+    Instead of checking "has it changed?" every frame, use a handler:
+
+    ```lua client.lua
+AddStateBagChangeHandler('job', nil, function(bagName, key, value)
+    local playerId = GetPlayerFromStateBagName(bagName)
+    if playerId == 0 then return end  -- not a player State Bag
+
+    -- Show a notification when someone's job changes
+    print(('Player %s job changed to: %s'):format(playerId, value))
+end)
+    ```
+
+    This handler fires automatically every time ANY player's `job` key changes. No loop, no timer, no wasted CPU — it only runs when something actually happens.
+
+    <ExpectedOutput>
+      When a player's job changes, the console prints the update. Nothing fires when the job stays the same.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Use entity State Bags for vehicles" outcome="A vehicle's lock state is readable from any script.">
+    ```lua server.lua
+-- Set a vehicle's lock state when spawned
+RegisterNetEvent('qu_statebags:spawnVehicle', function(model)
+    local src = source
+    local coords = GetEntityCoords(GetPlayerPed(src))
+    local veh = CreateVehicleServerSetter(model, 'automobile', coords.x, coords.y, coords.z, 0.0)
+
+    -- Attach state to the vehicle entity
+    Entity(veh).state:set('locked', true, true)
+    Entity(veh).state:set('fuel', 100, true)
+    Entity(veh).state:set('owner', src, true)
+end)
+    ```
+
+    Any script can now check `Entity(veh).state.locked` to decide whether a player can enter the vehicle. No database query needed for a live state.
+
+    <ExpectedOutput>
+      A spawned vehicle has `locked=true`, `fuel=100`, and an `owner` in its State Bag.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={7} title="Use Global State for server-wide events" outcome="Every player knows about a global event instantly.">
+    ```lua server.lua
+-- Set a global flag
+GlobalState:set('doubleXP', true, true)
+
+-- Read it anywhere (server or client)
+print('Double XP active: ' .. tostring(GlobalState.doubleXP))
+    ```
+
+    `GlobalState` is one State Bag shared by the entire server. Perfect for events, announcements, or configuration that every player needs.
+
+    <ExpectedOutput>
+      Every client can read `GlobalState.doubleXP`. When it changes, every change handler fires.
+    </ExpectedOutput>
+  </Step>
+</StepGroup>
+
+## State Bags vs databases
+
+| State Bags | Databases |
+|---|---|
+| Live, in-memory state | Permanent storage on disk |
+| Gone when server restarts | Survives restarts |
+| Duty status, vehicle lock, current activity | Money, inventory, houses, characters |
+| Fast reads, no queries | Slower (disk + network), but durable |
+| Example: `Player.state.onduty = true` | Example: `SELECT money FROM players WHERE id = 1` |
+
+Modern systems use both. The database stores permanent data. State Bags keep live status so scripts don't hammer the database every second.
+
+## Common failures
+
+| What you see | What it means | How to fix it |
+|---|---|---|
+| `attempt to index a nil value (local 'playerState')` | Player ID is invalid or player disconnected | Check the player exists before accessing their state |
+| State Bag value is nil when you expect it | The value was never set or the key is misspelled | `onduty` ≠ `onDuty` ≠ `on_duty` — keys are case-sensitive |
+| Other clients can't see the change | `replicate` was set to `false` | Pass `true` as the third argument to `:set()` |
+| Handler fires for non-player State Bags | Entity and Global State Bags also trigger handlers | Filter with `GetPlayerFromStateBagName(bagName)` — returns 0 for non-players |
+| State Bag data is gone after restart | State Bags are in-memory, not saved to disk | Use a database for data that must survive restarts. Reload from DB on player join |
+| Change handler fires multiple times | Every State Bag change triggers ALL matching handlers | Check `key` in your handler to make sure you're reacting to the right key |
