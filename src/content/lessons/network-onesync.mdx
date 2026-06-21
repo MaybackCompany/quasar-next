@@ -16,7 +16,7 @@
     "I can find my server resources folder.",
     "I can edit server.cfg and restart one resource.",
     "I can read txAdmin Live Console output.",
-    "My server has OneSync enabled (set onesync on in server.cfg)."
+    "My server has OneSync enabled (onesync_enabled true in server.cfg)."
   ]}
 />
 
@@ -25,7 +25,7 @@
 </Callout>
 
 <Callout variant="fivem" title="OneSync must be on or none of this works">
-  Routing buckets are a OneSync feature. On a server without OneSync, every native below is inert: the calls return nothing and players are never partitioned. Before you start, open `server.cfg` and confirm you have `set onesync on` (the current syntax; the old `onesync_enabled true` form is deprecated and you should not copy it). If you used a txAdmin recipe, this is almost always already set. No OneSync, no buckets.
+  Routing buckets are a OneSync feature. On a server without OneSync, every native below is inert: the calls return nothing and players are never partitioned. Before you start, open `server.cfg` and confirm you have `onesync_enabled true` (the current syntax; the old `set onesync on` syntax is deprecated and you should not copy it). If you used a txAdmin recipe, this is almost always already set. No OneSync, no buckets.
 </Callout>
 
 ## Build it
@@ -59,7 +59,7 @@ game 'gta5'
 server_script 'server.lua'
     ```
 
-    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
+    Older tutorials add a `-- Lua 5.4 is the default runtime in 2026; the lua54 directive is no longer needed` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="A real instance manager that partitions players exists.">
@@ -178,7 +178,7 @@ For a controlled mission instance, `'strict'` prevents client-side creation of n
 
 ### Where OneSync and entity ownership tie in
 
-Every one of these natives depends on OneSync being enabled, because OneSync is what moves entity authority from the clients to the server. On a legacy non-OneSync server there is no server-side dimension to assign players to, so the calls do nothing. That is why the prereq and the second callout insist on `set onesync on` before you write a line.
+Every one of these natives depends on OneSync being enabled, because OneSync is what moves entity authority from the clients to the server. On a legacy non-OneSync server there is no server-side dimension to assign players to, so the calls do nothing. That is why the prereq and the second callout insist on `onesync_enabled true` before you write a line.
 
 Once OneSync is on, the server owns the networked world. You can ask who currently owns a given entity with `NetworkGetEntityOwner(entity)`, which returns the player index currently responsible for simulating it (or -1 when the server itself owns it, as happens for server-created entities). You will not call it in this lesson's three commands, but it is the read side of the same authority model: routing buckets decide which world an entity lives in, lockdown mode decides who may create entities there, and `NetworkGetEntityOwner` tells you who is simulating one right now.
 
@@ -198,7 +198,7 @@ Routing buckets are the answer almost every time a server needs more than one co
 
 <FailureList
   items={[
-    { symptom: "Players still see each other after /heist", fix: "OneSync is off. Open server.cfg, set onesync on (the old onesync_enabled true form is deprecated), and fully restart the server (not just the resource). Routing bucket natives do nothing without OneSync." },
+    { symptom: "Players still see each other after /heist", fix: "OneSync is off. Open server.cfg, onesync_enabled true (the old `set onesync on` syntax is deprecated), and fully restart the server (not just the resource). Routing bucket natives do nothing without OneSync." },
     { symptom: "Resource qu_network_onesync does not exist", fix: "Check the folder is inside resources and the ensure line uses the exact same name." },
     { symptom: "Could not load resource qu_network_onesync", fix: "Open fxmanifest.lua and fix the first quote, brace, or file name error the console reports." },
     { symptom: "attempt to call a nil value (global 'SetRoutingBucketEntityLockdownMode')", fix: "Your server artifact is too old to expose this native. Update to a recent FiveM server build, then restart qu_network_onesync." },
