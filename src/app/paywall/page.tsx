@@ -8,8 +8,8 @@ import { BookAudit } from "@/components/fqs/book-audit";
 import { AUTH_ENABLED, getSession } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
-  title: "Member access required · Quasar Academy",
-  description: "Quasar Academy course access requires the Builder, Elite, or Enterprise role in Discord. Builder unlocks every course.",
+  title: "Member access required · Quasar School",
+  description: "Quasar School course access requires the Builder, Elite, or Enterprise role in Discord. Builder unlocks every course.",
 };
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,7 @@ export default async function PaywallPage() {
               Hey {username}, this lesson needs an active member role.
             </h1>
             <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-2">
-              The Quasar Academy courses are open to Discord members with the Builder, Elite, or Enterprise
+              The Quasar School courses are open to Discord members with the Builder, Elite, or Enterprise
               role. Builder unlocks every course. If you already have access, roles can take a minute to sync.
               Sign in again and you should land back in the course.
             </p>

@@ -80,7 +80,7 @@ export function SearchPalette() {
           className="fixed inset-0 z-[100] bg-foreground/20 px-4 py-16 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
-          aria-label="Search Quasar Academy"
+          aria-label="Search Quasar School"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setOpen(false);
           }}

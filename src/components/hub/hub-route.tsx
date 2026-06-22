@@ -54,7 +54,7 @@ export async function generateHubMetadata(section: string, { params }: HubPagePr
   const item = await getHubItem(routeFor(section, slug));
 
   if (!item) {
-    return { title: "Page not found · Quasar Academy" };
+    return { title: "Page not found · Quasar School" };
   }
 
   return {
