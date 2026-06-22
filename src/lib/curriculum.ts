@@ -62,7 +62,7 @@ export const PATHS: Path[] = [
           { num: "09", title: "Install any script: the method", blurb: "Read the deps, install them first, import the SQL, ensure in order, restart.", slug: "install-a-script-walkthrough", tag: "Setup" },
           { num: "Bonus", title: "Install any FiveM resource (checklist)", blurb: "The systematic method: read README, check deps, place folder, configure, restart, test.", slug: "install-fivem-resource", tag: "Setup", bonus: true },
           { num: "10", title: "Reading and fixing common errors", blurb: "The console errors every beginner hits: what each means and the fix.", slug: "fivem-error-catalog", tag: "Debugging" },
-          { num: "07", title: "Installing and managing scripts", blurb: "Drop in a downloaded or bought script, load it in order, refresh and test.", slug: "installing-managing-scripts", tag: "Setup" },
+          { num: "11", title: "Installing and managing scripts", blurb: "Drop in a downloaded or bought script, load it in order, refresh and test.", slug: "installing-managing-scripts", tag: "Setup" },
           { num: "Bonus", title: "How to make your first FiveM server", blurb: "The five-step minimal path: artifacts, license, server.cfg, start, join. No framework.", slug: "first-fivem-server", tag: "Setup", bonus: true },
         ],
       },
