@@ -9,6 +9,7 @@ import { LessonVideo } from "@/components/fqs/lesson-video";
 import { YouTubeVideo } from "@/components/fqs/youtube-video";
 // Components used by hub pages (cheatsheets/server/...) that aren't restyled here yet.
 import { LinkCard, LinkCardGrid, Quiz, Vocab, LevelUp, Explain, Chip } from "@/components/lesson/mdx";
+import { LessonCrumb } from "@/components/lesson/lesson-crumb";
 
 /**
  * Global MDX map — Quasar School design system.
@@ -35,11 +36,7 @@ function LessonHero({
 }) {
   return (
     <header>
-      {crumbs ? (
-        <div className="eyebrow" style={{ marginBottom: 12 }}>
-          {crumbs}
-        </div>
-      ) : null}
+      <LessonCrumb fallback={crumbs} />
       <h1 className="fqs-h" style={{ fontSize: "clamp(30px, 4.5vw, 44px)" }}>
         {title}
       </h1>

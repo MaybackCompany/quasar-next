@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { SiteNav } from "@/components/fqs/site-nav";
 import { LessonShell, type ShellModule } from "@/components/fqs/lesson-shell";
 import { LessonProgress } from "@/components/fqs/lesson-progress";
+import { CrumbProvider } from "@/components/lesson/lesson-crumb";
 import { getLessonLookup, PATHS } from "@/lib/curriculum";
 
 interface PageProps {
@@ -69,6 +70,8 @@ export default async function LessonPage({ params }: PageProps) {
 
   const trackPath = lookup.path;
   const trackId = trackPath?.id ?? "scripts";
+  // Breadcrumb is derived from the curriculum so it can never drift from curriculum.ts.
+  const crumb = trackPath ? `${trackPath.flag} · ${lookup.module.title}` : lookup.module.title;
   const modules: ShellModule[] = (trackPath?.modules ?? []).map((m) => ({
     num: m.num,
     title: m.title,
@@ -91,7 +94,9 @@ export default async function LessonPage({ params }: PageProps) {
         toc={item.toc}
         aiBody={item.ai}
       >
-        <MdxContent />
+        <CrumbProvider value={crumb}>
+          <MdxContent />
+        </CrumbProvider>
         <LessonProgress slug={slug} trackSlugs={modules.flatMap((m: ShellModule) => m.lessons.map((l: { slug: string }) => l.slug))} />
       </LessonShell>
     </div>
