@@ -75,13 +75,19 @@ end)
     ```lua client.lua
 local appId = 'YOUR_DISCORD_CLIENT_ID'
 
-Citizen.CreateThread(function()
+local playerCount = 0
+
+-- The server pushes the authoritative count to us
+RegisterNetEvent('qu_discord:playerCount', function(count)
+    playerCount = count
+end)
+
+CreateThread(function()
     SetDiscordAppId(appId)
 
     while true do
-        -- Get player count from the server
-        local playerCount = GetNumPlayerIndices()  -- live player count on server
-        -- Real count: TriggerServerEvent to get it, or use a shared variable
+        -- Ask the server for the current count
+        TriggerServerEvent('qu_discord:getPlayerCount')
 
         SetRichPresence('Players online: ' .. playerCount)
 
@@ -93,18 +99,21 @@ Citizen.CreateThread(function()
         SetDiscordRichPresenceAction(0, 'Join', 'fivem://connect/localhost:30120')
         SetDiscordRichPresenceAction(1, 'Discord', 'https://discord.gg/yourserver')
 
-        Citizen.Wait(15000)
+        Wait(15000)
     end
 end)
     ```
 
-    For a real player count, add this server-side:
+    The count must come from the server. `GetNumPlayerIndices()` is a client native that only sees locally-scoped players, so it is never the real total. Count players server-side with `#GetPlayers()` and push that number back to the client:
     ```lua server.lua
 RegisterNetEvent('qu_discord:getPlayerCount', function()
     local src = source
-    TriggerClientEvent('qu_discord:playerCount', src, GetNumPlayerIndices())
+    -- #GetPlayers() is the server-authoritative count of everyone online
+    TriggerClientEvent('qu_discord:playerCount', src, #GetPlayers())
 end)
     ```
+
+    Add `server_script 'server.lua'` to your `fxmanifest.lua` so the server file loads.
 
     <ExpectedOutput>
       Discord shows "Players online: 12" with a Join button. Friends can click to join directly.
@@ -119,4 +128,4 @@ end)
 | Rich presence doesn't appear | Client ID is wrong or app not created | Double-check the 18-digit ID at discord.com/developers |
 | Image shows as gray question mark | Asset name doesn't match the uploaded name | Asset names are case-sensitive. Match exactly |
 | Join button doesn't work | `fivem://` link has wrong syntax | Use `fivem://connect/ip:port` — no spaces, correct IP |
-| Player count shows 0 | Not fetching count from server | Use TriggerServerEvent to get `GetNumPlayerIndices()` |
+| Player count shows 0 | Not fetching count from server | Use TriggerServerEvent, then count server-side with `#GetPlayers()` |

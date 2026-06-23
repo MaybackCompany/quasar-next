@@ -1,13 +1,13 @@
 <LessonHero
  title="Organize your server folders"
  meta={[
- { label: "You'll build", value: "A clean server-data layout with bracketed category folders and a server.cfg that starts a whole group with one ensure line." },
+ { label: "You'll build", value: "A clean server-data layout with bracketed category folders and a server.cfg with a clear, ordered ensure line per resource." },
  { label: "Time", value: "~16 minutes" },
  { label: "You need", value: "A local FiveM server you can restart, a text editor like VS Code, and the ability to read your txAdmin Live Console." },
- { label: "You'll learn", value: "Artifacts vs data -> why [bracket] folders auto-start everything inside -> how folder order becomes load order -> a tidy resources layout you can grow into." },
+ { label: "You'll learn", value: "Artifacts vs data -> what [bracket] folders actually do (group for discovery, not auto-start) -> how ensure order becomes load order -> a tidy resources layout you can grow into." },
  ]}
 >
- Most broken servers are not broken by bad code. They are broken by mess: a resource that loads before the library it needs, a script dropped in the wrong folder, a `server.cfg` nobody can read. In this lesson you build the layout that prevents all three. By the end you will know where every file belongs and why, and you will start an entire category of resources with a single line.
+ Most broken servers are not broken by bad code. They are broken by mess: a resource that loads before the library it needs, a script dropped in the wrong folder, a `server.cfg` nobody can read. In this lesson you build the layout that prevents all three. By the end you will know where every file belongs and why, and you will write a `server.cfg` whose `ensure` lines read like a clean, ordered map of your server.
 </LessonHero>
 
 <Prereq
@@ -73,22 +73,22 @@ resources/
  ```text
 resources/
 ├── [framework]/
-│ ├── oxmysql/ # database layer (Overextended)
-│ ├── ox_lib/ # shared library (Overextended)
+│ ├── oxmysql/ # database layer (CommunityOx)
+│ ├── ox_lib/ # shared library (CommunityOx)
 │ └── es_extended/ # one example framework (or qb-core / qbx_core)
 ├── [standalone]/
-│ ├── ox_target/ # 3D interaction (Overextended)
-│ └── ox_inventory/ # inventory (Overextended)
+│ ├── ox_target/ # 3D interaction (CommunityOx)
+│ └── ox_inventory/ # inventory (CommunityOx)
 ├── [scripts]/
 │ └── qu_first_line_of_lua/
 └── [maps]/
  └── my_custom_mlo/
  ```
 
- `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are **Overextended** community resources, not part of QBCore or ESX. They are standalone building blocks you add yourself. Putting the database and library inside `[framework]` keeps everything the framework depends on in one place.
+ `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are community resources (originally Overextended, now maintained by **CommunityOx** at [github.com/CommunityOx](https://github.com/CommunityOx)), not part of QBCore or ESX. They are standalone building blocks you add yourself. Putting the database and library inside `[framework]` keeps everything the framework depends on in one place.
  </Step>
 
- <Step num={4} title="Wire it up in server.cfg" outcome="The cfg starts whole groups, in dependency order.">
+ <Step num={4} title="Wire it up in server.cfg" outcome="The cfg starts each resource by name, in dependency order.">
  Open `server.cfg` and add your resource section. Order is everything here, so read the comments as you type:
 
  ```cfg
@@ -115,26 +115,26 @@ ensure my_custom_mlo
  `ensure` starts a resource if it is stopped and restarts it if it is already running. It is the safe, idempotent directive. Prefer it over `start`, which only acts on a stopped resource and does nothing if it is already running, so it never picks up your latest changes; `ensure` restarts it.
  </Step>
 
- <Step num={5} title="Start one whole group with one line" outcome="A single ensure boots an entire bracket folder.">
- Here is the payoff of bracket folders. You do not have to list every resource by hand. Pointing `ensure` at a bracket folder starts everything inside it:
+ <Step num={5} title="Start your scripts by name" outcome="The cfg starts each resource, and the console confirms it.">
+ Here is where the brackets earn their keep, and where a common myth gets cleared up. The brackets organize your folders for discovery, but `ensure` always acts on **one resource at a time**, by its own name. There is no resource called `[scripts]`, so you start each script by name:
 
  ```cfg
-## Start every resource inside the [scripts] folder, in one line:
-ensure [scripts]
+## Start each resource inside [scripts] by its own name:
+ensure qu_first_line_of_lua
  ```
 
  Save `server.cfg`, then from the txAdmin Live Console run:
 
  ```text
  refresh
- ensure [scripts]
+ ensure qu_first_line_of_lua
  ```
 
  <ExpectedOutput>
  Started resource qu_first_line_of_lua
  </ExpectedOutput>
 
- `refresh` rescans the `resources/` folder so the server notices any folders you added. Then `ensure [scripts]` starts every resource inside that bracket. Add a new script to `[scripts]` later, run those same two lines, and it starts too, with no new `ensure` line to write.
+ `refresh` rescans the `resources/` folder so the server notices any folders you added, including ones nested inside `[scripts]`. Then `ensure qu_first_line_of_lua` starts that one resource. Add a new script to `[scripts]` later, and you `refresh` then `ensure` it by its own name too.
  </Step>
 </StepGroup>
 
@@ -162,7 +162,7 @@ Here is the same `server-data` layout as it looks in your editor, so you can mat
 
 ## How it works
 
-The server booted clean and one line started a whole group. Now take the layout apart so the next time you add a resource you know exactly where it goes and why the order matters.
+The server booted clean and every resource started by name in the right order. Now take the layout apart so the next time you add a resource you know exactly where it goes and why the order matters.
 
 ### Artifacts vs data: why the split exists
 
@@ -172,14 +172,14 @@ By keeping your content in `server-data/`, the two lifecycles never touch. You u
 
 ### What a [bracket] folder really is
 
-A folder named `[scripts]` is not a resource. FiveM never tries to start it as a script, because it has no `fxmanifest.lua` of its own. Instead, when the server scans `resources/`, it sees the brackets and treats that folder as a **container**: a labelled box whose only job is to hold other resources.
+A folder named `[scripts]` is not a resource. FiveM never tries to start it as a script, because it has no `fxmanifest.lua` of its own. Instead, when the server scans `resources/`, it sees the brackets and treats that folder as a **container**: a labelled box whose only job is to hold other resources so the server can find them during discovery.
 
-That single fact is what makes `ensure [scripts]` work. You are not starting a resource called `[scripts]`. You are telling the server, start every resource you can find inside this box. The server walks into the folder, finds each real resource by its `fxmanifest.lua`, and starts them all. One line, the whole group.
+Here is the part people get wrong, so be clear about it. The brackets help the server **discover** resources; they do not let you **start** a whole folder. There is no resource called `[scripts]`, and `ensure` acts on exactly one resource by its own name. `ensure [scripts]` does not start everything inside the box. You still `ensure qu_first_line_of_lua`, and any other resource in there, by name. What the bracket buys you is discovery and tidiness: every resource inside `[scripts]` is found in the scan and sits in one obvious place, so you always know what to `ensure` and where it lives.
 
-The names are a community convention, not a fixed list. `[framework]`, `[standalone]`, `[scripts]`, and `[maps]` are the common ones, but the server does not care what the brackets say. You could make `[jobs]` or `[economy]` tomorrow. What matters is only that the name is wrapped in brackets, which flips the folder from "resource" to "category group".
+The names are a community convention, not a fixed list. `[framework]`, `[standalone]`, `[scripts]`, and `[maps]` are the common ones, but the server does not care what the brackets say. You could make `[jobs]` or `[economy]` tomorrow. What matters is only that the name is wrapped in brackets, which marks the folder as a "category group" the scan walks into rather than a resource it tries to start.
 
-<Checkpoint question="You drop a brand-new script folder inside [scripts] while the server is running and then type ensure [scripts], but it does not start. Why?">
- Because the server has not noticed the new folder yet. The resource list is built when the server scans `resources/`, and a folder added while the server is live is not in that scan. Run `refresh` first: it rescans `resources/` and loads the new manifest. Then `ensure [scripts]` will find the new resource and start it. The fix is always the same pair when adding resources live: `refresh`, then `ensure`.
+<Checkpoint question="You drop a brand-new script folder inside [scripts] while the server is running and then type ensure your_new_script, but it does not start. Why?">
+ Because the server has not noticed the new folder yet. The resource list is built when the server scans `resources/`, and a folder added while the server is live is not in that scan. Run `refresh` first: it rescans `resources/` and loads the new manifest. Then `ensure your_new_script` (the resource's own name) finds it and starts it. The fix is always the same pair when adding resources live: `refresh`, then `ensure <resource_name>`.
 </Checkpoint>
 
 ### Why folder order becomes load order
@@ -204,15 +204,15 @@ ensure oxmysql
 
 The reliable rule is **dependency before dependent**, using each resource's README and `fxmanifest.lua` as the source of truth. Database-backed frameworks commonly need `oxmysql`; a script that imports `@ox_lib/init.lua` needs `ox_lib`. Do not assume every framework needs every ox resource because an example config includes them.
 
-<Checkpoint question="If everything in [framework] needs to load before everything in [scripts], can you ensure both bracket folders and trust the order?">
- Mostly, but with a sharp edge. Ordering between groups is reliable: `ensure [framework]` above `ensure [scripts]` does load the whole framework group before the scripts group. What brackets do NOT give you is fine-grained order inside a group. `ensure [framework]` starts oxmysql, ox_lib, and es_extended, but does not promise es_extended loads last. When the order within a group matters, list those few resources by name in the exact sequence you need, instead of relying on the bracket. Brackets group; they do not sort.
+<Checkpoint question="Everything in [framework] needs to load before everything in [scripts]. Can you just write ensure [framework] and ensure [scripts] and trust the order?">
+ No, and the reason matters. You cannot `ensure` a bracket folder at all: there is no resource named `[framework]` or `[scripts]`, so those lines start nothing. `ensure` acts on one resource by its own name. You control load order by the order you write the individual `ensure` lines in `server.cfg`, top to bottom: list `oxmysql`, then `ox_lib`, then `es_extended`, then your scripts, in exactly that sequence. Brackets group folders for discovery so you know what lives where; they do not start resources and they do not sort load order. The `ensure` lines do.
 </Checkpoint>
 
 ### When you reach for this layout
 
 This structure is not academic tidiness. It saves you real time the moment a server has more than a handful of resources:
 
-- **Adding a script.** You downloaded a new job script. It drops into `[scripts]`, you `refresh` and `ensure [scripts]`, and you are done. No hunting for where it belongs and no new `ensure` line.
+- **Adding a script.** You downloaded a new job script. It drops into `[scripts]`, you `refresh` and `ensure` it by its own name, and you are done. No hunting for where it belongs: the bracket folder told you exactly where it goes.
 - **Updating a dependency.** A new `ox_lib` release comes out. You know exactly where the old one lives, inside `[framework]`, because every shared dependency lives there. Swap the folder, restart, done.
 - **Handing the server to someone else.** A teammate opens `server-data/` and instantly reads the shape of the server from the folder names alone. The structure is the documentation.
 
@@ -221,8 +221,8 @@ This structure is not academic tidiness. It saves you real time the moment a ser
 <FailureList
  items={[
  { symptom: "es_extended errors on boot: attempt to call a nil value (oxmysql export)", fix: "Load order is wrong. The framework loaded before its database layer. Move ensure oxmysql (and ensure ox_lib) ABOVE ensure es_extended in server.cfg. Dependency first, dependent second." },
- { symptom: "ensure [scripts] does nothing after you add a new folder while the server is live", fix: "The server has not rescanned the resources folder. Run refresh first, then ensure [scripts]. A folder added during a live session is not in the resource list until a refresh." },
- { symptom: "Couldn't find resource [scripts]", fix: "The brackets are wrong or missing on disk. The folder must literally be named [scripts] with square brackets. A folder named scripts with no brackets is treated as a normal resource, not a category group." },
+ { symptom: "ensure your_new_script does nothing after you add the folder while the server is live", fix: "The server has not rescanned the resources folder. Run refresh first, then ensure the resource by its own name. A folder added during a live session is not in the resource list until a refresh." },
+ { symptom: "Couldn't find resource [scripts] (you tried ensure [scripts])", fix: "There is no resource named [scripts]. The brackets mark a category group for discovery, not something you can ensure. ensure acts on one resource by its own name, so ensure each script inside the folder by name (ensure qu_first_line_of_lua), not the bracket folder." },
  { symptom: "A resource you put inside a bracket folder never starts", fix: "It is missing its fxmanifest.lua, or it is nested one level too deep. A bracket folder holds resource folders directly; each resource needs its own fxmanifest.lua for the server to recognize and start it." },
  { symptom: "Your edits to a script keep getting wiped on update", fix: "You are editing inside the server/ artifacts folder. Scripts belong in server-data/resources/, never in server/. The artifacts folder gets replaced on every update." },
  ]}
@@ -234,7 +234,7 @@ This structure is not academic tidiness. It saves you real time the moment a ser
  items={[
  "Explain the split between the server/ artifacts folder and the server-data/ content folder, and why updates and backups stay clean because of it.",
  "Create bracketed category folders like [framework], [standalone], [scripts], and [maps], knowing the brackets are part of the real folder name.",
- "Start every resource inside a bracket folder with a single ensure line, after a refresh when the folder is new.",
+ "Start each resource with its own ensure line by name, after a refresh when the folder is new, knowing a bracket folder groups for discovery and is never something you ensure.",
  "Order ensure lines so dependencies load before dependents: database layer, shared library, framework, scripts, maps.",
  "Diagnose a nil-export startup error as a load-order problem and fix it by moving the dependency higher in server.cfg.",
  ]}
@@ -252,7 +252,7 @@ This structure is not academic tidiness. It saves you real time the moment a ser
 ## Try it yourself
 
 <Exercise>
- Add a new category group of your own and prove a one-line ensure starts everything inside it. Create a folder named `[jobs]` inside `resources/`, then put two empty resource folders inside it, each with a minimal manifest:
+ Add a new category group of your own and prove the layout makes every resource easy to find and start. Create a folder named `[jobs]` inside `resources/`, then put two empty resource folders inside it, each with a minimal manifest:
 
  ```text
 resources/
@@ -270,13 +270,14 @@ fx_version 'cerulean'
 game 'gta5'
  ```
 
- Then add one line to `server.cfg`:
+ Then add one `ensure` line per resource to `server.cfg`. Remember: there is no resource called `[jobs]`, so you `ensure` each one by its own name:
 
  ```cfg
-ensure [jobs]
+ensure qu_taxi_job
+ensure qu_courier_job
  ```
 
- From the console run `refresh` then `ensure [jobs]`, and confirm the console reports both `qu_taxi_job` and `qu_courier_job` starting from that single line. You invented your own category group and proved that the brackets, not the contents, are what let one `ensure` start the whole box.
+ From the console run `refresh`, then `ensure qu_taxi_job` and `ensure qu_courier_job`, and confirm the console reports both starting. You invented your own category group: the `[jobs]` brackets kept both resources in one obvious place for the scan to discover, and you started each one by name. The brackets organize and help discovery; the `ensure` lines, one per resource, are what actually start them.
 </Exercise>
 
 <Refs

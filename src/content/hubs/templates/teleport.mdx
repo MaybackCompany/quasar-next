@@ -6,7 +6,7 @@
     { label: "Dependencies", value: "None. Pure native calls, no framework, no ox_lib, no oxmysql." },
     { label: "Files", value: "2 starters: fxmanifest.lua, client/client.lua." },
     { label: "Command", value: "/tp 1 teleports to the first location in the table." },
-    { label: "Build note", value: "The advanced version needs game build 2372 or newer for the effect." },
+    { label: "Build note", value: "The advanced version loads a particle dictionary before firing the effect." },
   ]}
 >
   A drop-in `/tp` command. Players type a number, the script reads a table of named spots, and `SetEntityCoords` moves them there. Ships with a plain version and an advanced version that adds a particle burst on arrival.
@@ -32,8 +32,6 @@ name "kee_gan"
 description "quasar university - prologue"
 author "kee_ga"
 version "1.0.0"
-
-lua54 'yes'
 
 client_scripts {
     'client/*.lua'
@@ -182,8 +180,8 @@ end)
 
 Same logic, with a particle effect played at the player before they jump. It loads a named PTFX asset, waits for it, fires it, and then teleports.
 
-<Callout variant="fivem" title="Game build requirement">
-  This version needs game build 2372 or newer and the particle dictionary loaded before use. On older builds the effect calls fail. If you are not sure of your build, ship the beginner version instead.
+<Callout variant="fivem" title="Load the dictionary first">
+  Always request and wait for the particle dictionary before you fire the effect. If you skip the load, the effect call runs against an asset that is not in memory and nothing shows. If you do not want the visual at all, ship the beginner version instead.
 </Callout>
 
 ```
@@ -201,16 +199,18 @@ RegisterCommand('tp', function(source, args)
         local location = teleportLocations[locationIndex]
         RequestNamedPtfxAsset("scr_rcbarry2")
         while not HasNamedPtfxAssetLoaded("scr_rcbarry2") do
-            Citizen.Wait(0)
+            Wait(0)
         end
+        local ped = PlayerPedId()
+        local pos = GetEntityCoords(ped)
         UseParticleFxAssetNextCall("scr_rcbarry2")
         StartParticleFxNonLoopedAtCoord(
             "scr_clown_appears",
-            GetEntityCoords(PlayerPedId()),
+            pos.x, pos.y, pos.z,
             0.0, 0.0, 0.0,
             1.0, false, false, false
         )
-        SetEntityCoords(PlayerPedId(), location.x, location.y, location.z, false, false, false, true)
+        SetEntityCoords(ped, location.x, location.y, location.z, false, false, false, true)
         TriggerEvent('chat:addMessage', {
             color = { 0, 255, 0 },
             multiline = true,

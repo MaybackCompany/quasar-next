@@ -71,15 +71,28 @@ end)
 TriggerClientEvent('myresource:updateHUD', -1, data)
     ```
 
-    New pattern (scoped to a routing bucket or nearby players):
+    New pattern (scoped to players in the same bucket, or nearby players):
 
     ```lua server.lua
--- RIGHT: send only to players in a specific bucket
+-- RIGHT: build a list of server ids of players in the sender's bucket,
+-- then target each one. The 2nd arg to TriggerClientEvent is a player
+-- target: a serverId, or -1 for everyone. It is NOT a bucket id.
 local bucket = GetPlayerRoutingBucket(source)
-TriggerClientEvent('myresource:updateHUD', bucket, data)
+for _, playerId in ipairs(GetPlayers()) do
+    if GetPlayerRoutingBucket(playerId) == bucket then
+        TriggerClientEvent('myresource:updateHUD', playerId, data)
+    end
+end
 
--- Or send to players within render distance of the entity
-TriggerClientEvent('myresource:updateHUD', NetworkGetEntityOwner(entity), data)
+-- Or send only to players within range of a position (compute distance
+-- server-side from the entity's coords; do not use client-only natives here)
+local ex, ey, ez = table.unpack(GetEntityCoords(entity))
+for _, playerId in ipairs(GetPlayers()) do
+    local px, py, pz = table.unpack(GetEntityCoords(GetPlayerPed(playerId)))
+    if #(vector3(ex, ey, ez) - vector3(px, py, pz)) <= 100.0 then
+        TriggerClientEvent('myresource:updateHUD', playerId, data)
+    end
+end
     ```
 
     Use `-1` only for truly global events (announcements, weather changes). Everything else should be scoped.
@@ -110,5 +123,5 @@ SetPlayerRoutingBucket(source, 0)
 | Exact error | Cause | Fix |
 |---|---|---|
 | Entity vanishes when another player drives it | Ownership transferred to the other player, and your code deleted it | Check ownership before deleting: `NetworkGetEntityOwner(entity) == PlayerId()` |
-| Events fire but nothing happens | Event target player is in a different routing bucket | Check routing bucket with `GetPlayerRoutingBucket(src)` and target the bucket ID |
+| Events fire but nothing happens | Event target player is in a different routing bucket | Loop `GetPlayers()`, keep ids whose `GetPlayerRoutingBucket(playerId)` matches, and pass each serverId to `TriggerClientEvent` (the 2nd arg is a player target, not a bucket id) |
 | `SetEntityCoords` does nothing on client | You don't own the entity | Move entity modification to the server, or request ownership transfer first |

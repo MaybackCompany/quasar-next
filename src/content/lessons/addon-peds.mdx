@@ -45,24 +45,36 @@ files {
     ```
 
     ```lua client.lua
+spawnedPed = nil  -- shared so step 3 can task the same ped
+
 RegisterCommand('spawnmyped', function()
     local model = 'ped_model'  -- must match the .yft filename (without extension)
     RequestModel(model)
-    while not HasModelLoaded(model) do Citizen.Wait(0) end
+    while not HasModelLoaded(model) do Wait(0) end
 
     local coords = GetEntityCoords(PlayerPedId())
-    local ped = CreatePed(4, model, coords.x + 2, coords.y, coords.z, 0.0, true, false)
+    spawnedPed = CreatePed(4, model, coords.x + 2, coords.y, coords.z, 0.0, true, false)
 
-    -- Make the ped not attack the player
-    SetPedAsNoLongerNeeded(ped)
+    -- Make the ped non-hostile: put it in a group that respects the player.
+    -- This is what controls aggression - NOT SetPedAsNoLongerNeeded.
+    AddRelationshipGroup('MY_PEDS')
+    SetPedRelationshipGroupHash(spawnedPed, GetHashKey('MY_PEDS'))
+    SetRelationshipBetweenGroups(1, GetHashKey('MY_PEDS'), GetHashKey('PLAYER'))  -- 1 = respect
+    SetRelationshipBetweenGroups(1, GetHashKey('PLAYER'), GetHashKey('MY_PEDS'))
+
+    -- We are keeping this ped, so we only release the MODEL, never the ped.
     SetModelAsNoLongerNeeded(model)
 end, false)
     ```
 
     `CreatePed(pedType, model, x, y, z, heading, isNetwork, bScriptHostPed)`:
-    - pedType `4` = civilian (won't attack)
+    - pedType `4` = civilian (peaceful by default)
     - pedType `6` = cop (will attack criminals)
     - isNetwork `true` = other players can see this ped
+
+    <Callout variant="gotcha" title="SetPedAsNoLongerNeeded does not stop attacks">
+      Do not call `SetPedAsNoLongerNeeded` on a ped you intend to keep. It does not control aggression - it releases the ped to the engine, so the game can stream it out or despawn it. To control hostility, set a relationship group (as above) or use a peaceful pedType. Only release the model with `SetModelAsNoLongerNeeded` once the ped exists.
+    </Callout>
 
     <ExpectedOutput>
       A custom ped spawns in front of you. It stands idle and doesn't attack.
@@ -71,6 +83,10 @@ end, false)
 
   <Step num={3} title="Make the ped do something" outcome="The ped has behavior — animation, scenario, or combat.">
     ```lua client.lua
+-- spawnedPed is the ped created by the /spawnmyped command in step 2.
+local ped = spawnedPed
+if not ped or not DoesEntityExist(ped) then return end
+
 -- Make the ped play a scenario (stand at a counter, lean on wall, etc.)
 TaskStartScenarioInPlace(ped, 'WORLD_HUMAN_STAND_IMPATIENT', 0, true)
 
@@ -97,5 +113,5 @@ SetBlockingOfNonTemporaryEvents(ped, true)
 |---|---|---|
 | Ped invisible or doesn't spawn | Model name doesn't match .yft file | Use exact filename without extension: `ped_model.yft` → `'ped_model'` |
 | `CreatePed` returns 0 (invalid ped) | Model failed to load or doesn't exist | Check `HasModelLoaded(model)` returns true before CreatePed |
-| Ped attacks player immediately | pedType is a combat type (cop, army) | Use pedType `4` (civilian) or set relationship group |
-| Ped disappears when you look away | `SetPedAsNoLongerNeeded` called too early | Only call after the ped is fully spawned and positioned |
+| Ped attacks player immediately | pedType is a combat type (cop, army) | Use pedType `4` (civilian) or set a relationship group that respects the player |
+| Ped disappears when you look away | `SetPedAsNoLongerNeeded` was called on a ped you wanted to keep | Never release a kept ped - only call `SetModelAsNoLongerNeeded` on the model |

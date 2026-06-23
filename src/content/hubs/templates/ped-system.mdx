@@ -27,16 +27,18 @@
 
 ## Ped resource
 
-Four commands drive this resource. `AddPeds` writes a ped row for a target player, `ChangePed` looks up a saved model by name and swaps the caller to it, `GetPeds` lists a player's saved peds, and `RemovePeds` clears them. Identity comes from the framework, never from a name the player types, so one player cannot touch another player's row by guessing.
+Four commands drive this resource. `AddPeds` writes a ped row for a target player, `ChangePed` looks up a saved model by name and swaps the caller to it, `GetPeds` lists a player's saved peds, and `RemovePeds` clears them. The identifier itself always comes from the framework, never from a raw string the player types, so the value stored in the row is trustworthy.
 
-<Callout variant="danger" title="These queries use the oxmysql named-parameter form">
-  Every value is passed through the `@name` params table, never joined into the SQL string. Keep it that way. The moment you concatenate a player argument into the query you open an injection hole. If you move to the modern `?` placeholder API, keep the same rule: values go in the array, never in the string.
+Be aware of the trust boundary, though: `AddPeds`, `GetPeds`, and `RemovePeds` all take a `TargetId` argument and act on whichever player id is passed, with no ownership or ACE check. As written, any player who can run these commands can manage another player's peds. Only `ChangePed` is scoped to the caller. Gate these commands behind an ACE permission check (see Next steps) before you ship, or restrict them to staff.
+
+<Callout variant="danger" title="These queries use the oxmysql placeholder form">
+  Every value is passed as a `?` placeholder with the value in the array, never joined into the SQL string. Keep it that way. The moment you concatenate a player argument into the query you open an injection hole. The `.await` calls run on the resource thread, so each command reads the result inline instead of nesting a callback.
 </Callout>
 
 ## fxmanifest.lua
 
 ```
-fx_version 'bodacious'
+fx_version 'cerulean'
 game 'gta5'
 
 name "__.seerrgiioo.__"
@@ -114,16 +116,16 @@ RegisterCommand('ChangePed', function(source, args)
         return
     end
 
-    MySQL.Async.fetchAll('SELECT ped_model FROM test_peds WHERE identifier = @identifier AND ped_name = @ped_name', {
-        ['@identifier'] = identifier,
-        ['@ped_name'] = PedName
-    }, function(result)
-        if result and #result > 0 then
-            TriggerClientEvent('test:client:ChangePlayerPed', source, result[1].ped_model)
-        else
-            print("Error: Ped not found for the given player and name.")
-        end
-    end)
+    local result = MySQL.query.await('SELECT ped_model FROM test_peds WHERE identifier = ? AND ped_name = ?', {
+        identifier,
+        PedName
+    })
+
+    if result and #result > 0 then
+        TriggerClientEvent('test:client:ChangePlayerPed', source, result[1].ped_model)
+    else
+        print("Error: Ped not found for the given player and name.")
+    end
 end)
 
 RegisterCommand('RemovePeds', function(source, args)
@@ -144,15 +146,15 @@ RegisterCommand('RemovePeds', function(source, args)
         return
     end
 
-    MySQL.Async.execute('DELETE FROM test_peds WHERE identifier = @identifier', {
-        ['@identifier'] = identifier
-    }, function(rowsChanged)
-        if rowsChanged > 0 then
-            print("Peds removed successfully.")
-        else
-            print("Error: Failed to remove peds.")
-        end
-    end)
+    local rowsChanged = MySQL.update.await('DELETE FROM test_peds WHERE identifier = ?', {
+        identifier
+    })
+
+    if rowsChanged > 0 then
+        print("Peds removed successfully.")
+    else
+        print("Error: Failed to remove peds.")
+    end
 end)
 
 RegisterCommand('AddPeds', function(source, args)
@@ -176,17 +178,17 @@ RegisterCommand('AddPeds', function(source, args)
         return
     end
 
-    MySQL.Async.execute('INSERT INTO test_peds (identifier, ped_name, ped_model) VALUES (@identifier, @ped_name, @ped_model)', {
-        ['@identifier'] = identifier,
-        ['@ped_name'] = PedName,
-        ['@ped_model'] = PedModel
-    }, function(rowsChanged)
-        if rowsChanged > 0 then
-            print("Ped added successfully.")
-        else
-            print("Error: Failed to add ped.")
-        end
-    end)
+    local insertId = MySQL.insert.await('INSERT INTO test_peds (identifier, ped_name, ped_model) VALUES (?, ?, ?)', {
+        identifier,
+        PedName,
+        PedModel
+    })
+
+    if insertId then
+        print("Ped added successfully.")
+    else
+        print("Error: Failed to add ped.")
+    end
 end)
 
 RegisterCommand('GetPeds', function(source, args)
@@ -207,24 +209,24 @@ RegisterCommand('GetPeds', function(source, args)
         return
     end
 
-    MySQL.Async.fetchAll('SELECT * FROM test_peds WHERE identifier = @identifier', {
-        ['@identifier'] = identifier
-    }, function(result)
-        local player_peds = {}
+    local result = MySQL.query.await('SELECT * FROM test_peds WHERE identifier = ?', {
+        identifier
+    })
 
-        if result and #result > 0 then
-            for k, v in pairs(result) do
-                table.insert(player_peds, {
-                    ped_name = v.ped_name,
-                    ped_model = v.ped_model
-                })
-            end
-            TriggerClientEvent('test:client:GetPlayerPeds', source, player_peds)
-        else
-            TriggerClientEvent('test:client:GetPlayerPeds', source, {})
-            print("No peds found for the player.")
+    local player_peds = {}
+
+    if result and #result > 0 then
+        for k, v in pairs(result) do
+            table.insert(player_peds, {
+                ped_name = v.ped_name,
+                ped_model = v.ped_model
+            })
         end
-    end)
+        TriggerClientEvent('test:client:GetPlayerPeds', source, player_peds)
+    else
+        TriggerClientEvent('test:client:GetPlayerPeds', source, {})
+        print("No peds found for the player.")
+    end
 end)
 
 function Core.GetPlayerIdentifier(source)
@@ -316,7 +318,7 @@ The second resource follows the same shape: framework detection up top, commands
 ## fxmanifest.lua
 
 ```
-fx_version 'bodacious'
+fx_version 'cerulean'
 game 'gta5'
 
 name "__.seerrgiioo.__"

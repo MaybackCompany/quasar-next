@@ -35,29 +35,45 @@ dotnet new classlib --framework netstandard2.1
 dotnet add package CitizenFX.Core --version 1.0.*
     ```
 
-    Rename `Class1.cs` to `MainScript.cs` and open it.
+    Rename `Class1.cs` to `ServerMain.cs`, then add a second file `ClientMain.cs` for the client-side code. You will compile these into a server assembly and a client assembly.
   </Step>
 
-  <Step num={2} title="Write the script" outcome="The resource prints to console and responds to a command.">
-    ```csharp MainScript.cs
+  <Step num={2} title="Write the server script" outcome="The server assembly prints to console and responds to a command.">
+    Server logic (commands, database, player events) lives in the server assembly. `Game.*` and input natives do NOT exist here - they are client-only, so the key-press loop goes in a separate client assembly in the next step.
+
+    ```csharp ServerMain.cs
 using CitizenFX.Core;
 
 namespace QuCsharpDemo
 {
-    public class MainScript : BaseScript
+    public class ServerMain : BaseScript
     {
-        public MainScript()
+        public ServerMain()
         {
             Debug.WriteLine("C# resource started!");
 
-            // Register a chat command
+            // Register a chat command (server-side)
             API.RegisterCommand("csharp_hello", new Action<int, List<object>, string>((source, args, raw) =>
             {
                 Debug.WriteLine($"Player {source} said: {string.Join(" ", args)}");
             }), false);
         }
+    }
+}
+    ```
+  </Step>
 
-        // Tick runs every frame — like Citizen.CreateThread with Wait(0)
+  <Step num={3} title="Write the client script" outcome="The client assembly reads the E key every frame.">
+    Input and per-frame Tick logic must run client-side, because `Game.*` and `Control.*` natives only exist on the client.
+
+    ```csharp ClientMain.cs
+using CitizenFX.Core;
+
+namespace QuCsharpDemo
+{
+    public class ClientMain : BaseScript
+    {
+        // Tick runs every frame - like CreateThread with Wait(0)
         [Tick]
         public async Task OnTick()
         {
@@ -72,23 +88,26 @@ namespace QuCsharpDemo
     ```
   </Step>
 
-  <Step num={3} title="Create the fxmanifest" outcome="FiveM loads your C# resource.">
+  <Step num={4} title="Create the fxmanifest" outcome="FiveM loads your C# resource.">
+    Build produces two assemblies. Load the server one with `server_script` and the client one with `client_script` so each runs on the correct side.
+
     ```lua fxmanifest.lua
 fx_version 'cerulean'
 game 'gta5'
 
-server_script 'qu_csharp_demo.net.dll'
+server_script 'qu_csharp_demo.Server.net.dll'
+client_script 'qu_csharp_demo.Client.net.dll'
     ```
 
-    The `.net.dll` is the compiled assembly. FiveM loads it as a script and discovers all `BaseScript` subclasses automatically.
+    Each `.net.dll` is a compiled assembly. FiveM loads it as a script and discovers all `BaseScript` subclasses inside it automatically. The server assembly runs `ServerMain`; the client assembly runs `ClientMain`.
 
     <ExpectedOutput>
       After `ensure qu_csharp_demo`, the server console prints: `C# resource started!`
     </ExpectedOutput>
   </Step>
 
-  <Step num={4} title="Test the command and key press" outcome="Both the chat command and E key work.">
-    In-game: type `/csharp_hello testing C#` → server console prints the message. Press E → console prints "E key pressed in C#!"
+  <Step num={5} title="Test the command and key press" outcome="Both the chat command and E key work.">
+    In-game: type `/csharp_hello testing C#` → server console prints the message (from the server assembly). Press E → client console (F8) prints "E key pressed in C#!" (from the client assembly).
 
     <ExpectedOutput>
       Both triggers work. The C# resource behaves identically to a Lua resource.

@@ -1,31 +1,31 @@
 <LessonHero
   title="Multi-threading for advanced scripts"
   meta={[
-    { label: "You'll build", value: "A resource that offloads heavy computation to a separate thread so the main game loop stays responsive." },
+    { label: "You'll build", value: "A resource that chunks heavy computation across ticks so the main game loop stays responsive." },
     { label: "Time", value: "~20 minutes" },
-    { label: "You need", value: "A local FiveM server, familiarity with CreateThread and Citizen.Wait." },
-    { label: "You'll learn", value: "When multi-threading helps, how to use SetTimeout for deferred work, and why Citizen.Wait(0) in a separate thread behaves differently." },
+    { label: "You need", value: "A local FiveM server, familiarity with CreateThread and Wait." },
+    { label: "You'll learn", value: "When extra threads help, how to use SetTimeout for deferred work, and why yielding with Wait inside a heavy loop keeps the tick responsive." },
   ]}
 >
-  Some work is too heavy to run inside the main game tick — database queries, HTTP calls, complex math, large table processing. FiveM lets you offload this work to separate threads. This is an advanced technique. Use it only when you have already applied distance checks, Wait tuning, and throttling and still need more headroom.
+  Some work is too heavy to run all at once inside the main game tick - database queries, HTTP calls, complex math, large table processing. FiveM lets you spread this work across separate cooperative threads. This is an advanced technique. Use it only when you have already applied distance checks, Wait tuning, and throttling and still need more headroom.
 </LessonHero>
 
 <Prereq
   items={[
     "I have read the resource performance lesson.",
-    "I understand CreateThread and Citizen.Wait.",
+    "I understand CreateThread and Wait.",
     "I have a resource that legitimately needs heavy computation (not just a tight loop).",
   ]}
 />
 
-<Callout variant="warn" title="Multi-threading is the last resort">
-  Before reaching for multi-threading, try: distance checks, increasing Wait intervals, throttling with timers, and caching results. Multi-threading adds complexity and can cause race conditions. Reserve it for genuinely heavy work like large data processing or external API calls.
+<Callout variant="warn" title="There is no parallelism here">
+  FiveM Lua is single-threaded and cooperative. `CreateThread` does NOT start an OS thread or run code in parallel - it starts a coroutine that the scheduler runs one at a time on the same tick. A heavy synchronous pass still blocks everything until it yields. The real fix is to break the work into chunks and call `Wait(0)` inside the loop so the scheduler can run rendering, the game loop, and other resources between chunks. Before reaching for extra threads, try distance checks, increasing Wait intervals, throttling with timers, and caching results.
 </Callout>
 
 ## Build it
 
 <StepGroup>
-  <Step num={1} title="Create the resource" outcome="A basic resource with heavy and light threads.">
+  <Step num={1} title="Create the resource" outcome="A basic resource with a light loop and a chunked heavy loop.">
     ```text
 resources/qu_multithread_demo/
   fxmanifest.lua
@@ -39,44 +39,48 @@ client_script 'client.lua'
     ```
 
     ```lua client.lua
--- Main thread: keep this light
+-- Light loop: keep this fast, yields every frame
 CreateThread(function()
     while true do
         -- light work here: UI updates, proximity checks
-        Citizen.Wait(0)
+        Wait(0)
     end
 end)
 
--- Heavy thread: offload expensive work here
+-- Heavy loop: chunk the work and yield WITHIN the loop
 CreateThread(function()
     while true do
-        -- Heavy computation that doesn't need per-frame precision
-        -- Example: processing a large table of data
+        -- Process a large table a few items at a time, then yield.
+        -- Without the inner Wait(0) this whole pass blocks the tick,
+        -- because both loops share the same single thread.
         local allVehicles = GetGamePool('CVehicle')
-        for _, v in ipairs(allVehicles) do
-            -- Heavy processing here
+        for i, v in ipairs(allVehicles) do
+            -- Heavy processing for one vehicle here
+            if i % 20 == 0 then
+                Wait(0)  -- yield to the scheduler between chunks
+            end
         end
-        Citizen.Wait(1000)  -- once per second is fine for background work
+        Wait(1000)  -- re-run the bulk pass once per second
     end
 end)
     ```
   </Step>
 
-  <Step num={2} title="Understand thread scheduling" outcome="You know why two threads beat one heavy thread.">
-    FiveM schedules threads cooperatively. Each `Citizen.Wait()` yields control. A single thread with heavy work blocks EVERYTHING until it yields. Two threads mean:
+  <Step num={2} title="Understand thread scheduling" outcome="You know why yielding inside the loop is what keeps the game smooth.">
+    FiveM runs all threads cooperatively on a single thread. Nothing runs in parallel. Each `Wait()` yields control back to the scheduler, which then resumes the next ready coroutine. A loop that does heavy work without yielding blocks EVERYTHING until it finally hits a `Wait()`. Splitting work across two `CreateThread` loops does not give you two CPUs - it only helps if each loop yields often. So:
 
-    - **Main thread**: yields every frame (Wait(0)), stays responsive
-    - **Heavy thread**: yields every second (Wait(1000)), does bulk work in between
+    - **Light loop**: yields every frame (Wait(0)), stays responsive
+    - **Heavy loop**: yields mid-pass (Wait(0) every chunk), then waits a second before the next bulk pass
 
-    The game loop, rendering, and other resources all share time with your threads. Keeping the main thread fast is the goal.
+    The game loop, rendering, and other resources all share the same single thread with your code. The smoothness comes from yielding frequently, not from running anywhere "in parallel".
 
     <ExpectedOutput>
-      The game stays smooth even while heavy processing runs in the background.
+      The game stays smooth because the heavy pass yields between chunks instead of hogging the tick.
     </ExpectedOutput>
   </Step>
 
   <Step num={3} title="Use SetTimeout for deferred one-shot work" outcome="Heavy work runs once, not in a loop.">
-    Sometimes you don't need a loop — you need to defer a single heavy operation:
+    Sometimes you don't need a loop - you need to defer a single heavy operation:
 
     ```lua client.lua
 -- Defer heavy work without blocking the current tick
@@ -99,6 +103,6 @@ end)
 
 | Exact error | Cause | Fix |
 |---|---|---|
-| Race condition: two threads read/write same data | No synchronization between threads | Use a single thread for shared state, or use a queue pattern |
-| Thread never yields (no Wait call) | Infinite loop with no Citizen.Wait() | Every loop MUST have Citizen.Wait() — even Wait(0) is enough |
-| resmon shows high tick time despite two threads | Both threads doing heavy work in the same tick | Stagger the Wait intervals: thread 1 at 0ms offset, thread 2 at 500ms offset |
+| Two loops read/write the same data and interleave unexpectedly | A yield (Wait) lets the other loop run mid-update, so shared state is seen half-finished | Update shared state in one loop, or use a queue pattern - do not split a single update across a Wait |
+| Thread never yields (no Wait call) | Infinite loop with no Wait() | Every loop MUST call Wait() - even Wait(0) is enough |
+| resmon shows high tick time despite two loops | A loop does heavy work without yielding, so it blocks the tick before its Wait | Chunk the work and call Wait(0) inside the loop; stagger bulk passes so they do not run on the same tick |

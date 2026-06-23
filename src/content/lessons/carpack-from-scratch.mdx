@@ -74,10 +74,13 @@ data_file 'HANDLING_FILE'        'data/handling.meta'
 data_file 'VEHICLE_METADATA_FILE' 'data/vehicles.meta'
 data_file 'CARCOLS_FILE'          'data/carcols.meta'
 data_file 'VEHICLE_VARIATION_FILE' 'data/carvariations.meta'
-data_file 'AUDIO_WAVEPACK'        'audio'
+data_file 'AUDIO_GAMEDATA'        'audio/dat54_game.dat'
+data_file 'AUDIO_SOUNDDATA'       'audio/dat54_sounds.dat'
     ```
 
     Key lines: `files {}` lists every asset the client downloads. `data_file` lines tell FiveM to parse those metadata XMLs and integrate the vehicle into the game.
+
+    There is no `AUDIO_WAVEPACK` directive in FiveM. For engine audio, stream the `.awc` wave containers (already covered by `'audio/*.awc'` in `files {}`) and register the compiled `dat<N>.rel` configs through the proper audio data_file types - typically `AUDIO_GAMEDATA` for the `dat<N>_game.dat` and `AUDIO_SOUNDDATA` for the `dat<N>_sounds.dat`. Match each `data_file` type to the actual `.dat`/`.rel` file your pack ships; the exact pairs depend on how the audio was compiled (CodeWalker names the output files for you).
 
     <ExpectedOutput>
       After `ensure carpack`, the vehicle appears in your server. Use a spawn command or trainer to test: `/car s98`.
@@ -92,7 +95,7 @@ data_file 'AUDIO_WAVEPACK'        'audio'
 local model = 's98'  -- matches <modelName> in vehicles.meta
 RequestModel(model)
 while not HasModelLoaded(model) do
-    Citizen.Wait(0)
+    Wait(0)
 end
 local coords = GetEntityCoords(PlayerPedId())
 local veh = CreateVehicle(model, coords.x + 2, coords.y, coords.z, 0.0, true, false)
@@ -111,6 +114,6 @@ SetModelAsNoLongerNeeded(model)
 | Exact error | Cause | Fix |
 |---|---|---|
 | Vehicle invisible or crashes client | Missing `.ytd` or `.yft` in `files {}` | Check every file in stream/ is listed in fxmanifest |
-| Vehicle has no sound | Audio files not loaded or wrong path | Verify `data_file 'AUDIO_WAVEPACK' 'audio'` points to the correct folder |
+| Vehicle has no sound | Audio not loaded or wrong `data_file` type/path | Confirm the `.awc` files stream and the `dat<N>.rel` configs are registered via `AUDIO_GAMEDATA` / `AUDIO_SOUNDDATA` pointing at the real file names |
 | `RequestModel` hangs forever | Model name doesn't match vehicles.meta | Check `<modelName>` in vehicles.meta — it's case-sensitive |
 | Handling feels wrong or floaty | handling.meta has wrong values or wrong model name | Match `<handlingName>` in vehicles.meta to `<handlingName>` in handling.meta |
