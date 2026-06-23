@@ -1,0 +1,252 @@
+<LessonHero
+  title="Coordinates, vectors, and distance"
+  meta={[
+    { label: "You'll build", value: "qu_coords: a /here command that prints your live position, and a /near check that prints whether a fixed point is within range." },
+    { label: "Time", value: "~26 minutes" },
+    { label: "You need", value: <>A working FXServer you can <a href="/lessons/trigger-event">restart one resource</a> on, and the ability to read F8 output.</> },
+    { label: "You'll learn", value: "vector3 -> GetEntityCoords(PlayerPedId()) -> GetEntityHeading -> #(a - b) distance -> GetDistanceBetweenCoords -> why distance gates interaction and performance" },
+  ]}
+>
+  Almost every world feature in FiveM starts with one question: where is the player, and how far is that from something else. This lesson builds the two lines you will reuse forever. You read your own position as a vector3, then measure the gap to another point, and you learn why that single measurement is the gate that turns a marker, a shop, or a job into something a player can actually reach.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read F8 client console output."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds vector3, `GetEntityCoords(PlayerPedId())`, `GetEntityHeading`, and distance with `#(a - b)` as a working FiveM resource named `qu_coords`. Follow the folder names, file names, code, restart command, and expected output exactly. Once it works, the next section takes the math apart so you know why each line is there.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_coords
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_coords/
+  fxmanifest.lua
+  client.lua
+    ```
+
+    This is a client-only resource. Coordinates belong to the player's character, which lives on the client, so there is no `server.lua` here.
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which file to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
+  </Step>
+
+  <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
+    Open `client.lua` and paste this:
+
+    ```lua
+-- A fixed point in the world to measure against (near Legion Square in Los Santos).
+local target = vector3(195.17, -933.77, 30.69)
+
+RegisterCommand('here', function()
+    local ped = PlayerPedId()
+    local pos = GetEntityCoords(ped)
+    local heading = GetEntityHeading(ped)
+
+    print(('[qu_coords] you are at x=%.2f y=%.2f z=%.2f facing %.1f deg'):format(pos.x, pos.y, pos.z, heading))
+end, false)
+
+RegisterCommand('near', function()
+    local pos = GetEntityCoords(PlayerPedId())
+    local dist = #(pos - target)
+
+    if dist <= 10.0 then
+        print(('[qu_coords] target is %.1fm away - IN RANGE'):format(dist))
+    else
+        print(('[qu_coords] target is %.1fm away - too far'):format(dist))
+    end
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Start and test it" outcome="The expected proof appears in F8.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_coords
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_coords
+    ```
+
+    Join the server, open F8, and run this test:
+
+    ```text
+    /here
+    /near
+    ```
+
+    <ExpectedOutput>
+[qu_coords] you are at x=-1037.50 y=-2737.84 z=20.17 facing 327.4 deg
+[qu_coords] target is 2185.0m away - too far
+    </ExpectedOutput>
+
+    Your exact numbers will differ because they depend on where your character is standing when you run the command. The shape is what matters: `/here` prints three position numbers plus a heading, and `/near` prints a single distance with a verdict. Walk toward Legion Square (or teleport there) and run `/near` again to watch the distance shrink until it reads IN RANGE. The next section explains how three numbers and a subtraction produced that one distance.
+  </Step>
+</StepGroup>
+
+## How it works
+
+You ran two commands and got two kinds of answer: a position, and a distance. Underneath, both came from the same idea. A place in the world is just three numbers bundled together, and the gap between two places is one subtraction followed by a length. Take that apart once and you will see it inside markers, shops, NPC triggers, anti-cheat range checks, and nearly every "press E when you are close" feature you will ever build.
+
+### A position is a vector3, not three loose numbers
+
+```lua
+local target = vector3(195.17, -933.77, 30.69)
+```
+
+A point in GTA's world is three numbers: `x` is east-west, `y` is north-south, `z` is up-down (height). You could carry them as three separate variables, but FiveM gives you a single type that holds all three together: `vector3`. The line above builds one and names it `target`. From then on, `target.x`, `target.y`, and `target.z` reach the individual numbers, but the whole thing travels as one value.
+
+Bundling matters for more than tidiness. Because `target` is a real vector3, Lua knows how to do math on it directly: you can subtract one vector3 from another and get a vector3 back, which is exactly what the distance line relies on. If you stored the three numbers loose, you would have to subtract each axis by hand. The type is what lets `#(a - b)` be one short line instead of a paragraph of arithmetic.
+
+### GetEntityCoords(PlayerPedId()): where am I, right now
+
+```lua
+local ped = PlayerPedId()
+local pos = GetEntityCoords(ped)
+```
+
+`PlayerPedId()` returns the entity handle of your character's body, the ped you are currently controlling. It is a client-side native, which is one reason this whole resource is client-only: the player's ped lives on the player's machine. Note the empty parentheses. You do not pass your own id in; the function already knows it is being asked from your client and hands back your own ped.
+
+`GetEntityCoords(ped)` then takes any entity handle and returns that entity's position in the world as a vector3. Feed it your ped and you get your own coordinates. Feed it a vehicle handle or an NPC handle and you get theirs. The pairing `GetEntityCoords(PlayerPedId())` is so common that you will type it on muscle memory within a week; it means "the spot I am standing on, as a vector3" and it is the starting point of nearly every world interaction.
+
+One habit worth forming early: read the ped fresh each time, as this code does inside each command, rather than storing it once at resource start. The handle changes when the player respawns or switches models, and a stale handle points at a ped that no longer exists.
+
+### GetEntityHeading: which way am I facing
+
+```lua
+local heading = GetEntityHeading(ped)
+```
+
+Position answers where. Heading answers which way the entity is turned. `GetEntityHeading(ped)` returns a single number from 0 to 360, a compass angle in degrees: 0 is due north, 90 is west, 180 is south, 270 is east. It is not part of the vector3, because it is a rotation, not a place. You will use it whenever the direction matters: spawning a vehicle facing the same way the player is, dropping a prop oriented to the camera, or making an NPC turn to look at someone. For this lesson it is here so you can see the full "pose" of a player: three numbers for the spot, one number for the facing.
+
+<Checkpoint question="Why does GetEntityCoords return a vector3 with three numbers, but GetEntityHeading return just one number on its own?">
+  Because they describe two different things. Coordinates are a place, and a place in a 3D world needs three independent numbers to pin it down: how far east (`x`), how far north (`y`), and how high (`z`). Heading is not a place at all; it is a single rotation around the vertical axis, so one angle from 0 to 360 fully describes it. Bundling the three position numbers into a vector3 also lets Lua do vector math on them, like the subtraction in the distance line, which would make no sense for a lone compass angle.
+</Checkpoint>
+
+### #(a - b): the distance line, taken apart
+
+```lua
+local dist = #(pos - target)
+```
+
+This is the line you came for, and it does two things in one breath. Read it from the inside out.
+
+First, `pos - target` subtracts one vector3 from another. Because both sides are real vector3 values, Lua subtracts them axis by axis and hands back a new vector3: the difference in `x`, the difference in `y`, the difference in `z`. That result is the offset from `target` to `pos`, a little arrow pointing from one place to the other. It is still three numbers, not a distance yet.
+
+Second, the `#` in front takes the length of that offset vector. For a vector3, `#` returns its magnitude: the straight-line distance from the origin of the arrow to its tip, computed with the 3D Pythagorean theorem (`sqrt(dx*dx + dy*dy + dz*dz)`) under the hood. So `#(pos - target)` reads as one phrase: the straight-line distance between `pos` and `target`, in metres. One subtraction, one length, and you have the gap between two points in the world.
+
+The readable alternative does the same job with a plain function call:
+
+```lua
+local dist = GetDistanceBetweenCoords(pos.x, pos.y, pos.z, target.x, target.y, target.z, true)
+```
+
+`GetDistanceBetweenCoords` takes six numbers (two sets of x, y, z) plus a final boolean for whether to include the z axis (`true` means full 3D distance). It returns the same metre value `#(a - b)` would. Use whichever reads clearer to you: `#(a - b)` is shorter and stays in vector form, while `GetDistanceBetweenCoords` spells out every argument and is friendlier when you are passing loose numbers around. They are interchangeable for the result.
+
+### Why the distance gates everything
+
+```lua
+if dist <= 10.0 then
+```
+
+A raw distance is not yet a feature. The feature is the decision you make with it. Here, ten metres is the gate: inside it, the target is "in range" and a real script would let the player interact; outside it, nothing happens. That single comparison is the backbone of world interaction in FiveM, and it earns its place for two separate reasons.
+
+The first is gameplay correctness. A shop should only open when the player is at the counter, not from across the map. A vehicle should only unlock when the player is next to it. A heist trigger should only fire at the vault door. The distance check is how the server-side rule "you must be here to do this" becomes code, and skipping it is how players end up buying from shops they are nowhere near.
+
+The second is performance, and it is the one beginners miss. Imagine drawing a marker or running a "press E" prompt every single frame for fifty shops across the whole map. That is fifty draws and fifty key checks, sixty times a second, most of them for shops the player cannot even see. The fix is the same distance line: each frame, measure how far the player is from each point, and only do the expensive work (draw the marker, listen for the key) for the one or two that are close. Distance is the cheap test you run first so you can skip the costly work everywhere else. Get this habit early and your scripts stay smooth as your map fills up; miss it and a busy server turns into a slideshow.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Nothing prints when you run /here or /near", fix: "The resource is not running, or the command name is misspelled. Confirm server.cfg has ensure qu_coords, that you restarted it, and that you are typing the command exactly as registered. Commands registered on the client appear in the F8 console, not the server console." },
+    { symptom: "attempt to perform arithmetic on a nil value", fix: "One side of pos - target is not a vector3. Most often GetEntityCoords was called before the ped existed, or target was never built with vector3(...). Read the ped fresh inside the command and confirm target is a vector3 literal." },
+    { symptom: "The distance number looks wildly too large", fix: "That is usually correct, not a bug: the default target sits near Legion Square, so if you spawned far away the gap really is thousands of metres. Walk or teleport toward the target and run /near again to watch it drop." },
+    { symptom: "attempt to index a nil value (field 'x')", fix: "You called pos.x on something that is not a vector3. Make sure pos came from GetEntityCoords (which returns a vector3) and that you did not overwrite it with a plain number somewhere above." },
+    { symptom: "The heading number jumps around or reads negative", fix: "Read the ped fresh with PlayerPedId() each time rather than caching it; a stale handle from before a respawn returns garbage. A correct heading is always between 0 and 360." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Build a position as a vector3 and reach its parts with .x, .y, and .z.",
+    "Read your own live position with GetEntityCoords(PlayerPedId()) and your facing with GetEntityHeading.",
+    "Measure the straight-line distance between two points with #(a - b), and read it as one subtraction plus a length.",
+    "Use GetDistanceBetweenCoords as the readable, spelled-out alternative when you are passing loose numbers.",
+    "Gate an interaction behind a distance check, and explain why that same check is what keeps a busy map performant.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Right now `/near` checks one fixed point. Turn it into the start of a real proximity feature: instead of printing a verdict, make the command tell you the nearest of several points and how far it is. Add a small list of targets and loop over them, keeping the closest.
+
+  ```lua
+  local points = {
+      vector3(195.17, -933.77, 30.69),   -- Legion Square
+      vector3(-1037.50, -2737.84, 20.17), -- Airport
+      vector3(-269.40, -955.30, 31.22),  -- Pillbox area
+  }
+
+  RegisterCommand('nearest', function()
+      local pos = GetEntityCoords(PlayerPedId())
+      local bestDist, bestIndex = nil, nil
+
+      for i = 1, #points do
+          local d = #(pos - points[i])
+          if bestDist == nil or d < bestDist then
+              bestDist = d
+              bestIndex = i
+          end
+      end
+
+      print(('[qu_coords] nearest is point %d at %.1fm'):format(bestIndex, bestDist))
+  end, false)
+  ```
+
+  Restart `qu_coords`, then run `/nearest` from a few spots around the map and watch which point wins. You just wrote the core loop that every "find the closest shop, marker, or player" feature is built on: measure distance to each candidate, keep the smallest. Swap the print for a marker draw and a key check, gated on `bestDist`, and you have a real interaction system.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM GetEntityCoords native", href: "https://docs.fivem.net/natives/?_0x3FEF770D40960D5A" },
+    { label: "FiveM GetEntityHeading native", href: "https://docs.fivem.net/natives/?_0xE83D4F9BA2A38914" },
+    { label: "FiveM GetDistanceBetweenCoords native", href: "https://docs.fivem.net/natives/?_0xF1B760881820C952" },
+    { label: "FiveM vector types in Lua", href: "https://docs.fivem.net/docs/scripting-manual/runtimes/lua/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

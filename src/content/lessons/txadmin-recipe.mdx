@@ -1,0 +1,240 @@
+<LessonHero
+  title="txAdmin recipes: what a build installs"
+  meta={[
+    { label: "You'll build", value: "A working server folder deployed from a txAdmin recipe, plus the muscle memory to recover when a deploy fails halfway." },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You need", value: "FXServer running with txAdmin open at http://localhost:40120, a free Cfx.re license key from portal.cfx.re, and a MySQL/MariaDB server reachable from this machine." },
+    { label: "You'll learn", value: "Recipe Deployer -> what recipe.yaml does -> where files land in txData -> read the deploy log -> fix the cause -> redeploy clean" },
+  ]}
+>
+  When you start a fresh server in txAdmin, you can pick a recipe: a one-click installer that downloads resources, imports SQL, and writes a `server.cfg` for you. It feels like magic until step nine of fourteen fails and you are staring at a half-built folder. This lesson builds a recipe deploy on purpose, breaks it, and teaches you the one skill that fixes almost every first-day failure: read the deploy log, fix the cause, deploy clean.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have FXServer extracted and txAdmin reachable at http://localhost:40120.",
+    "I am logged into txAdmin with the admin account I created at first run.",
+    "I have a free Cfx.re license key from portal.cfx.re ready to paste.",
+    "I have a MySQL or MariaDB server running, and I know its host, user, and password.",
+    "I can read the txAdmin Live Console and tell a normal line from an error line."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson deploys a real framework server from a txAdmin recipe. You will pick the Qbox recipe, watch the Deployer run its steps, hit a deliberate failure on the SQL import, fix the cause, and redeploy into a clean `txData/qbox-build` folder. Follow the panel clicks, the inputs, and the recovery steps exactly. Once a clean deploy finishes, the next section takes the recipe apart so you know what every step actually did.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Open the Deployer and pick a recipe" outcome="txAdmin shows the recipe deploy screen with a recipe selected.">
+    In txAdmin, if no server is set up yet you land on the Setup screen automatically. Otherwise open the menu and choose **Settings -> Reset / New Deployment**, then pick **Popular recipes based deployment**.
+
+    You will see a list of recipes. Each one is a community-maintained installer for a full framework. Pick the **Qbox** recipe (an actively maintained QBCore successor). The screen now shows two things you must fill in before anything runs:
+
+    ```text
+    Server data location:  C:\FXServer\txData\qbox-build
+    Recipe:                Qbox (downloads resources, imports SQL, writes server.cfg)
+    ```
+
+    The **Server data location** is the folder the recipe will create and fill. Everything the recipe installs lands under that one path. Name it `qbox-build` so you can find it later.
+  </Step>
+
+  <Step num={2} title="Enter the database details the recipe asks for" outcome="txAdmin has a connection string it will hand to the SQL import step.">
+    A recipe that imports SQL needs a database to import into. txAdmin shows a database form. Fill it with your real MySQL/MariaDB details:
+
+    ```text
+    Host:      localhost
+    Port:      3306
+    Username:  root
+    Password:  (your database password)
+    Database:  qbox-build
+    ```
+
+    Leave **"Use this database for the server"** ticked. txAdmin tests the connection from this form before it lets you continue, so a deliberately-wrong password is likely rejected right here, at the form, rather than later in the deploy. That rejection is itself the teaching moment: it is the same connection handshake the recipe's `connect_database` task performs. If the form does let you through (some txAdmin builds defer the check to the deploy), the failure surfaces on the `connect_database` task instead. Either way, type a password you know is wrong by one character and note what you typed, because fixing it is the whole recovery drill.
+  </Step>
+
+  <Step num={3} title="Start the deploy and watch the Deployer log" outcome="The Deployer runs visible steps in order until one fails.">
+    Click **Deploy**. txAdmin switches to a live deploy log that prints each recipe step as it runs. A recipe is a list of tasks, and the log narrates them top to bottom:
+
+    ```text
+    Performing recipe tasks...
+    Task: download_github  ok     (qbx_core)
+    Task: download_github  ok     (ox_lib)
+    Task: download_github  ok     (oxmysql)
+    Task: unzip            ok
+    Task: move_path        ok
+    Task: connect_database ...
+    ```
+
+    Each `download_github` task is the recipe pulling one resource straight from its GitHub repo into your new server folder. `unzip` and `move_path` arrange those downloads into the right layout. The deploy is doing real work on disk right now.
+  </Step>
+
+  <Step num={4} title="Watch it fail on the database step" outcome="The log stops on a red error instead of finishing.">
+    Because you typed the wrong password in Step 2, the database task fails and the Deployer halts. The log stops scrolling and shows the failing task with its error:
+
+    <ExpectedOutput>
+      Task: connect_database ...
+Error running recipe task #8 (connect_database)
+Database error: ER_ACCESS_DENIED_ERROR: Access denied for user 'root'@'localhost' (using password: YES)
+Deploy failed. Check the log above for the failed task.
+    </ExpectedOutput>
+
+    This is the single most common first-day failure. The deploy did not vanish: the resources it already downloaded are still sitting in `txData/qbox-build`. What stopped is `connect_database`, the connection handshake, because the credentials were wrong, so the SQL import never even ran. A failed recipe leaves a half-built folder, and the next step is the part most beginners get wrong.
+  </Step>
+
+  <Step num={5} title="Read the log, fix the cause, deploy clean" outcome="A clean deploy finishes and the server is ready to start.">
+    Do not hand-patch the half-built folder. The reliable move is: read the failed task, fix the underlying cause, then deploy clean into a fresh folder so no half-finished state is left behind.
+
+    1. **Read the log.** The error names the failed task (`connect_database`) and the reason (`Access denied ... using password: YES`). The cause is the wrong password, not FiveM, not the recipe. The handshake never opened, so the `query_database` import below it never ran.
+    2. **Fix the cause.** Confirm the database is up and the password is right. Test it outside txAdmin first:
+
+    ```text
+    mysql -u root -p
+    ```
+
+    If that login works, your real password is correct and txAdmin had a typo.
+
+    3. **Deploy clean.** Back in txAdmin, start the deployment again. Either delete the half-built `qbox-build` folder first, or point the new deploy at a fresh path like `qbox-build-2`. Re-enter the database form with the **correct** password this time and click **Deploy** again.
+
+    This time every task passes and the log ends on success:
+
+    <ExpectedOutput>
+      Task: connect_database ok
+Task: query_database   ok     (imported qbox.sql)
+Task: write_file       ok     (server.cfg)
+Task: replace_string   ok     (license key, db connection)
+Recipe completed successfully. Server data is ready at txData/qbox-build.
+    </ExpectedOutput>
+
+    Open `server.cfg` in your `txData/qbox-build` folder and confirm the recipe wrote a real config with your license key and database connection filled in. The build is complete and recoverable: you read the log, fixed the cause, and deployed clean instead of fighting a broken folder.
+  </Step>
+</StepGroup>
+
+<ConsoleSteps
+  app="txAdmin · Recipe Deployer"
+  steps={[
+    { label: "running", lines: [
+      { text: "Performing recipe tasks...", kind: "out" },
+      { text: "Task: download_github  ok     (qbx_core)", kind: "ok" },
+      { text: "Task: download_github  ok     (ox_lib)", kind: "ok" },
+      { text: "Task: unzip            ok", kind: "ok" },
+      { text: "Task: connect_database ...", kind: "out" },
+    ] },
+    { label: "failed", lines: [
+      { text: "Task: connect_database ...", kind: "out" },
+      { text: "Error running recipe task #8 (connect_database)", kind: "err" },
+      { text: "ER_ACCESS_DENIED_ERROR: Access denied for user 'root'@'localhost' (using password: YES)", kind: "err" },
+      { text: "Deploy failed. Check the log above for the failed task.", kind: "err" },
+    ] },
+    { label: "fixed", lines: [
+      { text: "mysql -u root -p   # password verified outside txAdmin", kind: "cmd" },
+      { text: "Re-deploy clean into txData/qbox-build with correct credentials", kind: "out" },
+      { text: "Task: connect_database ok", kind: "ok" },
+      { text: "Task: query_database   ok     (imported qbox.sql)", kind: "ok" },
+      { text: "Task: write_file       ok     (server.cfg)", kind: "ok" },
+      { text: "Recipe completed successfully.", kind: "ok" },
+    ] },
+  ]}
+/>
+
+## How it works
+
+You picked a recipe, it ran a list of tasks, one task failed, and a clean re-run finished. The thing that turned a scary red wall of text into a five-minute fix was not knowing FiveM internals. It was reading the log to find which task failed and why, then removing that cause and deploying clean. Take the recipe apart now so you know what each piece was doing on your disk.
+
+### A recipe is just a list of tasks in a yaml file
+
+A txAdmin recipe is a `recipe.yaml` file the community publishes for a framework. It is not code that runs on your server; it is a build script for txAdmin that says, in order, what to download and how to wire it up. The tasks you saw scroll past in the log map one-to-one to entries in that yaml. The common ones:
+
+- `download_github` pulls a resource straight from its GitHub repository. Each framework resource (the core, `ox_lib`, `oxmysql`) is one of these. This is the step that needs working internet and a reachable GitHub, which is why a flaky connection or a renamed repo shows up here.
+- `unzip` and `move_path` arrange the downloaded files into the folder layout the framework expects: the Qbox core under a `[qbx]` group, the ox resources (`ox_lib`, `oxmysql`, `ox_target`, `ox_inventory`) under an `[ox]` group, and genuinely standalone scripts under `[standalone]`.
+- `connect_database` and `query_database` open your database and import the framework's `.sql` schema (the tables for players, vehicles, inventory). `connect_database` is the step that failed for us: the connection handshake is where wrong credentials are rejected, so the deploy never reached the `query_database` import.
+- `write_file` and `replace_string` generate your `server.cfg` and substitute in your license key and database connection string so the server can actually boot.
+
+Read top to bottom, a recipe is: fetch the code, lay it out, build the database, write the config. Every framework recipe is some version of those four moves.
+
+### Where the files actually land
+
+Everything a recipe installs goes under the **Server data location** you named, which lives inside `txData`. The shape after a Qbox deploy looks like this:
+
+```text
+txData/
+  qbox-build/
+    server.cfg          <- written by the recipe (write_file)
+    resources/
+      [qbx]/            <- qbx_core and friends (download_github + move_path)
+      [ox]/             <- ox_lib, oxmysql, ox_target, ox_inventory
+      [standalone]/     <- genuinely standalone scripts
+    ...
+```
+
+`txData` is txAdmin's home for everything that is not FXServer itself: each server you deploy is one folder under it. This matters for recovery. When a deploy fails halfway, the damage is contained to that one `qbox-build` folder and the database you pointed it at. Nothing outside `txData/qbox-build` is touched, which is exactly why deploying clean into a fresh folder is safe and reliable: you are not surgically repairing a half-built tree, you are throwing it away and letting the recipe rebuild it correctly from scratch.
+
+<Checkpoint question="The download_github tasks all succeeded and only the database task failed. Why is the advice still to delete the folder and redeploy clean, instead of just re-running the SQL by hand?">
+  Because a half-failed deploy can leave the folder in a state you cannot fully see. The recipe stopped at `connect_database`, the connection handshake, so every task after it (the `query_database` that imports the SQL, the `write_file` that generates `server.cfg`, the `replace_string` that fills in your license key and database connection) never ran. Hand-importing the SQL fixes the one visible error but leaves a `server.cfg` that is missing or unconfigured, and you will chase a second failure on first boot. Deploying clean re-runs every task in order with correct inputs, so the folder ends in the exact state the recipe author tested. The downloaded resources are cheap to fetch again; a silently incomplete config is expensive to debug.
+</Checkpoint>
+
+### Why the database step is the usual first-day wall
+
+Look back at where the deploy stopped. The downloads worked because they only need internet. The database step failed because it needs three things to all be true at once: the database server is running, it is reachable from this machine on the host and port you gave, and the username and password are correct. On a first-time setup, one of those is almost always off. MariaDB is not started, the password has a typo, or `localhost` is wrong because the database lives in a separate container.
+
+The recipe cannot guess any of that, so it does the honest thing: it tries, fails loudly, names the task, and stops before it writes a broken config. That `ER_ACCESS_DENIED_ERROR` is not the recipe being fragile. It is the recipe refusing to build a server on top of a database it cannot reach. The fix lives entirely on your side of the wall, which is why you verify the credentials outside txAdmin (`mysql -u root -p`) before blaming the deploy.
+
+### The recovery reflex, generalized
+
+The exact failure you hit was a password. The reflex you just built is bigger than passwords and works for any failed deploy:
+
+1. **Find the failed task.** The log names it (`task #8 (connect_database)`). That tells you the category of problem: a download task points at internet/GitHub, a database task points at SQL/credentials, a `write_file` task points at disk permissions.
+2. **Read the reason on the same line or just below.** `Access denied`, `repository not found`, `EACCES permission denied`: the error string names the cause far more often than beginners expect.
+3. **Fix the cause where it lives,** outside txAdmin if you can, so you confirm the fix before re-running.
+4. **Deploy clean into a fresh or wiped folder** so no half-built state survives.
+
+That loop, read the failed task, fix the cause, deploy clean, is the entire first-day survival skill for txAdmin recipes. Master it once here and you will never panic at a red deploy log again.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Error running recipe task (download_github): repository not found", fix: "A download task could not reach a resource's GitHub repo. Check your internet, and if a specific repo 404s the recipe may point at a moved or renamed project. Use a current recipe from the framework's own docs, then deploy clean." },
+    { symptom: "ER_ACCESS_DENIED_ERROR on the database task", fix: "The database username or password is wrong, or the user lacks rights on that database. Verify by logging in outside txAdmin with mysql -u root -p. Once that login works, redeploy clean and re-enter the exact same correct credentials." },
+    { symptom: "ECONNREFUSED / cannot connect to database", fix: "The database server is not running or is not reachable on the host and port you gave. Start MariaDB/MySQL, confirm it listens on 3306, and use the correct host (localhost is wrong if the database is in a separate container or VM). Then redeploy clean." },
+    { symptom: "The deploy succeeded but the server will not boot", fix: "Open txData/<server>/server.cfg and check the recipe filled in your license key and db_connection_string. A missing license key (sv_licenseKey) or a placeholder connection string left from a half-failed earlier deploy is the usual cause. Deploy clean into a fresh folder to regenerate a complete config." },
+    { symptom: "I re-ran the deploy and it errored about an existing folder", fix: "txAdmin will not overwrite a populated data folder. Either delete the old txData/<server> folder first, or point the new deployment at a fresh path like qbox-build-2 so the recipe builds into clean space." }
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Start a framework server from a txAdmin recipe by picking a recipe, naming a server data location, and entering database details.",
+    "Read a recipe as a list of tasks: download_github, unzip, move_path, connect_database, query_database, write_file, replace_string.",
+    "Locate where a deploy puts files (txData/<server>) and explain why that containment makes clean redeploys safe.",
+    "Read a failed deploy log to find which task failed and why, instead of guessing.",
+    "Recover from a halfway-failed deploy by fixing the named cause and deploying clean into a fresh folder, not hand-patching a broken one."
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  You fixed a database failure. Now practice the recovery reflex on a different task so the skill generalizes past passwords. Start a brand new deployment, but this time stop the database server before you click Deploy (stop the MariaDB service). Watch which task fails and read the exact error.
+
+  ```text
+  Task: connect_database ...
+  Error running recipe task (connect_database)
+  Database error: ECONNREFUSED 127.0.0.1:3306
+  Deploy failed. Check the log above for the failed task.
+  ```
+
+  Now run the loop out loud: which task failed (connect_database), what is the cause (the database is not running, not a password this time), where do you fix it (start the MariaDB service, confirm it listens on 3306), and how do you finish (deploy clean into a fresh folder). Then restart the database, redeploy, and confirm a clean success. You just proved the same four-step reflex handles a completely different failure, which is what makes it a skill and not a memorized password fix.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "txAdmin docs: recipes and the deployer", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
+    { label: "FiveM server manual: setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "Qbox documentation: installation", href: "https://docs.qbox.re/" },
+    { label: "oxmysql documentation", href: "https://overextended.dev/oxmysql" }
+  ]}
+/>

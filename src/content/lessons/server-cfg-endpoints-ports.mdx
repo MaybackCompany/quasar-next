@@ -1,0 +1,226 @@
+<LessonHero
+  title="Endpoints, ports, and going public"
+  meta={[
+    { label: "You'll build", value: "A server.cfg network block (endpoint_add_tcp, endpoint_add_udp, sv_endpointPrivacy, sv_maxclients) plus a friend-connects-by-IP test" },
+    { label: "Time", value: "~30 minutes" },
+    { label: "You need", value: <>A running FXServer you can start, edit <a href="/lessons/server-cfg-basics">server.cfg</a> on, and restart.</> },
+    { label: "You'll learn", value: "endpoint_add_tcp/udp 0.0.0.0:30120 -> why 30120 is TCP and UDP -> sv_endpointPrivacy -> sv_maxclients -> port-forwarding on a home router -> firewall allow -> verifying with a real connection" },
+  ]}
+>
+  Track A promised that players connect, but a fresh server only ever let you connect from your own machine. This lesson teaches the network path a stranger's game has to travel to reach you: the listening endpoint, the single port 30120 on both TCP and UDP, the router that forwards it, and the firewall that lets it through. You build the cfg block and then prove it works by having a friend connect to your public IP.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find and edit my server.cfg file.",
+    "I can start FXServer and restart it after a cfg change.",
+    "I can read txAdmin Live Console or the FXServer console window."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds a real network configuration block inside a resource convars file named `qu_server_cfg_endpoints_ports` and wires it into `server.cfg`. Follow the file names, the exact convar lines, the restart command, and the expected console output. Once a friend connects to your public IP, the second half takes the network path apart so you know what every line did.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make a config resource folder" outcome="The server has one folder that holds your network convars.">
+    Keeping network settings in their own file makes them easy to find and copy between servers. Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_server_cfg_endpoints_ports
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_server_cfg_endpoints_ports/
+  fxmanifest.lua
+  network.cfg
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows the resource exists and which file holds its convars.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+server_only 'yes'
+    ```
+
+    There is no `lua54 'yes'` line. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only runtime, so you leave it out. `server_only 'yes'` says this resource has nothing for the client to download, which is true: it is pure configuration.
+  </Step>
+
+  <Step num={4} title="Write the network block" outcome="The listening endpoint, port privacy, and player cap are declared in one readable file.">
+    Open `network.cfg` and paste this. These are real server convars, not Lua. They run as console commands when the server reads them.
+
+    ```text
+# Listen for connections on every network interface, port 30120.
+# 0.0.0.0 means "all interfaces", not a single private address.
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+
+# Show the server's real IP in the server list. Set to true to hide it.
+sv_endpointPrivacy false
+
+# Hard cap on connected players. 48 is a sane public default; max is 2048.
+sv_maxclients 48
+    ```
+
+    The `#` lines are comments. The server ignores them; they are for you.
+  </Step>
+
+  <Step num={5} title="Load network.cfg from server.cfg" outcome="The server reads your network block on startup.">
+    Open your main `server.cfg`. Near the top, before any `ensure` lines, add this:
+
+    ```text
+    exec resources/qu_server_cfg_endpoints_ports/network.cfg
+    ```
+
+    `exec` reads another cfg file and runs its lines as if they were typed here. Putting the endpoint convars early means the server is listening before the rest of the config loads.
+  </Step>
+
+  <Step num={6} title="Start the server and read the console" outcome="The expected proof appears in the FXServer console.">
+    Save everything, then start (or restart) FXServer. Watch the console as it boots.
+
+    <ExpectedOutput>
+      One resource-start line appears (exact text and spacing vary by artifact version, illustrative):
+[ info] Started resource qu_server_cfg_endpoints_ports
+    </ExpectedOutput>
+
+    Seeing `Started resource qu_server_cfg_endpoints_ports` is the proof that the server read your convars file and opened its listening socket on port 30120. From your own machine you can already join with `connect 127.0.0.1`; a clean join is the real confirmation the endpoint is live. The next steps make that door reachable from the internet so a friend can walk through it.
+  </Step>
+</StepGroup>
+
+<Mockup app="Home router - Port Forwarding">
+  <MockTable
+    head={["Name", "Protocol", "External port", "Internal IP", "Internal port"]}
+    rows={[
+      ["FiveM TCP", "TCP", "30120", "192.168.1.50", "30120"],
+      ["FiveM UDP", "UDP", "30120", "192.168.1.50", "30120"],
+    ]}
+  />
+</Mockup>
+
+Two rules, same port, one for each protocol. `192.168.1.50` is the private LAN address of the PC running FXServer. A VPS has a public IP already, so it needs none of this.
+
+## How it works
+
+You added four convars and a friend connected by typing your public IP. Between those two facts sits the entire network path of a FiveM connection: a listening socket, a port, a router, and a firewall. None of it is FiveM-specific magic. It is the same plumbing every online game uses, and once you can name each hop you can debug any "my friend cannot join" problem in minutes instead of hours.
+
+### The endpoint: what 0.0.0.0:30120 actually means
+
+```text
+endpoint_add_tcp "0.0.0.0:30120"
+endpoint_add_udp "0.0.0.0:30120"
+```
+
+An endpoint is an address plus a port that the server promises to listen on. `endpoint_add_tcp` and `endpoint_add_udp` each open a listening socket. The string has two halves split by the colon.
+
+The `0.0.0.0` half is the network interface to bind to, and it is the part people get wrong. A PC can have several addresses at once: `127.0.0.1` (loopback, only reachable from the same machine), a private LAN address like `192.168.1.50` (reachable from other devices on your home network), and so on. `0.0.0.0` is a wildcard meaning "every interface this machine has". Bind to `0.0.0.0` and the server answers on all of them, which is exactly what you want for a public server. Bind to `127.0.0.1` by mistake and only your own machine could ever connect, no matter how perfect your router config is. When a server works locally but refuses every outside connection, a `127.0.0.1` endpoint is the first suspect.
+
+The `30120` half is the port, a numbered channel on that interface. One machine runs thousands of programs; the port number is how arriving traffic knows which program it is for. FiveM's port is `30120`, and you should keep it unless you are running several servers on one box.
+
+### Why the same port appears twice: TCP and UDP
+
+This is the line beginners delete by accident, so it gets its own section. Port `30120` is opened twice, once for TCP and once for UDP, because FiveM needs both and they are different channels even though they share the number.
+
+- **TCP** is the reliable, ordered conversation. The initial handshake, the resource download (your server's scripts and assets streaming to the joining player), and other must-arrive-in-order data ride TCP. TCP resends anything lost.
+- **UDP** is the fast, fire-and-forget channel. Once you are in the game, your position, other players' movement, and the constant stream of game state ride UDP, where being a few milliseconds late and dropping a packet is better than waiting for a resend.
+
+`30120/TCP` and `30120/UDP` are genuinely two separate doors that happen to wear the same house number. A router rule, or a firewall rule, that opens only one of them produces a server that is half-broken in a confusing way: players can start to connect (TCP handshake) but then stall on download or freeze the instant they spawn (UDP gone), or the reverse. That is why your router screenshot had two rules and why the cfg has two `endpoint_add` lines. Open both, every time.
+
+<Checkpoint question="Your friend clicks connect, sees the loading screen and the resource list start downloading, then freezes at 'Joining server' and times out. Which protocol is most likely blocked?">
+  UDP. The fact that the connection started and resources began downloading means the TCP path on port 30120 is working: the handshake completed and the reliable channel is open. The freeze happens at the moment the game switches to the live, real-time state stream, which rides UDP. If 30120/UDP is not forwarded on the router or not allowed through the firewall, the TCP side can look healthy while the player can never actually enter the world. Open 30120 on UDP as well as TCP and the join completes.
+</Checkpoint>
+
+### sv_endpointPrivacy and sv_maxclients: the two policy knobs
+
+```text
+sv_endpointPrivacy false
+sv_maxclients 48
+```
+
+These two do not open ports; they set policy on the door you already opened.
+
+`sv_endpointPrivacy false` controls whether your server's real IP address is shown publicly in the server list and the info responses. `false` (the default) shows it, which is normal for a public server people connect to directly. Set it to `true` if you front your server with a proxy or DDoS-mitigation service and want players to reach you through that hostname instead of hitting your raw IP. For your first public server, leave it `false`.
+
+`sv_maxclients` is the hard ceiling on simultaneous players, from 1 up to 2048. It is not a target, it is a cap: set it to what your CPU, RAM, and bandwidth can actually serve smoothly. A fresh box on a home connection is happy around 32 to 48; pushing the number to 2048 on hardware that cannot feed it just means a laggy, miserable server. Pick a number you can deliver, then raise it as the box proves it can take the load.
+
+### The path from your friend's game to your server
+
+Here is the full journey when a friend types `connect YOUR.PUBLIC.IP` and hits enter. Read it as a chain; any broken link drops the connection.
+
+1. Their game sends packets to your public IP on port 30120, TCP and UDP.
+2. Those packets arrive at your home router (the device your internet provider gave you), because the public IP belongs to the router, not directly to your PC.
+3. The router looks at its **port-forwarding** table. If a rule says "30120 -> 192.168.1.50:30120", it forwards the packets to the PC running FXServer. With no rule, the router has no idea which device on your network wants port 30120, so it drops the packets and your friend times out.
+4. The packets reach your PC, where the **Windows Firewall** decides whether to let them in. A rule allowing inbound 30120 (TCP and UDP) lets them through; otherwise the firewall silently blocks them.
+5. FXServer, listening on `0.0.0.0:30120`, accepts the connection. Your friend joins.
+
+Two gatekeepers stand between the internet and your server: the router (port forwarding) and the operating system (firewall). Both must say yes. This is why a server that works perfectly on your own LAN can be totally unreachable from outside: localhost traffic never touches either gate.
+
+### Port-forwarding on a home router
+
+This is the step that does not live in any cfg file, because it is configured on the router, not the server. Your router shares one public IP across every device in your house using private addresses. An incoming connection from the internet does not know which device wants it, so you must tell the router explicitly.
+
+1. Find the **private IP** of the PC running FXServer. On Windows, `ipconfig` shows it as the IPv4 Address, something like `192.168.1.50`. Set it to a static/reserved address so it does not change on reboot, or your forwarding rule will eventually point at the wrong device.
+2. Open your router's admin page (commonly `192.168.1.1` or `192.168.0.1` in a browser) and find **Port Forwarding** (sometimes under NAT, Virtual Server, or Gaming).
+3. Add **two** rules, exactly as in the screenshot above: external port 30120 -> internal 192.168.1.50:30120 for TCP, and the same for UDP. Some routers have a "both" option; if so, one rule covers it. If not, make two.
+4. Save and, if the router asks, reboot it.
+
+Your friend connects to your **public** IP (search "what is my IP" to find it), not your private `192.168.x.x` address. The private address is only meaningful inside your house.
+
+### Why a VPS skips all of this
+
+A VPS (virtual private server) you rent from a host already has a public IP bound directly to the machine, with no home router and no NAT in front of it. There is nothing to port-forward, because packets to that IP land straight on the server. You still open the firewall on the VPS (the host's firewall and/or the OS firewall), but the entire router step disappears. This is the single biggest reason serious servers run on a VPS rather than a home connection: no router config, a static public IP, and usually far better upload bandwidth, which is what player count actually depends on.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "You can join with connect 127.0.0.1 but no one outside can, even on the same LAN", fix: "Your endpoint is bound to localhost. Change endpoint_add_tcp/udp to 0.0.0.0:30120 (not 127.0.0.1:30120), restart, then confirm by joining from another machine on your LAN using the host's private IP." },
+    { symptom: "A friend on your LAN can join by your private IP, but no one on the internet can", fix: "This is a router problem, not a server one. The LAN works because it never touches the router's NAT. Add port-forwarding rules for 30120 TCP and 30120 UDP pointing at the FXServer PC's private IP." },
+    { symptom: "The connection starts and resources download, then freezes at 'Joining server'", fix: "TCP is open but UDP is blocked. Add the 30120/UDP rule on both the router and the firewall. FiveM needs UDP for live game state, not just the TCP handshake and download." },
+    { symptom: "Console shows 'address already in use' or the endpoint fails to bind", fix: "Another program (often a second FXServer instance) already holds port 30120. Stop the other process, or change this server to a different port like 30121 on both endpoint_add lines and forward that port instead." },
+    { symptom: "Everything is configured but outside players still time out instantly", fix: "Check the Windows Firewall on the FXServer machine. Add an inbound allow rule for 30120 on both TCP and UDP. The router can forward perfectly and the OS firewall will still drop the packets." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Read endpoint_add_tcp/udp \"0.0.0.0:30120\" and explain that 0.0.0.0 binds every interface while 127.0.0.1 would bind only the local machine.",
+    "Say why port 30120 is opened on both TCP (handshake and download) and UDP (live game state), and what breaks when only one is open.",
+    "Set sv_endpointPrivacy and sv_maxclients and explain that they set policy, not ports.",
+    "Trace a connection from a friend's game through the router (port forwarding) and the OS firewall to the listening server.",
+    "Port-forward 30120 TCP and UDP on a home router to the server PC's private IP, and explain why a rented VPS needs no forwarding at all.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Right now your server listens on the default port 30120. Prove you understand the endpoint and forwarding chain by moving the whole server to a second port, end to end. Change both endpoint lines to 30125:
+
+  ```text
+  endpoint_add_tcp "0.0.0.0:30125"
+  endpoint_add_udp "0.0.0.0:30125"
+  ```
+
+  Restart the server, then confirm the new port works with a local `connect 127.0.0.1:30125`. Then update your router to forward 30125 (TCP and UDP) to the same private IP, and add a firewall allow rule for 30125. Have your friend connect with `connect YOUR.PUBLIC.IP:30125`, including the new port after a colon. When they get in, you have driven the full path yourself: a listening endpoint, a forwarded port, an allowed firewall rule, and a real connection. Changing one number forced you to touch every gate in the chain, which is exactly the muscle memory that makes "my friend cannot join" a five-minute fix instead of an evening lost.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM server.cfg and convars reference", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
+    { label: "FiveM setting up a server (endpoints and ports)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "FiveM proxy and endpoint privacy", href: "https://docs.fivem.net/docs/server-manual/proxy-setups/" },
+    { label: "Cfx.re forum: port forwarding and connectivity", href: "https://forum.cfx.re/" }
+  ]}
+/>

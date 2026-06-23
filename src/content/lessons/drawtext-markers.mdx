@@ -1,0 +1,285 @@
+<LessonHero
+  title="Draw on screen: text, 3D text, and markers"
+  meta={[
+    { label: "You'll build", value: "qu_draw: a render-loop resource that drops a marker on the ground and floats a label above it, drawn every frame but only when you are close." },
+    { label: "Time", value: "~26 minutes" },
+    { label: "You need", value: <><a href="/lessons/createthread-and-wait">CreateThread and Wait</a> and <a href="/lessons/natives-toolbox">natives</a> (so you already know how to read your own coords).</> },
+    { label: "You'll learn", value: "DrawMarker -> DrawText3D (SetDrawOrigin + DrawText) -> why drawing lives in a Wait(0) loop -> the distance gate that makes it cost nothing when far away." },
+  ]}
+>
+  Markers and floating text are not objects you place once. They are painted fresh on every single frame, inside a loop that runs at your framerate. That is powerful and it is expensive, so the real skill is not the draw call, it is the distance check that stops you from drawing when nobody is looking. This lesson builds both halves at once.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can find my server resources folder.",
+    "I can edit server.cfg and restart one resource.",
+    "I can read txAdmin Live Console and F8 output.",
+    "I can get my own coordinates with GetEntityCoords(PlayerPedId())."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds DrawMarker, DrawText3D, a per-frame `Wait(0)` render thread, and a distance gate as a working client resource named `qu_draw`. Follow the folder names, file names, code, restart command, and expected behaviour exactly. Once a marker and label appear at a fixed point near Legion Square, the next section takes the loop apart and explains why the distance check is the line that matters most.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_draw
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout. There is no server file. Drawing only happens on the client, because only a client has a screen.
+
+    ```text
+resources/qu_draw/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which file to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
+  </Step>
+
+  <Step num={4} title="Write the DrawText3D helper" outcome="You have one reusable function that floats a label at a world point.">
+    Open `client.lua` and paste this helper at the top of the file. It is the part everyone copies wrong, so type it once and keep it forever:
+
+    ```lua
+-- Floats a text label at a world coordinate (not a fixed screen spot).
+-- SetDrawOrigin anchors the next 2D draw call to a 3D point in the world,
+-- so DrawText, which is normally a screen native, ends up over that point.
+local function DrawText3D(x, y, z, text)
+    SetTextScale(0.35, 0.35)
+    SetTextFont(4)
+    SetTextColour(255, 255, 255, 215)
+    SetTextEntry('STRING')
+    SetTextCentre(true)
+    AddTextComponentString(text)
+    SetDrawOrigin(x, y, z, 0)
+    DrawText(0.0, 0.0)        -- 0,0 means "at the draw origin we just set"
+    ClearDrawOrigin()         -- always clear, or every later draw call inherits it
+end
+    ```
+  </Step>
+
+  <Step num={5} title="Write the gated render loop" outcome="The marker and label draw every frame, but only when you are near.">
+    Below the helper, paste the render thread. Read the distance check first, because it is the reason this script is cheap:
+
+    ```lua
+-- The fixed world point we decorate. Near the Legion Square parking lot.
+local point = vector3(215.0, -810.0, 30.7)
+local DRAW_RADIUS = 20.0   -- only draw when the player is within this many metres
+
+CreateThread(function()
+    while true do
+        local ped = PlayerPedId()
+        local pos = GetEntityCoords(ped)
+        local dist = #(pos - point)   -- straight-line distance in metres
+
+        if dist < DRAW_RADIUS then
+            -- Close enough to see it: draw this frame, so yield only one frame.
+            DrawMarker(
+                1,                       -- type 1: a vertical cylinder
+                point.x, point.y, point.z - 1.0,  -- sink it so the disc sits on the ground
+                0.0, 0.0, 0.0,           -- direction (unused for this type)
+                0.0, 0.0, 0.0,           -- rotation
+                2.0, 2.0, 1.0,           -- scale x, y, z
+                0, 200, 120, 120,        -- colour r, g, b, alpha
+                false, false, 2,         -- bobbing, faceCamera, rotationOrder
+                false, nil, nil, false    -- rotate, textureDict, textureName, drawOnEnts
+            )
+            DrawText3D(point.x, point.y, point.z + 0.4, 'qu_draw checkpoint')
+            Wait(0)                      -- next frame, because we are drawing
+        else
+            -- Too far to see it: draw nothing and sleep, so this thread costs ~0.
+            Wait(500)
+        end
+    end
+end)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The marker and label appear, and disappear when you walk away.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_draw
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_draw
+    ```
+
+    Join the server. Teleport or walk to the point. With the console open you can run `/tp 215 -810 30` if you have a teleport command, or just spawn near Legion Square and head to the parking lot.
+
+    <ExpectedOutput>
+      Within 20m: a green translucent cylinder on the ground with the white label "qu_draw checkpoint" floating above it.
+Walk past 20m away: the marker and label vanish, with no console error.
+Walk back inside 20m: they reappear instantly.
+    </ExpectedOutput>
+
+    There is no console line for this lesson, because drawing happens on your screen, not in a log. The proof is visual: the marker is there when you are close and gone when you are far. That on/off behaviour is the distance gate working, and it is the whole point of the lesson.
+  </Step>
+</StepGroup>
+
+<ConsoleSteps
+  app="txAdmin · Live Console"
+  steps={[
+    { label: "Step inside the radius", lines: [
+      { text: "> resmon (in F8, watch qu_draw)", kind: "cmd" },
+      { text: "qu_draw   0.08 ms   drawing every frame", kind: "out" }
+    ]},
+    { label: "Walk past 20 metres", lines: [
+      { text: "> resmon (still watching qu_draw)", kind: "cmd" },
+      { text: "qu_draw   0.00 ms   gate closed, sleeping", kind: "ok" }
+    ]},
+    { label: "What the gate bought you", lines: [
+      { text: "near: Wait(0) runs the body at your full framerate", kind: "out" },
+      { text: "far:  Wait(500) runs the body twice a second and draws nothing", kind: "ok" }
+    ]}
+  ]}
+/>
+
+## How it works
+
+You painted a cylinder and a word onto the world, and they switched off when you walked away. Nothing was placed and nothing was stored. Every frame your loop asked one question, "am I close?", and either drew or slept based on the answer. That question, not the draw calls, is the skill this lesson teaches. Take the loop apart in the order it runs.
+
+### Drawing is immediate mode, so it lives in a loop
+
+```lua
+CreateThread(function()
+    while true do
+        ...
+        Wait(0)
+    end
+end)
+```
+
+`DrawMarker` and `DrawText` are immediate-mode natives. They do not create an object that persists. They paint pixels for exactly one frame, and then those pixels are gone. If you call `DrawMarker` once and stop, you see the marker for a single flicker of a frame and never again. To make a marker that appears to "stay", you have to redraw it on every frame, forever, which is why the draw calls sit inside `while true do ... Wait(0) end`.
+
+`Wait(0)` is the part to respect. It does not mean "wait zero time and spin". It means "yield until the next frame, then continue". One pass of this loop body equals one rendered frame. At 60 fps the body runs 60 times a second; at 144 fps it runs 144 times a second. That is correct and necessary for smooth drawing, because the screen redraws that often and your marker has to be repainted each time or it disappears. The cost is real: everything between the top of the loop and `Wait(0)` runs at your framerate, so a heavy calculation in here is a heavy calculation sixty-plus times a second. Keep the inside of a `Wait(0)` loop lean, and never put a database call, an event, or a slow native in it.
+
+### The distance gate is the load-bearing line
+
+```lua
+local dist = #(pos - point)
+if dist < DRAW_RADIUS then
+    -- draw, then Wait(0)
+else
+    -- draw nothing, then Wait(500)
+end
+```
+
+Here is the trick that separates a script that tanks framerate from one that costs nothing. `#(pos - point)` is FiveM's vector distance: subtract two `vector3` values and the `#` length operator gives you the straight-line distance in metres. You computed it from your own coordinates, exactly the `GetEntityCoords(PlayerPedId())` call from the [natives lesson](/lessons/natives-toolbox), so this is that skill paying off.
+
+The `if` does two different things with two different `Wait` values, and the difference is everything:
+
+- **Inside the radius**, you draw and then `Wait(0)`, yielding one frame. You want smooth, per-frame drawing here because the player can see the marker, so the loop runs at full framerate.
+- **Outside the radius**, you draw nothing and `Wait(500)`. The loop body now runs only twice a second, just often enough to notice when you walk back into range, and it skips every draw call. A thread that yields for 500 ms is effectively free: it is asleep for that half-second and the CPU spends its time elsewhere.
+
+Without the gate, this script would run every draw call at full framerate no matter where the player was on the map, paying the cost for a marker nobody can see on the other side of the city. With the gate, the expensive path only runs in the small bubble where it is actually visible. This is the single most important habit in client scripting: wrap any `Wait(0)` render or polling loop in a cheap proximity check, and use a long `Wait` on the far side so the idle case costs nothing.
+
+<Checkpoint question="Why use Wait(500) on the far side instead of just Wait(0) with the draw calls skipped by the if?">
+  Because `Wait(0)` would still wake the thread on every single frame just to compute one distance and decide to do nothing. At 144 fps that is 144 useless wake-ups a second, across potentially dozens of markers, and it adds up. `Wait(500)` lets the thread sleep for half a second between checks when you are far away, so the CPU is not even running your loop body most of the time. A half-second delay before a marker pops in as you approach is invisible to the player, but the saved wake-ups are very visible in resmon. The rule: cheap idle path gets a long Wait, hot visible path gets Wait(0).
+</Checkpoint>
+
+### DrawMarker, argument by argument
+
+```lua
+DrawMarker(1, point.x, point.y, point.z - 1.0, 0.0,0.0,0.0, 0.0,0.0,0.0, 2.0,2.0,1.0, 0,200,120,120, false,false,2, false,nil,nil,false)
+```
+
+`DrawMarker` takes a long list of numbers, and the only ones you usually touch are the first handful. The first argument, `1`, is the marker type: a vertical cylinder, the classic "stand here" disc. The next three are the world position. Notice `point.z - 1.0`: the position is the centre of the marker, so dropping it a metre sinks the cylinder until its flat disc sits on the ground instead of floating at chest height. The three scale numbers, `2.0, 2.0, 1.0`, set how wide and tall it is in metres. The four colour numbers are red, green, blue, and alpha, where alpha is transparency from 0 to 255, so `0, 200, 120, 120` is a half-transparent green. The trailing booleans control bobbing up and down, facing the camera, and rotating; you rarely change them. You do not memorise this signature. You copy a marker you like and edit the type, position, scale, and colour.
+
+### DrawText3D: anchoring a screen native to a world point
+
+```lua
+SetTextEntry('STRING')
+AddTextComponentString(text)
+SetDrawOrigin(x, y, z, 0)
+DrawText(0.0, 0.0)
+ClearDrawOrigin()
+```
+
+`DrawText` is a 2D screen native. On its own it draws at a screen coordinate, where `0.0, 0.0` is the top-left corner and `1.0, 1.0` is the bottom-right, the same flat overlay you would use for a HUD. That is not what you want for a label that floats over a spot in the world, because as the player moves and turns, a fixed screen position would stay glued to the corner instead of tracking the marker.
+
+`SetDrawOrigin(x, y, z, 0)` is what fixes that. It tells the engine that the next draw call should treat its 2D coordinates as relative to this 3D world point. So after `SetDrawOrigin`, calling `DrawText(0.0, 0.0)` no longer means "top-left of the screen". It means "right at that world point", and the engine handles projecting it onto the screen for you, including making it shrink with distance and vanish when it is behind you. The text-entry calls before it, `SetTextEntry('STRING')` and `AddTextComponentString(text)`, are GTA's way of staging a string for drawing: you declare a string slot, push your text into it, then draw. The `SetText...` styling calls set scale, font, colour, and centring before any of that.
+
+The line people forget is `ClearDrawOrigin()`. If you set a draw origin and never clear it, the anchor stays active, and every other 2D draw call for the rest of the frame, your HUD, your speedometer, anything, gets dragged to that same world point. Always pair `SetDrawOrigin` with `ClearDrawOrigin`, the same way you pair an open brace with a close. That is why the helper clears it on its last line, every single call.
+
+### Why a helper instead of inline code
+
+The text-entry dance is five lines of staging for one label, and you will draw many labels. Wrapping it in `DrawText3D(x, y, z, text)` means the loop reads as one clear line of intent, `DrawText3D(point.x, point.y, point.z + 0.4, 'qu_draw checkpoint')`, and the messy native plumbing lives in one place you wrote once and trust. The `+ 0.4` on the z floats the label just above the marker instead of inside it. When you build a real feature with ten labels, you call the helper ten times and never retype the staging.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Nothing draws at all, no marker and no text", fix: "Either you are outside the 20m radius, or the loop is not running. Confirm the resource started (look for it in txAdmin), and walk to vector3(215.0, -810.0, 30.7). The marker only appears inside DRAW_RADIUS by design." },
+    { symptom: "The marker flickers for one frame then vanishes forever", fix: "Your draw call is not inside a while-true loop with Wait(0). Immediate-mode natives paint one frame only. The DrawMarker and DrawText3D calls must run every frame, which means they live inside the CreateThread loop, not before it." },
+    { symptom: "The label is stuck to the corner of the screen instead of floating in the world", fix: "You called DrawText without SetDrawOrigin, so it used raw screen coordinates. Wrap it: SetDrawOrigin(x, y, z, 0) before DrawText(0.0, 0.0), then ClearDrawOrigin() after." },
+    { symptom: "Your HUD or other text jumps to the marker's position", fix: "You set a draw origin and never cleared it, so every later draw call inherited the anchor. Every SetDrawOrigin must be followed by ClearDrawOrigin in the same call, which is why the helper clears it on its last line." },
+    { symptom: "Framerate drops near the marker or resmon shows qu_draw high", fix: "Something heavy is inside the Wait(0) loop, or you removed the distance gate so it draws at full framerate everywhere. Keep the loop body lean and make sure the far path uses Wait(500) and skips all draw calls." },
+    { symptom: "attempt to perform arithmetic on a vector value", fix: "You wrote point.x - 1 style math on the whole vector, or mixed a number where a vector3 was expected. Distance is #(pos - point), and the marker height tweak is on point.z, a single number, not on point itself." }
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain why DrawMarker and DrawText are immediate-mode and must run inside a while-true loop with Wait(0) to stay on screen.",
+    "Build a DrawText3D helper with SetDrawOrigin, DrawText(0,0), and ClearDrawOrigin so a label floats over a world point instead of the screen corner.",
+    "Read DrawMarker's key arguments: type, position, ground-sink on z, scale, and r/g/b/alpha colour.",
+    "Compute world distance with #(pos - point) from your own GetEntityCoords, and gate a render loop on it.",
+    "Use Wait(0) on the visible path and a long Wait(500) on the idle path so the loop costs nothing when the player is far away.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Right now the label says the same thing no matter where you stand. Make it react to the gate you already built. Change the label so it shows your live distance to the point, rounded to one decimal, so the number ticks down as you walk in. This proves you understand that the loop body runs every frame and that `dist` is recomputed each pass.
+
+  ```lua
+  if dist < DRAW_RADIUS then
+      DrawMarker(1, point.x, point.y, point.z - 1.0, 0.0,0.0,0.0, 0.0,0.0,0.0, 2.0,2.0,1.0, 0,200,120,120, false,false,2, false,nil,nil,false)
+
+      local label = ('qu_draw checkpoint (%.1fm)'):format(dist)
+      DrawText3D(point.x, point.y, point.z + 0.4, label)
+      Wait(0)
+  else
+      Wait(500)
+  end
+  ```
+
+  Restart `qu_draw`, walk toward the marker, and watch the label count down from near 20 to near 0 as you close in. You just turned a static label into a live one without adding a second loop, because the distance you already compute every frame is right there to reuse. That is the immediate-mode mindset: everything on screen is recomputed each frame, so making it dynamic is free.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM DrawMarker native", href: "https://docs.fivem.net/natives/?_0x28477EC23D892089" },
+    { label: "FiveM DrawText native", href: "https://docs.fivem.net/natives/?_0xD79334A4BB99BAD1" },
+    { label: "FiveM SetDrawOrigin native", href: "https://docs.fivem.net/natives/?_0xAA0008F3BBB8F416" },
+    { label: "FiveM scripting reference: drawing", href: "https://docs.fivem.net/docs/scripting-reference/" },
+    { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
+  ]}
+/>

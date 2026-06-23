@@ -1,0 +1,282 @@
+<LessonHero
+  title="Animations and scenarios"
+  meta={[
+    { label: "You'll build", value: "qu_emotes: a resource with /dance and /sit that plays a real animation and a stock scenario on your ped" },
+    { label: "Time", value: "~26 minutes" },
+    { label: "You need", value: <>A working <a href="/lessons/connect-restart">resource you can restart</a> and the <a href="/lessons/register-command">RegisterCommand</a> basics.</> },
+    { label: "You'll learn", value: "RequestAnimDict -> wait for it to stream -> TaskPlayAnim -> the flag numbers -> TaskStartScenarioInPlace -> ClearPedTasks to stop" },
+  ]}
+>
+  An emote is an animation played on your character: a wave, a dance, sitting on the ground. The game does not keep every animation in memory, so before you can play one you have to ask for it, wait for it to load, then play it. This lesson builds that exact sequence as a resource you can run, and shows the two ways to move a ped: a single animation clip and a built-in scenario.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can create a resource folder and add it to server.cfg with ensure.",
+    "I can restart one resource from the console.",
+    "I can run a /command in-game and read F8 output.",
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds the streaming-then-playing pattern as a working FiveM resource named `qu_emotes`. Follow the folder names, file names, code, restart command, and expected output exactly. Once `/dance` and `/sit` move your character, the next section takes the sequence apart so you know why each line is there and why the wait loop is not optional.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_emotes
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout. Emotes run on the player's machine, so this is a client-only resource.
+
+    ```text
+resources/qu_emotes/
+  fxmanifest.lua
+  client.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which file to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+    ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
+  </Step>
+
+  <Step num={4} title="Write the dance command" outcome="A reusable helper streams a dict and plays a clip.">
+    Open `client.lua` and paste this. The `playAnim` helper is the whole pattern in one place: request, wait, play.
+
+    ```lua
+-- Request a dictionary, wait until it streams in, then play the clip on the player.
+local function playAnim(dict, name, duration, flags)
+    RequestAnimDict(dict)
+    while not HasAnimDictLoaded(dict) do
+        Wait(0)
+    end
+
+    local ped = PlayerPedId()
+    TaskPlayAnim(ped, dict, name, 8.0, 8.0, duration, flags, 0.0, false, false, false)
+
+    -- We have the data now, so let the engine free the memory when it can.
+    RemoveAnimDict(dict)
+end
+
+RegisterCommand('dance', function()
+    -- flags = 1 means the animation loops until something stops it.
+    playAnim('anim@amb@nightclub@dancers@crowddance_facedj@hi_intensity', 'hi_dance_facedj_09_v2_female', -1, 1)
+    print('[qu_emotes] dancing - run /stop to cancel')
+end, false)
+    ```
+  </Step>
+
+  <Step num={5} title="Add the sit scenario and a stop command" outcome="The ped can sit using a stock scenario and stop on demand.">
+    Add these to the bottom of `client.lua`. A scenario is a packaged behaviour the game already ships, so it needs no dict and no flags.
+
+    ```lua
+RegisterCommand('sit', function()
+    local ped = PlayerPedId()
+    -- Scenarios are built-in behaviours; no dict to request, no flags to pass.
+    TaskStartScenarioInPlace(ped, 'PROP_HUMAN_SEAT_CHAIR_MP_PLAYER', 0, true)
+    print('[qu_emotes] sitting - run /stop to cancel')
+end, false)
+
+RegisterCommand('stop', function()
+    local ped = PlayerPedId()
+    -- ClearPedTasks ends whatever animation or scenario is currently running.
+    ClearPedTasks(ped)
+    print('[qu_emotes] stopped')
+end, false)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The expected proof appears in F8 and your character moves.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_emotes
+    ```
+
+    Save, then run:
+
+    ```text
+    restart qu_emotes
+    ```
+
+    Join the server, open F8, and run these one at a time, watching your character each time:
+
+    ```text
+    /dance
+    /sit
+    /stop
+    ```
+
+    <ExpectedOutput>
+      F8 after /dance: [qu_emotes] dancing - run /stop to cancel
+F8 after /sit: [qu_emotes] sitting - run /stop to cancel
+F8 after /stop: [qu_emotes] stopped
+    </ExpectedOutput>
+
+    `/dance` makes your character dance in a loop. `/sit` drops them into a seated scenario. `/stop` clears whichever one is running and your character stands back up to idle. If the dance fires but your character never moves on the first try, that is the streaming gap the next section is built to explain.
+  </Step>
+</StepGroup>
+
+<ConsoleSteps
+  app="In-game · F8 console"
+  steps={[
+    { label: "dance", lines: [
+      { text: "/dance", kind: "cmd" },
+      { text: "[qu_emotes] dancing - run /stop to cancel", kind: "ok" },
+    ] },
+    { label: "sit", lines: [
+      { text: "/sit", kind: "cmd" },
+      { text: "[qu_emotes] sitting - run /stop to cancel", kind: "ok" },
+    ] },
+    { label: "stop", lines: [
+      { text: "/stop", kind: "cmd" },
+      { text: "[qu_emotes] stopped", kind: "ok" },
+    ] },
+  ]}
+/>
+
+## How it works
+
+You ran three commands and your character danced, sat, and stood up. Two of those commands play movement two different ways: `/dance` loads an animation clip by hand, `/sit` asks the game for a behaviour it already has. The difference between them is the heart of this lesson. Take the dance path apart first, because that is where the work is.
+
+### Why you cannot just play an animation
+
+```lua
+RequestAnimDict(dict)
+while not HasAnimDictLoaded(dict) do
+    Wait(0)
+end
+```
+
+GTA has thousands of animations grouped into dictionaries, like `anim@amb@nightclub@dancers@crowddance_facedj@hi_intensity`. The game does not keep them all in memory at once, because that would waste space on clips no one is using. So a dictionary you have not touched yet is not loaded, and `TaskPlayAnim` against an unloaded dict simply does nothing: no crash, no error, your character just stands there.
+
+`RequestAnimDict(dict)` tells the engine to start streaming that dictionary into memory. The word "streaming" matters: the load is not instant and does not block. The function returns immediately while the data is still arriving, maybe this frame, maybe a few frames later if the disk is busy. That gap is the trap. If you call `TaskPlayAnim` on the very next line, the data is usually not there yet and nothing plays.
+
+The `while not HasAnimDictLoaded(dict) do Wait(0) end` loop is how you bridge the gap correctly. `HasAnimDictLoaded` returns `true` once the data has finished arriving. The loop checks it every frame and `Wait(0)` yields to the game for one frame each time, so you are not freezing the client while you wait. The instant the dict is ready the loop exits and the next line runs. This request-then-wait-in-a-loop shape is the standard way to load anything streamed in FiveM: anim dicts, models, textures. Learn it here and you reuse it everywhere.
+
+<Checkpoint question="Why does the wait loop use Wait(0) instead of just looping with no Wait, or a long Wait like Wait(500)?">
+  `Wait(0)` yields control back to the game for exactly one frame, then resumes your loop on the next frame. A loop with no `Wait` at all never yields, so the game thread is stuck spinning on your code and the client freezes, the dict can never finish loading because nothing else gets to run. A long `Wait(500)` does yield, but it makes your character stall for up to half a second after the dict is already ready, because you only re-check twice a second. `Wait(0)` is the sweet spot: it frees the engine to keep streaming and rendering, and it re-checks every single frame so you start the animation the moment it is available.
+</Checkpoint>
+
+### Playing the clip and what the numbers mean
+
+```lua
+local ped = PlayerPedId()
+TaskPlayAnim(ped, dict, name, 8.0, 8.0, duration, flags, 0.0, false, false, false)
+```
+
+`PlayerPedId()` returns the ped (the character entity) you currently control. You always fetch it fresh rather than storing it, because it changes when you respawn or switch models.
+
+`TaskPlayAnim` is the native that actually plays a clip. Its arguments look noisy, so here are the ones that matter:
+
+- **dict** and **name**: which dictionary, and which clip inside it. The name `hi_dance_facedj_09_v2_female` is one specific dance clip inside the nightclub dancers dict.
+- **blendIn (`8.0`)** and **blendOut (`8.0`)**: how fast the animation eases in and out of your normal pose. Higher numbers blend faster. `8.0` is a normal snappy blend; very low numbers look like slow motion fading in.
+- **duration**: how many milliseconds to play. We pass `-1`, which means play until something stops it. A positive number like `3000` would play for three seconds and end on its own.
+- **flags**: a number that changes how the animation behaves. This is the argument people get wrong most, so it gets its own section below.
+- The trailing `0.0, false, false, false` are start phase and lock options you can leave exactly as written for a normal standing emote.
+
+### The flag numbers you actually use
+
+```lua
+playAnim('anim@amb@nightclub@dancers@crowddance_facedj@hi_intensity', 'hi_dance_facedj_09_v2_female', -1, 1)
+```
+
+The flags argument is a single number, but it is really a set of switches added together. You do not need to memorise all of them. These are the ones that cover almost every emote:
+
+- **`1` (looping):** the animation repeats forever until you stop it. The dance uses `1` with a `-1` duration so it loops until `/stop`.
+- **`2` (hold last frame):** the animation plays once and freezes on its final pose instead of snapping back to idle. Good for a salute you want to hold.
+- **`16` (upper body only):** only the top half of the body animates, so the legs keep walking or standing normally. This is how a wave works while you are moving.
+- **`48` (`16 + 32`):** upper body only and allows you to keep moving and aiming. Common for emotes you want to use mid-action.
+
+You combine them by adding: `1 + 16` is `17`, a looping upper-body emote. For this lesson `1` is enough, a full-body dance that loops. When an emote looks wrong, the flag number is the first thing to check.
+
+### The scenario path: letting the game do the work
+
+```lua
+TaskStartScenarioInPlace(ped, 'PROP_HUMAN_SEAT_CHAIR_MP_PLAYER', 0, true)
+```
+
+`/sit` does not request a dict or pass flags, and that is the point of showing both commands. A scenario is a complete behaviour the game already ships fully assembled: the animation, the prop handling, the looping, all packaged under one name. `PROP_HUMAN_SEAT_CHAIR_MP_PLAYER` is the sit-in-a-chair scenario. `TaskStartScenarioInPlace` runs it on your ped right where you stand.
+
+The arguments are simpler than `TaskPlayAnim`: the ped, the scenario name, a delay you can leave at `0`, and a `true` that lets the ped play the intro into the scenario. Because the data is built in, there is nothing to stream and nothing to free. When you want a stock behaviour, sitting, leaning, smoking, a scenario is far less code than wiring the raw clips yourself. When you want a specific custom clip, `TaskPlayAnim` is the tool. Knowing both, and knowing which needs streaming, is the skill.
+
+### Stopping, and cleaning up memory
+
+```lua
+ClearPedTasks(ped)
+```
+
+```lua
+RemoveAnimDict(dict)
+```
+
+`ClearPedTasks(ped)` ends whatever task the ped is running, the looping dance or the seated scenario, and returns the character to idle. It is the universal off switch for both paths, which is why one `/stop` command handles both.
+
+`RemoveAnimDict(dict)` is the other side of `RequestAnimDict`. Once you have started the animation, the engine already has what it needs, so you tell it this dictionary can be unloaded when memory is tight. You are not deleting a running animation, you are releasing your hold on the data so the game can reclaim the space later. On a busy server that requests many emotes, freeing what you no longer need is the difference between steady memory and a slow climb. Request what you need, use it, release it.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "/dance prints the message but the character never moves", fix: "TaskPlayAnim ran before the dict finished streaming. Confirm the while not HasAnimDictLoaded(dict) do Wait(0) end loop is present and runs before TaskPlayAnim, not after it. Without the wait, the clip plays against an empty dict and nothing happens." },
+    { symptom: "The whole client freezes for a moment when you run /dance", fix: "The wait loop has no Wait, or a Wait greater than 0 that still spins hard. Use exactly Wait(0) inside the loop so the engine gets a frame to keep streaming. A loop that never yields hangs the client and the dict can never load." },
+    { symptom: "The animation plays once then snaps back to standing instead of looping", fix: "The flags argument is not 1. Pass 1 for a looping emote, and pass -1 as the duration so it does not time out. A flag of 0 plays once and ends." },
+    { symptom: "/sit does nothing and there is no error", fix: "The scenario name is wrong. Scenario names are exact strings like PROP_HUMAN_SEAT_CHAIR_MP_PLAYER. A typo means the game has no behaviour by that name and silently does nothing." },
+    { symptom: "/stop does not stop the animation", fix: "ClearPedTasks needs the current ped. Fetch it fresh with local ped = PlayerPedId() inside the stop handler rather than reusing an old value, then call ClearPedTasks(ped)." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Explain why an animation dict must be requested and waited for before TaskPlayAnim will play anything.",
+    "Write the standard streaming loop: RequestAnimDict, then while not HasAnimDictLoaded(dict) do Wait(0) end.",
+    "Call TaskPlayAnim with sensible blend, duration, and flag values, and read what each argument does.",
+    "Pick the right flag number: 1 to loop, 2 to hold, 16 for upper body, and add them to combine.",
+    "Use TaskStartScenarioInPlace for a stock behaviour with no dict, and ClearPedTasks to stop either path.",
+    "Release a dict with RemoveAnimDict once the animation has started so the engine can reclaim memory.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Right now `/dance` loops forever and `/sit` uses one fixed scenario. Add a `/wave` command that plays a one-shot upper-body wave and lets you keep walking, so you can see the flag numbers change real behaviour. Use the friendly `wave_a` clip from the `friends@frj@ig_1` dict.
+
+  ```lua
+  RegisterCommand('wave', function()
+      -- flags 48 = 16 (upper body) + 32 (secondary, keep moving); one-shot, duration 2500ms.
+      playAnim('friends@frj@ig_1', 'wave_a', 2500, 48)
+      print('[qu_emotes] waving')
+  end, false)
+  ```
+
+  Restart `qu_emotes`, start walking, then run `/wave` and watch your character wave with the top half of the body while the legs keep walking. Compare that to `/dance`, which locks the whole body. You just felt the flag number change the animation from full-body to upper-body, which is exactly how real emote menus let you wave while running.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM TaskPlayAnim native", href: "https://docs.fivem.net/natives/?_0xEA47FE3719165B94" },
+    { label: "FiveM RequestAnimDict native", href: "https://docs.fivem.net/natives/?_0xD3BD40951412FEF6" },
+    { label: "FiveM TaskStartScenarioInPlace native", href: "https://docs.fivem.net/natives/?_0x142A02425FF02BD9" },
+    { label: "FiveM ClearPedTasks native", href: "https://docs.fivem.net/natives/?_0xE1EF3C1216AFF2CD" },
+    { label: "FiveM scripting reference", href: "https://docs.fivem.net/docs/scripting-reference/" },
+  ]}
+/>

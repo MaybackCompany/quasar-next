@@ -1,0 +1,284 @@
+<LessonHero
+  title="Players, peds, and ids"
+  meta={[
+    { label: "You'll build", value: "qu_whoami, a /whoami command that prints your client ped handle and server id, plus a server event that reports who sent it." },
+    { label: "Time", value: "~26 minutes" },
+    { label: "You need", value: <>A running FXServer you can join, plus <a href="/lessons/trigger-server-client-event">TriggerServerEvent and TriggerClientEvent</a>.</> },
+    { label: "You'll learn", value: "PlayerId vs PlayerPedId vs GetPlayerServerId, the server-side source, GetPlayers, and entity handle vs network id" },
+  ]}
+>
+  This is the bug behind almost every "works for me, not for others" report. A script grabs a number on the client, sends it to the server, and the server uses it to mean the wrong player. The fix is knowing which id is local, which is stable across the wall, and which one the server already has for free. Build qu_whoami once and the whole family of ids stops blurring together.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I can create a resource folder and ensure it in server.cfg.",
+    "I can join my own server and open the F8 console.",
+    "I can read txAdmin Live Console and F8 output side by side.",
+    "I have triggered a server event from a client at least once."
+  ]}
+/>
+
+<Callout variant="fivem" title="Build the proof, then understand it">
+  This lesson builds the id family as a working FiveM resource named `qu_whoami`. Follow the folder names, file names, code, restart command, and test exactly. Once `/whoami` prints your handles and the server reports your `source`, the next section takes every id apart so you know which one is safe to send across the wall and which one is a lie on the other side.
+</Callout>
+
+## Build it
+
+<StepGroup>
+  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
+    Inside your server's `resources` folder, create this folder:
+
+    ```text
+    resources/qu_whoami
+    ```
+  </Step>
+
+  <Step num={2} title="Create the files" outcome="Every file named in the manifest exists.">
+    Create this exact file layout:
+
+    ```text
+resources/qu_whoami/
+  fxmanifest.lua
+  client.lua
+  server.lua
+    ```
+  </Step>
+
+  <Step num={3} title="Write fxmanifest.lua" outcome="FiveM knows which files to load.">
+    Open `fxmanifest.lua` and paste this:
+
+    ```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client.lua'
+server_script 'server.lua'
+    ```
+
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is now the only Lua runtime, so you leave it out.
+  </Step>
+
+  <Step num={4} title="Write the client" outcome="The command gathers every id and shows the local vs stable split.">
+    Open `client.lua` and paste this:
+
+    ```lua
+RegisterCommand('whoami', function()
+    local playerId = PlayerId()                 -- local table index, only meaningful on this client
+    local ped = PlayerPedId()                    -- this client's current ped entity handle
+    local serverId = GetPlayerServerId(playerId) -- the stable id the server knows me by
+    local netId = NetworkGetNetworkIdFromEntity(ped) -- the ped's id everyone shares
+
+    print('[qu_whoami] PlayerId (local): ' .. playerId)
+    print('[qu_whoami] PlayerPedId (entity handle): ' .. ped)
+    print('[qu_whoami] GetPlayerServerId (stable): ' .. serverId)
+    print('[qu_whoami] ped network id (shared): ' .. netId)
+
+    -- Send NOTHING but the event. The server already knows who I am.
+    TriggerServerEvent('qu:whoami')
+end, false)
+
+RegisterNetEvent('qu:whoami:reply', function(serverSawSource, serverSawName)
+    print('[qu_whoami] server says my source is ' .. serverSawSource .. ' (' .. serverSawName .. ')')
+end)
+    ```
+  </Step>
+
+  <Step num={5} title="Write the server" outcome="The server reports who it thinks sent the event, using source, not a number from the client.">
+    Open `server.lua` and paste this:
+
+    ```lua
+RegisterNetEvent('qu:whoami', function()
+    local src = source -- capture on line one, before anything yields
+
+    print('[qu_whoami] event received. source = ' .. src .. ' name = ' .. GetPlayerName(src))
+    print('[qu_whoami] players currently online: ' .. #GetPlayers())
+
+    -- Reply only to the player who asked, addressed by their stable server id.
+    TriggerClientEvent('qu:whoami:reply', src, src, GetPlayerName(src))
+end)
+    ```
+  </Step>
+
+  <Step num={6} title="Start and test it" outcome="The expected proof appears across both consoles.">
+    Open `server.cfg` and add this line:
+
+    ```text
+    ensure qu_whoami
+    ```
+
+    Save, then run in the server console:
+
+    ```text
+    restart qu_whoami
+    ```
+
+    Join the server, open F8, and run:
+
+    ```text
+    /whoami
+    ```
+
+    <ExpectedOutput>
+      F8 (your client):
+[qu_whoami] PlayerId (local): 0
+[qu_whoami] PlayerPedId (entity handle): 132
+[qu_whoami] GetPlayerServerId (stable): 1
+[qu_whoami] ped network id (shared): 65538
+[qu_whoami] server says my source is 1 (yourName)
+Server (txAdmin Live Console):
+[qu_whoami] event received. source = 1 name = yourName
+[qu_whoami] players currently online: 1
+    </ExpectedOutput>
+
+    Your exact ped handle and network id numbers will differ from the sample, that is expected, they are runtime handles. Notice the split: your `PlayerId` is `0` and your `GetPlayerServerId` is `1`, and the server independently agrees `source = 1` without you sending it a single number. The next section explains why sending that `0` would have been the bug.
+  </Step>
+</StepGroup>
+
+<EventFlow
+  direction="toServer"
+  event="qu:whoami"
+  validate
+  note="The client triggers the event with no payload. The server reads source on its own side. The id that matters crosses the wall as identity, not as data the client could fake."
+/>
+
+## How it works
+
+You gathered four numbers on the client and the server printed a fifth. Three of those numbers look interchangeable and are not. The entire "works for me, not for others" plague comes from grabbing one id where another was needed. Take them apart one at a time, in the order they appear in your console, and the family stops blurring.
+
+### PlayerId is a local index, not an identity
+
+```lua
+local playerId = PlayerId()
+```
+
+`PlayerId()` returns this client's own slot in its local player table. On a single-player test it is almost always `0`, which is exactly what makes it dangerous. It feels like "my id," so people send it to the server. But it is local: it only means something on the machine that called it, and it is not the number the server, or any other client, uses to refer to you. Two different players can both see themselves as `PlayerId() == 0` on their own machines. Send that `0` to the server and the server has no idea who you meant, because `0` on the server's player table is whoever happens to sit in slot zero, not you.
+
+`PlayerId()` is useful for exactly one thing: feeding it into other client natives that expect a local player index, like `GetPlayerServerId(PlayerId())` to translate it, or `GetPlayerPed(PlayerId())`. It is a lookup key for local functions, never a value you transmit.
+
+### PlayerPedId is an entity handle for the body, not the person
+
+```lua
+local ped = PlayerPedId()
+```
+
+`PlayerPedId()` returns the entity handle of the character model your player is currently controlling. It is a handle to a *thing in the world*, a ped entity, the way a vehicle or a prop has a handle. You use it constantly on the client: `GetEntityCoords(ped)`, `SetEntityHealth(ped, 200)`, `TaskPlayAnim(ped, ...)`. Anything that acts on your body in the world takes this handle.
+
+Two traps live here. First, it is not your identity, it is your current body. Respawn, switch models, or get put in a new ped and the handle changes underneath you, which is why you call `PlayerPedId()` fresh when you need it rather than caching it for the whole session. Second, like `PlayerId`, the raw entity handle is local. The number `132` on your machine does not point at your ped on the server or on another client. To talk about an entity across the wall you need its network id, which is the last number in the list.
+
+### GetPlayerServerId is the stable id that survives the wall
+
+```lua
+local serverId = GetPlayerServerId(playerId)
+```
+
+This is the one number in the client list that means the same thing everywhere. `GetPlayerServerId` takes a *local* player index and translates it into the *server* id: the stable id the server assigns when you connect and keeps until you disconnect. In the sample output your local `PlayerId` was `0` but your server id was `1`. That `1` is what the server, the database, the Discord role webhook, and every other system know you by. When a script genuinely needs to send "this player" somewhere, this is the only client-side number safe to use as an identity, because it matches what the other side already has.
+
+The catch, and the reason qu_whoami sends no payload at all: when the destination is the server, you usually do not even need to send it. The server can read who triggered the event on its own side, for free, and trusting that is always safer than trusting a number the client typed into the message.
+
+<Checkpoint question="A new dev's /givecash command does TriggerServerEvent('bank:give', PlayerId(), 5000) and the server credits player PlayerId(). On their solo test it works perfectly. On the live server, random players get the cash. What single fact explains the whole bug?">
+  `PlayerId()` is a local index, not an identity, so it carries no meaning once it crosses the wall. On the solo test the dev's local index `0` happened to match server slot `0`, so the right account got paid by luck. On a full server, the client sends its local `0`, and the server treats `0` as whoever sits in its own slot zero, a different player entirely. The fix is to send nothing and have the server read `local src = source`, or at most send `GetPlayerServerId(PlayerId())`, never the raw `PlayerId()`. "Works for me, not for others" almost always means a local id was used where a server id was required.
+</Checkpoint>
+
+### source: the id the server already has
+
+```lua
+RegisterNetEvent('qu:whoami', function()
+    local src = source
+```
+
+On the server, inside a net event handler, `source` is the server id of the player who triggered it, set by FiveM itself, not by anything the client sent. This is why qu_whoami's client triggers `qu:whoami` with no arguments: the server does not need to be told who you are, it knows. Reading `source` is more trustworthy than any id in the payload, because a modified client can put any number in the payload but cannot lie about which connection the event arrived on.
+
+Two rules carry over from the events lesson and matter doubly here. Capture it on line one as `local src = source`, before any yield, because a `Wait` or an awaited query can let another event overwrite `source` mid-handler and you would answer the wrong player. And use `src` as the target when you reply: `TriggerClientEvent('qu:whoami:reply', src, ...)` reaches exactly the player who asked, because a single server id addresses one client. The whole pattern is: client asks with no id, server reads `source`, server replies to that `source`. No identity number ever crosses the wall in the untrusted direction.
+
+### GetPlayers gives the server every source at once
+
+```lua
+print('[qu_whoami] players currently online: ' .. #GetPlayers())
+```
+
+`GetPlayers()` is the server-side roster: a table of every connected player's server id as strings. `#GetPlayers()` is therefore your live player count, and looping `GetPlayers()` is how you act on everyone, kicking all, messaging all, saving all. Each entry is a server id, the same kind of stable id `source` gives you, so anything you can do with one `source` you can do with each id in this list.
+
+Watch the sidedness. `GetPlayers()` is a server native. The client has a different, similarly named native, `GetActivePlayers()`, which returns *local* player indices for players near you, not server ids, and not everyone. Reaching for the wrong one is another flavor of the same id confusion: server logic wants `GetPlayers()` and stable ids, client logic wants local indices.
+
+### Entity handle vs network id: the same body, two numbers
+
+```lua
+local netId = NetworkGetNetworkIdFromEntity(ped)
+```
+
+Your ped has two numbers and they are not the same. The entity handle from `PlayerPedId()` is local, only valid on the machine that owns it. The network id from `NetworkGetNetworkIdFromEntity(ped)` is the shared id for that same entity, recognized across the server and other clients. When you need to tell another machine "this car," "this ped," "this object," you send the network id, never the raw handle.
+
+The other side translates back with `NetworkGetEntityFromNetworkId(netId)`, which hands it the *local* entity handle for that network id on *its* machine. So the round trip for an entity mirrors the round trip for a player: handle is local like `PlayerId`, network id is shared like the server id. A spawned vehicle, a dropped object, a downed ped you want everyone to see synced, all of them travel as network ids and get turned back into local handles on arrival. Sending a bare entity handle across the wall fails for the identical reason sending a bare `PlayerId` fails: the number is meaningless on the receiving machine.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "Unknown command whoami in F8", fix: "client.lua did not load. Confirm fxmanifest.lua lists client_script 'client.lua', the file is spelled exactly, and you ran restart qu_whoami after editing. Check the server console for a manifest error when the resource started." },
+    { symptom: "Server prints nothing when you run /whoami", fix: "The qu:whoami event is not crossing the wall. The server must use RegisterNetEvent (not AddEventHandler) for qu:whoami, and the name must match the client's TriggerServerEvent character for character." },
+    { symptom: "attempt to concatenate a nil value near PlayerPedId or netId", fix: "You ran the command in the F8 console before fully spawning in, so there was no ped yet. Spawn into the world first, then run /whoami. A ped handle of 0 means no valid ped." },
+    { symptom: "On a busy server the server prints a different name than the player who ran the command", fix: "source was read after a yield and got overwritten by another event. Capture local src = source on the very first line of the handler and use src everywhere after." },
+    { symptom: "You sent PlayerId() to the server and the wrong player was affected", fix: "That is the core bug this lesson exists for. Do not send PlayerId(); it is a local index. Send nothing and read source on the server, or send GetPlayerServerId(PlayerId()) when a server id truly must travel." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Tell apart PlayerId (local index), PlayerPedId (local entity handle for the body), and GetPlayerServerId (the stable id that crosses the wall).",
+    "Explain why sending PlayerId() to the server is the classic works-for-me-not-others bug, and what to send instead.",
+    "Read source on the server to identify the caller for free, captured as local src = source on line one.",
+    "Use GetPlayers() server-side for the live roster and #GetPlayers() for the player count, and avoid the client-only GetActivePlayers().",
+    "Convert an entity between its local handle and its shared network id with NetworkGetNetworkIdFromEntity and NetworkGetEntityFromNetworkId before sending it across the wall.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Right now qu_whoami only reports about you. Prove you understand stable ids by making the server act on a *different* player by their server id. Add a `/whois` command that takes a server id as an argument and asks the server for that player's name, then have the server look it up and reply.
+
+  ```lua
+  -- client.lua
+  RegisterCommand('whois', function(_, args)
+      local targetServerId = tonumber(args[1])
+      if not targetServerId then
+          print('[qu_whoami] usage: /whois <serverId>')
+          return
+      end
+      TriggerServerEvent('qu:whois', targetServerId)
+  end, false)
+
+  RegisterNetEvent('qu:whois:reply', function(name)
+      print('[qu_whoami] that server id belongs to: ' .. name)
+  end)
+  ```
+
+  ```lua
+  -- server.lua
+  RegisterNetEvent('qu:whois', function(targetServerId)
+      local src = source
+      if type(targetServerId) ~= 'number' then return end
+
+      local name = GetPlayerName(targetServerId)
+      if name then
+          TriggerClientEvent('qu:whois:reply', src, name)
+      else
+          TriggerClientEvent('qu:whois:reply', src, 'no player with that server id')
+      end
+  end)
+  ```
+
+  Restart `qu_whoami`, run `/whoami` to learn your own server id, then run `/whois 1` (or whatever your id was). Notice the server happily resolves a name from a stable server id, but would resolve nothing useful from a local `PlayerId`. You just used a server id the way real features do: as a portable handle to a specific person that means the same thing on every machine.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "FiveM PlayerPedId native", href: "https://docs.fivem.net/natives/?_0xD80958FC74E988A6" },
+    { label: "FiveM GetPlayerServerId native", href: "https://docs.fivem.net/natives/?_0x4D97BCC7" },
+    { label: "FiveM NetworkGetNetworkIdFromEntity native", href: "https://docs.fivem.net/natives/?_0xA11700682F3AD45C" },
+    { label: "FiveM events and the source variable", href: "https://docs.fivem.net/docs/scripting-manual/working-with-events/" }
+  ]}
+/>

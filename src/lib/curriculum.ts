@@ -64,6 +64,7 @@ export const PATHS: Path[] = [
           { num: "10", title: "Reading and fixing common errors", blurb: "The console errors every beginner hits: what each means and the fix.", slug: "fivem-error-catalog", tag: "Debugging" },
           { num: "11", title: "Installing and managing scripts", blurb: "Drop in a downloaded or bought script, load it in order, refresh and test.", slug: "installing-managing-scripts", tag: "Setup" },
           { num: "Bonus", title: "How to make your first FiveM server", blurb: "The five-step minimal path: artifacts, license, server.cfg, start, join. No framework.", slug: "first-fivem-server", tag: "Setup", bonus: true },
+          { num: "Bonus", title: "txAdmin recipes: what a build installs", blurb: "Pick a recipe, what the yaml does, where files land, and recovering a failed deploy.", slug: "txadmin-recipe", tag: "Setup", bonus: true },
         ],
       },
       {
@@ -75,6 +76,7 @@ export const PATHS: Path[] = [
           { num: "09", title: "Shipping: launch checklist", blurb: "Production server.cfg and the pre-launch sweep.", slug: "shipping", tag: "Ops" },
           { num: "10", title: "The connection flow: deferrals and queue", blurb: "playerConnecting, deferral cards, and gating who gets in.", slug: "deferrals-connection-queue", tag: "Ops", bonus: true },
           { num: "11", title: "Giving players permissions (ESX, QBCore, Qbox)", blurb: "ACE groups, add_principal, and admin/jobs in each framework.", slug: "player-permissions-frameworks", tag: "Permissions", bonus: true },
+          { num: "Bonus", title: "Endpoints, ports, and going public", blurb: "endpoint_add_tcp/udp, port 30120, port-forwarding, and a real connect test.", slug: "server-cfg-endpoints-ports", tag: "Networking", bonus: true },
         ],
       },
       {
@@ -142,6 +144,8 @@ export const PATHS: Path[] = [
           { num: "12", title: "CreateThread and Wait", blurb: "Background loops without freezing the server.", slug: "createthread-and-wait", tag: "Threading", bonus: true },
           { num: "13", title: "FiveM natives: the toolbox", blurb: "What a native is and how to find one in the docs.", slug: "natives-toolbox", tag: "Natives" },
           { num: "14", title: "Trust and authority", blurb: "The server must stay in charge, or cheaters win.", slug: "trust-and-authority", tag: "Security" },
+          { num: "Bonus", title: "Coordinates, vectors, and distance", blurb: "vector3, GetEntityCoords, heading, and #(a - b) distance checks.", slug: "coordinates-vectors-distance", tag: "Natives", bonus: true },
+          { num: "Bonus", title: "Players, peds, and ids", blurb: "PlayerId vs PlayerPedId vs server id vs network id, and the source variable.", slug: "player-ped-ids", tag: "Mental model", bonus: true },
         ],
       },
       {
@@ -285,6 +289,8 @@ export const PATHS: Path[] = [
           { num: "03", title: "Cleanup discipline", blurb: "Delete on stop, drop, and timeout. No leaks.", slug: "cleanup-discipline", tag: "Cleanup" },
           { num: "Bonus", title: "Reading player input: controls and keys", blurb: "Control IDs, IsControlJustPressed, disabling keys, RegisterKeyMapping.", slug: "controls-and-input", tag: "Input", bonus: true },
           { num: "Bonus", title: "Blips, markers, and checkpoints", blurb: "Map icons, world markers, and standing-in-it detection.", slug: "blips-markers-checkpoints", tag: "World", bonus: true },
+          { num: "Bonus", title: "Draw on screen: text, 3D text, and markers", blurb: "DrawText, a DrawText3D helper, DrawMarker, and gating the draw loop by distance.", slug: "drawtext-markers", tag: "World", bonus: true },
+          { num: "Bonus", title: "Animations and scenarios", blurb: "RequestAnimDict, TaskPlayAnim flags, scenarios, and ClearPedTasks.", slug: "animations-scenarios", tag: "World", bonus: true },
         ],
       },
       {
