@@ -10,6 +10,7 @@ import { YouTubeVideo } from "@/components/fqs/youtube-video";
 // Components used by hub pages (cheatsheets/server/...) that aren't restyled here yet.
 import { LinkCard, LinkCardGrid, Quiz, Vocab, LevelUp, Explain, Chip } from "@/components/lesson/mdx";
 import { LessonCrumb } from "@/components/lesson/lesson-crumb";
+import { EventFlow, FxmanifestToggle, ConsoleSteps, QueryRunner, StateSync, Lottie } from "@/components/lesson/visuals";
 
 /**
  * Global MDX map — Quasar School design system.
@@ -337,6 +338,14 @@ const components: MDXComponents = {
   Swatch,
   LessonVideo,
   YouTube: YouTubeVideo,
+
+  // Animated/interactive teaching visuals (Framer Motion + dotLottie)
+  EventFlow,
+  FxmanifestToggle,
+  ConsoleSteps,
+  QueryRunner,
+  StateSync,
+  Lottie,
 
   // Hub components (kept functional; restyle pending)
   LinkCard,
