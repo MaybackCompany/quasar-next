@@ -1,4 +1,5 @@
 <LessonHero
+  crumbs="Step 07 · Server setup"
   title="Installing and managing scripts"
   meta={[
     { label: "You'll do", value: "Install a downloaded or purchased script onto your running server, organize your resources, load it in the right order, and test it without a full restart." },
@@ -7,7 +8,7 @@
     { label: "You'll learn", value: "Drop a resource in -> install dependencies first -> ensure in order -> refresh and test -> fix the four things that always go wrong" },
   ]}
 >
-  Most server owners spend more time installing other people's scripts than writing their own. The mechanics are simple: a script is a folder, you drop it in `resources`, you `ensure` it in `server.cfg`, you restart. The trouble is always the same handful of things: a wrong folder name, a missing dependency, or the wrong load order. This lesson makes installing boring and repeatable.
+  Most server owners install more scripts than they write. The mechanics are simple. A script is a folder. You drop it in `resources`, you add one line to `server.cfg`, you restart. The trouble is always the same short list: a wrong folder name, a missing dependency, or the wrong load order. This lesson makes installing boring and repeatable.
 </LessonHero>
 
 <Prereq
@@ -20,16 +21,16 @@
 />
 
 <Callout variant="fivem" title="The whole install in one line">
-  A script is a folder. Put the folder in `resources`, add `ensure folder-name` to `server.cfg`, restart. Ninety percent of "it doesn't work" is one of four things: wrong folder name, a missing dependency, the wrong load order, or an escrowed asset whose key is not linked to your server.
+  A script is a folder. Put the folder in `resources`, add `ensure folder-name` to `server.cfg`, restart. `ensure` is the FXServer command that starts a resource (or restarts it if it is already running). Ninety percent of "it doesn't work" is one of four things: a wrong folder name, a missing dependency, the wrong load order, or an escrowed asset whose key is not linked to your server.
 </Callout>
 
 ## Build it
 
 <StepGroup>
   <Step num={1} title="Unzip and check the folder" outcome="You have a clean resource folder that contains an fxmanifest.lua.">
-    Unzip the download. Open the folder and confirm it contains an **`fxmanifest.lua`** (older scripts use `__resource.lua`). That file is what makes it a resource.
+    Unzip the download. Open the folder and confirm it contains an **`fxmanifest.lua`**. The `fxmanifest.lua` is the manifest file that names the resource and lists what it needs. Older scripts call it `__resource.lua`. That file is what makes the folder a resource.
 
-    Preserve the official resource folder name from its README or release archive. A GitHub source ZIP often adds `-main`; use the author's release asset when one exists. Rename a folder only when the official install instructions explicitly tell you to, because manifests, dependencies, escrow checks, and other resources can reference the exact name.
+    Keep the official folder name from the README or the release archive. A GitHub source ZIP often adds `-main` to the name. Use the author's release asset when one exists. Rename a folder only when the official install instructions tell you to. Manifests, dependencies, escrow checks, and other resources all reference the exact name, so a changed name breaks them.
 
     ```text
     server-data/resources/qs-vehiclekeys/
@@ -39,13 +40,15 @@
   </Step>
 
   <Step num={2} title="Install dependencies first" outcome="Everything the script needs is already running before it loads.">
-    Open the script's README or `fxmanifest.lua` and read its **dependencies**. Most modern scripts need `oxmysql`, `ox_lib`, and a framework. `oxmysql` and `ox_lib` are Overextended community resources, not official Cfx.re built-ins, so you install them yourself like any other script. They must be installed and started **before** the script that needs them, or it errors on boot.
+    Open the script's README or its `fxmanifest.lua` and read its **dependencies**. A dependency is another resource this script needs in order to run. Most modern scripts need `oxmysql`, `ox_lib`, and a framework. `oxmysql` and `ox_lib` are Overextended community resources, not official Cfx.re built-ins, so you install them yourself like any other script.
+
+    **Install and start every dependency before the script that needs them.** If a dependency loads after the script, the script errors on boot.
 
     <TechLinks ids={["oxmysql", "ox_lib", "esx", "qbox"]} />
   </Step>
 
   <Step num={3} title="Drop it into resources" outcome="The resource sits where the server can find it.">
-    Move the folder into your server's `resources` directory. On a VPS, upload it with WinSCP or your panel's file manager.
+    Move the folder into your server's `resources` directory. If your server runs on a VPS, upload it with WinSCP or your panel's file manager. A VPS is a rented remote server you connect to over the internet, the alternative to running the server on your own PC.
 
     ```text
     server-data/resources/qs-vehiclekeys
@@ -55,7 +58,7 @@
   </Step>
 
   <Step num={4} title="Ensure it in the right order" outcome="server.cfg starts dependencies, then the framework, then the script.">
-    Load order is top to bottom. Dependencies and the framework come first, your script after. Add to `server.cfg`:
+    Load order runs top to bottom. Dependencies and the framework come first. Your script comes after. Add this to `server.cfg`:
 
     ```text
     ensure oxmysql
@@ -64,18 +67,18 @@
     ensure qs-vehiclekeys
     ```
 
-    If the script needs a database table, import its `.sql` file into your database (HeidiSQL) before starting it.
+    If the script needs a database table, import its `.sql` file into your MariaDB database with HeidiSQL or DBeaver before you start the script.
   </Step>
 
   <Step num={5} title="Refresh, start, and read the console" outcome="The resource starts with no red errors and you see the started line.">
-    You do not need a full restart to add one resource. In the txAdmin Live Console:
+    You do not need a full restart to add one resource. In the txAdmin Live Console, run:
 
     ```text
     refresh
     ensure qs-vehiclekeys
     ```
 
-    `refresh` re-scans the resources folder so the server sees the new one; `ensure` starts it. Read the console.
+    `refresh` re-scans the resources folder so the server notices the new one. `ensure` starts it. Then read the console.
 
     <ExpectedOutput>
       Started resource qs-vehiclekeys
@@ -85,7 +88,7 @@
 
 ## Organize with categories
 
-Once you run more than a handful of scripts, group them with bracketed category folders so you can load a whole group at once:
+Once you run more than a handful of scripts, group them with bracketed category folders. Then you can load a whole group at once:
 
 ```text
 resources/
@@ -95,19 +98,19 @@ resources/
   [custom]
 ```
 
-Then one line loads everything inside a category:
+One line loads everything inside a category:
 
 ```text
 ensure [vehicles]
 ```
 
-The brackets are a FiveM convention: a folder named `[something]` is a category, and `ensure [something]` starts every resource inside it. Keep categories ordered after their dependencies in `server.cfg`.
+The brackets are a FiveM convention. A folder named `[something]` is a category, and `ensure [something]` starts every resource inside it. **Keep each category after its dependencies in `server.cfg`.**
 
 ## A worked example: getting the order right
 
-Order is the single thing beginners get wrong most often, so here is one real install traced end to end. You are installing `ox_inventory`, the Overextended community inventory. Read its README and you find this dependency chain: it needs `oxmysql` for the database, `ox_lib` for shared functions, and a framework (`es_extended` or `qb-core`) to know who the player is. Each of those is itself a resource you `ensure`, and each must already be running before the thing that calls it loads.
+Order is the one thing beginners get wrong most often. So here is one real install traced end to end. You are installing `ox_inventory`, the Overextended inventory. Read its README and you find a dependency chain. It needs `oxmysql` for the database, `ox_lib` for shared functions, and a framework (`es_extended` or `qb-core`) to know who the player is. Each of those is itself a resource you `ensure`. Each must already be running before the thing that calls it loads.
 
-The rule is one sentence: a resource must be `ensure`d **after** everything it depends on. Draw the chain and the load order falls out of it. Arrows point from a resource to what it needs:
+The rule is one sentence. **A resource must be `ensure`d after everything it depends on.** Draw the chain and the load order falls out of it. The arrows point from a resource to what it needs:
 
 ```text
 ox_inventory                 # the script you actually want
@@ -121,7 +124,7 @@ ox_inventory                 # the script you actually want
    +-- needs --> ox_lib         (UI + helper functions)
 ```
 
-Everything at the bottom of the arrows has to start first. Flatten that tree from the leaves upward and you get the exact `ensure` order for `server.cfg`:
+Everything at the bottom of the arrows has to start first. Flatten the tree from the leaves upward and you get the exact `ensure` order for `server.cfg`:
 
 ```cfg
 # server.cfg - load order is top to bottom.
@@ -132,13 +135,13 @@ ensure es_extended    # 3. framework, needs oxmysql + ox_lib (both already up)
 ensure ox_inventory   # 4. the script, needs all three above (all already up)
 ```
 
-If you flip two lines, the console tells you immediately. Put `ensure ox_inventory` above `ensure oxmysql` and on boot you get a red line like `attempt to index a nil value` (the script reached for the database exports before `oxmysql` had registered them). If `ox_inventory` declares `oxmysql` as a manifest dependency, you instead see a line naming the missing one, such as `Could not find dependency oxmysql for resource ox_inventory` followed by `Couldn't start resource ox_inventory`.
+Flip two lines and the console tells you at once. Put `ensure ox_inventory` above `ensure oxmysql` and on boot you get a red line like `attempt to index a nil value`. The script reached for the database exports before `oxmysql` had registered them. An export is a function one resource publishes for other resources to call. If `ox_inventory` declares `oxmysql` as a manifest dependency, you instead see a line that names the missing one, like `Could not find dependency oxmysql for resource ox_inventory` followed by `Couldn't start resource ox_inventory`.
 
 <Checkpoint question="ox_inventory failed on boot with attempt to index a nil value, but the folder name and spelling are correct. What is the most likely cause?">
-  A dependency loads too late, or not at all. `ox_inventory` calls into `oxmysql` and `ox_lib` the instant it starts, so if either of them is `ensure`d **below** `ox_inventory` in `server.cfg` (or missing entirely), those exports do not exist yet and indexing them returns nil. Fix the order: `ensure oxmysql` and `ensure ox_lib` must sit above `ensure ox_inventory`. The same logic applies to the framework. Reorder the lines, then `restart ox_inventory`.
+  A dependency loads too late, or not at all. `ox_inventory` calls into `oxmysql` and `ox_lib` the instant it starts. So if either of them is `ensure`d below `ox_inventory` in `server.cfg`, or is missing entirely, those exports do not exist yet and indexing them returns nil. Fix the order. `ensure oxmysql` and `ensure ox_lib` must sit above `ensure ox_inventory`. The same logic applies to the framework. Reorder the lines, then `restart ox_inventory`.
 </Checkpoint>
 
-The fxmanifest itself can declare this so you do not have to remember it. A script that lists its needs uses the `dependencies` key (note the plural and the table, not a single string):
+The manifest can declare this for you, so you do not have to remember it. A script that lists its needs uses the `dependencies` key. Note the plural and the table, not a single string:
 
 ```lua
 -- fxmanifest.lua inside ox_inventory
@@ -148,14 +151,10 @@ dependencies {
 }
 ```
 
-The `dependencies` key tells the server those resources must load before this one; the docs describe it as "Requires the specified resource to load before the current resource." If a listed dependency is missing or fails to start, the console usually names it (a line like `Could not find dependency oxmysql for resource ox_inventory`) instead of leaving you with a silent nil. It still does not reorder `server.cfg` for you, so the top-to-bottom rule above is what actually controls startup.
-
-<Callout variant="fivem" title="Want the full click-by-click version?">
-  This lesson covers the mechanics and the load-order rule. For a single script installed slowly from download to in game, with every file path and console line shown, follow the [install a script walkthrough](/lessons/install-a-script-walkthrough). For every red console line you might hit and its exact fix, keep the [FiveM error catalog](/lessons/fivem-error-catalog) open in another tab.
-</Callout>
+The `dependencies` key tells the server those resources must load before this one. The docs describe it as "Requires the specified resource to load before the current resource." If a listed dependency is missing or fails to start, the console usually names it, like `Could not find dependency oxmysql for resource ox_inventory`, instead of leaving you with a silent nil. It still does not reorder `server.cfg` for you. The top-to-bottom rule above is what actually controls startup.
 
 <Callout title="Go deeper">
-  For the full install method on any script and how to think it through, see [Install any script: the method](/lessons/install-a-script-walkthrough). When it breaks, [Reading and fixing common errors](/lessons/fivem-error-catalog) decodes the console.
+  This lesson covers the mechanics and the load-order rule. For one script installed slowly from download to in game, with every file path and console line shown, follow the [install a script walkthrough](/lessons/install-a-script-walkthrough). When a script breaks, [the FiveM error catalog](/lessons/fivem-error-catalog) decodes every red console line and gives the exact fix. Keep it open in another tab.
 </Callout>
 
 ## If something went wrong
@@ -163,9 +162,13 @@ The `dependencies` key tells the server those resources must load before this on
 <FailureList
   items={[
     { symptom: "Resource not found / could not find resource", fix: "The folder name and the ensure line do not match. Check spelling and remove any -main or version suffix from the folder name." },
+    { symptom: "The download is a folder inside another folder", fix: "The zip extracted with an extra wrapper folder. Move the inner folder, the one with fxmanifest.lua, directly into resources/." },
     { symptom: "attempt to index a nil value, or a missing export/event", fix: "A dependency is missing or loads too late. Install and ensure oxmysql, ox_lib, and the framework BEFORE this script in server.cfg." },
-    { symptom: "Server crash or console warning on start", fix: "A syntax error in a file you edited (often the config): check commas, quotes, and parentheses. Revert your edit and re-apply it carefully." },
-    { symptom: "Escrow / license key error on a paid script", fix: "Escrowed assets must be tied to your server's Cfx.re key. Link the purchase to this server's key in your account, then restart." },
+    { symptom: "Script starts but its SQL tables are missing", fix: "The script needs a database table you did not import. Find the .sql file in the script folder and import it into MariaDB with HeidiSQL or DBeaver." },
+    { symptom: "Script needs a framework different from yours", fix: "The script was made for ESX but you run QBCore, or the reverse. Check the README. Some scripts support both via config. Others do not." },
+    { symptom: "Server crash or console warning on start", fix: "A syntax error in a file you edited, often the config. Check commas, quotes, and parentheses. Revert your edit and re-apply it carefully." },
+    { symptom: "Escrow / license key error on a paid script", fix: "Escrow is Cfx.re's copy protection: part of a paid script is locked and only runs when tied to your server's Cfx.re key. Link the purchase to this server's key in your account, then restart." },
+    { symptom: "Works for you but not for other players", fix: "Either the load order is wrong, or client files are not downloading. Confirm files {} in fxmanifest lists everything, then ask the player to reconnect." },
     { symptom: "Two scripts fight or one stops working", fix: "A conflict: two resources doing the same job (two inventories, two target systems). Run one, not both." },
   ]}
 />
@@ -180,7 +183,7 @@ For the full list of red console lines with the exact wording and the precise fi
     "Read a script's dependencies and install them first.",
     "Ensure dependencies, framework, then the script in that order in server.cfg.",
     "Use refresh then ensure to add a resource without a full restart.",
-    "Group resources with bracketed [category] folders and fix the four common install failures."
+    "Group resources with bracketed [category] folders and fix the common install failures."
   ]}
 />
 
@@ -195,20 +198,10 @@ For the full list of red console lines with the exact wording and the precise fi
   ]}
 />
 
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Downloaded script is a folder inside another folder | The zip extracted with an extra wrapper folder | Move the inner folder (the one with fxmanifest.lua) directly into `resources/` |
-| Script needs a framework but yours is different | The script was made for ESX but you run QBCore, or vice versa | Check the script's README. Some scripts support multiple frameworks via config. Others don't |
-| Script starts but SQL tables are missing | The script needs a database table you didn't import | Look for a `.sql` file in the script folder. Import it into MariaDB using HeidiSQL |
-| `ensure` line is in server.cfg but script doesn't appear | Wrong order - dependencies must come first | Move the `ensure your_script` line BELOW all its dependencies in server.cfg |
-| Script works for you but not for other players | Resources not in the right order, or client files not downloading | Check `files {}` in fxmanifest lists everything. Ask them to reconnect |
-
 ## Try it yourself
 
 <Exercise>
-  Install one free resource end to end: unzip it, clean the folder name, install its dependencies, add the `ensure` lines in order, import any `.sql`, then `refresh` and `ensure` it. Confirm the started line in the console and that the feature works in game. If it errors, use the failure table above to name which of the four problems you hit.
+  Install one free resource end to end: unzip it, clean the folder name, install its dependencies, add the `ensure` lines in order, import any `.sql`, then `refresh` and `ensure` it. Confirm the started line in the console and that the feature works in game. If it errors, use the failure list above to name which problem you hit.
 </Exercise>
 
 <Refs

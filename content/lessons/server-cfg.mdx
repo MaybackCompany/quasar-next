@@ -2,13 +2,13 @@
  crumbs="Step 04"
  title="server.cfg, resources, and dependencies"
  meta={[
- { label: "You'll do", value: "Open server.cfg, read ensure order, map the resources folder, and prove dependency order with two tiny throwaway resources." },
+ { label: "You'll do", value: "Open server.cfg, read the ensure order, map the resources folder, and prove dependency order with two tiny throwaway resources." },
  { label: "Time", value: "~20 minutes." },
  { label: "You need", value: "Step 03 done: a running server you can reach in txAdmin, and your server folder open in a text editor." },
  { label: "Result", value: "You can explain why a script like a phone, inventory, or job must load after the resources it depends on, and you can prove it in the console." },
  ]}
 >
- `server.cfg` is the startup script for your city. It names the server, sets the port, holds your secrets, and decides the **order** every resource loads. FXServer reads it top to bottom, so a script that needs `ox_lib` or `oxmysql` only works if those are `ensure`d **above** it. In this lesson you read a real config, then build two tiny resources that *prove* order matters without touching a single production script.
+ `server.cfg` is the startup script for your city. It names the server, sets the port, holds your secrets, and decides the **order** every resource loads. FXServer reads it top to bottom. So a script that needs `ox_lib` or `oxmysql` only works if those load **above** it. In this lesson you read a real config. Then you build two tiny resources that prove order matters, without touching a single production script.
 </LessonHero>
 
 <Prereq
@@ -21,11 +21,11 @@
 />
 
 <Callout variant="fivem" title="Order is a rule, not a suggestion">
- FXServer starts resources in the exact order their `ensure` lines appear in `server.cfg`. A dependency must come first; the script that needs it comes second. You will not memorize this. You will watch one console line flip from `provider found: pong` to `provider MISSING` and never forget it.
+ An **ensure** line tells FXServer to start a resource. FXServer starts resources in the exact order their `ensure` lines appear in `server.cfg`. A dependency must come first. The script that needs it comes second. You will not memorize this. You will watch one console line flip from `provider found: pong` to `provider MISSING` and never forget it.
 </Callout>
 
 <Callout variant="fivem" title="Want the full file, line by line?">
- This lesson is the conceptual one: it teaches the rule and proves it. When you want a complete, production-shaped `server.cfg` you can defend every line of, read the companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated). It walks the whole file top to bottom, including `set` vs `sets` vs `setr`, OneSync, ACE permissions, and the game-build line. Stay here first to learn why order matters, then go there for the worked file.
+ This lesson is the conceptual one. It teaches the rule and proves it. When you want a complete, production-shaped `server.cfg` you can defend every line of, read the companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated). It walks the whole file top to bottom, including `set` vs `sets` vs `setr`, OneSync, ACE permissions, and the game-build line. Stay here first to learn why order matters, then go there for the worked file.
 </Callout>
 
 ## Build it
@@ -62,10 +62,10 @@
  </Step>
 
  <Step num={2} title="Know what the important lines do" outcome="No line in the config is a mystery to you.">
- Three of those lines hold the keys to the whole server:
+ Three of those lines hold the keys to the whole server.
 
- - `sv_licenseKey` is your **Cfx.re Portal** key. Get it free at `portal.cfx.re` (this is the current portal; older guides call it Keymaster). It is required even for a local test server.
- - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn you about any query slower than 150 ms.
+ - `sv_licenseKey` is your Cfx.re key. Get it free at `portal.cfx.re`. That is the current home for license keys. The old `keymaster.fivem.net` address still works; it now redirects to `portal.cfx.re`. The value is the `cfxk_` string the portal gives you, pasted verbatim. There is no `licensekey:` prefix. The line is `sv_licenseKey "cfxk_..."`. The key is required even for a local test server.
+ - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn you about any query slower than 150 ms. Both of these are **convars** (configuration variables you set in `server.cfg`).
  - `sv_enforceGameBuild` pins which GTA content build players load. The FXServer artifacts page lists **server software** builds, not GTA content builds. Keep the official recipe's value unless your assets require another build, then use the supported list in the Cfx.re server-command reference.
 
  <Callout variant="fivem" title="Two of these lines are secrets">
@@ -74,7 +74,7 @@
  </Step>
 
  <Step num={3} title="Read the ensure block as a dependency map" outcome="You can say why each line sits where it does.">
- Order is not random. Read it as layers, each one depending on the layer above:
+ Order is not random. Read it as layers. Each one depends on the layer above:
 
  ```text
  # 1. Database bridge first, anything that saves data needs it
@@ -94,9 +94,9 @@
  ensure qs-smartphone-pro
  ```
 
- A script that calls `lib.` functions needs `ox_lib` above it, because `lib` does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
+ A script that calls `lib.` functions needs `ox_lib` above it. The `lib` table does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
 
- First, one word you need: an **export** is a function one resource publishes so other resources can call it (the FiveM way resources talk to each other). A resource can only answer an export call after it has started.
+ First, one word you need. An **export** is a function one resource publishes so other resources can call it. It is the FiveM way resources talk to each other. A resource can only answer an export call after it has started.
 
  Here is the same idea reduced to its smallest form, so you can see exactly what flips. `es_extended` calls `oxmysql` exports the moment it starts. Put the database layer first and those exports already exist. Put the framework first and it reaches for exports that have not been registered yet:
 
@@ -112,7 +112,7 @@
 
  The fix is never "restart it again" or "ensure it twice." The fix is to move the dependency line **above** the line that needs it, save, and reload. Order is the whole mechanism.
 
- Here is an **example** chain for a script whose own README and manifest name all three dependencies. Do not assume every framework needs every ox resource; install only what the official recipe and the resource manifest require.
+ Here is an **example** chain for a script whose own README and manifest name all three dependencies. Do not assume every framework needs every ox resource. Install only what the official recipe and the resource manifest require.
 
  ```cfg
  ensure oxmysql # database bridge, registers MySQL exports first
@@ -122,12 +122,12 @@
  ```
 
  <Callout variant="fivem" title="Organize it into sections">
- A real `server.cfg` grows fast, so group it with comment headers instead of one long wall of lines: an endpoints section, an identity section, a secrets section, then the `ensure` block as its own marked region. Comments start with `#` and FXServer ignores them. The order of your `ensure` lines is the only thing that controls load order, but a tidy file is what lets you find the one line that is in the wrong place. The companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated) shows the full sectioned layout.
+ A real `server.cfg` grows fast. Group it with comment headers instead of one long wall of lines: an endpoints section, an identity section, a secrets section, then the `ensure` block as its own marked region. Comments start with `#` and FXServer ignores them. The order of your `ensure` lines is the only thing that controls load order, but a tidy file is what lets you find the one line that is in the wrong place. The companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated) shows the full sectioned layout.
  </Callout>
  </Step>
 
  <Step num={4} title="Build two throwaway resources to test order safely" outcome="You have a provider and a consumer that report whether the order worked.">
- Never test order by restarting `ox_lib`, a framework, or a paid script on a live server, you can kick players and break everything downstream. Instead build two tiny local resources: no players, no data, no risk.
+ Never test order by restarting `ox_lib`, a framework, or a paid script on a live server. You can kick players and break everything downstream. Instead build two tiny local resources. No players, no data, no risk.
 
  Create this layout inside your `resources` folder. The `[local]` bracket folder keeps your own test scripts grouped:
 
@@ -139,6 +139,8 @@
  fxmanifest.lua
  server.lua
  ```
+
+ Every resource has an **fxmanifest.lua**. It is the small file that tells FXServer what the resource is and which scripts to run. The first line names the manifest format. `cerulean` is the current format name.
 
  `qu_dep_provider/fxmanifest.lua`:
 
@@ -184,7 +186,7 @@
  end)
  ```
 
- Notice neither manifest has a `lua54` line. Lua 5.4 is the only runtime in 2026 (Lua 5.3 was removed in June 2025), so the `lua54` setting is deprecated and you do not need to enable it. Leave it out.
+ Notice neither manifest has a `lua54` line. Lua 5.4 is the default runtime in 2026, so you do not need to add a `lua54` line to opt in. Leave it out.
  </Step>
 
  <Step num={5} title="Run the order test, then break it on purpose" outcome="You watch one console line flip when the order is wrong.">
@@ -211,7 +213,7 @@
  [qu_dep_consumer] provider found: pong
  </ExpectedOutput>
 
- Note: a resource's exports only become callable after FXServer's first scheduler tick, which is why the consumer waits inside CreateThread before calling the provider.
+ Note: a resource's exports only become callable after FXServer's first scheduler tick. That is why the consumer waits inside CreateThread before calling the provider.
 
  Now break it. Swap the two lines so the consumer is ensured **first**, save, then stop both and start them in the wrong order. Merely restarting the consumer while the provider is still running would not test startup order.
 
@@ -227,7 +229,7 @@
  start qu_dep_provider
  ```
 
- The consumer ran before the provider's export existed, so it reports the failure, the exact problem a real dependency hits when it loads too early (illustrative; line order and any console prefix may vary):
+ The consumer ran before the provider's export existed, so it reports the failure. This is the exact problem a real dependency hits when it loads too early (illustrative; line order and any console prefix may vary):
 
  <ExpectedOutput>
  [qu_dep_consumer] provider MISSING (wrong ensure order)
@@ -253,12 +255,12 @@
  }
  ```
 
- That `@ox_lib/init.lua` line is not a hint, it is the mechanism. The `@resource/file.lua` syntax tells FXServer to run another resource's file inside this one before its own scripts. So `shared_script '@ox_lib/init.lua'` runs ox_lib's init file here, and that init is what defines the global `lib` table this script then calls. If `ox_lib` has not started yet, the `@ox_lib/init.lua` include has nothing to pull in, `lib` is nil, and the script errors the instant it touches `lib.`. That is the real reason `ox_lib` must be `ensure`d above any script that uses it.
+ That `@ox_lib/init.lua` line is not a hint. It is the mechanism. The `@resource/file.lua` syntax tells FXServer to run another resource's file inside this one before its own scripts. So `shared_script '@ox_lib/init.lua'` runs ox_lib's init file here, and that init is what defines the global `lib` table this script then calls. If `ox_lib` has not started yet, the `@ox_lib/init.lua` include has nothing to pull in, `lib` is nil, and the script errors the instant it touches `lib.`. That is the real reason `ox_lib` must be `ensure`d above any script that uses it.
 
  The `dependencies` block says the same thing in plain words: this script needs `ox_lib`, `oxmysql`, and the framework `ensure`d above it. Confirm each one already sits higher in `server.cfg`, then add the script below them. No live restart required.
 
  <Callout variant="fivem" title="The resources folder, at a glance">
- Bracket folders like `[local]`, `[jobs]`, or `[cars]` are organizers, FiveM still sees the resources inside them, and `ensure [cars]` starts every resource in that bracket. Your tree usually looks like `resources/[standalone]/ox_lib`, `resources/[qb]/qb-core`, `resources/[local]/qu_dep_provider`, and so on.
+ Bracket folders like `[local]`, `[jobs]`, or `[cars]` are organizers. FiveM still sees the resources inside them, and `ensure [cars]` starts every resource in that bracket. Your tree usually looks like `resources/[standalone]/ox_lib`, `resources/[qb]/qb-core`, `resources/[local]/qu_dep_provider`, and so on.
  </Callout>
  </Step>
 </StepGroup>
@@ -271,10 +273,13 @@
 
 <FailureList
  items={[
- { symptom: "Couldn't find resource qu_dep_provider", fix: "The folder name and the ensure name must match exactly. Check for a typo or a wrapping zip folder, the resource folder must hold fxmanifest.lua directly." },
- { symptom: "provider MISSING when you expected found", fix: "The consumer was ensured above the provider. Put ensure qu_dep_provider first, save, then restart the provider before the consumer." },
+ { symptom: "Couldn't find resource qu_dep_provider", fix: "The folder name and the ensure name must match exactly. Names are case-sensitive: my_resource is not My_Resource. Check for a typo or a wrapping zip folder. The resource folder must hold fxmanifest.lua directly." },
+ { symptom: "provider MISSING when you expected found", fix: "The consumer was ensured above the provider. Put ensure qu_dep_provider first, save, then restart the provider before the consumer. The fix is order, never ensuring it twice." },
  { symptom: "No such export Ping", fix: "The provider failed to start or has a typo in exports('Ping', ...). Restart qu_dep_provider and read the line above the error in the Live Console." },
  { symptom: "Access denied for user / Unknown database 'fivem'", fix: "Your mysql_connection_string is wrong or the database does not exist yet. Fix the connection string and create the database before ensuring oxmysql-dependent scripts." },
+ { symptom: "Server starts but no resources load", fix: "server.cfg has a typo or a missing line. Check that every ensure line matches an actual resource folder name." },
+ { symptom: "Two resources both need each other (circular dependency)", fix: "One must start first, or they need restructuring. Move the shared code into a third resource that both depend on, and ensure that third resource above both." },
+ { symptom: "sv_licenseKey not recognized", fix: "Wrong format or missing quotes. The line must be sv_licenseKey \"cfxk_...\" with quotes and no licensekey: prefix. Paste the cfxk_ value from portal.cfx.re verbatim." },
  { symptom: "The command is not recognized", fix: "Type server commands like restart in the txAdmin Live Console, not in the in-game F8 client console." },
  ]}
 />
@@ -289,16 +294,6 @@
  "Open any script's fxmanifest.lua, read its dependencies and shared_script lines, and place it correctly in server.cfg by inspection alone."
  ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Resource loads but says "dependency missing" | The dependency is below it in server.cfg, or not installed | Move `ensure your_script` BELOW `ensure the_dependency` in server.cfg |
-| "Could not find resource X" | The resource folder name doesn't match | Folder names are case-sensitive. `my_resource` ≠ `My_Resource`. Match exactly |
-| Server starts but no resources load | server.cfg has a typo or missing line | Check every `ensure` line matches an actual resource folder name |
-| `sv_licenseKey` not recognized | Wrong format or missing quotes | Must be: `sv_licenseKey "licensekey:cfxk_..."` with quotes |
-| Two resources both need each other (circular dependency) | One must start first, or they need restructuring | Move shared code to a third resource that both depend on |
 
 ## Try it yourself
 

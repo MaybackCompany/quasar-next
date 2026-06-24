@@ -8,7 +8,7 @@
  { label: "You'll learn", value: "Artifacts vs data -> why [bracket] folders auto-start everything inside -> how folder order becomes load order -> a tidy resources layout you can grow into." },
  ]}
 >
- Most broken servers are not broken by bad code. They are broken by mess: a resource that loads before the library it needs, a script dropped in the wrong folder, a `server.cfg` nobody can read. In this lesson you build the layout that prevents all three. By the end you will know where every file belongs and why, and you will start an entire category of resources with a single line.
+ Most broken servers are not broken by bad code. They are broken by mess. A resource loads before the library it needs. A script lands in the wrong folder. A `server.cfg` nobody can read. This lesson builds the layout that stops all three. By the end you know where every file goes and why. You will also start a whole category of resources with one line.
 </LessonHero>
 
 <Prereq
@@ -20,12 +20,12 @@
 />
 
 <Callout variant="fivem" title="Build the layout, then understand it">
- This lesson builds a real `resources/` layout with bracketed category folders and wires it up in `server.cfg`. Follow the folder names, the bracket names, and the `ensure` lines exactly. Once the server boots clean, the next section takes the structure apart so you know why each piece sits where it does.
+ First you build a real `resources/` layout with bracketed category folders and wire it up in `server.cfg`. Follow the folder names, the bracket names, and the `ensure` lines exactly. Once the server boots clean, the next section takes the structure apart so you know why each piece sits where it does.
 </Callout>
 
 ## The two folders that are not the same
 
-Before you touch anything, lock in the single most important split in a FiveM server. There are two top-level folders and they do completely different jobs.
+There is one split you lock in before anything else. A FiveM server has two top-level folders. They do completely different jobs.
 
 ```text
 C:\FXServer\
@@ -33,9 +33,9 @@ C:\FXServer\
 └── server-data/ # YOUR content: resources/ + server.cfg. This is what you back up.
 ```
 
-The `server/` folder holds the **artifacts**: the FiveM server binaries you downloaded from the artifacts page. Think of it as the engine. You replace its contents every time you update the server, and you never edit anything inside it by hand.
+The `server/` folder holds the **artifacts**: the FiveM server program files you downloaded from the artifacts page. Think of it as the engine. You replace its contents every time you update the server. You never edit anything inside it by hand.
 
-The `server-data/` folder holds **your** content: the `resources/` folder full of scripts, and the `server.cfg` that decides what runs. This is the folder you version-control and back up. They are kept separate on purpose, so updating the engine never risks your scripts.
+The `server-data/` folder holds **your** content. That is the `resources/` folder full of scripts, plus the `server.cfg` that decides what runs. This is the folder you back up. **The two folders are kept separate on purpose, so updating the engine never touches your scripts.**
 
 For the full launch and boot instructions, see [A complete server.cfg, annotated](/lessons/server-cfg-annotated).
 
@@ -43,7 +43,7 @@ For the full launch and boot instructions, see [A complete server.cfg, annotated
 
 <StepGroup>
  <Step num={1} title="Open server-data and find resources" outcome="You are standing in the folder that holds your content.">
- Open your `server-data/` folder in VS Code. You should see exactly two things at the root: the `resources/` folder and your `server.cfg` file.
+ Open your `server-data/` folder in VS Code. At the root you should see exactly two things: the `resources/` folder and your `server.cfg` file.
 
  ```text
 server-data/
@@ -51,7 +51,7 @@ server-data/
 └── server.cfg
  ```
 
- The `server.cfg` lives at the root of `server-data/`, right next to `resources/`, not inside it. Everything you build next happens inside `resources/`.
+ The `server.cfg` lives at the root of `server-data/`, right next to `resources/`. It does not go inside `resources/`. Everything you build next happens inside `resources/`.
  </Step>
 
  <Step num={2} title="Create the four category folders" outcome="resources/ now has four bracketed groups.">
@@ -65,11 +65,11 @@ resources/
 └── [maps]/ # MLOs, map streams, YMAPs
  ```
 
- A folder whose name is wrapped in `[brackets]` follows a community convention: FiveM sees the brackets and treats the folder as a **category group** instead of a resource. The brackets are part of the real folder name on disk — the folder is literally called `[framework]`, square brackets and all. You can still put resources directly in `resources/` without brackets; the brackets are for organizing, not a requirement.
+ A folder whose name is wrapped in `[brackets]` is a community convention. FiveM sees the brackets and treats the folder as a **category group** instead of a resource. The brackets are part of the real folder name on disk. The folder is literally called `[framework]`, square brackets and all. (An **MLO** is a custom interior, like a building you can walk inside.) You can still put resources straight into `resources/` with no brackets. The brackets are for organizing, not a rule.
  </Step>
 
  <Step num={3} title="Drop resources into the right group" outcome="Each resource sits in the category that matches its job.">
- Now place a few real resources so the layout has shape. Note the load-sensitive trio inside `[framework]`: the database layer, the shared library, then the framework itself.
+ Now place a few real resources so the layout has shape. Notice the load-sensitive trio inside `[framework]`: the database layer, the shared library, then the framework itself.
 
  ```text
 resources/
@@ -86,11 +86,11 @@ resources/
  └── my_custom_mlo/
  ```
 
- `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are **Overextended** community resources, not part of QBCore or ESX. They are standalone building blocks you add yourself. Putting the database and library inside `[framework]` keeps everything the framework depends on in one place.
+ `oxmysql`, `ox_lib`, `ox_target`, and `ox_inventory` are **Overextended** community resources. They are not part of QBCore or ESX. They are standalone building blocks you add yourself. Putting the database layer and the library inside `[framework]` keeps everything the framework depends on in one place.
  </Step>
 
  <Step num={4} title="Wire it up in server.cfg" outcome="The cfg starts whole groups, in dependency order.">
- Open `server.cfg` and add your resource section. Order is everything here, so read the comments as you type:
+ Open `server.cfg` and add your resource section. Order is everything here. Read the comments as you type.
 
  ```cfg
 ## --- Built-in resources first ---
@@ -113,18 +113,18 @@ ensure qu_first_line_of_lua
 ensure my_custom_mlo
  ```
 
- `ensure` starts a resource if it is stopped and restarts it if it is already running. It is the safe, idempotent directive. Prefer it over `start`, which only acts on a stopped resource and does nothing if it is already running, so it never picks up your latest changes; `ensure` restarts it.
+ `ensure` is the directive that starts a resource. It starts the resource if it is stopped, and restarts it if it is already running. **Prefer `ensure` over `start`.** `start` only acts on a stopped resource. If the resource is already running, `start` does nothing, so it never picks up your latest changes. `ensure` restarts it.
  </Step>
 
  <Step num={5} title="Start one whole group with one line" outcome="A single ensure boots an entire bracket folder.">
- Here is the payoff of bracket folders. You do not have to list every resource by hand. Pointing `ensure` at a bracket folder starts everything inside it:
+ Here is the payoff of bracket folders. You do not list every resource by hand. Point `ensure` at a bracket folder and it starts everything inside it:
 
  ```cfg
 ## Start every resource inside the [scripts] folder, in one line:
 ensure [scripts]
  ```
 
- Save `server.cfg`, then from the txAdmin Live Console run:
+ Save `server.cfg`. Then from the txAdmin Live Console (the in-dashboard server console) run these two lines:
 
  ```text
  refresh
@@ -135,7 +135,7 @@ ensure [scripts]
  Started resource qu_first_line_of_lua
  </ExpectedOutput>
 
- `refresh` rescans the `resources/` folder so the server notices any folders you added. Then `ensure [scripts]` starts every resource inside that bracket. Add a new script to `[scripts]` later, run those same two lines, and it starts too, with no new `ensure` line to write.
+ `refresh` rescans the `resources/` folder so the server notices any folders you just added. Then `ensure [scripts]` starts every resource inside that bracket. Add a new script to `[scripts]` later, run those same two lines, and it starts too. No new `ensure` line to write.
  </Step>
 </StepGroup>
 
@@ -163,31 +163,31 @@ Here is the same `server-data` layout as it looks in your editor, so you can mat
 
 ## How it works
 
-The server booted clean and one line started a whole group. Now take the layout apart so the next time you add a resource you know exactly where it goes and why the order matters.
+The server booted clean and one line started a whole group. Now take the layout apart. Next time you add a resource, you will know exactly where it goes and why the order matters.
 
 ### Artifacts vs data: why the split exists
 
-The reason `server/` and `server-data/` are separate folders comes down to one word: **updates**. The artifacts in `server/` change constantly. The FiveM team ships new server builds often, and updating is supposed to be as simple as deleting the contents of `server/` and dropping in the new build. If your scripts and your config lived in that same folder, every update would put your work at risk of being wiped.
+The reason `server/` and `server-data/` are separate folders comes down to one word: **updates**. The artifacts in `server/` change often. The FiveM team ships new server builds regularly. Updating is meant to be simple: delete the contents of `server/` and drop in the new build. If your scripts and your config lived in that same folder, every update would risk wiping your work.
 
-By keeping your content in `server-data/`, the two lifecycles never touch. You update the engine without fear, because your data is somewhere else entirely. You back up your data without bloat, because the binaries are somewhere else entirely. This is also why `server-data/` is the folder you put under version control with Git: it is the part that is actually yours.
+Keeping your content in `server-data/` keeps the two apart. You update the engine without fear, because your data is somewhere else. You back up your data without bloat, because the program files are somewhere else. **This is also why `server-data/` is the folder you put under version control with Git: it is the part that is actually yours.**
 
 ### What a [bracket] folder really is
 
-A folder named `[scripts]` is not a resource. FiveM never tries to start it as a script, because it has no `fxmanifest.lua` of its own. Instead, when the server scans `resources/`, it sees the brackets and treats that folder as a **container**: a labelled box whose only job is to hold other resources.
+A folder named `[scripts]` is not a resource. FiveM never tries to start it as a script, because it has no `fxmanifest.lua` of its own. A `fxmanifest.lua` is the small file inside every real resource that tells the server how to load it. When the server scans `resources/`, it sees the brackets and treats that folder as a **container**: a labelled box whose only job is to hold other resources.
 
-That single fact is what makes `ensure [scripts]` work. You are not starting a resource called `[scripts]`. You are telling the server, start every resource you can find inside this box. The server walks into the folder, finds each real resource by its `fxmanifest.lua`, and starts them all. One line, the whole group.
+That one fact is what makes `ensure [scripts]` work. You are not starting a resource called `[scripts]`. You are telling the server: start every resource you can find inside this box. The server walks into the folder, finds each real resource by its `fxmanifest.lua`, and starts them all. One line, the whole group.
 
-The names are a community convention, not a fixed list. `[framework]`, `[standalone]`, `[scripts]`, and `[maps]` are the common ones, but the server does not care what the brackets say. You could make `[jobs]` or `[economy]` tomorrow. What matters is only that the name is wrapped in brackets, which flips the folder from "resource" to "category group".
+The names are a community convention, not a fixed list. `[framework]`, `[standalone]`, `[scripts]`, and `[maps]` are the common ones, but the server does not care what the brackets say. You could make `[jobs]` or `[economy]` tomorrow. **What matters is only that the name is wrapped in brackets, which flips the folder from "resource" to "category group".**
 
 <Checkpoint question="You drop a brand-new script folder inside [scripts] while the server is running and then type ensure [scripts], but it does not start. Why?">
- Because the server has not noticed the new folder yet. The resource list is built when the server scans `resources/`, and a folder added while the server is live is not in that scan. Run `refresh` first: it rescans `resources/` and loads the new manifest. Then `ensure [scripts]` will find the new resource and start it. The fix is always the same pair when adding resources live: `refresh`, then `ensure`.
+ The server has not noticed the new folder yet. The resource list is built when the server scans `resources/`. A folder added while the server is live is not in that scan. Run `refresh` first: it rescans `resources/` and loads the new manifest. Then `ensure [scripts]` finds the new resource and starts it. The fix is always the same pair when adding resources live: `refresh`, then `ensure`.
 </Checkpoint>
 
 ### Why folder order becomes load order
 
-This is the part that bites everyone once. Resources do not load in alphabetical order, and they do not load all at the same instant. They load in the **order their ensure lines appear in server.cfg**, top to bottom. Whichever line is higher in the file loads first.
+This is the part that bites everyone once. Resources do not load in alphabetical order. They do not load all at the same instant. They load in the **order their ensure lines appear in server.cfg**, top to bottom. Whichever line is higher in the file loads first.
 
-That ordering is not cosmetic. Many resources depend on others being ready first. A framework like `es_extended` calls into the database layer the moment it starts, so `oxmysql` has to already be running. The same framework reads from the shared library `ox_lib`, so that has to be running too. Get the order right and everything finds what it needs:
+That order is not cosmetic. Many resources depend on others being ready first. A framework like `es_extended` calls into the database layer the moment it starts, so `oxmysql` has to be running already. The same framework reads from the shared library `ox_lib`, so that has to be running too. (A resource's **exports** are the functions it offers to other resources. A resource that loads too early calls exports that do not exist yet.) Get the order right and everything finds what it needs:
 
 ```cfg
 # CORRECT: dependency first, dependent second
@@ -195,7 +195,7 @@ ensure oxmysql # registers the database exports
 ensure es_extended # calls those exports on start -> they exist -> OK
 ```
 
-Get it backwards and the dependent resource reaches for exports that do not exist yet, and it typically errors out during boot (it can also fail silently if it touches the export later instead of at start):
+Get it backwards and the dependent resource reaches for exports that do not exist yet. It usually errors out during boot. (It can also fail silently if it touches the export later instead of at start.)
 
 ```cfg
 # WRONG: dependent before dependency -> startup error
@@ -203,7 +203,7 @@ ensure es_extended # tries to use oxmysql exports that are not registered yet ->
 ensure oxmysql
 ```
 
-The reliable rule is **dependency before dependent**, using each resource's README and `fxmanifest.lua` as the source of truth. Database-backed frameworks commonly need `oxmysql`; a script that imports `@ox_lib/init.lua` needs `ox_lib`. Do not assume every framework needs every ox resource because an example config includes them.
+The reliable rule is **dependency before dependent**. Use each resource's README and `fxmanifest.lua` as the source of truth. Database-backed frameworks commonly need `oxmysql`. A script that imports `@ox_lib/init.lua` needs `ox_lib`. Do not assume every framework needs every ox resource just because an example config lists them.
 
 <Checkpoint question="If everything in [framework] needs to load before everything in [scripts], can you ensure both bracket folders and trust the order?">
  Mostly, but with a sharp edge. Ordering between groups is reliable: `ensure [framework]` above `ensure [scripts]` does load the whole framework group before the scripts group. What brackets do NOT give you is fine-grained order inside a group. `ensure [framework]` starts oxmysql, ox_lib, and es_extended, but does not promise es_extended loads last. When the order within a group matters, list those few resources by name in the exact sequence you need, instead of relying on the bracket. Brackets group; they do not sort.
@@ -211,11 +211,11 @@ The reliable rule is **dependency before dependent**, using each resource's READ
 
 ### When you reach for this layout
 
-This structure is not academic tidiness. It saves you real time the moment a server has more than a handful of resources:
+This structure is not tidiness for its own sake. It saves real time the moment a server has more than a handful of resources.
 
-- **Adding a script.** You downloaded a new job script. It drops into `[scripts]`, you `refresh` and `ensure [scripts]`, and you are done. No hunting for where it belongs and no new `ensure` line.
+- **Adding a script.** You downloaded a new job script. It drops into `[scripts]`, you `refresh` and `ensure [scripts]`, and you are done. No hunting for where it belongs. No new `ensure` line.
 - **Updating a dependency.** A new `ox_lib` release comes out. You know exactly where the old one lives, inside `[framework]`, because every shared dependency lives there. Swap the folder, restart, done.
-- **Handing the server to someone else.** A teammate opens `server-data/` and instantly reads the shape of the server from the folder names alone. The structure is the documentation.
+- **Handing the server to someone else.** A teammate opens `server-data/` and reads the shape of the server from the folder names alone. The structure is the documentation.
 
 ## Common mistakes
 
@@ -224,8 +224,10 @@ This structure is not academic tidiness. It saves you real time the moment a ser
  { symptom: "es_extended errors on boot: attempt to call a nil value (oxmysql export)", fix: "Load order is wrong. The framework loaded before its database layer. Move ensure oxmysql (and ensure ox_lib) ABOVE ensure es_extended in server.cfg. Dependency first, dependent second." },
  { symptom: "ensure [scripts] does nothing after you add a new folder while the server is live", fix: "The server has not rescanned the resources folder. Run refresh first, then ensure [scripts]. A folder added during a live session is not in the resource list until a refresh." },
  { symptom: "Couldn't find resource [scripts]", fix: "The brackets are wrong or missing on disk. The folder must literally be named [scripts] with square brackets. A folder named scripts with no brackets is treated as a normal resource, not a category group." },
- { symptom: "A resource you put inside a bracket folder never starts", fix: "It is missing its fxmanifest.lua, or it is nested one level too deep. A bracket folder holds resource folders directly; each resource needs its own fxmanifest.lua for the server to recognize and start it." },
+ { symptom: "A resource you put inside a bracket folder never starts", fix: "It is missing its fxmanifest.lua, or it is nested one level too deep. A bracket folder holds resource folders directly, and each resource needs its own fxmanifest.lua for the server to recognize and start it." },
  { symptom: "Your edits to a script keep getting wiped on update", fix: "You are editing inside the server/ artifacts folder. Scripts belong in server-data/resources/, never in server/. The artifacts folder gets replaced on every update." },
+ { symptom: "Two resources share the same name in different folders", fix: "Resource names must be unique across resources/. When two folders use the same name, which one loads is not guaranteed, so the result is unpredictable. Rename one or delete the extra copy." },
+ { symptom: "Deleted a resource but it still shows in the console", fix: "The server is still holding the old folder list. Run refresh, or restart the server (not just the resource), so the scan no longer finds the deleted folder." },
  ]}
 />
 
@@ -241,15 +243,6 @@ This structure is not academic tidiness. It saves you real time the moment a ser
  ]}
 />
 
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Resources in the wrong folder — "Could not find resource" | The folder is outside `resources/` or misspelled | Every resource folder must be directly inside `resources/` or `resources/[category]/`. Check spelling exactly |
-| `[category]` folders don't affect load order | Folder names like `[gameplay]` or `[esx]` are only for organization | Load order is controlled by `ensure` lines in server.cfg, not by folder names |
-| Two resources with the same name in different folders | FiveM only loads the first one it finds | Never have duplicate resource names. Rename one or delete the extra copy |
-| Deleted a resource but it still shows in console | txAdmin cached the folder list | Restart txAdmin or the full server (not the resource) |
-
 ## Try it yourself
 
 <Exercise>
@@ -264,7 +257,7 @@ resources/
  └── fxmanifest.lua
  ```
 
- Give each `fxmanifest.lua` the two required lines so the server recognizes it as a real resource:
+ Give each `fxmanifest.lua` the two required lines so the server recognizes it as a real resource. (`cerulean` is the current manifest-format version; it tells the server which manifest rules to read.)
 
  ```lua
 fx_version 'cerulean'

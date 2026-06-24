@@ -1,0 +1,213 @@
+<LessonHero
+  crumbs="ESX"
+  title="ESX jobs: add and edit jobs"
+  meta={[
+    { label: "You'll do", value: "Learn where ESX keeps jobs (the SQL database, not a Lua file), read the jobs and job_grades tables, write INSERT statements to add a new job with its grades, restart, then assign the job with /setjob and xPlayer.setJob in code." },
+    { label: "Time", value: "~20 minutes." },
+    { label: "You need", value: "A running ESX Legacy server with es_extended, and a database client (HeidiSQL or DBeaver) connected to your fivem database." },
+    { label: "Result", value: "A new job that appears in game, with grades you can assign to any player." },
+  ]}
+>
+  A **job** in ESX is a role a player can hold, like police or mechanic. Each job has **grades**, which are the ranks inside that job, like Cadet then Officer then Chief. The big difference from QBCore: ESX does **not** store jobs in a `jobs.lua` file. ESX stores them in your **SQL database**, the place your server saves all its data. You add a job by inserting rows into two tables, then restarting. This lesson shows you those tables and the exact statements to run.
+</LessonHero>
+
+<Prereq
+  items={[
+    "An ESX Legacy server (es_extended) is installed and starts cleanly.",
+    "A database client (HeidiSQL or DBeaver) connects to your fivem database.",
+    "I can run a SQL query and read the result in that client.",
+    "I have admin rights in game so I can run /setjob.",
+  ]}
+/>
+
+<Callout variant="fivem" title="ESX jobs live in the database, not a file">
+  If you came from QBCore, forget `jobs.lua`. There is no jobs file to edit in ESX. Jobs are **rows** in two SQL tables: `jobs` and `job_grades`. You add or change a job by inserting or updating rows, then restarting `es_extended` so the server reloads the tables. This is the single most important thing to understand about ESX jobs.
+</Callout>
+
+## The two tables
+
+ESX keeps every job in two tables in your `fivem` database. A **table** is a grid of rows and columns, like a spreadsheet sheet.
+
+The `jobs` table holds one row per job. It is the short list of what jobs exist.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `name` | string | The internal job id. Lowercase, no spaces, for example `police`. Code uses this. |
+| `label` | string | The display name shown to players, for example `Police`. |
+| `whitelisted` | number | `1` if only whitelisted players may take the job, `0` for open. Defaults to `0`, so you can leave it out of a basic insert. |
+| `type` | string | A category tag (for example `civ`). Defaults to `'civ'`, so you can leave it out of a basic insert. |
+
+(`SELECT * FROM jobs` shows all four columns. For a simple job you only need to set `name` and `label`; ESX fills `whitelisted` and `type` with their defaults.)
+
+The `job_grades` table holds one row per **grade** (rank) inside a job. A job with three ranks has three rows here.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | number | Auto-numbered primary key. ESX fills it in for you, so leave it out of your inserts. |
+| `job_name` | string | Which job this grade belongs to. Must match a `name` in the `jobs` table exactly. |
+| `grade` | number | The rank level. Starts at `0` and goes up with no gaps: `0`, `1`, `2`. |
+| `name` | string | The internal grade id, for example `recruit`. Lowercase, no spaces. |
+| `label` | string | The display name of the rank, for example `Recruit`. |
+| `salary` | number | The paycheck amount paid for this grade. |
+| `skin_male` | text | Uniform outfit for male peds, stored as JSON. This column is NOT NULL, so always provide a value; use `{}` if you do not set one. |
+| `skin_female` | text | Uniform outfit for female peds, stored as JSON. This column is NOT NULL, so always provide a value; use `{}` if you do not set one. |
+
+**A job needs at least one row in `jobs` and one row in `job_grades`. A job with no grades is broken.**
+
+## See the jobs you already have
+
+Before adding anything, look at what is there. Open your database client, select your `fivem` database, and run these.
+
+```sql
+SELECT * FROM jobs;
+SELECT * FROM job_grades ORDER BY job_name, grade;
+```
+
+The first query lists every job. The second lists every grade, sorted so each job's ranks appear together. Most fresh ESX installs ship with `unemployed`, `police`, and a few others. Read these rows so you copy the same shape when you add your own.
+
+## Add a new job
+
+You add a job in two steps: one row in `jobs`, then one row per grade in `job_grades`. Here is a full example: a fishing job with three grades.
+
+First, add the job itself.
+
+```sql
+INSERT INTO jobs (name, label) VALUES
+  ('fisher', 'Fisherman');
+```
+
+Then add its grades. **Grades must start at `0` and rise with no gaps.**
+
+```sql
+INSERT INTO job_grades (job_name, grade, name, label, salary, skin_male, skin_female) VALUES
+  ('fisher', 0, 'deckhand', 'Deckhand', 50,  '{}', '{}'),
+  ('fisher', 1, 'fisher',   'Fisher',   75,  '{}', '{}'),
+  ('fisher', 2, 'captain',  'Captain',  125, '{}', '{}');
+```
+
+Notice `job_name` is `'fisher'` in every grade row. It must match the `name` you put in the `jobs` table, character for character. If they do not match, the grades belong to no job and nothing works.
+
+After the inserts, restart so ESX reloads the tables.
+
+```
+restart es_extended
+```
+
+Run that in your server console (or use txAdmin's restart action). ESX reads the `jobs` and `job_grades` tables when it starts, so **changes do not apply until you restart `es_extended`**. Editing the database while the server runs changes nothing on its own.
+
+<ExpectedOutput>
+[ script:es_extended] Loaded job "fisher" with 3 grades
+</ExpectedOutput>
+
+Exact wording varies by ESX version (illustrative). What matters: no SQL error in your database client, and no red error mentioning `fisher` in the server console after restart.
+
+## Edit or remove a job
+
+To change a job, update its rows. To change the Fisher salary, for example:
+
+```sql
+UPDATE job_grades SET salary = 90 WHERE job_name = 'fisher' AND grade = 1;
+```
+
+To add a higher grade later, insert the next number with no gap. The job already has `0`, `1`, `2`, so the next one is `3`.
+
+```sql
+INSERT INTO job_grades (job_name, grade, name, label, salary, skin_male, skin_female) VALUES
+  ('fisher', 3, 'fleet_owner', 'Fleet Owner', 200, '{}', '{}');
+```
+
+To delete a job, remove its grades first, then the job row. Delete grades first because they point at the job.
+
+```sql
+DELETE FROM job_grades WHERE job_name = 'fisher';
+DELETE FROM jobs WHERE name = 'fisher';
+```
+
+Restart `es_extended` after any of these so the server reloads.
+
+## Assign a job to a player
+
+Once the job exists in the tables and you have restarted, you can put a player in it.
+
+In game, as an admin, use the built-in command. The form is `/setjob [id] [job] [grade]`, where `id` is the player's server id.
+
+```
+/setjob 1 fisher 2
+```
+
+That puts player `1` in the `fisher` job at grade `2`, the Captain. The player keeps this job after they reconnect, because ESX saves it to the database.
+
+In code, do the same from a server script. First get the core object and the player, then call `setJob`. **`getSharedObject` is the modern way to get the ESX core object**, the table that holds every ESX function.
+
+```lua
+local ESX = exports['es_extended']:getSharedObject()
+
+-- somewhere on the server, with a valid player server id in `source`
+local xPlayer = ESX.GetPlayerFromId(source)
+xPlayer.setJob('fisher', 2)
+```
+
+`ESX.GetPlayerFromId(source)` returns the **xPlayer** object, ESX's wrapper around one online player. `xPlayer.setJob(name, grade)` changes that player's job. The first argument is the job `name` from the `jobs` table, the second is the `grade` number from `job_grades`.
+
+Older ESX guides get the core a different way, with an event. The export form above is the current recommendation, but you may still see this:
+
+```lua
+-- older legacy pattern, still works on some servers
+ESX = nil
+TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
+```
+
+To read a player's current job, call `getJob`. It returns a table.
+
+```lua
+local job = xPlayer.getJob()
+-- job.name       -> 'fisher'
+-- job.grade      -> 2
+-- job.label      -> 'Fisherman'
+-- job.grade_name -> 'captain'
+-- job.grade_label, job.grade_salary and more are also available
+```
+
+That is how other scripts check who is police, who is a boss, and so on: they read `xPlayer.getJob().name` and `xPlayer.getJob().grade`.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Job exists but no player can be set to it / it never appears in game", fix: "You added a row to jobs but forgot job_grades. Every job needs at least one grade row. Insert grade 0 for the job, then restart es_extended." },
+    { symptom: "Grades behave oddly or some ranks are unreachable", fix: "There is a gap in the grade numbers, for example 0, 1, 3 with no 2. Grades must start at 0 and increase with no gaps. Fill in the missing number." },
+    { symptom: "Grades point at no job", fix: "The job_name in job_grades does not exactly match the name in jobs. Check spelling and case. 'Fisher' is not 'fisher'." },
+    { symptom: "Changes to the tables do nothing", fix: "You edited the database but did not restart. ESX reads jobs and job_grades only at startup. Run restart es_extended after every change." },
+    { symptom: "SQL error: a column doesn't have a default value", fix: "You left out a NOT NULL column. Provide skin_male and skin_female as '{}' and always include salary. Match the column list to your table." },
+    { symptom: "Cannot delete a job", fix: "Delete its job_grades rows first, then the jobs row. The grades reference the job, so remove them before the parent." },
+    { symptom: "/setjob says the job is invalid", fix: "The job is not loaded. Confirm the row is in the jobs table, then restart es_extended so the server picks it up before you run /setjob." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "ESX stores jobs in the SQL database, in the jobs and job_grades tables, not in a jobs.lua file.",
+    "A job is one row in jobs (name, label) plus one or more rows in job_grades (job_name, grade, name, label, salary, skin_male, skin_female).",
+    "Add a job with INSERT statements, keeping grades starting at 0 with no gaps, then restart es_extended.",
+    "Assign it in game with /setjob [id] [job] [grade].",
+    "Assign it in code: local ESX = exports['es_extended']:getSharedObject(), then ESX.GetPlayerFromId(source).setJob(name, grade).",
+    "Read a player's job with xPlayer.getJob(), which returns name, grade, label and grade_name.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a `taxi` job with two grades: `0` named `driver` (label `Driver`, salary `50`) and `1` named `manager` (label `Manager`, salary `100`). Insert the `jobs` row and both `job_grades` rows, restart `es_extended`, then run `/setjob 1 taxi 1` on yourself. Confirm in code or in a job menu that your `getJob().grade` reads `1`.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "ESX Legacy documentation", href: "https://documentation.esx-framework.org/" },
+    { label: "ESX Legacy · es_extended on GitHub", href: "https://github.com/esx-framework/esx_core" },
+    { label: "ESX server-side functions (xPlayer)", href: "https://documentation.esx-framework.org/" },
+    { label: "Cfx.re docs · resource manifest (fxmanifest.lua)", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
+  ]}
+/>

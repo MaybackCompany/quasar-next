@@ -1,198 +1,207 @@
 <LessonHero
- crumbs="/"
- title="Shipping: opening night checklist"
- meta={[
- { label: "You will learn", value: "The pre-flight, the hot-standby, the rollback path." },
- { label: "Time", value: "~30 min" },
- { label: "Prereqs", value: "P8 anti-cheat patterns, P9 persistence, and secret handling from convars/server.cfg." },
- { label: "Pass condition", value: "Staging restore drill, rollback command, and boot header proof are captured before production launch." },
- { label: "Project", value: "release-v1" },
- ]}
+  crumbs="/"
+  title="Shipping: opening night checklist"
+  meta={[
+    { label: "You will learn", value: "The pre-flight, the hot-standby, the rollback path." },
+    { label: "Time", value: "~30 min" },
+    { label: "Prereqs", value: "P8 anti-cheat patterns, P9 persistence, and secret handling from convars/server.cfg." },
+    { label: "Pass condition", value: "Staging restore drill, rollback command, and boot header proof are captured before production launch." },
+    { label: "Project", value: "release-v1" },
+  ]}
 >
- A restaurant does not open for guests without prepped stations, a backup line, and a rollback plan if a dish fails. Same here: convars pinned, ACE locked, the database backed up, monitoring on, and a known-good build to revert to. You will build one small resource named `qu_release` that prints a **boot header** on start, then rehearse a backup and a one-command rollback before you ever touch production.
+  A restaurant does not open for guests without prepped stations, a backup line, and a plan if a dish fails. Same here. You lock permissions, back up the database, turn on monitoring, and keep a known-good build to fall back to. In this lesson you build one small resource named `qu_release`. It prints a **boot header** on start so you always know which version is live. Then you rehearse a backup and a one-command rollback before you ever touch production.
 </LessonHero>
 
 <Prereq
- items={[
- "I have a free license key from the Cfx.re Portal (portal.cfx.re) in my server.cfg.",
- "I have a staging server running the same FXServer artifact version as production.",
- "I can open txAdmin in my browser and read its Live Console.",
- "I can export my database to a .sql file (HeidiSQL, mysqldump, or a host snapshot button)."
- ]}
+  items={[
+    "I have a free license key from the Cfx.re Portal (portal.cfx.re) in my server.cfg.",
+    "I have a staging server running the same FXServer artifact version as production.",
+    "I can open txAdmin in my browser and read its Live Console.",
+    "I can export my database to a .sql file (HeidiSQL, mysqldump, or a host snapshot button)."
+  ]}
 />
 
 <Callout variant="fivem" title="Shipping is a checklist, not a feature">
- Treat go-live as a readiness checklist. Each item flips green or it does not ship: pin the build, lock permissions, back up the database, watch for trouble, and keep one command that rolls you back to the last known-good build. Do one step, read the proof, then move to the next step.
+  Treat go-live as a readiness checklist. Each item flips green or it does not ship. Lock permissions, back up the database, watch for trouble, and keep one command that rolls you back to your last known-good build. Do one step, read the proof, then move to the next step.
 </Callout>
 
 ## Build it
 
 <StepGroup>
- <Step num={1} title="Make the release resource" outcome="One folder holds your boot-header proof.">
- txAdmin ships bundled inside FXServer, so you already have an admin panel at `http://localhost:40120`; you do not install it separately. (On a brand-new server the first visit shows txAdmin's one-time setup wizard and a master PIN; once setup is done, that same URL is where you reach the Live Console used below.) Inside your server's `resources` folder, create one folder for this lesson:
+  <Step num={1} title="Make the release resource" outcome="One folder holds your boot-header proof.">
+    txAdmin is the browser admin panel that ships bundled inside FXServer, so you already have it at `http://localhost:40120`. You do not install it separately. (On a brand-new server the first visit shows txAdmin's one-time setup wizard and a master PIN. Once setup is done, that same URL is where you reach the **Live Console** used below.)
 
- ```text
- resources/qu_release/
- fxmanifest.lua
- server.lua
- VERSION
- ```
+    Inside your server's `resources` folder, create one folder for this lesson. A **resource** is one folder FXServer loads as a unit:
 
- Put your release tag in `VERSION` (no quotes, no extension content beyond the tag):
+    ```text
+    resources/qu_release/
+      fxmanifest.lua
+      server.lua
+      VERSION
+    ```
 
- ```text
- v1.0.0
- ```
- </Step>
+    Put your release tag in `VERSION` (no quotes, nothing but the tag):
 
- <Step num={2} title="Write fxmanifest.lua" outcome="FXServer knows which file to load.">
- Open `fxmanifest.lua` and paste this. Note there is **no** `lua54 'yes'` line. Lua 5.4 is the only runtime now, so that line is deprecated and ignored. Leave it out.
+    ```text
+    v1.0.0
+    ```
+  </Step>
 
- ```lua
- fx_version 'cerulean'
- game 'gta5'
+  <Step num={2} title="Write fxmanifest.lua" outcome="FXServer knows which file to load.">
+    The `fxmanifest.lua` file is the manifest that tells FXServer what a resource contains and which files to load. Open it and paste this. Note there is **no** `lua54 'yes'` line. Lua 5.4 is the only runtime now, so that line is deprecated and ignored. Leave it out.
 
- server_script 'server.lua'
+    The `fx_version 'cerulean'` line sets the manifest format version. `cerulean` is just the current format name, like a year on a standard. Always use it on a new resource.
 
- files {
- 'VERSION'
- }
- ```
- </Step>
+    ```lua
+    fx_version 'cerulean'
+    game 'gta5'
 
- <Step num={3} title="Print a boot header" outcome="Every start logs the release tag in the first lines.">
- During an incident you should never have to ask "what version is running?". Open `server.lua` and paste this. It reads `VERSION` from the resource and prints a short header when the resource starts.
+    server_script 'server.lua'
 
- ```lua
- AddEventHandler('onResourceStart', function(resource)
- if resource ~= GetCurrentResourceName() then return end
+    files {
+      'VERSION'
+    }
+    ```
+  </Step>
 
- local version = LoadResourceFile(GetCurrentResourceName(), 'VERSION') or 'dev'
- version = version:gsub('%s+', '')
+  <Step num={3} title="Print a boot header" outcome="Every start logs the release tag in the first lines.">
+    During an incident you should never have to ask "what version is running?". Open `server.lua` and paste this. It reads `VERSION` from the resource and prints a short header when the resource starts. `GetConvar` reads a **convar**, which is a server config variable set in `server.cfg`.
 
- print('[qu_release] release : ' .. version)
- print('[qu_release] game build: ' .. GetConvar('sv_enforceGameBuild', 'unset'))
- print('[qu_release] boot ok')
- end)
- ```
- </Step>
+    ```lua
+    AddEventHandler('onResourceStart', function(resource)
+      if resource ~= GetCurrentResourceName() then return end
 
- <Step num={4} title="Pin the build and lock permissions" outcome="Clients cannot drift; admins cannot kill the server by accident.">
- Open `server.cfg`. Choose the GTA content build intentionally, then load and lock the resource. The `sv_enforceGameBuild` value comes from Cfx.re's supported **game-build list**, not the FXServer artifacts page. Keep the official recipe's value unless your assets require another supported build.
+      local version = LoadResourceFile(GetCurrentResourceName(), 'VERSION') or 'dev'
+      version = version:gsub('%s+', '')
 
- ```text
- # license: free from the Cfx.re Portal (portal.cfx.re). Required even locally.
- sv_licenseKey "cfxk_yourkeyhere"
+      print('[qu_release] release   : ' .. version)
+      print('[qu_release] game build: ' .. GetConvar('sv_enforceGameBuild', 'unset'))
+      print('[qu_release] boot ok')
+    end)
+    ```
+  </Step>
 
- # GTA content build, not an FXServer artifact number; verify the live supported list
- sv_enforceGameBuild 3751
+  <Step num={4} title="Lock permissions and set the build" outcome="Clients cannot drift; admins cannot kill the server by accident.">
+    Open `server.cfg`. Set the GTA content build on purpose, then load and lock the resource.
 
- set onesync on
- sv_maxclients 48
+    The `sv_enforceGameBuild` value is the GTA V content build clients must load. It comes from Cfx.re's supported **game-build list**, not from the FXServer artifacts download page. Keep the value your official recipe wrote unless your assets require another supported build. A **recipe** is the one-click framework installer txAdmin runs on first setup.
 
- # lock commands: allow admins, but deny quit so a misclick cannot stop the server
- add_ace group.admin command allow
- add_ace group.admin command.quit deny
- add_principal identifier.fivem:0000000 group.admin
+    The `ensure` line loads the resource. **ACE** (Access Control Entries) is FXServer's permission system. An **identifier** is one way a player proves who they are, such as their `fivem:` account number. Below, you allow admins to run commands but deny `quit` so a misclick cannot stop the server.
 
- # keep secrets out of git; rotate them after exposure and on your security schedule
- exec server-secrets.cfg
+    ```text
+    # license: free from the Cfx.re Portal (portal.cfx.re). The value is the cfxk_ string, pasted as-is.
+    sv_licenseKey "cfxk_yourkeyhere"
 
- ensure qu_release
- ```
- </Step>
+    # GTA content build, not an FXServer artifact number; verify the live supported list
+    sv_enforceGameBuild 3751
 
- <Step num={5} title="Restart on staging and read the header" outcome="The boot header appears with no errors below it.">
- Open the txAdmin Live Console in your browser at `http://localhost:40120`. Restart only this resource:
+    # onesync on is the modern default; required to go above the 32-slot vanilla cap (up to 2048 slots)
+    set onesync on
+    sv_maxclients 48
 
- ```text
- restart qu_release
- ```
+    # lock commands: allow admins, but deny quit so a misclick cannot stop the server
+    add_ace group.admin command allow
+    add_ace group.admin command.quit deny
+    add_principal identifier.fivem:0000000 group.admin
 
- Read the first lines. You should see the header, and crucially nothing red underneath it.
+    # keep secrets out of git; rotate them after exposure and on your security schedule
+    exec server-secrets.cfg
 
- <ExpectedOutput>
- [qu_release] release : v1.0.0
- [qu_release] game build: 3751
- [qu_release] boot ok
- </ExpectedOutput>
- </Step>
+    ensure qu_release
+    ```
+  </Step>
 
- <Step num={6} title="Back up the database before you deploy" outcome="A restorable snapshot exists on disk.">
- A backup you have never made is hope. Take a snapshot before any production deploy. On a hosted panel this is the database backup button. On a machine with `mysqldump` you can run:
+  <Step num={5} title="Restart on staging and read the header" outcome="The boot header appears with no errors below it.">
+    Open the txAdmin Live Console in your browser at `http://localhost:40120`. Restart only this resource. The `restart` command reloads one resource by name:
 
- ```bash
- mariadb-dump -u BACKUP_USER -p --single-transaction --quick --routines fivem > backup-before-release-v1.sql
- ```
+    ```text
+    restart qu_release
+    ```
 
- Swap `BACKUP_USER` and `fivem` for a MariaDB account with the required backup privileges and your database name. The `-p` flag prompts for the password instead of exposing it in shell history or the process list. `--single-transaction` gives a consistent snapshot for transactional InnoDB tables; check the command's exit status and test a restore. Keep a copy off the game host.
+    Read the first lines. You should see the header, and crucially nothing red underneath it.
 
- <ExpectedOutput>
- backup-before-release-v1.sql written, size greater than 0 bytes
- </ExpectedOutput>
- </Step>
+    <ExpectedOutput>
+    [qu_release] release   : v1.0.0
+    [qu_release] game build: 3751
+    [qu_release] boot ok
+    </ExpectedOutput>
+  </Step>
 
- <Step num={7} title="Rehearse the rollback path" outcome="One pair of commands returns you to the last known-good build.">
- Before you ever need it, prove the rollback works on staging. Keep the previous version's folder on disk as `qu_release_v0`. To roll back, stop the new one and start the old one from the txAdmin Live Console:
+  <Step num={6} title="Back up the database before you deploy" outcome="A restorable snapshot exists on disk.">
+    A backup you have never made is hope. Take a snapshot before any production deploy. On a hosted panel this is the database backup button. On a machine with the `mariadb-dump` tool (it ships with MariaDB) you can run this in PowerShell or your VPS shell. A **VPS** is a rented remote server you connect to over the internet:
 
- ```text
- stop qu_release
- ensure qu_release_v0
- ```
+    ```bash
+    mariadb-dump -u BACKUP_USER -p --single-transaction --quick --routines fivem > backup-before-release-v1.sql
+    ```
 
- The old boot header should print, telling you the previous version is live again. This is muscle memory you want before launch night, not during it.
+    Swap `BACKUP_USER` and `fivem` for a MariaDB account with backup privileges and your database name. The `-p` flag prompts for the password so it never lands in shell history or the process list. `--single-transaction` gives a consistent snapshot for InnoDB tables. Check the command's exit status, then test a restore. Keep one copy off the game host.
 
- <ExpectedOutput>
- [qu_release_v0] release : v0.9.0
- [qu_release_v0] boot ok
- </ExpectedOutput>
- </Step>
+    <ExpectedOutput>
+    backup-before-release-v1.sql written, size greater than 0 bytes
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={7} title="Rehearse the rollback path" outcome="One pair of commands returns you to the last known-good build.">
+    Before you ever need it, prove the rollback works on staging. Keep the previous version's folder on disk as `qu_release_v0`. To roll back, stop the new one and `ensure` the old one from the txAdmin Live Console. `ensure` starts a resource (or restarts it if it is already running):
+
+    ```text
+    stop qu_release
+    ensure qu_release_v0
+    ```
+
+    The old boot header should print, telling you the previous version is live again. This is muscle memory you want before launch night, not during it.
+
+    <ExpectedOutput>
+    [qu_release_v0] release   : v0.9.0
+    [qu_release_v0] boot ok
+    </ExpectedOutput>
+  </Step>
 </StepGroup>
+
+<Callout variant="fivem" title="Falling back the FXServer build itself">
+  The rollback above swaps your release resource. The same idea covers the **FXServer artifact** (the server program you download). On a new server you always run the latest build from the top of the artifacts list. If a fresh build ever breaks after an update, drop to the build directly below it, and keep that known-good build number written down. You do not pin or freeze the build during normal go-live. Falling back is only for when a new build misbehaves.
+</Callout>
 
 ## If something went wrong
 
 <FailureList
- items={[
- { symptom: "Server refuses to start: invalid license key.", fix: "Get a free key from the Cfx.re Portal at portal.cfx.re and paste it into sv_licenseKey. It is required even for a local test server." },
- { symptom: "txAdmin will not open.", fix: "It is bundled in FXServer and runs on http://localhost:40120 on first boot. Use the Recommended (green) artifact channel and check that port is not blocked." },
- { symptom: "Could not load resource qu_release.", fix: "Open fxmanifest.lua and remove any lua54 'yes' line. Confirm fx_version 'cerulean' and game 'gta5' are present and the quotes match." },
- { symptom: "Boot header reads release : dev.", fix: "The VERSION file is missing or not in the files block. Add files { 'VERSION' } to fxmanifest.lua and put the tag in VERSION." },
- { symptom: "Players report a game-build mismatch after an update.", fix: "Check sv_enforceGameBuild against Cfx.re's supported game-build list and your asset requirements. Change it only after staging, then perform a full restart." },
- ]}
+  items={[
+    { symptom: "Server refuses to start: invalid license key.", fix: "Get a free key from the Cfx.re Portal at portal.cfx.re and paste the cfxk_ string into sv_licenseKey with no prefix. It is required even for a local test server. (keymaster.fivem.net now redirects to portal.cfx.re.)" },
+    { symptom: "txAdmin will not open.", fix: "It is bundled in FXServer and runs on http://localhost:40120 on first boot. Confirm FXServer is still running, the black console is open, and that port is not blocked by a firewall." },
+    { symptom: "Could not load resource qu_release.", fix: "Open fxmanifest.lua and remove any lua54 'yes' line. Confirm fx_version 'cerulean' and game 'gta5' are present and the quotes match." },
+    { symptom: "Boot header reads release : dev.", fix: "The VERSION file is missing or not in the files block. Add files { 'VERSION' } to fxmanifest.lua and put the tag in VERSION." },
+    { symptom: "Players report a game-build mismatch after an update.", fix: "Check sv_enforceGameBuild against Cfx.re's supported game-build list and your asset requirements. Change it only after staging, then perform a full restart. Do not use the FXServer artifact number here." },
+    { symptom: "Server shows in the browser list but nobody can join.", fix: "Port 30120 (TCP + UDP) is blocked. Forward it on your router and allow it in Windows Firewall." },
+    { symptom: "Players join but disconnect after a few seconds.", fix: "A missing resource or a server.cfg error. Read the Live Console for red lines. One failing resource can drop all connections." },
+    { symptom: "A Direct Connect link does not work for friends.", fix: "They are using the wrong address. Give them fivem://connect/YOUR_PUBLIC_IP:30120. Find your public IP at whatismyip.com." },
+    { symptom: "Server runs fine locally but lags with players on it.", fix: "Your upload speed or CPU cannot handle the load. FiveM needs roughly 5 Mbps upload per 10 players. Check your upload and CPU headroom." },
+    { symptom: "A Cfx.re join code does not work.", fix: "The server is not registered or the code expired. Register at portal.cfx.re. Join codes need the server online and public." },
+  ]}
 />
 
 ## What you can do now
 
 <Recap
- items={[
- "Build qu_release with fxmanifest.lua, server.lua, and a VERSION file, with no deprecated lua54 line.",
- "Print a boot header so the running release and enforced GTA game build show in the first console lines.",
- "Pin sv_enforceGameBuild to a current build and lock admin commands with ACE.",
- "Take a database backup and rehearse a stop / ensure rollback to the last known-good build."
- ]}
+  items={[
+    "Build qu_release with fxmanifest.lua, server.lua, and a VERSION file, with no deprecated lua54 line.",
+    "Print a boot header so the running release and enforced GTA game build show in the first console lines.",
+    "Set sv_enforceGameBuild from the supported game-build list and lock admin commands with ACE.",
+    "Take a database backup and rehearse a stop / ensure rollback to the last known-good build."
+  ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Server shows in browser list but nobody can join | Port 30120 is blocked by firewall or router | Forward port 30120 (TCP + UDP) on your router. Allow it in Windows Firewall |
-| Players join but disconnect after a few seconds | Missing resources or server.cfg error | Check the Live Console for red error lines. One failing resource can drop all connections |
-| "Direct Connect" link doesn't work for friends | They're using the wrong IP or port | Give them `fivem://connect/YOUR_PUBLIC_IP:30120`. Find your public IP at whatismyip.com |
-| Server runs fine locally but lags with players | Your upload speed or CPU can't handle the load | Check your internet upload speed. FiveM needs at least 5 Mbps upload per 10 players |
-| Cfx.re join code doesn't work | The server isn't registered or the code expired | Register at portal.cfx.re. Join codes need the server to be online and public |
 
 ## Try it yourself
 
 <Exercise>
- Bump `VERSION` to `v1.0.1`, run `restart qu_release` in the txAdmin Live Console, and confirm the boot header prints the new tag with no errors below it. Then run the rollback pair (`stop qu_release`, `ensure qu_release_v0`) once and write down the exact header you saw, so you trust the path before launch night.
+  Bump `VERSION` to `v1.0.1`, run `restart qu_release` in the txAdmin Live Console, and confirm the boot header prints the new tag with no errors below it. Then run the rollback pair (`stop qu_release`, `ensure qu_release_v0`) once and write down the exact header you saw, so you trust the path before launch night.
 </Exercise>
 
 <Refs
- items={[
- { label: "Cfx.re Portal (free license keys)", href: "https://portal.cfx.re/" },
- { label: "FiveM server setup with txAdmin", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
- { label: "Cfx.re supported GTA game-build list", href: "https://docs.fivem.net/docs/server-manual/server-commands/#sv_enforcegamebuild-build" },
- { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
- ]}
+  items={[
+    { label: "Cfx.re Portal (free license keys)", href: "https://portal.cfx.re/" },
+    { label: "FiveM Windows server artifacts (download the latest at the top)", href: "https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/" },
+    { label: "FiveM server setup with txAdmin", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
+    { label: "Cfx.re supported GTA game-build list", href: "https://docs.fivem.net/docs/server-manual/server-commands/#sv_enforcegamebuild-build" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" }
+  ]}
 />

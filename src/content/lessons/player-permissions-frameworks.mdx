@@ -1,126 +1,129 @@
 <LessonHero
- title="Give a player permissions, four ways"
- meta={[
- { label: "You'll build", value: "A permissions.cfg that promotes a real player to admin on Cfx ACE, then the exact lines to layer ESX, QBCore, or Qbox on top of it." },
- { label: "Time", value: "~24 minutes" },
- { label: "You need", value: "A local FiveM server you can edit server.cfg on and restart, and one player identifier (a license) you can read from the console." },
- { label: "You'll learn", value: "What an ACE principal is -> how add_ace and add_principal work together -> how ESX groups, QBCore permissions, and Qbox groups all sit on the same ACE foundation -> why a job is not an admin rank" },
- ]}
+  crumbs="Module A2 · Operate and ship"
+  title="Give a player permissions, four ways"
+  meta={[
+    { label: "You'll build", value: "A permissions.cfg that promotes a real player to admin on Cfx ACE, then the exact lines to layer ESX, QBCore, or Qbox on top of it." },
+    { label: "Time", value: "~24 minutes" },
+    { label: "You need", value: "A local FiveM server you can edit server.cfg on and restart, and one player identifier (a license) you can read from the console." },
+    { label: "You'll learn", value: "What an ACE principal is -> how add_ace and add_principal work together -> how ESX groups, QBCore permissions, and Qbox groups all sit on the same ACE foundation -> why a job is not an admin rank" },
+  ]}
 >
- Every framework has its own admin menu, its own command names, and its own docs page. Underneath all of them is one system: Cfx **ACE**. Learn ACE once and the four frameworks stop looking like four problems and start looking like one foundation with four thin layers on top. By the end you will be able to hand any player admin on a vanilla server, then do the same the framework way on ESX, QBCore, and Qbox without guessing.
+  Every framework has its own admin menu, its own command names, and its own docs page. Underneath all of them is one system: Cfx **ACE** (Access Control Entries, the built-in FiveM permission system). Learn ACE once and the four frameworks stop looking like four problems. They become one foundation with four thin layers on top. By the end you will hand any player admin on a plain server, then do the same the framework way on ESX, QBCore, and Qbox.
 </LessonHero>
 
 <Prereq
- items={[
- "I can find my server-data folder and edit server.cfg.",
- "I can restart the server or execute a cfg file from the server console.",
- "I can open a connected player's record in txAdmin and copy an identifier.",
- ]}
+  items={[
+    "I can find my server-data folder and edit server.cfg.",
+    "I can restart the server or execute a cfg file from the server console.",
+    "I can open a connected player's record in txAdmin and copy an identifier.",
+  ]}
 />
 
 <Callout variant="fivem" title="One foundation, then three layers">
- Cfx ACE is the base every FiveM server already has, framework or not. ESX, QBCore, and Qbox do not replace it, they sit on top of it. We build the ACE foundation first as a real `permissions.cfg`, prove it, then add each framework's layer line by line. Follow the file names, the identifier, the commands, and the expected output exactly. Once admin works, the next section takes the lines apart so you can read any permission setup on sight.
+  Cfx ACE is the base every FiveM server already has, framework or not. ESX, QBCore, and Qbox do not replace it. They sit on top of it. We build the ACE foundation first as a real `permissions.cfg`, prove it works, then add each framework's layer line by line. Follow the file names, the identifier, the commands, and the expected output exactly. Once admin works, the next section takes the lines apart so you can read any permission setup on sight.
 </Callout>
 
 ## The mental model: principals and aces
 
-Before any commands, lock in two words, because every framework reuses them.
+Before any commands, learn two words. Every framework reuses them.
 
-- A **principal** is *who*. A player identifier like `identifier.license:xxxx`, or a group like `group.admin`. Principals can inherit from each other: put a player into `group.admin` and they get everything `group.admin` can do.
+- A **principal** is *who*. It is a player identifier like `identifier.license:xxxx`, or a group like `group.admin`. Principals can inherit from each other. Put a player into `group.admin` and they get everything `group.admin` can do.
 - An **ace** is *what they can do*. An Access Control Entry maps a principal to an object (almost always a command) with `allow` or `deny`.
 
-So granting admin is always two moves. First you say what a group is allowed to do (`add_ace`). Then you put a real player into that group (`add_principal`). That pair is the whole system. ESX, QBCore, and Qbox each pick the group names and wire their menus to check them.
+So granting admin is always two moves. First you say what a group is allowed to do, with `add_ace`. Then you put a real player into that group, with `add_principal`. **That pair is the whole system.** ESX, QBCore, and Qbox each pick the group names and wire their menus to check them.
 
-<Mockup app="Cfx ACE - how a grant resolves">
+<Mockup app="Cfx ACE — how a grant resolves">
 ```text
-add_ace group.admin command allow <- the GROUP can run all commands
- |
- v
+add_ace group.admin command allow   <- the GROUP can run all commands
+        |
+        v
 add_principal identifier.license:9a3f... group.admin
- | ^
- v |
- this PLAYER ----- inherits ----- this GROUP
- |
- v
- player can now run admin commands
+        |                                      ^
+        v                                      |
+   this PLAYER ----- inherits ----- this GROUP
+        |
+        v
+   player can now run admin commands
 ```
 </Mockup>
 
 ## Build it: the ACE foundation
 
 <StepGroup>
- <Step num={1} title="Read the player's identifier" outcome="You have a real license string to grant.">
- `add_principal` binds to an identifier, never to a display name or temporary server ID. With the player connected, open txAdmin in your browser (the web panel, not the black FXServer console window), click **Players** in the left sidebar, click that player's row, and copy the full `license:` or `fivem:` identifier. The Cfx `status` command shows only a primary identifier, so do not expect it to list license, Discord, Steam, and FiveM identifiers together. A truncated value silently grants nothing.
- </Step>
+  <Step num={1} title="Read the player's identifier" outcome="You have a real license string to grant.">
+    `add_principal` binds to an identifier, never to a display name or a temporary server ID. With the player connected, open txAdmin in your browser (the web panel, not the black FXServer console window). Click **Players** in the left sidebar, click that player's row, and copy the full `license:` or `fivem:` identifier.
 
- <Step num={2} title="Create permissions.cfg" outcome="Admin lives in its own file, not buried in server.cfg.">
- In your `server-data` folder, next to `server.cfg`, create one file:
+    The Cfx `status` command shows only one primary identifier. Do not expect it to list license, Discord, Steam, and FiveM together. **A truncated value silently grants nothing.** Copy the whole string.
+  </Step>
 
- ```text
-server-data/
- server.cfg
- permissions.cfg <- new
- resources/
- ```
+  <Step num={2} title="Create permissions.cfg" outcome="Admin lives in its own file, not buried in server.cfg.">
+    In your `server-data` folder, next to `server.cfg`, create one file:
 
- Keeping permissions in their own file is the convention every serious server uses. It is easier to audit who has access, and easier to share `server.cfg` without leaking your admin list.
- </Step>
+    ```text
+    server-data/
+      server.cfg
+      permissions.cfg   <- new
+      resources/
+    ```
 
- <Step num={3} title="Write the ACE foundation" outcome="A group exists and one real player is in it.">
- Open `permissions.cfg` and paste this. Replace the license with the one you copied:
+    Keeping permissions in their own file is the convention every serious server uses. It is easier to see who has access. It is also easier to share `server.cfg` without leaking your admin list.
+  </Step>
 
- ```cfg
-# permissions.cfg - the Cfx ACE foundation every framework builds on
+  <Step num={3} title="Write the ACE foundation" outcome="A group exists and one real player is in it.">
+    Open `permissions.cfg` and paste this. Replace the license with the one you copied:
 
-# 1) Define what the group can do. Bare `command` = ALL commands.
-add_ace group.admin command allow
+    ```cfg
+    # permissions.cfg — the Cfx ACE foundation every framework builds on
 
-# 2) (optional) a scoped tier: a mod who can only kick.
-add_ace group.mod command.kick allow
+    # 1) Define what the group can do. Bare `command` = ALL commands.
+    add_ace group.admin command allow
 
-# 3) Put a real player into the group by their license identifier.
-add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.admin # Riley - owner
- ```
+    # 2) (optional) a scoped tier: a mod who can only kick.
+    add_ace group.mod command.kick allow
 
- Notice the shape. Line 1 is *what*, line 3 is *who*. The `# Riley - owner` comment is a note to your future self.
- </Step>
+    # 3) Put a real player into the group by their license identifier.
+    add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.admin # Riley - owner
+    ```
 
- <Step num={4} title="Load it from server.cfg" outcome="The server actually reads your permissions file.">
- A `.cfg` file does nothing until something execs it. Open `server.cfg` and add this line near the bottom, after your resources:
+    Notice the shape. Line 1 is *what*. Line 3 is *who*. The `# Riley - owner` comment is a note to your future self.
+  </Step>
 
- ```cfg
-exec permissions.cfg
- ```
+  <Step num={4} title="Load it from server.cfg" outcome="The server actually reads your permissions file.">
+    A `.cfg` file does nothing until something execs it. (To **exec** a file means to run the lines inside it.) Open `server.cfg` and add this line near the bottom, after your resources:
 
- If you never exec it, no ACE groups exist and even a txAdmin admin will have no in-game power. This one missing line is the most common reason "I added myself but nothing works."
- </Step>
+    ```cfg
+    exec permissions.cfg
+    ```
 
- <Step num={5} title="Apply and prove it" outcome="The server confirms the ACE decision.">
- Editing a cfg file does not execute it. Restart the server, or re-run this specific file from the txAdmin Live Console:
+    If you never exec it, no ACE groups exist, and even a txAdmin admin will have no in-game power. **This one missing line is the most common reason "I added myself but nothing works."**
+  </Step>
 
- ```text
- exec permissions.cfg
- ```
+  <Step num={5} title="Apply and prove it" outcome="The server confirms the ACE decision.">
+    Editing a cfg file does not execute it. Restart the server, or re-run this one file from the txAdmin Live Console:
 
- Test the exact principal and object without running a destructive command:
+    ```text
+    exec permissions.cfg
+    ```
 
- ```text
- test_ace identifier.license:9a3f0c7e2b8d41f6a05e command
- ```
+    Now test the exact principal and object, without running a destructive command:
 
- Replace the example license with the real one from your file. Cfx.re documents `test_ace` specifically for checking whether a principal is allowed or denied an object.
+    ```text
+    test_ace identifier.license:9a3f0c7e2b8d41f6a05e command
+    ```
 
- <ExpectedOutput>
+    Replace the example license with the real one from your file. Cfx.re documents `test_ace` for checking whether a principal is allowed or denied an object.
+
+    <ExpectedOutput>
 The console prints a short resolution trace ending in an allow decision for the `command` object (exact wording varies by artifact version; look for the line that resolves to `allow`, not `deny`).
- </ExpectedOutput>
+    </ExpectedOutput>
 
- If access is denied, the license in `add_principal` does not match the connected player. Re-copy the complete value from txAdmin's player record and run `exec permissions.cfg` again.
- </Step>
+    If access is denied, the license in `add_principal` does not match the connected player. Re-copy the complete value from txAdmin's player record and run `exec permissions.cfg` again.
+  </Step>
 </StepGroup>
 
 ## How it works
 
-You granted admin with two lines and proved it. Now take it apart, because these same two lines are hiding inside every framework's "make me admin" guide. Once you can read them, the framework docs stop being four separate things to memorize.
+You granted admin with two lines and proved it. Now take it apart. These same two lines are hiding inside every framework's "make me admin" guide. Once you can read them, the framework docs stop being four separate things to memorize.
 
 ### `add_ace` defines the capability
 
@@ -128,7 +131,9 @@ You granted admin with two lines and proved it. Now take it apart, because these
 add_ace group.admin command allow
 ```
 
-`add_ace` takes three parts: a **principal**, an **object**, and a verb (`allow` or `deny`). Here the principal is `group.admin`, the object is the bare word `command` which means *every* command, and the verb is `allow`. Read it as one sentence: the group named admin is allowed to run all commands. Swap the object for a specific name and you scope it down. `command.kick` is exactly one command, which is why the mod line in your file lets a mod kick and nothing else. The object is a tree: `command` is the trunk, `command.kick` is one branch, and a principal allowed at the trunk inherits every branch.
+`add_ace` takes three parts: a **principal**, an **object**, and a verb (`allow` or `deny`). Here the principal is `group.admin`, the object is the bare word `command` which means *every* command, and the verb is `allow`. Read it as one sentence: the group named admin is allowed to run all commands.
+
+Swap the object for a specific name and you scope it down. `command.kick` is exactly one command, which is why the mod line in your file lets a mod kick and nothing else. The object is a tree. `command` is the trunk, `command.kick` is one branch, and a principal allowed at the trunk inherits every branch.
 
 ### `add_principal` puts a player in the group
 
@@ -136,28 +141,32 @@ add_ace group.admin command allow
 add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.admin
 ```
 
-`add_principal child parent` makes the child inherit the parent. Here the child is one real player, identified by license, and the parent is `group.admin`. The instant this resolves, that player can do everything the group can do. This is also how group hierarchies are built: `add_principal group.admin group.mod` would make admin inherit everything mod can do. Inheritance always flows child gets parent.
+`add_principal child parent` makes the child inherit the parent. Here the child is one real player, identified by license, and the parent is `group.admin`. The instant this resolves, that player can do everything the group can do. This is also how group hierarchies are built. `add_principal group.admin group.mod` would make admin inherit everything mod can do. **Inheritance always flows child gets parent.**
 
-The identifier prefix matters. `identifier.license:` is the Rockstar license hash. It is platform-independent -- it resolves whether or not the player launched through Steam -- which is why most ACE examples reach for it. You can also use `identifier.steam:`, `identifier.discord:`, or `identifier.fivem:`. `identifier.steam:` only resolves when the player launched through Steam, so `identifier.license:` is the safer default for an allow-list. One caveat: `license` can change if a player switches Rockstar/Social Club accounts, so for permanent bans Cfx.re recommends the `fivem:` identifier (the player's Cfx.re user ID), which is tied to their Cfx account rather than the game copy.
+The identifier prefix matters. `identifier.license:` is the Rockstar license hash. It is platform-independent, so it resolves whether or not the player launched through Steam. That is why most ACE examples reach for it. You can also use `identifier.steam:`, `identifier.discord:`, or `identifier.fivem:`. `identifier.steam:` only resolves when the player launched through Steam, so `identifier.license:` is the safer default for an allow-list.
+
+One caveat. A `license` can change if a player switches Rockstar/Social Club accounts. So for permanent bans, Cfx.re recommends the `fivem:` identifier (the player's Cfx.re user ID), which is tied to their Cfx account rather than their copy of the game.
 
 ### Why a file you exec, not lines pasted live
 
-Two ways exist to add a principal. Edited into `permissions.cfg` it is **permanent** and survives restarts, but the file must be read again with a server restart or `exec permissions.cfg`. The `refresh` command does **not** reload cfg files; it only rescans resource manifests. Typed live in the console, a principal applies immediately but is session-only. For real admins, keep the grant in the file.
+There are two ways to add a principal. Edited into `permissions.cfg` it is **permanent** and survives restarts, but the file must be read again with a server restart or `exec permissions.cfg`. The `refresh` command does **not** reload cfg files. It only rescans resource manifests. Typed live in the console, a principal applies immediately but is session-only. For real admins, keep the grant in the file.
 
 <Checkpoint question="You add your license to permissions.cfg while the server is running, but you still cannot run admin commands. Why?">
- Because editing the file does not re-read it. The server reads it on startup or when you run `exec permissions.cfg`; `refresh` only rescans resources and will not apply the change. Until then the new `add_principal` line is text on disk. For an instant session-only grant, run the `add_principal` command directly in the server console.
+  Because editing the file does not re-read it. The server reads it on startup or when you run `exec permissions.cfg`. `refresh` only rescans resources and will not apply the change. Until then the new `add_principal` line is just text on disk. For an instant session-only grant, run the `add_principal` command directly in the server console.
 </Checkpoint>
 
 ## The three framework layers
 
-Everything above is vanilla FiveM. No framework. Now layer each framework on top. The pattern is identical every time: the framework picks group names, you grant those groups with the exact ACE lines you already know, and the framework's menu reads the group. What changes is only the names and the in-game commands.
+Everything above is plain FiveM. No framework. Now layer each framework on top. The pattern is identical every time. The framework picks group names, you grant those groups with the exact ACE lines you already know, and the framework's menu reads the group. What changes is only the names and the in-game commands.
 
 ### ESX Legacy
 
-Modern ESX Legacy (es_extended `1.13.5`, fx_version `cerulean`) has no separate permission engine. It checks `IsPlayerAceAllowed` plus a small `Config.AdminGroups` table. The important 2026 correction: the default `Config.AdminGroups` is only `owner` and `admin`. The old `group.superadmin` / `group.mod` triad is not the ESX default, it is the generic FiveM convention, and it only works if you both define it and add it to the table.
+Modern ESX Legacy (the `es_extended` resource, `1.13.5`, manifest format `cerulean`, which is the current `fx_version` value at the top of an `fxmanifest.lua` file) has no separate permission engine. It checks `IsPlayerAceAllowed` plus a small `Config.AdminGroups` table.
+
+The important 2026 correction: the default `Config.AdminGroups` is only `owner` and `admin`. The old `group.superadmin` / `group.mod` triad is not the ESX default. It is the generic FiveM convention, and it only works if you both define it and add it to the table.
 
 ```cfg
-# permissions.cfg - ESX layer (these are still ACE lines)
+# permissions.cfg — ESX layer (these are still ACE lines)
 add_ace group.admin command allow
 # ESX default admin tiers are owner + admin (Config.AdminGroups). Grant owner for full control:
 add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.owner
@@ -167,45 +176,45 @@ add_principal identifier.license:9a3f0c7e2b8d41f6a05e group.admin
 Then promote or demote in game with no restart. ESX persists the group to the `users.group` column and re-attaches the ACE principal live:
 
 ```text
-/setgroup 1 admin <- promote player id 1 to the admin group
-/setgroup 1 user <- demote back to the default group
+/setgroup 1 admin   <- promote player id 1 to the admin group
+/setgroup 1 user    <- demote back to the default group
 ```
 
-The default group for every new player is the literal string `user`. To make ESX treat extra tiers as admin you must add them to the table yourself:
+The default group for every new player is the literal string `user`. To make ESX treat extra tiers as admin, add them to the table yourself:
 
 ```lua
 -- ESX default is only owner + admin. Add classic tiers if your menus expect them.
 Config.AdminGroups = {
- ["owner"] = true,
- ["admin"] = true,
- ["superadmin"] = true, -- added
- ["mod"] = true, -- added
+    ["owner"] = true,
+    ["admin"] = true,
+    ["superadmin"] = true, -- added
+    ["mod"] = true,        -- added
 }
 ```
 
 ### QBCore
 
-QBCore keeps the three default groups `god`, `admin`, `mod` (from `QBConfig.Server.Permissions` in `qb-core/config.lua`); `user` is the implicit base. The ACE names carry a `qbcore.` prefix, but the grant is the same two-line shape:
+QBCore keeps three default groups: `god`, `admin`, `mod` (from `QBConfig.Server.Permissions` in `qb-core/config.lua`). `user` is the implicit base. The ACE names carry a `qbcore.` prefix, but the grant is the same two-line shape:
 
 ```cfg
-# permissions.cfg - QBCore layer
+# permissions.cfg — QBCore layer
 add_principal identifier.license:9a3f0c7e2b8d41f6a05e qbcore.god # Owner
 add_principal identifier.license:1234abcd... qbcore.admin # Head Admin
 add_principal identifier.license:5678ef90... qbcore.mod # Moderator
 ```
 
-Then in game, `/admin` opens `qb-adminmenu` and you can promote from the Player Management tab, or use the console commands:
+Then in game, `/admin` opens `qb-adminmenu` and you can promote from the Player Management tab. Or use the console commands:
 
 ```text
-/addpermission 1 god <- requires god ; SESSION ONLY unless written to cfg
-/setjob 1 police 2 <- requires admin ; sets a JOB, not an admin rank
+/addpermission 1 god   <- requires god ; SESSION ONLY unless written to cfg
+/setjob 1 police 2     <- requires admin ; sets a JOB, not an admin rank
 ```
 
-Two facts catch beginners. There is no `permission` column on the `players` table, admin rank lives in ACE, so `UPDATE players SET permission='admin'` does nothing. And `/addpermission` in game is a session-only ACE principal, it does not survive a restart unless you also write the matching `add_principal` line into your cfg.
+Two facts catch beginners. There is no `permission` column on the `players` table. Admin rank lives in ACE, so `UPDATE players SET permission='admin'` does nothing. And `/addpermission` in game is a session-only ACE principal. It does not survive a restart unless you also write the matching `add_principal` line into your cfg.
 
 ### Qbox
 
-Qbox (`qbx_core`) describes itself as a successor to QBCore. Its official recipe uses the FiveM-native groups `group.admin` > `group.mod` > `group.support`, with inheritance built in. Read the current recipe rather than copying QBCore group names into Qbox:
+Qbox (the `qbx_core` resource, the modern ox-based fork of QBCore) describes itself as a successor to QBCore. Its official recipe (a **recipe** is the txAdmin install template that lays down a framework's files and default `permissions.cfg`) uses the FiveM-native groups `group.admin` > `group.mod` > `group.support`, with inheritance built in. Read the current recipe rather than copying QBCore group names into Qbox:
 
 ```cfg
 add_ace group.admin command allow # allow all commands
@@ -232,101 +241,96 @@ add_principal identifier.license:9a3f... group.admin # server console, applies n
 /setjob 1 police 3 # admin-gated
 ```
 
-txAdmin's own admin roles and a framework's gameplay groups are separate permission systems. Do not assume that adding someone in txAdmin Admin Manager also grants `group.admin` to framework commands; add and test the gameplay ACE explicitly. The built-in Cfx `add_principal` command runs in the **server console** with no leading slash. Whichever framework you run, follow its current official recipe's ACE groups rather than copying permission examples from random old tutorials.
+txAdmin's own admin roles and a framework's gameplay groups are separate permission systems. Do not assume that adding someone in txAdmin Admin Manager also grants `group.admin` to framework commands. Add and test the gameplay ACE explicitly. The built-in Cfx `add_principal` command runs in the **server console** with no leading slash. Whichever framework you run, follow its current official recipe's ACE groups rather than copying permission examples from random old tutorials.
 
 ### The four side by side
 
 This is the whole lesson in one grid. Same foundation, different names.
 
 <MockTable
- head={["Layer", "Admin group / principal", "Promote in game", "Set a job"]}
- rows={[
- ["Cfx ACE (base)", "group.admin", "(cfg only) add_principal", "n/a (no jobs)"],
- ["ESX Legacy", "group.admin / group.owner", "/setgroup 1 admin", "/setjob 1 police 0"],
- ["QBCore", "qbcore.god / .admin / .mod", "/addpermission 1 god", "/setjob 1 police 2"],
- ["Qbox", "group.admin / .mod / .support", "server console add_principal", "/setjob 1 police 3"],
- ]}
- caption="Every framework's admin layer is the same two ACE lines under different group names. The in-game commands differ; the foundation does not."
+  head={["Layer", "Admin group / principal", "Promote in game", "Set a job"]}
+  rows={[
+    ["Cfx ACE (base)", "group.admin", "(cfg only) add_principal", "n/a (no jobs)"],
+    ["ESX Legacy", "group.admin / group.owner", "/setgroup 1 admin", "/setjob 1 police 0"],
+    ["QBCore", "qbcore.god / .admin / .mod", "/addpermission 1 god", "/setjob 1 police 2"],
+    ["Qbox", "group.admin / .mod / .support", "server console add_principal", "/setjob 1 police 3"],
+  ]}
+  caption="Every framework's admin layer is the same two ACE lines under different group names. The in-game commands differ; the foundation does not."
 />
 
 ### A job is not an admin rank
 
-The single most common confusion across all three frameworks: `/setjob` and admin are unrelated systems. `/setjob 1 police 2` makes player 1 a police officer with grade 2. It does **not** make them a server admin. Admin lives in ACE (`add_principal` / `group.admin` / `qbcore.god`). Employment lives in the framework's jobs table. Giving someone the police job gives them a uniform and a paycheck, not the power to kick. Keep the two pictures separate in your head and most "I gave them admin but it does not work" reports answer themselves.
+This is the single most common confusion across all three frameworks. `/setjob` and admin are unrelated systems. `/setjob 1 police 2` makes player 1 a police officer with grade 2. It does **not** make them a server admin.
+
+Admin lives in ACE (`add_principal` / `group.admin` / `qbcore.god`). Employment lives in the framework's jobs table. Giving someone the police job gives them a uniform and a paycheck, not the power to kick. **Keep the two pictures separate** and most "I gave them admin but it does not work" reports answer themselves.
 
 <Swatch
- colors={[
- { hex: "#0fb6c4", label: "ACE group = admin power" },
- { hex: "#9aa3ad", label: "framework job = employment" },
- ]}
+  colors={[
+    { hex: "#0fb6c4", label: "ACE group = admin power" },
+    { hex: "#9aa3ad", label: "framework job = employment" },
+  ]}
 />
 
 ## If something went wrong
 
 <FailureList
- items={[
- { symptom: "I added my license but I have no admin power", fix: "Either permissions.cfg is never exec'd from server.cfg, or you edited it without re-reading the file. Add exec permissions.cfg to server.cfg, then restart the server or run exec permissions.cfg in the server console." },
- { symptom: "ESX: /setgroup says I am not allowed to run it", fix: "Your own license is not yet in group.admin or group.owner. ESX gates /setgroup on the admin check. Grant yourself via add_principal in permissions.cfg first, reconnect, then /setgroup others." },
- { symptom: "QBCore: I ran UPDATE players SET permission='admin' and nothing changed", fix: "There is no permission column in QBCore. Admin is ACE, not a DB field. Use add_principal ... qbcore.god in your cfg, or /addpermission in game (session only)." },
- { symptom: "QBCore: /addpermission worked but admin vanished after a restart", fix: "In-game /addpermission creates a session-only ACE principal. Write the matching add_principal line into permissions.cfg to make it permanent." },
- { symptom: "Qbox: I used qbcore.god and it did nothing", fix: "Qbox does not use the qbcore.* names. Use FiveM-native group.admin / group.mod / group.support. The qbcore.* naming is QBCore only." },
- { symptom: "Any: giving the police job did not grant admin", fix: "A job is employment, not an admin rank. /setjob never grants admin. Use the ACE/principal grant for the framework you are on." },
- { symptom: "sv_lan makes everyone an admin on a live server", fix: "set sv_lan true makes the admin check pass for every player. It is for local testing only. Never ship a public server with sv_lan true." },
- ]}
+  items={[
+    { symptom: "I added my license but I have no admin power", fix: "Either permissions.cfg is never exec'd from server.cfg, or you edited it without re-reading the file. Add exec permissions.cfg to server.cfg, then restart the server or run exec permissions.cfg in the server console." },
+    { symptom: "ACE works for one admin but not another", fix: "The second player's identifier is wrong or truncated. Open txAdmin -> Players -> click that player -> copy the full license: or fivem: string, paste it complete into add_principal, then exec permissions.cfg again." },
+    { symptom: "add_ace command not recognized", fix: "Your server artifact is too old. Install the latest build from the top of runtime.fivem.net/artifacts/fivem/build_server_windows/master/ (Linux: build_proot_linux/master/). Only drop to the previous build if the newest one breaks." },
+    { symptom: "ESX: /setgroup says I am not allowed to run it", fix: "Your own license is not yet in group.admin or group.owner. ESX gates /setgroup on the admin check. Grant yourself via add_principal in permissions.cfg first, reconnect, then /setgroup others." },
+    { symptom: "QBCore: I ran UPDATE players SET permission='admin' and nothing changed", fix: "There is no permission column in QBCore. Admin is ACE, not a DB field. Use add_principal ... qbcore.god in your cfg, or /addpermission in game (session only)." },
+    { symptom: "QBCore: /addpermission worked but admin vanished after a restart", fix: "In-game /addpermission creates a session-only ACE principal. Write the matching add_principal line into permissions.cfg to make it permanent." },
+    { symptom: "Qbox: I used qbcore.god and it did nothing", fix: "Qbox does not use the qbcore.* names. Use FiveM-native group.admin / group.mod / group.support. The qbcore.* naming is QBCore only." },
+    { symptom: "Any: giving the police job did not grant admin", fix: "A job is employment, not an admin rank. /setjob never grants admin. Use the ACE/principal grant for the framework you are on." },
+    { symptom: "sv_lan makes everyone an admin on a live server", fix: "set sv_lan true makes the admin check pass for every player. It is for local testing only. Never ship a public server with sv_lan true." },
+  ]}
 />
 
 ## What you can do now
 
 <Recap
- items={[
- "Explain a principal (who) and an ace (what), and why every grant is add_ace then add_principal.",
- "Promote a real player to admin on a vanilla server using permissions.cfg, exec'd from server.cfg.",
- "Tell the difference between a permanent cfg grant (survives restarts) and a live console grant (session only).",
- "Map any framework's admin layer back to the same two ACE lines: ESX group.admin, QBCore qbcore.god, Qbox group.admin.",
- "State the current framework differences from official sources: ESX's configured admin groups, QBCore's qbcore.* ACEs, and Qbox's recipe-native group.* hierarchy.",
- "Separate a permission group from a job, and debug the 'I gave admin but it does not work' report on sight.",
- ]}
+  items={[
+    "Explain a principal (who) and an ace (what), and why every grant is add_ace then add_principal.",
+    "Promote a real player to admin on a plain server using permissions.cfg, exec'd from server.cfg.",
+    "Tell the difference between a permanent cfg grant (survives restarts) and a live console grant (session only).",
+    "Map any framework's admin layer back to the same two ACE lines: ESX group.admin, QBCore qbcore.god, Qbox group.admin.",
+    "State the current framework differences from official sources: ESX's configured admin groups, QBCore's qbcore.* ACEs, and Qbox's recipe-native group.* hierarchy.",
+    "Separate a permission group from a job, and debug the 'I gave admin but it does not work' report on sight.",
+  ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| `add_ace` command not recognized | Server artifacts are too old | Update to the latest build from runtime.fivem.net |
-| ACE permission works for one admin but not another | The principal identifier is wrong | Check the exact identifier with `txAdmin → Players → click name → Identifiers`. Copy the full license:XXXXX string |
-| Added the principal but the player still has no power | The group was never granted any object | An `add_principal ... group.admin` does nothing unless an `add_ace group.admin command allow` line gives that group something to do. Define the ace first, then add the player |
-| `IsPlayerAceAllowed` returns false for a job-grade check | A job grade is not an ACE principal | Job grades live in the framework's jobs table, not in ACE. Gate the command with the framework's grade check (ESX `xPlayer.getJob().grade`, QBCore/Qbox `Player.PlayerData.job.grade.level`), not with `IsPlayerAceAllowed` |
 
 ## Try it yourself
 
 <Exercise>
- Build a real three-tier staff hierarchy in `permissions.cfg` for a Qbox server: an owner who can run everything, a moderator who inherits a support role, and a support member who can only run `/kick` and `/freeze`. Use inheritance so you do not repeat command grants.
+  Build a real three-tier staff hierarchy in `permissions.cfg` for a Qbox server: an owner who can run everything, a moderator who inherits a support role, and a support member who can only run `/kick` and `/freeze`. Use inheritance so you do not repeat command grants.
 
- ```cfg
- # Define what each tier can do
- add_ace group.admin command allow # owner: everything
- add_ace group.support command.kick allow # support: kick only
- add_ace group.support command.freeze allow # support: freeze only
+  ```cfg
+  # Define what each tier can do
+  add_ace group.admin command allow      # owner: everything
+  add_ace group.support command.kick allow   # support: kick only
+  add_ace group.support command.freeze allow # support: freeze only
 
- # Build the hierarchy with inheritance (child gets parent)
- add_principal group.admin group.mod # admin inherits mod
- add_principal group.mod group.support # mod inherits support
+  # Build the hierarchy with inheritance (child gets parent)
+  add_principal group.admin group.mod        # admin inherits mod
+  add_principal group.mod group.support      # mod inherits support
 
- # Put three real licenses into the three tiers
- add_principal identifier.license:OWNER... group.admin
- add_principal identifier.license:MOD... group.mod
- add_principal identifier.license:HELPER... group.support
- ```
+  # Put three real licenses into the three tiers
+  add_principal identifier.license:OWNER... group.admin
+  add_principal identifier.license:MOD... group.mod
+  add_principal identifier.license:HELPER... group.support
+  ```
 
- Execute the file, then verify the ACL without performing destructive actions: run `test_ace identifier.license:HELPER... command.kick` and `test_ace identifier.license:HELPER... command.quit` in the server console. The first should allow and the second deny. These tests prove the ACE policy; an actual `/kick` or `/freeze` command exists only if a resource registers it. Add a comment naming each authorized person, then confirm that changing a framework job does not change either ACE result.
+  Execute the file, then verify the ACL without performing destructive actions: run `test_ace identifier.license:HELPER... command.kick` and `test_ace identifier.license:HELPER... command.quit` in the server console. The first should allow and the second deny. These tests prove the ACE policy; an actual `/kick` or `/freeze` command exists only if a resource registers it. Add a comment naming each authorized person, then confirm that changing a framework job does not change either ACE result.
 </Exercise>
 
 <Refs
- items={[
- { label: "FiveM server commands (ACE, add_ace, add_principal)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
- { label: "FiveM vanilla server setup (server.cfg)", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/" },
- { label: "ESX setting permissions and commands", href: "https://docs.esx-framework.org/en/esx_core/es_extended/commands" },
- { label: "QBCore setting permissions", href: "https://docs.qbcore.org/qbcore-documentation/guides/setting-permissions" },
- { label: "Qbox qbx_core commands", href: "https://docs.qbox.re/resources/qbx_core/commands" },
- { label: "Qbox official recipe · permissions.cfg", href: "https://github.com/Qbox-project/txAdminRecipe/blob/main/permissions.cfg" },
- ]}
+  items={[
+    { label: "FiveM server commands (ACE, add_ace, add_principal)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
+    { label: "FiveM vanilla server setup (server.cfg)", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-vanilla/" },
+    { label: "ESX setting permissions and commands", href: "https://docs.esx-framework.org/en/esx_core/es_extended/commands" },
+    { label: "QBCore setting permissions", href: "https://docs.qbcore.org/qbcore-documentation/guides/setting-permissions" },
+    { label: "Qbox qbx_core commands", href: "https://docs.qbox.re/resources/qbx_core/commands" },
+    { label: "Qbox official recipe · permissions.cfg", href: "https://github.com/Qbox-project/txAdminRecipe/blob/main/permissions.cfg" },
+  ]}
 />

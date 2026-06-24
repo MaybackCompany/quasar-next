@@ -1,0 +1,229 @@
+<LessonHero
+  crumbs="Qbox"
+  title="Qbox jobs: add and edit jobs"
+  meta={[
+    { label: "You'll do", value: "Read how Qbox stores jobs, edit qbx_core/shared/jobs.lua to add a new job with grades, restart qbx_core to load it, then assign it to a player with /setjob." },
+    { label: "Time", value: "~15 minutes." },
+    { label: "You need", value: "A running Qbox server (qbx_core installed) and a text editor. Admin access in game to run /setjob." },
+    { label: "Result", value: "A new job that appears in game, with named ranks and per-rank pay, that you can give to any player." },
+  ]}
+>
+  A **job** in Qbox is a role a player can hold, like `police` or `mechanic`. Every job has **grades**, which are the ranks inside that job, like Recruit then Officer then Chief. Jobs are not in a database. They live in one Lua file, `qbx_core/shared/jobs.lua`, as a plain Lua table. **qbx_core** is the core framework resource (the program that runs the whole roleplay framework). You edit the file, restart that one resource, and the new job exists.
+</LessonHero>
+
+<Prereq
+  items={[
+    "Qbox is installed and the server boots with qbx_core running (no red errors in the console).",
+    "You can open and save .lua files in a plain text editor (VS Code or Notepad++).",
+    "You are an admin in game so /setjob is allowed for you.",
+    "You know your own server id in game (run the players list or check txAdmin).",
+  ]}
+/>
+
+<Callout variant="fivem" title="Qbox is not old QBCore. The job shape is different.">
+  Qbox is a modern fork of QBCore built on the **ox** resources (`ox_lib`, `ox_inventory`). The jobs file looks similar to QBCore but one thing changed and it trips everyone up. In old QBCore, grade keys are **strings**: `['0']`. In Qbox, grade keys are plain **numbers**: `[0]`. If you copy a QBCore job straight into Qbox with `['0']` keys, grade lookups break. Always use number keys in Qbox.
+</Callout>
+
+## Where jobs live
+
+Every job is defined in one file:
+
+```text
+qbx_core/shared/jobs.lua
+```
+
+That file holds one big Lua table. Each entry in the table is one job. The **key** is the job name, a short lowercase id with no spaces, like `police`. The **value** is a table describing that job: a label, a few flags, and the list of grades.
+
+**The job name (the table key) is the id every other script uses. The label is only the pretty name shown on screen.** A bank script checks the job name `police`, not the label `LSPD`.
+
+## Job structure
+
+Here is the shape of one job, with every field named:
+
+```lua
+['police'] = {
+    label = 'LSPD',          -- pretty name shown in menus and paychecks
+    type = 'leo',            -- OPTIONAL: groups jobs (leo, ems, mechanic, ...)
+    defaultDuty = true,      -- start on duty (true) or off duty (false)
+    offDutyPay = false,      -- still get paid while off duty?
+    grades = {
+        [0] = { name = 'Recruit', payment = 50 },
+        [1] = { name = 'Officer', payment = 75 },
+        [2] = { name = 'Sergeant', payment = 100 },
+        [3] = { name = 'Lieutenant', payment = 125 },
+        [4] = { name = 'Chief', isboss = true, bankAuth = true, payment = 150 },
+    },
+}
+```
+
+### Job fields
+
+| Field | Required | What it does |
+|-------|----------|--------------|
+| `label` | Yes | The human name shown in menus, paychecks, and HUDs. Can have spaces and capitals. |
+| `type` | No | Tags the job into a category. Other scripts read this to find police (`leo`), EMS (`ems`), or mechanics (`mechanic`). Leave it out for normal civilian jobs. |
+| `defaultDuty` | Yes | `true` means the player is on duty the moment they take the job. `false` means they start off duty. **Duty** is the on or off shift switch that controls pay and job powers. |
+| `offDutyPay` | Yes | `true` keeps paychecks coming while the player is off duty. `false` stops pay until they clock back on. |
+| `grades` | Yes | The table of ranks for this job. See below. |
+
+### Grade fields
+
+A **grade** is one rank inside the job. The grade key is the rank level as a number.
+
+| Field | Required | What it does |
+|-------|----------|--------------|
+| key `[0]`, `[1]`... | Yes | The rank level, written as a plain number. **Start at `[0]` and count up with no gaps.** |
+| `name` | Yes | The display name of the rank, like `Officer`. |
+| `payment` | Yes | The paycheck amount for that rank. |
+| `isboss` | No | `true` marks this rank as a boss. A boss rank unlocks the boss menu: hire, fire, and manage the job. |
+| `bankAuth` | No | `true` lets this rank touch the job's shared bank account (society funds). Usually set on the same rank as `isboss`. |
+
+<Callout variant="fivem" title="The one rule that breaks Qbox jobs">
+  Grade keys are **numbers** in Qbox: `[0]`, `[1]`, `[2]`. They are not strings, so do **not** write `['0']`. Start at `[0]`, and do not skip a number. A grades table that jumps from `[0]` to `[2]` leaves a hole, and a player at the missing grade has no rank data.
+</Callout>
+
+## Add a new job
+
+<StepGroup>
+  <Step num={1} title="Open the jobs file" outcome="qbx_core/shared/jobs.lua is open in your editor.">
+    Find your Qbox install, open the `qbx_core` resource folder, then open `shared/jobs.lua`.
+
+    ```text
+    resources/[qbx]/qbx_core/shared/jobs.lua
+    ```
+
+    The exact parent folder depends on how you installed Qbox. The file path inside `qbx_core` is always `shared/jobs.lua`.
+  </Step>
+
+  <Step num={2} title="Add your job to the table" outcome="A new fisher job with three grades sits inside the jobs table.">
+    Add a new entry anywhere inside the big jobs table. Here is a fishing job with three ranks. The third rank is the boss.
+
+    ```lua
+    ['fisher'] = {
+        label = 'Fisherman',
+        defaultDuty = true,
+        offDutyPay = false,
+        grades = {
+            [0] = { name = 'Deckhand', payment = 50 },
+            [1] = { name = 'Fisher', payment = 75 },
+            [2] = { name = 'Captain', isboss = true, bankAuth = true, payment = 125 },
+        },
+    },
+    ```
+
+    Notes on this example:
+
+    - The job name is `fisher`. That is the id `/setjob` and other scripts use.
+    - There is no `type` field. A plain civilian job does not need one. Only add `type` if a police, EMS, or mechanic script needs to detect this job.
+    - Grade keys are `[0]`, `[1]`, `[2]`. Numbers, in order, no gaps.
+    - Put a comma after the closing `}` of your job so the next job in the table still parses.
+  </Step>
+
+  <Step num={3} title="Save and restart qbx_core" outcome="The server reloads the jobs table and the fisher job now exists.">
+    Save the file. Then in the server console (or txAdmin live console) restart the core resource:
+
+    ```text
+    restart qbx_core
+    ```
+
+    Jobs are loaded by `qbx_core` itself. Restarting a job script like a fishing job resource will **not** reload the table. You must restart `qbx_core`, or restart the whole server.
+
+    <ExpectedOutput>
+    Stopping resource qbx_core
+    Started resource qbx_core
+    </ExpectedOutput>
+
+    Wording varies by build. What matters: `qbx_core` stops and starts again with no red Lua error pointing at `shared/jobs.lua`. A red error there almost always means a missing comma or a `['0']` string key.
+  </Step>
+
+  <Step num={4} title="Give the job to a player" outcome="A player is now Captain in the fisher job.">
+    In game, as an admin, run the set-job command. The shape is `id`, then `job`, then `grade`:
+
+    ```text
+    /setjob [id] [job] [grade]
+    ```
+
+    Example: put the player whose server id is `1` into the fisher job at grade `2` (Captain):
+
+    ```text
+    /setjob 1 fisher 2
+    ```
+
+    The **id** here is the player's server id, the small number the server assigns when they connect, not their character name. Leave the grade off and it defaults to grade `0`.
+  </Step>
+</StepGroup>
+
+## Set the job from code
+
+You can also assign a job from your own server-side Lua. Get the player object first, then call `SetJob` on it. Qbox **deprecated `GetCoreObject`**, so do not use it. Use the direct export.
+
+```lua
+-- server-side
+local player = exports.qbx_core:GetPlayer(source)
+player.Functions.SetJob('fisher', 2)
+```
+
+`exports.qbx_core:GetPlayer(source)` returns the player object for that server id. The job and grade live on `player.PlayerData.job`. There is also a direct export that does the same thing in one line:
+
+```lua
+-- server-side, same result
+exports.qbx_core:SetJob(source, 'fisher', 2)
+```
+
+**On a Qbox server, reach the framework through `exports.qbx_core`, never through the old `GetCoreObject` call.**
+
+## fxmanifest for a job-aware resource
+
+If you write your own resource that reads or sets jobs, declare the dependencies in its `fxmanifest.lua` so it loads after the core and after `ox_lib`:
+
+```lua
+shared_script '@ox_lib/init.lua'
+
+dependency 'qbx_core'
+dependency 'ox_lib'
+```
+
+`@ox_lib/init.lua` pulls in `ox_lib`, the shared library Qbox uses for things like notifications, commands, and callbacks. The `dependency` lines tell the server to start `qbx_core` and `ox_lib` before your resource.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Job exists but grades break, or a player has no rank", fix: "You used string grade keys like ['0']. Qbox uses number keys. Change every key to [0], [1], [2] and restart qbx_core." },
+    { symptom: "Lua syntax error in shared/jobs.lua on restart", fix: "Almost always a missing comma after a grade or after the job's closing brace, or an unescaped apostrophe in a label. Add the comma; write Benny\\'s as 'Benny\\'s'." },
+    { symptom: "Edited the file but the new job never appears in game", fix: "You restarted the wrong resource. Jobs load in qbx_core. Run restart qbx_core (or restart the whole server). Restarting a job script does nothing." },
+    { symptom: "A player jumps to a grade and has blank rank info", fix: "There is a gap in the grades, like [0] then [2]. Fill the missing number. Grades must start at [0] and count up with no holes." },
+    { symptom: "Police or EMS features do not work for the new job", fix: "Those scripts detect jobs by type, not name. Add the matching type ('leo' for police, 'ems' for EMS, 'mechanic' for mechanics)." },
+    { symptom: "Two jobs with the same name, one overwrites the other", fix: "Job names are table keys and must be unique. The second ['police'] silently replaces the first. Rename one." },
+    { symptom: "Tried QBCore.Functions.GetCoreObject() and it errored", fix: "Qbox deprecated GetCoreObject. Use exports.qbx_core:GetPlayer(source) and the qbx_core exports instead." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Jobs live in qbx_core/shared/jobs.lua as one Lua table keyed by job name.",
+    "A job has label, optional type, defaultDuty, offDutyPay, and a grades table.",
+    "Grade keys in Qbox are numbers [0], [1], [2], not strings like ['0'], and must have no gaps.",
+    "isboss unlocks the boss menu; bankAuth unlocks the job's shared bank account.",
+    "Add a job, then restart qbx_core (not a job script) to load it.",
+    "Assign it in game with /setjob [id] [job] [grade], or in code with exports.qbx_core:GetPlayer(source) then player.Functions.SetJob.",
+    "Reach the framework through exports.qbx_core; the old GetCoreObject is deprecated.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a `taxi` job to `qbx_core/shared/jobs.lua` with two grades: `[0]` named `Driver` paying `60`, and `[1]` named `Dispatcher` paying `90` with `isboss = true` and `bankAuth = true`. Restart `qbx_core`, then run `/setjob 1 taxi 1` on yourself and confirm the Dispatcher rank shows in game with a boss menu.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Qbox documentation", href: "https://docs.qbox.re/" },
+    { label: "Qbox · qbx_core server exports (GetPlayer, SetJob)", href: "https://docs.qbox.re/resources/qbx_core/exports/server" },
+    { label: "Qbox · qbx_core shared exports", href: "https://docs.qbox.re/resources/qbx_core/exports/shared" },
+    { label: "ox_lib documentation", href: "https://overextended.dev/ox_lib" },
+  ]}
+/>

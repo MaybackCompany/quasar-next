@@ -1,4 +1,5 @@
 <LessonHero
+ crumbs="Module A3 · Operate & secure"
  title="Incident log runbook"
  meta={[
  { label: "You'll build", value: "A repeatable routine for turning a vague 'server broke' report into a logged, reproducible, fixable incident." },
@@ -7,67 +8,79 @@
  { label: "You'll learn", value: "Capture -> reproduce -> classify -> fix or escalate -> record, so problems stop recurring" },
  ]}
 >
- When something breaks, the worst response is panic edits on the live server. This runbook turns chaos into a routine: capture the evidence, reproduce it, classify it, fix or escalate, and write it down so the same fire does not start twice. It pairs txAdmin logs with your Discord reports into one workflow.
+ When something breaks, the worst response is panic edits on the live server. This runbook turns chaos into a routine. You capture the evidence, reproduce it, classify it, fix or escalate, and write it down so the same fire does not start twice. It pairs your txAdmin logs with your Discord reports into one workflow.
 </LessonHero>
 
 <Prereq
  items={[
- "I can read txAdmin Live Console and the txData logs.",
+ "I can read the txAdmin Live Console and the txData log files.",
  "I have a channel where players and staff report issues.",
  "I deploy changes through version control, not live edits (the Git lesson)."
  ]}
 />
 
 <Callout variant="fivem" title="Where the evidence lives">
- txAdmin writes per-server logs under `txData/<your-server>/logs` (admin, fxserver, server). The Live Console shows what is happening now; the log files show what happened earlier. Both are your evidence.
+ txAdmin writes per-server logs under `txData/<your-server>/logs` (admin, fxserver, server). The Live Console shows what is happening right now. The log files show what happened earlier. Both are your evidence.
 </Callout>
 
 ## The runbook
 
 <StepGroup>
  <Step num={1} title="Capture before you change anything" outcome="You have the error text, time, and who/what triggered it.">
- Grab the exact console error, the timestamp, the player or resource involved, and what they were doing. A screenshot of the report plus the matching console line is enough. Do not start editing yet.
+ Grab the exact console error. Note the timestamp. Note the player or resource involved. Note what they were doing.
+
+ A screenshot of the report plus the matching console line is enough. **Do not start editing yet.**
  </Step>
 
  <Step num={2} title="Reproduce it" outcome="You can make the problem happen on demand.">
- Try to trigger it yourself on a test server or quiet time. A bug you can reproduce is a bug you can fix; a bug you cannot reproduce gets a watch entry, not a guess-fix.
+ Try to trigger it yourself on a test server, or at a quiet time. A bug you can reproduce is a bug you can fix. A bug you cannot reproduce gets a watch entry, not a guess-fix.
  </Step>
 
  <Step num={3} title="Classify the severity" outcome="You know whether to fix now or schedule it.">
- Sort it: **critical** (server down, money/items exploitable), **major** (a core feature broken), or **minor** (cosmetic, rare). Critical jumps the queue; minor goes on the list.
+ Sort it into one of three buckets: **critical** (server down, money or items exploitable), **major** (a core feature broken), or **minor** (cosmetic, rare). Critical jumps the queue. Minor goes on the list.
  </Step>
 
  <Step num={4} title="Fix or escalate, then deploy safely" outcome="The fix reaches the server through your normal deploy loop.">
- If it is yours, fix it on your PC, test, and deploy with the Git loop. If it is a paid resource, open a support ticket with your captured evidence. Never patch directly on the live server.
+ If the resource is yours, fix it on your PC, test it, and deploy with the Git loop. If it is a paid resource, open a support ticket with your captured evidence. **Never patch directly on the live server.**
  </Step>
 
  <Step num={5} title="Record the incident" outcome="A future you can find what happened and what fixed it.">
- Log one line per incident: date, symptom, cause, fix, and the resource or commit involved. (A *commit* is the unique ID Git gives each saved change - see the Git lesson - so 'commit a1b2c3d' lets a future you jump straight to the exact code that fixed it.) Over time this becomes the fastest debugging tool you own.
+ Log one line per incident: date, symptom, cause, fix, and the resource or commit involved. A *commit* is the unique ID Git gives each saved change (see the Git lesson), so "commit a1b2c3d" lets a future you jump straight to the exact code that fixed it.
+
+ Over time this log becomes the fastest debugging tool you own.
 
  ```text
  2026-06-12 | shop dupe on rapid-click | client trusted for grant | added server cooldown + qty check | commit a1b2c3d
  ```
  </Step>
     <ExpectedOutput>
-      You have a text file template you can open, fill in, and save in under 2 minutes whenever something breaks. Next time your server goes down or a player reports a bug, you log it the same way every time - and you can find any past incident by searching for its date.
+      You have a text file template you can open, fill in, and save in under 2 minutes whenever something breaks. Next time your server goes down or a player reports a bug, you log it the same way every time. You can find any past incident by searching for its date.
     </ExpectedOutput>
 </StepGroup>
 
 ## How it works
 
-The five steps are easy to nod along to and hard to actually run when a report lands at 2am. So walk one real incident through the whole loop. The point is not the specific bug; it is that the same five moves work on every report you will ever get.
+The five steps are easy to nod along to and hard to actually run when a report lands at 2am. So walk one real incident through the whole loop. The point is not the specific bug. The point is that the same five moves work on every report you will ever get.
 
 ### One report, all five steps
 
 A player posts in your bug channel: "car shop lets me dupe cars". That is all you have. Here is the loop.
 
-**1. Capture.** You do not edit anything yet. Ask for the time, shop, character/server ID, and exact clicks. txAdmin's activity logs cover platform/admin activity such as joins, drops, chat, kills, explosions, and commands; they do **not** automatically record every custom resource event. Search the raw FXServer log and any audit log the shop resource actually implements. If no purchase audit exists, record that evidence gap and reproduce on a test server (a separate, non-public copy of your server, sometimes called staging) with temporary server-side logging - a `print(...)` line you add inside the resource's *server* script so the action shows up in the FXServer console, which you remove again once you have your evidence. Never claim txAdmin captured `vehicle:purchase` unless your resource explicitly logged it.
+**1. Capture.** You do not edit anything yet. Ask for the time, the shop, the character or server ID, and the exact clicks.
 
-**2. Reproduce.** On a test server, stand at the same shop and spam the buy button the way they described. The vehicle is granted several times before any balance check catches up. It reproduces every time. A bug you can trigger on demand is a bug you can fix; if it had only happened once and never again, it would get a watch entry instead.
+txAdmin's activity log covers platform and admin activity: joins, drops, chat, kills, explosions, and commands. It does **not** automatically record every custom resource event. So search the raw FXServer log (the server's console output, saved to a file) and any audit log the shop resource itself writes.
 
-**3. Classify.** Players minting free cars is duplicated value, which is a money/item exploit. That is **critical**. It jumps the queue ahead of the cosmetic bugs on your list, and you stop the bleed first by stopping or restricting that one shop resource while you work, rather than editing it live.
+If no purchase audit exists, write down that evidence gap. Then reproduce it on a test server. A *test server* is a separate, non-public copy of your server, sometimes called staging. Add temporary server-side logging there: a `print(...)` line you drop into the resource's *server* script so the action shows up in the FXServer console. Remove that line once you have your evidence. Never claim txAdmin captured `vehicle:purchase` unless your resource explicitly logged it.
 
-**4. Fix or escalate.** Read the buy flow. When you click buy, the player's game (the client) fires a named network event - here `vehicle:purchase` - at the server, and the server grants the car. Because the client is what fires that event, a cheater can fire it themselves, as fast and as often as they like. The server trusts the client to fire it once and never checks how fast the requests arrive or whether the player can afford each one. The fix lives on the server, not the client: charge and validate on the server before granting, and reject a second request that arrives before the first finishes. If this is your own resource, you make that change on your PC, test it against the same spam, and deploy through the Git loop. If it is a paid resource, you open a support ticket with the evidence packet from step 1 so the author can fix it the same way. Either way, nothing gets patched directly on the live server.
+**2. Reproduce.** On a test server, stand at the same shop and spam the buy button the way they described. The vehicle is granted several times before any balance check catches up. It reproduces every time. A bug you can trigger on demand is a bug you can fix. If it had only happened once and never again, it would get a watch entry instead.
+
+**3. Classify.** Players minting free cars is duplicated value, which is a money or item exploit. That is **critical**. It jumps the queue ahead of the cosmetic bugs on your list. You stop the bleed first by stopping or restricting that one shop resource while you work, rather than editing it live.
+
+**4. Fix or escalate.** Read the buy flow. When you click buy, the player's game (the *client*) fires a named network event, here `vehicle:purchase`, at the server, and the server grants the car. Because the client is what fires that event, a cheater can fire it themselves, as fast and as often as they like.
+
+The server trusts the client to fire it once. It never checks how fast the requests arrive or whether the player can afford each one. The fix lives on the server, not the client. Charge and validate on the server before granting, and reject a second request that arrives before the first finishes.
+
+If this is your own resource, you make that change on your PC, test it against the same spam, and deploy through the Git loop. If it is a paid resource, you open a support ticket with the evidence packet from step 1 so the author can fix it the same way. Either way, nothing gets patched directly on the live server.
 
 **5. Record.** One line in the log, the same shape as the example above:
 
@@ -80,31 +93,39 @@ Now the abstract steps are concrete, and the log line is not a note. It names th
 ### Why this class of bug keeps coming back
 
 <Callout variant="warning" title="Security rule">
- The client (the player's game) is attacker-controlled: anything it sends can be faked, replayed, or spammed. Any value the server grants in response to a client-fired event MUST be validated and rate-limited on the server before it is granted. Never let the client decide the amount, the price, or how many times an action runs.
+ The client (the player's game) is attacker-controlled. Anything it sends can be faked, replayed, or spammed. Any value the server grants in response to a client-fired event MUST be validated and rate-limited on the server before it is granted. Never let the client decide the amount, the price, or how many times an action runs.
 </Callout>
 
-Look at the cause field in both log lines. The first one says "client trusted for grant." The second says "server trusted client to fire purchase once." That is the same bug wearing a different shop. Any time the server hands out value because the client asked nicely, without checking on the server side, a player who can fire that request faster or more often than you expected gets free value. Shops, ATMs, crafting, item transfers all share the shape.
+Look at the cause field in both log lines. The first one says "client trusted for grant." The second says "server trusted client to fire purchase once." That is the same bug wearing a different shop.
 
-This is why the record step matters more than it looks. When the next dupe report lands, you search your log for "dupe", see two prior entries that both trace back to a trusting server, and you already know where to look before you reproduce anything. The runbook does not close one incident. Over time it teaches you the patterns in your own server, and the server-authority pattern is the one you will meet most.
+Any time the server hands out value because the client asked nicely, without checking on the server side, a player who can fire that request faster or more often than you expected gets free value. Shops, ATMs, crafting, and item transfers all share the shape.
+
+This is why the record step matters more than it looks. When the next dupe report lands, you search your log for "dupe", see two prior entries that both trace back to a trusting server, and you already know where to look before you reproduce anything. The runbook does not just close one incident. Over time it teaches you the patterns in your own server, and the server-authority pattern is the one you will meet most.
 
 ### Reading txData logs by timestamp
 
-Step 1 leans on finding the right lines in a file, so make that concrete. txAdmin keeps rotating logs in the `txData` folder, which sits next to your server's install folder (on Windows, typically `<your FXServer folder>/../txData`; on a host like ZAP it is exposed in the file manager). Inside it, each server profile has a `logs` folder - `txData/<your-server-profile>/logs` - holding dated, rotated text files. Open them in a plain-text editor such as VS Code or Notepad (NOT in the game). The three files you care about are:
+Step 1 leans on finding the right lines in a file, so make that concrete. txAdmin keeps rotating logs in the `txData` folder, which sits next to your server's install folder. On Windows it is typically `<your FXServer folder>/../txData`. On a host like ZAP it is exposed in the file manager.
+
+Inside it, each server profile has a `logs` folder: `txData/<your-server-profile>/logs`. It holds dated, rotated text files. Open them in a plain-text editor such as VS Code or Notepad, not in the game. The three files you care about are:
 
 - `fxserver` is the raw server console output, the same stream you see live, including resource `print` lines and Lua errors.
-- `server` is txAdmin's activity log for events txAdmin records, such as joins, drops, chat, deaths/kills, explosions, and commands. Custom gameplay events appear only if a resource explicitly logs them.
-- `admin` is who did what in the txAdmin panel: kicks, bans, restarts, console commands.
+- `server` is txAdmin's activity log for events txAdmin records, such as joins, drops, chat, deaths and kills, explosions, and commands. Custom gameplay events appear only if a resource explicitly logs them.
+- `admin` is who did what in the txAdmin panel: kicks, bans, restarts, and console commands.
 
-To work an incident, take the report time and search the activity and FXServer logs that actually cover the symptom. Find the minute, then read outward. For a custom economy action, use the resource's audit table/log if it has one; txAdmin cannot manufacture application-level evidence. The Live Console is for now, while rotating files preserve earlier output according to your retention settings.
+To work an incident, take the report time and search the activity and FXServer logs that actually cover the symptom. Find the minute, then read outward. For a custom economy action, use the resource's own audit table or log if it has one. txAdmin cannot manufacture application-level evidence. The Live Console is for now, while the rotating files preserve earlier output according to your retention settings.
 
-## Common mistakes
+## If something went wrong
 
 <FailureList
  items={[
  { symptom: "Edited the live server and made it worse", fix: "Stop. Roll back via Git, reproduce on a test setup, then deploy the fix through the normal loop." },
  { symptom: "Report says 'it broke', nothing else", fix: "Ask for time, what they did, and any error text. No reproduction means a watch entry, not a blind change." },
  { symptom: "Same bug keeps coming back", fix: "You fixed the symptom, not the cause. Use the incident log to find the real trigger, which for value exploits is usually a server that trusts the client." },
- { symptom: "Lost the error after a restart", fix: "Pull it from txData logs by timestamp. The Live Console clears; the log files do not." },
+ { symptom: "Lost the error after a restart", fix: "Pull it from the txData log files by timestamp. The Live Console clears on restart; the log files do not." },
+ { symptom: "Incident happened hours ago and you can no longer remember the details", fix: "Log it NOW, even two sentences: the time, what broke, and what you changed. A partial entry beats none." },
+ { symptom: "Reports scattered across Discord DMs, chat, and memory", fix: "Keep ONE file (incidents.md or a shared doc). Every incident goes there so it stays searchable by date." },
+ { symptom: "You do not know the root cause yet, so you skip logging", fix: "You do not need the cause to log the symptom. Write what you SAW (for example: server CPU at 100%, players timing out) and fill in the cause later." },
+ { symptom: "Log says 'fixed it' but not HOW", fix: "Write the exact command or config change. 'Reduced sv_maxclients from 64 to 32', not 'adjusted settings'." },
  ]}
 />
 
@@ -120,15 +141,6 @@ To work an incident, take the report time and search the activity and FXServer l
  ]}
 />
 
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| "I forgot to log what happened and now I can't remember" | The incident happened hours ago and details are lost | Log it NOW. Even 2 sentences are better than nothing. Time, what broke, what you changed |
-| Incident log is scattered across Discord DMs, chat, and memory | No single source of truth for server problems | Keep ONE file (`incidents.md` or a Google Doc). Every incident goes there. Searchable by date |
-| "I don't know what caused it so I can't log it" | You don't need the root cause to log the symptoms | Log what you SAW: "Server CPU at 100%, players timing out." The cause can be filled in later |
-| Log says "Fixed it" but doesn't say HOW | The fix is obvious to you now, but won't be in 3 months when it happens again | Write the exact command or config change. "Reduced sv_maxclients from 64 to 32" not "Adjusted settings" |
-
 ## Try it yourself
 
 <Exercise>
@@ -142,13 +154,13 @@ To work an incident, take the report time and search the activity and FXServer l
  4. Where the fix most likely lives, client or server, and the one sentence of cause you would write.
  5. The single log line you would record, in the `date | symptom | cause | fix | commit` shape used above.
 
- If your cause sentence in step 4 ends up being some version of "the server trusted the client," you have spotted the pattern this lesson is really about. Compare your log line to the two worked examples and confirm all five fields are filled, not the symptom.
+ If your cause sentence in step 4 ends up being some version of "the server trusted the client," you have spotted the pattern this lesson is really about. Compare your log line to the two worked examples and confirm all five fields are filled, not just the symptom.
 </Exercise>
 
 <Refs
  items={[
  { label: "Cfx.re docs · txAdmin", href: "https://docs.fivem.net/docs/resources/txAdmin/" },
  { label: "Cfx.re docs · Server console commands", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
- { label: "txAdmin docs · Log files", href: "https://github.com/tabarra/txAdmin/blob/master/docs/logs.md" }
+ { label: "Cfx.re docs · txAdmin setup and logs", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" }
  ]}
 />

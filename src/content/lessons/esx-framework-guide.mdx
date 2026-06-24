@@ -1,0 +1,436 @@
+<LessonHero
+  crumbs="ESX"
+  title="ESX: how the framework works"
+  meta={[
+    { label: "You'll do", value: "Learn how es_extended (ESX Legacy) works: the shared object, the client/server split, xPlayer data, money, jobs, items, usable items, notifications, commands, and callbacks. Then build a small /drinkwater script." },
+    { label: "Time", value: "~30 minutes to read and try the example." },
+    { label: "You need", value: "A running ESX Legacy server and a code editor. You should be able to add a resource and restart it." },
+    { label: "Result", value: "You can read and write basic ESX scripts and know where player money, jobs, and items live." },
+  ]}
+>
+  **ESX** (the resource is named `es_extended`, the modern build is called **ESX Legacy**) is the **framework** that sits under a roleplay server. A **framework** is the shared engine your other scripts build on. ESX handles who is logged in, their money, their job, and their items. Other scripts ask ESX for that data instead of inventing their own. This lesson explains how ESX itself works, one piece at a time.
+</LessonHero>
+
+<Prereq
+  items={[
+    "An ESX Legacy server is installed and starts without red errors.",
+    "I know how to make a resource folder with an fxmanifest.lua and restart it.",
+    "I can open the server console to read prints and errors.",
+    "I have a database client (HeidiSQL or DBeaver) to read and edit SQL tables.",
+  ]}
+/>
+
+<Callout variant="fivem" title="es_extended is the framework, everything else is a script">
+  The framework resource is named `es_extended`. Anything else, like an inventory, a shop, or a job script, is a **separate resource** that **depends on** `es_extended`. When this lesson says ESX, it means `es_extended` itself, not the scripts built on top of it.
+</Callout>
+
+## What is ESX
+
+ESX is a **framework** for FiveM roleplay servers. Think of it as the foundation underneath all of your roleplay scripts.
+
+ESX itself handles:
+
+- **Players** who is logged in, their character, money, job, and more.
+- **Jobs** police, mechanic, ambulance, and so on. Jobs live in the **database**, not in a file.
+- **Money** cash, plus **accounts** like `bank` and `black_money` (dirty money).
+- **Items** the things a player carries in their inventory.
+- **Commands** the things you type in chat with a slash, like `/car`.
+
+Other scripts (an inventory, a gas station, a car dealership) **build on top** of ESX and ask it for help: who is this player, how much money do they have, take 500 from their bank.
+
+The one thing to remember: the framework resource is `es_extended`. Everything else is a separate script that **depends on** it.
+
+## Client and server: the two sides
+
+In FiveM, and therefore in ESX, code runs in **two places**. This is the single most important idea in the whole lesson.
+
+| Side | Runs where | Used for |
+|------|------------|----------|
+| **Client** | On the player's own computer | What the player *sees*: notifications, menus, animations |
+| **Server** | On the server machine | Things that must be **secure**: money, items, jobs. Shared by all players. |
+
+**Why this matters.** Client code can be **cheated** by players. Server code cannot. So anything involving money, items, or permissions **must happen on the server**.
+
+A few more terms you will meet:
+
+- **`source`** a number that identifies the player an action came from. On the server you use `source` to figure out *who* did something. `source` does not exist on the client.
+- **identifier / citizenid** in ESX, a player's permanent ID is usually their **license identifier** (a string like `license:abc123...`). It stays in the database even when the player logs off, so you use it to store data permanently.
+- **export** a way for one resource to call another. This is how you get the ESX object: `exports['es_extended']:getSharedObject()`.
+- **event / trigger** a message sent between client and server (for example, the player pressed a key).
+
+**The rule that never changes: money, items, and jobs are decided on the server.**
+
+## Getting the shared object
+
+Before you can use ESX at all, you grab the **shared object**. The **shared object** is the toolbox that holds every ESX function. You put this line at the top of your script. It works on both the client side and the server side.
+
+```lua
+local ESX = exports['es_extended']:getSharedObject()
+```
+
+After this line you can call `ESX.GetPlayerFromId`, `ESX.RegisterUsableItem`, `ESX.ShowNotification`, and the rest.
+
+You may also see an older pattern in tutorials:
+
+```lua
+-- Older ESX Legacy style. Still works, but the export above is the modern way.
+ESX = nil
+TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)
+```
+
+Use the `getSharedObject()` export form. It is simpler and it is what current ESX docs recommend.
+
+**`getSharedObject()` is how every ESX script begins. No object, no ESX functions.**
+
+## xPlayer: everything about a player
+
+When you fetch a player on the server, ESX gives you back an **xPlayer** object. `xPlayer` is a package of data and functions for one player. You read its fields and you call its methods.
+
+Common fields and methods on `xPlayer`:
+
+| Thing | What it is | Example |
+|-------|------------|---------|
+| `xPlayer.identifier` | Permanent player ID | `"license:abc123..."` |
+| `xPlayer.getName()` | Character name | `"John Doe"` |
+| `xPlayer.getMoney()` | Cash on hand | `1500` |
+| `xPlayer.getJob()` | The player's job table | `job.name`, `job.grade` |
+| `xPlayer.getAccount('bank')` | A money account | `.money` is the balance |
+| `xPlayer.getInventoryItem('bread')` | An item the player holds | `.count` is how many |
+
+On the **server**, you get an xPlayer from a `source`:
+
+```lua
+local xPlayer = ESX.GetPlayerFromId(source)
+print(xPlayer.getJob().name)    -- e.g. "police"
+print(xPlayer.getJob().grade)   -- e.g. 2 (the rank number)
+print(xPlayer.getMoney())       -- cash on hand
+```
+
+On the **client**, you read your *own* data a different way. There is no `source` on the client, so you call `ESX.GetPlayerData()` (covered later in the client section).
+
+## Server functions: money, jobs, items
+
+These run on the **server**, where you make the real changes. Always fetch the player first.
+
+### Find a player
+
+```lua
+-- By their source (most common)
+local xPlayer = ESX.GetPlayerFromId(source)
+
+-- By identifier (must be online)
+local xPlayer = ESX.GetPlayerFromIdentifier('license:abc123...')
+```
+
+Once you have `xPlayer`, you call its methods directly on the object.
+
+### Money
+
+ESX splits money into **cash** and **accounts**. Cash is loose money on hand. An **account** is a named balance like `bank` (clean money) or `black_money` (dirty money).
+
+```lua
+-- Cash on hand
+xPlayer.addMoney(500)
+xPlayer.removeMoney(200)
+local cash = xPlayer.getMoney()
+
+-- Accounts: ('bank' or 'black_money', amount)
+xPlayer.addAccountMoney('bank', 500)
+xPlayer.removeAccountMoney('bank', 200)
+local bank = xPlayer.getAccount('bank').money
+```
+
+The key difference from cash: accounts are addressed by name. To change the bank balance you pass `'bank'` as the first argument.
+
+### Job
+
+A job has a **name** (like `police`) and a **grade** (a rank number, like `2`).
+
+```lua
+-- Set job: (job name, grade/rank number)
+xPlayer.setJob('police', 2)
+
+-- Read the current job
+local job = xPlayer.getJob()
+print(job.name)        -- "police"
+print(job.grade)       -- 2
+print(job.label)       -- "Police" (the pretty name)
+print(job.grade_name)  -- "sergeant"
+```
+
+`xPlayer.getJob()` returns a table with `name`, `grade`, `label`, `grade_name`, and more. The `name` and `grade` must already exist in the database (see the jobs section below) or the job will not apply.
+
+### Items
+
+ESX has two common inventory setups. Learn the native ESX functions first, then know that many modern servers swap in `ox_inventory`.
+
+**Native ESX Legacy inventory:**
+
+```lua
+-- Add an item: (item name, count)
+xPlayer.addInventoryItem('bread', 1)
+
+-- Remove an item
+xPlayer.removeInventoryItem('bread', 1)
+
+-- Check how many a player has
+local item = xPlayer.getInventoryItem('bread')
+if item.count > 0 then
+    print('The player has bread')
+end
+```
+
+**If your server runs ox_inventory instead**, items are handled by that resource, so you call its exports with the `source`:
+
+```lua
+-- ox_inventory style (only if your server uses ox_inventory)
+exports.ox_inventory:AddItem(source, 'bread', 1)
+exports.ox_inventory:RemoveItem(source, 'bread', 1)
+local count = exports.ox_inventory:GetItemCount(source, 'bread')
+```
+
+Lead with the native `xPlayer` functions. Switch to the `ox_inventory` exports only when you know your server is running `ox_inventory`.
+
+### Make an item usable
+
+Want something to happen when a player uses an item, like drinking water? Register the item as **usable** on the server.
+
+```lua
+ESX.RegisterUsableItem('bread', function(source)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    xPlayer.removeInventoryItem('bread', 1)
+    -- here you could raise hunger, play an animation, etc.
+    xPlayer.showNotification('You ate the bread')
+end)
+```
+
+`ESX.RegisterUsableItem` takes the item name and a function. The function receives the `source` of the player who used it. ESX runs it whenever that player uses the item from their inventory.
+
+## Client functions: notify and player data
+
+These run on the **player's** machine and handle what the player sees.
+
+### Notification
+
+```lua
+ESX.ShowNotification('This is a test')
+```
+
+`ESX.ShowNotification` shows a short message on the player's screen. It is a client function, so call it in client code (or send it to a client from the server, shown in the mini example later).
+
+### Get your own data
+
+On the client there is no `source`, so you read your own data with `ESX.GetPlayerData()`.
+
+```lua
+local data = ESX.GetPlayerData()
+print(data.job.name)   -- e.g. "police"
+print(data.money)      -- your cash
+```
+
+One catch: your data is not ready the instant the script starts. The player **loads** a moment after joining. ESX fires the `esx:playerLoaded` event when the data is ready, so wait for it before reading:
+
+```lua
+RegisterNetEvent('esx:playerLoaded', function(xPlayer)
+    -- xPlayer here is your own data, now safe to read
+    print('Loaded as ' .. xPlayer.job.name)
+end)
+```
+
+**On the client, read your own data with `ESX.GetPlayerData()`, and wait for `esx:playerLoaded` before you trust it.**
+
+## Commands: built-in and your own
+
+A **command** is something you type in chat starting with a slash, like `/car`. Your ESX server already has commands from the framework and from the scripts you installed. Most useful admin commands (spawn a car, set a job, teleport) come from **admin resources** like `esx_adminmenu` or a standalone admin tool, not from `es_extended` itself. Check which admin resource your server runs to see its exact command list.
+
+You make your **own** commands with `ESX.RegisterCommand`. It runs on the **server**.
+
+```lua
+ESX.RegisterCommand(name, permission, callback, allowConsole, options)
+```
+
+**A simple command with no arguments:**
+
+```lua
+ESX.RegisterCommand('hi', 'user', function(xPlayer, args, showError)
+    xPlayer.showNotification('Hi there!')
+end, false, {help = 'Says hi'})
+```
+
+**A command with arguments** (for example `/givecash [id] [amount]`):
+
+```lua
+ESX.RegisterCommand('givecash', 'admin', function(xPlayer, args, showError)
+    local target = args.target          -- an xPlayer, resolved by ESX
+    local amount = args.amount          -- a number, validated by ESX
+    target.addMoney(amount)
+    xPlayer.showNotification('Gave ' .. amount .. ' cash')
+end, false, {
+    help = 'Give a player cash',
+    arguments = {
+        { name = 'target', help = 'Player ID', type = 'player' },
+        { name = 'amount', help = 'How much money', type = 'number' },
+    },
+})
+```
+
+What the parts mean:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `name` | What you type in chat, without the slash |
+| `permission` | Who may use it: `'user'`, `'admin'`, etc. |
+| `callback` | The function that runs. Receives `xPlayer`, `args`, `showError` |
+| `allowConsole` | `true` lets the server console run it too. Usually `false` |
+| `options` | A table with `help` text and the `arguments` list |
+
+Two things ESX does for you here. First, if you declare an argument with `type = 'player'`, ESX turns the ID you typed into a ready-to-use `xPlayer` in `args.target`. Second, if you declare `type = 'number'`, ESX validates it and gives you a number, not text. The `showError` function lets you reject bad input with a message.
+
+## Callbacks: ask the server a question
+
+A **callback** is how the client asks the server a question and waits for the answer. It is safer than a plain event because the **server** decides the answer. The client cannot fake it.
+
+Example: the client asks how much money it has in the bank.
+
+**On the server**, register the callback:
+
+```lua
+ESX.RegisterServerCallback('myresource:getBank', function(source, cb)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    cb(xPlayer.getAccount('bank').money)   -- send the answer back
+end)
+```
+
+**On the client**, call it and use the answer:
+
+```lua
+ESX.TriggerServerCallback('myresource:getBank', function(bank)
+    ESX.ShowNotification('You have ' .. bank .. ' in the bank')
+end)
+```
+
+`cb(...)` on the server is how you send the answer back. The function on the client runs once that answer arrives.
+
+**Rule: never trust the client with money or items. Let the server decide and verify. Callbacks are the safe way to ask.**
+
+## Jobs live in the database, not a file
+
+This is the **biggest difference** from frameworks like QBCore. QBCore keeps jobs in a `shared/jobs.lua` file. **ESX does not.** ESX stores jobs in **SQL database tables**. To add a job, you insert rows into those tables and restart. There is no jobs file to edit.
+
+Two tables hold jobs:
+
+- **`jobs`** one row per job. Columns: `name` (the id, like `police`) and `label` (the pretty name, like `Police`).
+- **`job_grades`** one row per rank inside a job. Columns include `job_name`, `grade` (the rank number), `name` (the grade id), `label`, `salary`, `skin_male`, `skin_female`.
+
+To add a `mechanic` job with two ranks, you run SQL like this in your database client:
+
+```sql
+-- 1. Create the job itself
+INSERT INTO jobs (name, label) VALUES
+  ('mechanic', 'Mechanic');
+
+-- 2. Create its grades (rank 0 and rank 1)
+INSERT INTO job_grades (job_name, grade, name, label, salary, skin_male, skin_female) VALUES
+  ('mechanic', 0, 'recruit', 'Recruit', 200, '{}', '{}'),
+  ('mechanic', 1, 'boss',    'Boss',    500, '{}', '{}');
+```
+
+After inserting the rows, **restart the server** (or the resources that read jobs) so ESX loads the new job. Only then will `xPlayer.setJob('mechanic', 1)` work, because grade `1` of `mechanic` now exists in `job_grades`.
+
+If editing SQL by hand feels risky, many servers use a **job creator** script that writes these same rows through an in-game menu. Either way, the data ends up in the `jobs` and `job_grades` tables. There is no jobs file.
+
+**To add an ESX job: insert into `jobs` and `job_grades`, then restart. No jobs.lua exists.**
+
+## A complete mini example
+
+Let us build a tiny script: a `/drinkwater` command that removes a water item and shows a notification. It uses the client and server working together.
+
+**`server/main.lua`**
+
+```lua
+local ESX = exports['es_extended']:getSharedObject()
+
+ESX.RegisterCommand('drinkwater', 'user', function(xPlayer, args, showError)
+    -- Check the item on the SERVER (secure)
+    local water = xPlayer.getInventoryItem('water')
+    if water.count > 0 then
+        xPlayer.removeInventoryItem('water', 1)
+        TriggerClientEvent('myresource:drank', xPlayer.source)  -- tell the client
+    else
+        xPlayer.showNotification('You have no water')
+    end
+end, false, {help = 'Drink a water'})
+```
+
+**`client/main.lua`**
+
+```lua
+local ESX = exports['es_extended']:getSharedObject()
+
+RegisterNetEvent('myresource:drank', function()
+    ESX.ShowNotification('Refreshing!')
+    -- here you could play a drinking animation or raise thirst
+end)
+```
+
+**`fxmanifest.lua`** (ties it together)
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@es_extended/imports.lua'   -- gives every script the ESX object
+
+client_script 'client/main.lua'
+server_script 'server/main.lua'
+
+dependency 'es_extended'
+```
+
+The `shared_script '@es_extended/imports.lua'` line pulls ESX into your resource. The `dependency 'es_extended'` line makes sure ESX starts before your script does.
+
+<ExpectedOutput>
+[ script:myresource] Started resource myresource
+# In game, with a water item:
+# /drinkwater -> "Refreshing!" notification, one water removed
+# /drinkwater with no water -> "You have no water"
+</ExpectedOutput>
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Forgot the shared object line", fix: "Put local ESX = exports['es_extended']:getSharedObject() at the top of both your client and server files. Without it, every ESX call errors." },
+    { symptom: "Changing money or items on the client", fix: "Always do it on the server with xPlayer methods. Client-side money changes can be cheated and will not save." },
+    { symptom: "xPlayer is nil", fix: "The player is not loaded or the ID is wrong. After ESX.GetPlayerFromId(source), check if xPlayer then before using it." },
+    { symptom: "Using source on the client", fix: "source only exists on the server. On the client, read your own data with ESX.GetPlayerData() and wait for the esx:playerLoaded event." },
+    { symptom: "setJob does nothing", fix: "The job or grade is not in the database. Insert rows into the jobs and job_grades tables and restart before calling xPlayer.setJob." },
+    { symptom: "Looking for a jobs.lua file", fix: "ESX has no jobs file. Jobs live in the jobs and job_grades SQL tables. Edit them in your database client, not in code." },
+    { symptom: "Item functions do nothing on an ox_inventory server", fix: "If your server runs ox_inventory, use exports.ox_inventory:AddItem(source, name, count) instead of xPlayer.addInventoryItem." },
+    { symptom: "Forgot dependency 'es_extended'", fix: "Add it to fxmanifest.lua so your resource loads after ESX. Otherwise getSharedObject() can return nil at startup." },
+  ]}
+/>
+
+<Recap
+  items={[
+    "ESX is the resource es_extended. Everything else is a separate script that depends on it.",
+    "Client code is what players see and can be cheated. Server code handles money, items, and jobs and is secure.",
+    "Start every script with local ESX = exports['es_extended']:getSharedObject().",
+    "On the server, get a player with ESX.GetPlayerFromId(source), then call xPlayer methods for money, jobs, and items.",
+    "Money splits into cash (getMoney/addMoney/removeMoney) and accounts like bank (getAccount/addAccountMoney/removeAccountMoney).",
+    "On the client, read your own data with ESX.GetPlayerData() after the esx:playerLoaded event.",
+    "Make commands with ESX.RegisterCommand and ask the server questions with ESX.RegisterServerCallback / ESX.TriggerServerCallback.",
+    "Jobs live in the jobs and job_grades database tables, not a jobs.lua. Insert rows and restart to add a job.",
+  ]}
+/>
+
+<Exercise>
+  Add a `barber` job with two grades (`junior` and `senior`) by inserting rows into the `jobs` and `job_grades` tables. Restart the server. Then write a one-line server command `/becomebarber` that calls `xPlayer.setJob('barber', 1)` on the caller and shows a notification. Join the server, run it, and confirm `ESX.GetPlayerData().job.name` reads `"barber"`.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "ESX Legacy documentation", href: "https://documentation.esx-framework.org/" },
+    { label: "FiveM natives (built-in GTA functions)", href: "https://docs.fivem.net/natives/" },
+  ]}
+/>

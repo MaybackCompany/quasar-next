@@ -1,4 +1,5 @@
 <LessonHero
+ crumbs="Module A3 · Operate & secure"
  title="Server security baseline"
  meta={[
  { label: "You'll do", value: "Lock down the things that get new servers wiped or robbed: admin permissions, secrets, resource trust, and webhook hygiene." },
@@ -7,7 +8,7 @@
  { label: "You'll learn", value: "ACE permissions -> secret handling -> txAdmin roles -> resource trust -> a baseline you re-run before every launch" },
  ]}
 >
- Most beginner servers are not hacked by geniuses. They leak a license key on Discord, give every staffer god-mode, run a random script with a backdoor, or post their database webhook in a public channel. This is the baseline that closes those doors. Treat it as a checklist you run before you ever go public, and again after any big change.
+ Most beginner servers are not hacked by geniuses. They leak a license key on Discord. They give every staffer god-mode. They run a random script that has a backdoor. They post their database webhook in a public channel. This baseline closes those four doors. Treat it as a checklist. Run it before you go public, and again after any big change.
 </LessonHero>
 
 <Prereq
@@ -19,14 +20,14 @@
 />
 
 <Callout variant="danger" title="The one rule under all of this">
- The server is the only thing you trust. Never let the client decide money, items, jobs, or admin power. Every check that matters happens server-side. Most exploits are a client lying to a server that believed it.
+ The server is the only thing you trust. Never let the client decide money, items, jobs, or admin power. The client is the player's own game, and a cheater can make it say anything. Every check that matters happens on the server. Most exploits are just a client lying to a server that believed it.
 </Callout>
 
 ## The baseline
 
 <StepGroup>
  <Step num={1} title="Give permissions by role, not by person" outcome="Admin power flows through ACE groups, not hardcoded names.">
- Use ACE permissions and groups so you can add or remove a staffer in one line. Grant the narrowest power that does the job; only owners get the parent `command` object that covers all server commands.
+ FiveM grants powers through **ACE permissions** (Access Control Entries: the server's allow/deny rules for who may run what). Use groups so you can add or remove a staffer in one line. Grant the narrowest power that does the job. Only owners get the parent `command` object, which covers every server command.
 
  ```text
  add_ace group.admin command allow
@@ -37,15 +38,25 @@
  </Step>
 
  <Step num={2} title="Keep secrets out of the repo and out of chat" outcome="No key, password, or webhook is ever pasted where others can read it.">
- License key, database password, and Discord webhooks are secrets. Read them at runtime with convars in `server.cfg` (which is not in your public repo) and never paste them in Discord, screenshots, or videos. If one leaks, rotate it the same hour.
+ Your license key, database password, and Discord webhooks are secrets. Keep each one in a **convar** (a config variable set in `server.cfg`, read at runtime). Your `server.cfg` is not in your public repo, so the values stay private. Never paste a secret in Discord, a screenshot, or a video.
+
+ If a secret ever leaks, **rotate** it the same hour. To rotate means to throw the leaked value away and issue a fresh one, so the old one stops working. Get a new license key at portal.cfx.re and set a new database password.
  </Step>
 
  <Step num={3} title="Trust only resources you can read or vouch for" outcome="No unknown script runs with full server access.">
- Every resource you `ensure` runs with full server power. Install from the official author only. Skim server-side files for suspicious `PerformHttpRequest` calls to unknown URLs, base64 blobs, or `load()`/`assert(load(...))` running fetched code. If you cannot read it and cannot trust the source, do not run it.
+ Every resource you `ensure` runs with full server power. (`ensure` is the `server.cfg` line that starts a resource and keeps it running.) So a bad script can do anything your server can do. Install from the official author only.
+
+ Before you run an unknown script, open its server-side `.lua` files and look for three red flags:
+
+ - A `PerformHttpRequest` call to a web address you do not recognise. That is the script phoning out to someone else's server.
+ - A long unreadable blob of letters and numbers (base64). Hidden code is often packed this way so you cannot read it.
+ - `load()` or `assert(load(...))` running text the script fetched from the internet. That runs code the author can change later, without you seeing it.
+
+ If you cannot read it, and you cannot trust who made it, do not run it.
  </Step>
 
  <Step num={4} title="Lock down webhooks and logging" outcome="Your Discord logs cannot be spammed or read by outsiders.">
- Store webhook URLs in convars, send them only from the server side, and never expose them to clients. Anyone with the URL can post to that channel, so treat it like a password.
+ A webhook URL is a one-line address Discord gives you that posts messages into a channel. Anyone who has the URL can post to that channel, so treat it like a password. Store webhook URLs in convars, send them only from the server side, and never expose them to clients.
  </Step>
     <ExpectedOutput>
       Your server.cfg has no plaintext secrets. ACE permissions use groups instead of individual names. Every installed resource passes the trust check. You can run this checklist in 10 minutes before any launch.
@@ -61,17 +72,17 @@ add_ace group.admin command allow
 add_principal identifier.fivem:00000 group.admin
 ```
 
-The permission system has three pieces: principals, objects, and a verdict.
+The permission system has three pieces: a principal, an object, and a verdict.
 
-- A **principal** is a who. It can be a single person, identified by `identifier.fivem:<id>` or `identifier.discord:<id>`, or it can be a group like `group.admin`. Groups are themselves principals, which is the trick that makes the whole system scale.
-- An **object** is a what. `command` means every command. `command.kick` means only the kick command. The dotted name is a tree, so `command` is the parent of every `command.something` under it.
+- A **principal** is a *who*. It is one person, named by `identifier.fivem:<id>` or `identifier.discord:<id>`, or it is a group like `group.admin`. Groups are principals too. That is the trick that makes the whole system scale.
+- An **object** is a *what*. `command` means every command. `command.kick` means only the kick command. The dotted name is a tree, so `command` is the parent of every `command.something` under it.
 - The verdict is `allow` or `deny`.
 
-Read the lines back in plain English. `add_ace group.admin command allow` says the `group.admin` principal is allowed to use the `command` object, which is every command. `add_principal identifier.fivem:00000 group.admin` says the player whose full FiveM identifier is `00000` (a placeholder for the real value, which is matched exactly as a whole string, not by its ending) is a member of `group.admin`. The second argument of `add_principal` is the parent, so a child principal inherits everything its parent group is allowed.
+Now read the lines back in plain English. `add_ace group.admin command allow` says the `group.admin` principal is allowed to use the `command` object, which is every command. `add_principal identifier.fivem:00000 group.admin` says the player whose full FiveM identifier is `00000` (an **identifier** is the unique ID FiveM gives a player; `00000` here is a placeholder, matched exactly as a whole string, not by its ending) is a member of `group.admin`. The second argument of `add_principal` is the parent, so a child principal inherits everything its parent group is allowed.
 
-That inheritance is the point. You grant a power to a group once, then you add or remove people by adding or removing one `add_principal` line. The staffer maps to a group, the group maps to a set of commands, and you never edit a command grant to onboard a new moderator.
+That inheritance is the point. You grant a power to a group once. After that you add or remove people by adding or removing one `add_principal` line. The staffer maps to a group, the group maps to a set of commands, and you never edit a command grant to onboard a new moderator.
 
-`identifier.fivem:` and `identifier.discord:` are two possible identifiers for a player. A Discord identifier is an account ID, not a Discord-role check, and it may be unavailable when Discord identity is not present. Copy the full identifier from txAdmin and prefer a stable identifier that is present for your players. A typo silently grants nothing.
+`identifier.fivem:` and `identifier.discord:` are two ways to name the same player. A Discord identifier is an account ID, not a Discord-role check, and it may be missing when Discord identity is not present. Copy the full identifier from txAdmin and prefer one that is always present for your players. A typo silently grants nothing.
 
 ### Scope a moderator, do not clone an admin
 
@@ -84,7 +95,7 @@ add_ace group.mod command.quit deny
 add_principal identifier.discord:000000000000000000 group.mod
 ```
 
-`allow` and `deny` are not symmetric in importance. An object with no rule is already denied by default, so you do not have to deny everything. You add an explicit `deny` where a child could otherwise inherit `allow` from a parent. `command.quit` shuts the whole server down, so even on `group.admin` it is worth an explicit `add_ace group.admin command.quit deny` unless the owner alone holds it. The broader the parent-object grant, the more carefully you fence off destructive child commands.
+`allow` and `deny` are not equal in importance. An object with no rule is already denied by default, so you do not have to deny everything. You add an explicit `deny` only where a child could otherwise inherit `allow` from a parent. `command.quit` shuts the whole server down, so even on `group.admin` it is worth an explicit `add_ace group.admin command.quit deny` unless the owner alone holds it. The broader the parent-object grant, the more carefully you fence off destructive child commands.
 
 ## Common mistakes
 
@@ -94,17 +105,12 @@ add_principal identifier.discord:000000000000000000 group.mod
  { symptom: "License key or DB password seen in Discord", fix: "Rotate it now (new key at portal.cfx.re, new DB password), then move it to a convar in server.cfg." },
  { symptom: "A free script you installed phones home", fix: "Stop the resource, read its server files for unknown HTTP calls or load() of fetched code, and remove it if you cannot verify it." },
  { symptom: "Players give themselves money or items", fix: "Move the decision server-side. The client may request; only the server may grant, after a check." },
+ { symptom: "ACE permissions do not apply after a restart", fix: "ACE groups are empty until you add people. Add add_principal identifier.fivem:XXXXX group.admin in server.cfg." },
+ { symptom: "A resource cannot stop or control another resource", fix: "ACE does not cover stop by default. Add add_ace resource.trusted_resource command.stop allow for resources that need it." },
+ { symptom: "Secret leaked in a screenshot or video", fix: "Rotate the key at portal.cfx.re right away. Never screenshot your server.cfg or console with the key visible." },
+ { symptom: "You do not know which resources to trust", fix: "Open the resource's server-side files and look for PerformHttpRequest to unknown URLs or obfuscated code. If you cannot read it, do not run it." },
  ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| ACE permissions don't apply after a server restart | You didn't use `add_principal` to assign the group to a player | ACE groups are empty until you add principals. Use `add_principal identifier.fivem:XXXXX group.admin` in server.cfg |
-| Resource stops another resource without permission | ACE doesn't cover `stop` commands | Add `add_ace resource.trusted_resource command.stop allow` for resources that need to control others |
-| Secret leaked in a screenshot or video | You showed the console or config file with the key visible | Rotate the key immediately at portal.cfx.re. Never screenshot your server.cfg |
-| "I don't know which resources to trust" | You installed resources without reading their code | Open the resource's server-side files. Look for `PerformHttpRequest` to unknown URLs or obfuscated code |
 
 ## What you can do now
 
@@ -142,7 +148,7 @@ add_principal identifier.discord:000000000000000000 group.mod
  test_ace identifier.discord:YOUR_DISCORD_ID command.quit
  ```
 
- `test_ace` prints a line like `TEST ACL [<principal> -> <object>] ... -> ALLOW` (or `-> DENY`) - the result is the uppercase `ALLOW`/`DENY` at the end of the line, not a `true`/`false`. So the first command should end in `-> ALLOW` and the second in `-> DENY`. (`test_ace` only reports the policy; it does not kick anyone or stop the server.) If a result is the opposite of what you expect, inspect inherited principals and any broader `command` grant the principal also picks up.
+ `test_ace` prints a line like `TEST ACL [<principal> -> <object>] ... -> ALLOW` (or `-> DENY`). The result is the uppercase `ALLOW`/`DENY` at the end of the line, not a `true`/`false`. So the first command should end in `-> ALLOW` and the second in `-> DENY`. (`test_ace` only reports the policy. It does not kick anyone or stop the server.) If a result is the opposite of what you expect, inspect inherited principals and any broader `command` grant the principal also picks up.
 </Exercise>
 
 <Refs

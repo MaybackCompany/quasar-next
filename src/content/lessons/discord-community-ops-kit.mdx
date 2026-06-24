@@ -1,13 +1,14 @@
 <LessonHero
+  crumbs="Module A3 · Operate & secure"
   title="Discord community ops kit"
   meta={[
-    { label: "You'll build", value: "A starter Discord structure for a FiveM server: channels, rules, roles, tickets, staff escalation, and announcements." },
+    { label: "You'll build", value: "A starter Discord structure for a FiveM server: channels, rules, role tiers, a ticket flow, staff escalation, and announcements." },
     { label: "Time", value: "~30 minutes." },
     { label: "You need", value: "A Discord server you own and admin rights on it." },
-    { label: "You'll learn", value: "Channel layout -> role tiers -> a ticket flow -> staff escalation -> announcement and event rhythm" },
+    { label: "You'll learn", value: "Channel layout -> role tiers -> a ticket flow -> staff escalation -> an announcement rhythm" },
   ]}
 >
-  Your Discord is where the community actually lives, and a messy one bleeds players. This kit is the starting layout that scales: clear channels, a few role tiers, a ticket flow so support is not chaos, and an escalation path so staff know who handles what. Set it up once, then grow it.
+  Your Discord is where the community actually lives. A messy one bleeds players. This kit is the starting layout that scales: clear channels, a few role tiers, a ticket flow so support is not chaos, and an escalation path so staff know who handles what. Set it up once, then grow it.
 </LessonHero>
 
 <Prereq
@@ -19,20 +20,22 @@
 />
 
 <Callout variant="fivem" title="Tie it to your gate">
-  If your lessons or perks are role-gated (the Discord role gate), the same roles should live here. One role system for access, perks, and community standing keeps it simple and is what your members already expect.
+  If your lessons or perks are role-gated, the same roles should live here. One role system for access, perks, and community standing keeps it simple. It is what your members already expect.
 </Callout>
 
 ## The starter structure
+
+Create these channels first. Read-only means only staff can post. The rest are open.
 
 <Cheatsheet
   title="Channels to create"
   rows={[
     { cmd: "welcome / rules", desc: "Read-only. Server rules, how to connect, and the role each tier unlocks." },
     { cmd: "announcements", desc: "Read-only. Launches, updates, maintenance, and events. One source of truth." },
-    { cmd: "support / tickets", desc: "Where players open a ticket. Not a free-for-all chat; a flow with a clear next step." },
-    { cmd: "general / off-topic", desc: "Community chat, kept separate from support so tickets do not get buried." },
+    { cmd: "support / tickets", desc: "Where players open a ticket. Not a free chat. A flow with a clear next step." },
+    { cmd: "general / off-topic", desc: "Community chat. Kept separate from support so tickets do not get buried." },
     { cmd: "staff-only", desc: "Private. Escalation, incident notes, and staff coordination." },
-    { cmd: "logs", desc: "Private. Bot/webhook logs from the server (kept secret; webhook URL is a password)." },
+    { cmd: "logs", desc: "Private. Server logs delivered by webhook. The webhook URL is a password." },
   ]}
 />
 
@@ -40,23 +43,30 @@
 
 <StepGroup>
   <Step num={1} title="Define role tiers" outcome="Every member has exactly one clear standing.">
-    Keep tiers few and obvious: Member, Supporter/Donator, Staff, Admin, Owner. More tiers means more confusion. Map perks and access to these, not to one-off custom roles.
+    Keep tiers few and obvious: Member, Supporter, Staff, Admin, Owner. More tiers means more confusion. Map perks and access to these tiers, not to one-off custom roles.
   </Step>
 
   <Step num={2} title="Set up a ticket flow" outcome="A player issue becomes a tracked, assignable item.">
-    Use a ticket bot so opening a ticket creates a private thread or channel only the player and authorized staff can see. Configure the panel to ask what broke, when it happened, the in-game/character name, and any console error. Ask for a raw player identifier only when staff genuinely need it, keep it in the private ticket, and define retention/deletion rules; identifiers and logs are user data, not decoration. Treat ticket transcripts and screenshots the same way: redact identifiers before pasting them anywhere outside the private ticket.
+    Use a ticket bot. Opening a ticket creates a private thread or channel only the player and authorized staff can see.
+
+    Set the panel to ask four things: what broke, when it happened, the in-game character name, and any console error.
+
+    Ask for a raw player identifier (the long `license:...` or `steam:...` string FiveM uses to tell players apart) only when staff genuinely need it. Keep it in the private ticket. Decide how long you keep it and when you delete it. Identifiers and logs are user data, not decoration.
+
+    Treat transcripts and screenshots the same way. **Redact identifiers before pasting them anywhere outside the private ticket.**
   </Step>
 
   <Step num={3} title="Write the escalation path" outcome="Staff know who handles what without asking.">
-    Document it: support staff handle player issues, admins handle bans and server changes, owner handles money and policy. Put it in staff-only so nobody freezes during an incident.
+    Write it down plainly: support staff handle player issues, admins handle bans and server changes, the owner handles money and policy. Put it in staff-only so nobody freezes during an incident.
   </Step>
 
   <Step num={4} title="Establish an announcement rhythm" outcome="Players trust one channel for real news.">
-    Post launches, updates, and events in announcements only. A predictable rhythm (weekly update, event teasers) keeps players returning.
-  </Step>
+    Post launches, updates, and events in announcements only. A predictable rhythm, like a weekly update and event teasers, keeps players returning.
+
     <ExpectedOutput>
-      Your Discord server has clear channels, roles that match your FiveM permissions, and automated welcome messages for new members. You have a moderation workflow and a backup of your server template.
+    Your Discord has read-only welcome and announcement channels, a private staff-only channel, a private logs channel with its webhook URL stored as a secret, a few role tiers that match your FiveM permissions, and a ticket flow that captures evidence.
     </ExpectedOutput>
+  </Step>
 </StepGroup>
 
 ## How it works
@@ -65,21 +75,29 @@ Two pieces of this kit look simple but trip up real servers: the logs webhook an
 
 ### Why the logs webhook URL is a secret
 
-To get server events into your private logs channel, open that channel's settings (gear icon, or right-click the channel) -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL. Discord gives you a URL that looks like this (the same Webhooks screen is where you later Delete or Regenerate it if it leaks). A server-side resource, built in a later lesson, reads the convar below and POSTs to this URL; this lesson only sets up the channel and stores the secret, so the logs channel stays empty until that resource exists. That empty channel is expected, not a mistake. If you want to confirm the webhook itself works before that resource exists, send one optional test message from PowerShell, replacing the URL with your own:
+A **webhook** is a one-way address Discord gives you so an outside program can post messages into a channel. No login. No bot. Just the address.
 
-```powershell
-curl.exe -H "Content-Type: application/json" -d '{"content":"webhook test"}' "https://discord.com/api/webhooks/123.../AbCd..."
-```
-
-A single line saying "webhook test" should appear in your logs channel. Delete that test message afterward.
+To create one, open the logs channel settings (the gear icon, or right-click the channel) -> Integrations -> Webhooks -> New Webhook -> Copy Webhook URL. Discord hands you a URL that looks like this:
 
 ```text
 https://discord.com/api/webhooks/123456789012345678/AbCdEf...your-token...
 ```
 
-That URL is a credential, not a link. Anyone who has it can POST a message to your logs channel as your server, with no login and no permission check. There is no separate password. Possession of the URL is the permission. If it leaks, someone can spam your staff channel, impersonate your bot, or bury a real incident under noise, and your only fix is to delete the webhook and issue a new URL. You do this in the same place you created it: Channel settings -> Integrations -> Webhooks -> select the webhook -> Delete Webhook, then create a fresh one and update the convar value in server.cfg. The old URL stops working the moment you delete it.
+**That URL is a credential, not a link.** Anyone who has it can post a message to your logs channel as your server, with no login and no permission check. There is no separate password. Having the URL is the permission.
 
-So treat it exactly like any other secret. Do not paste it in a public channel, a screenshot, or a commit. It belongs in your `server.cfg` as a convar, read by your resources, never hard coded into a script you might share:
+If it leaks, someone can spam your staff channel, impersonate your bot, or bury a real incident under noise. Your only fix is to delete the webhook and make a new one. You do that in the same place you created it: channel settings -> Integrations -> Webhooks -> select the webhook -> Delete Webhook. Then create a fresh one and update the value in `server.cfg`. The old URL stops working the moment you delete it.
+
+A server-side resource, built in a later lesson, reads the value below and posts to this URL. This lesson only sets up the channel and stores the secret. So the logs channel stays empty until that resource exists. **That empty channel is expected, not a mistake.**
+
+Want to confirm the webhook works before that resource exists? Send one test message from PowerShell. Replace the URL with your own:
+
+```powershell
+curl.exe -H "Content-Type: application/json" -d '{"content":"webhook test"}' "https://discord.com/api/webhooks/123.../AbCd..."
+```
+
+A single line saying "webhook test" appears in your logs channel. Delete that test message afterward.
+
+Store the webhook URL the same way you store every other secret. Do not paste it in a public channel, a screenshot, or a commit. It belongs in your `server.cfg` as a **convar** (a config variable the server reads at startup), never hard coded into a script you might share:
 
 ```cfg
 set discord_log_webhook "https://discord.com/api/webhooks/.../..."
@@ -88,13 +106,17 @@ set discord_log_webhook "https://discord.com/api/webhooks/.../..."
 # open http://<server_ip>:<server_port>/info.json file). Either one leaks the webhook.
 ```
 
-This is the same rule code review enforces on every other secret: keys and tokens live in config the server reads, not in the source. A webhook URL is no different.
+This is the same rule code review enforces on every other secret. Keys and tokens live in config the server reads, not in the source. A webhook URL is no different.
 
 ### How a ticket maps to the incident runbook
 
-A ticket bot that opens a private thread is doing more than starting a chat. The thread is a per-incident container: one issue, one place, only the player and staff inside. That maps directly onto the incident runbook, where each incident is its own tracked item with a clear owner.
+An **incident runbook** is your written plan for handling a server problem: each problem is one tracked item with one owner and a known set of steps.
 
-The fields you make the panel collect (what broke, when, in-game name or license ID, the error text) are the inputs the runbook needs first: who and where to reproduce it, what the symptom was, and the raw error to search the logs for. Capturing them up front in the thread means staff are not chasing the player for basics before they can even start. The thread title becomes the incident, the fields become the report, and your escalation path decides who picks it up. That is why the ticket flow and the runbook share the same shape: the ticket is where an incident is born.
+A ticket bot that opens a private thread is doing more than starting a chat. The thread is a per-incident container: one issue, one place, only the player and staff inside. That maps directly onto the runbook, where each incident is its own tracked item with a clear owner.
+
+The fields you make the panel collect (what broke, when, in-game name or identifier, the error text) are the inputs the runbook needs first: who and where to reproduce it, what the symptom was, and the raw error to search the logs for. Capturing them up front means staff are not chasing the player for basics before they can start.
+
+The thread title becomes the incident. The fields become the report. Your escalation path decides who picks it up. **The ticket is where an incident is born.**
 
 ## Common mistakes
 
@@ -102,19 +124,13 @@ The fields you make the panel collect (what broke, when, in-game name or license
   items={[
     { symptom: "Support is buried in general chat", fix: "Move it to a dedicated ticket flow. Keep community chat and support separate." },
     { symptom: "Too many roles, nobody knows who does what", fix: "Collapse to a few tiers and document the escalation path in staff-only." },
-    { symptom: "Log webhook posted publicly", fix: "The webhook URL is a secret. Keep it in a private channel and in server convars only." },
-    { symptom: "Players miss updates", fix: "One read-only announcements channel with a steady rhythm; do not scatter news." },
+    { symptom: "Log webhook posted publicly", fix: "The webhook URL is a secret. Keep it in a private channel and in server convars only, never in a screenshot or commit." },
+    { symptom: "Players miss updates", fix: "One read-only announcements channel with a steady rhythm. Do not scatter news." },
+    { symptom: "@everyone or @here gets abused by members", fix: "Remove the Mention @everyone permission from member roles. Only admins should have it." },
+    { symptom: "Channel list is a mess, nobody knows where to post", fix: "Keep it simple: welcome, announcements, general, support, staff-only, logs. Add more only when a channel gets too noisy." },
+    { symptom: "Members leave because the server feels dead", fix: "Post regular updates (events, changes, new content). A weekly update post keeps people checking back." },
   ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Welcome messages not sending to new members | Bot doesn't have permission or the welcome channel doesn't exist | Give the bot "Send Messages" and "Read Message History" in the welcome channel. Check the channel ID is correct |
-| @everyone or @here being abused by members | Permission to mention large groups was given to regular roles | Remove "Mention @everyone" from member roles. Only admins should have it |
-| Discord channels are a mess - no one knows where to post | Too many channels or no clear organization | Keep it simple: #announcements, #general, #support, #staff. Add more only when a channel gets too noisy |
-| Members leaving because Discord is "dead" | No regular activity or engagement | Post updates about the server (events, changes, new content). A weekly #server-update post keeps people checking back |
 
 ## What you can do now
 
@@ -123,6 +139,7 @@ The fields you make the panel collect (what broke, when, in-game name or license
     "Stand up a clear channel layout with read-only rules and announcements.",
     "Use a few role tiers that map to access and perks.",
     "Run support through a ticket flow that captures evidence.",
+    "Store the logs webhook URL as a secret convar, never in public.",
     "Document staff escalation and keep a steady announcement rhythm."
   ]}
 />

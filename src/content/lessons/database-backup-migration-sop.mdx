@@ -1,4 +1,5 @@
 <LessonHero
+ crumbs="Module A3 · Operate & secure"
  title="Database backups and migrations"
  meta={[
  { label: "You'll build", value: "A backup routine and a safe migration habit so a bad change or a crash never costs you player data." },
@@ -7,7 +8,7 @@
  { label: "You'll learn", value: "Why backups matter -> how to dump and automate it on a schedule -> safe schema migrations -> a restore test you actually run" },
  ]}
 >
- Your players' money, vehicles, and characters live in one database. One bad migration, one crash, one fat-fingered DELETE, and it is gone unless you have a backup you have actually tested. CRUD lessons teach you to write data; this one teaches you to never lose it.
+ Your players' money, vehicles, and characters live in one database. One bad migration, one crash, or one mistyped DELETE, and it is gone. The only thing that saves you is a backup you have actually tested. CRUD lessons teach you to write data. This one teaches you to never lose it.
 </LessonHero>
 
 <Prereq
@@ -19,34 +20,36 @@
 />
 
 <Callout variant="danger" title="A backup you never restored is a guess">
- The only real backup is one you have restored at least once. Untested backups fail at the worst possible moment. Run the restore test in this lesson before you need it for real.
+ The only real backup is one you have restored at least once. Untested backups fail at the worst possible moment. Run the restore test in this lesson before you ever need it for real.
 </Callout>
 
 ## The routine
 
 <StepGroup>
  <Step num={1} title="Take a full dump on a schedule" outcome="You have a recent, complete copy of the database.">
- Export the whole database to a `.sql` file on a schedule (daily for an active server). In HeidiSQL: right-click the database, Export database as SQL, to a dated file. From the command line, the dump tool does the same.
+ A **dump** is one file that holds the whole database. Export the database to a `.sql` file on a schedule. Daily is right for an active server.
 
- Run the command below in a terminal **on the machine where MariaDB is installed** (a Linux shell, or on Windows the PowerShell/Command Prompt window where the MariaDB `bin` folder is on your PATH - that is where `mariadb-dump` lives):
+ In HeidiSQL: right-click the database, choose Export database as SQL, and save it to a file with today's date in the name. The command line does the same thing.
+
+ Run the command below on the machine where MariaDB is installed. On Linux that is a shell. On Windows that is the PowerShell window where the MariaDB `bin` folder is on your PATH, because that is where the `mariadb-dump` program lives.
 
  ```bash
  mariadb-dump -u root -p fivem > fivem-2026-06-12.sql
  ```
 
- What each part means: `-u root` is the database username (use your DB user, not necessarily `root`); `-p` makes it prompt you for that user's password (type it when asked - nothing shows as you type, that is normal); `fivem` is the database name to back up (use yours); and `> fivem-2026-06-12.sql` writes the dump into a file with today's date in the current folder.
+ Here is what each part means. `-u root` is the database username. Use your own DB user, not always `root`. `-p` makes it prompt you for that user's password. Type the password when asked. Nothing shows on screen as you type, and that is normal. `fivem` is the database name to back up, so use yours. `> fivem-2026-06-12.sql` writes the dump into a file with today's date in the current folder.
 
- On a pure MariaDB box the dump tool is `mariadb-dump`. The old `mysqldump` name still works because MariaDB ships it as a compatibility symlink, but if `mysqldump` returns `command not found`, use `mariadb-dump` instead. They take the same flags.
+ On a MariaDB box the dump program is `mariadb-dump`. The old `mysqldump` name still works, because MariaDB ships it as an alias. If `mysqldump` says `command not found`, just use `mariadb-dump`. They take the same flags.
 
- To make daily real instead of aspirational, run that command on a schedule. On Linux, a cron line (added with `crontab -e`) that dumps every night at 4am:
+ **To make daily backups real instead of a good intention, put the command on a schedule.** On Linux you do that with **cron**, the built-in job scheduler you edit with `crontab -e`. This line dumps every night at 4am:
 
  ```bash
  0 4 * * * /usr/bin/mariadb-dump --defaults-extra-file=/root/.mariadb-backup.cnf --single-transaction --routines fivem > /backups/fivem-$(date +\%F).sql
  ```
 
- Reading it left to right: `0 4 * * *` is the cron schedule (minute 0 of hour 4, every day); `--defaults-extra-file=...` points at a credentials file so no password is typed on the line; `--single-transaction` takes a consistent snapshot of InnoDB tables without blocking your players' writes; `--routines` includes stored procedures/functions; `fivem` is the database; and `> /backups/fivem-$(date +\%F).sql` writes to a dated file. The backslash in `\%F` is required because cron treats a bare `%` as a newline - escaping it lets `date +%F` insert today's date (YYYY-MM-DD).
+ Read it left to right. `0 4 * * *` is the cron schedule, meaning minute 0 of hour 4, every day. `--defaults-extra-file=...` points at a credentials file so no password is typed on the line. `--single-transaction` takes a consistent snapshot without blocking your players' writes. `--routines` includes stored procedures and functions. `fivem` is the database. `> /backups/fivem-$(date +\%F).sql` writes to a dated file. The backslash in `\%F` is required, because cron treats a bare `%` as a newline. Escaping it lets `date +%F` insert today's date as YYYY-MM-DD.
 
- Put the backup user's credentials in `/root/.mariadb-backup.cnf` so the password never appears in the command. That file is plain text in MariaDB option-file format, for example:
+ Keep the password out of the command. Put the backup user's credentials in a plain-text option file at `/root/.mariadb-backup.cnf` in MariaDB option-file format:
 
  ```ini
  [mariadb-dump]
@@ -54,15 +57,21 @@
  password=your-backup-user-password
  ```
 
- Then lock it down so only its owner can read it (`chmod 600 /root/.mariadb-backup.cnf`), and never place a password directly in a cron line or command history. On Windows, use Task Scheduler with a protected option file. txAdmin documents scheduled **restarts and events**, not a general operating-system task runner, so do not rely on it to execute a backup script.
+ Then lock the file down so only its owner can read it:
+
+ ```bash
+ chmod 600 /root/.mariadb-backup.cnf
+ ```
+
+ Never put a password directly in a cron line or in your command history. On Windows, use Task Scheduler with the same kind of protected option file. txAdmin only schedules server restarts and events, not general operating-system scripts, so do not rely on it to run a backup.
  </Step>
 
  <Step num={2} title="Store backups off the server box" outcome="A server failure does not take the backups with it.">
- Copy dumps somewhere other than the server machine (another disk, a private bucket). A backup that dies with the server is not a backup.
+ Copy your dumps somewhere other than the server machine. Another disk, or a private cloud bucket, both work. A backup that dies with the server is not a backup.
  </Step>
 
- <Step num={3} title="Migrate schema safely" outcome="Adding columns/tables never destroys existing data.">
- Before any schema change: take a fresh dump, run the change on a throwaway copy first, and prefer additive changes (`ADD COLUMN`) over destructive ones. Never run an untested `ALTER`/`DROP` against live data.
+ <Step num={3} title="Migrate schema safely" outcome="Adding columns or tables never destroys existing data.">
+ A **migration** is a change to the shape of the database, like adding a column. Three rules keep migrations safe. Take a fresh dump first. Run the change on a throwaway copy before you run it for real. Prefer additive changes like `ADD COLUMN` over destructive ones. Never run an untested `ALTER` or `DROP` against live data.
 
  First build the copy from your latest dump and run the migration there:
 
@@ -72,7 +81,7 @@
  mariadb -u root -p fivem_migrate_test -e "ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;"
  ```
 
- Only once that runs clean on the copy do you touch production. Put the server in maintenance and stop the resources that write to the affected tables so application code cannot race the migration. Then run the change and bring the resources back only after validation:
+ Only once that runs clean on the copy do you touch production. Put the server in maintenance and stop the resources that write to the affected tables, so your scripts cannot race the migration. Then run the change. Bring the resources back only after you have checked the result.
 
  ```sql
  ALTER TABLE players ADD COLUMN bank INT NOT NULL DEFAULT 0;
@@ -80,21 +89,29 @@
  </Step>
 
  <Step num={4} title="Run a restore test" outcome="You have proven you can bring data back.">
- Create a throwaway database and import a dump into it. This is the step everyone skips and everyone regrets skipping.
+ Make a throwaway database and import a dump into it. This is the step everyone skips, and the step everyone regrets skipping.
 
  ```bash
  mariadb -u root -p -e "CREATE DATABASE fivem_restore_test;"
  mariadb -u root -p fivem_restore_test < fivem-2026-06-12.sql
  ```
 
- Do not eyeball it. Prove the restore by comparing a real row count per table between production and the restore. Open an interactive client session by running `mariadb -u root -p` (it prompts for your password, then shows a `MariaDB [(none)]>` prompt), then type each query and press Enter:
+ Do not eyeball it. Prove the restore by comparing the row count of one table between production and the restore.
+
+ Open an interactive client session:
+
+ ```bash
+ mariadb -u root -p
+ ```
+
+ It prompts for your password, then shows a `MariaDB [(none)]>` prompt. Type each query there and press Enter:
 
  ```sql
  SELECT COUNT(*) FROM fivem.players;
  SELECT COUNT(*) FROM fivem_restore_test.players;
  ```
 
- The interactive client prints a boxed table like this (the number 1487 is an example - yours will be your own row count):
+ The interactive client prints a boxed table like this. The number 1487 is only an example. Yours will be your own row count.
 
  <ExpectedOutput>
  +----------+
@@ -109,9 +126,9 @@
  +----------+
  </ExpectedOutput>
 
- Note: if you instead run these with the `-e "..."` flag from the shell (as in the exercise below), the client prints plain tab-separated output (a `COUNT(*)` header line, then the number) rather than the boxed table - the value is the same, only the formatting differs.
+ Note: if you instead run these with the `-e "..."` flag from the shell, as in the exercise below, the client prints plain tab-separated output. You get a `COUNT(*)` header line, then the number, instead of the boxed table. The value is the same. Only the formatting differs.
 
- The two counts match. If they differ, the dump is incomplete or the import errored, and that backup is not safe to rely on.
+ **The two counts must match.** If they differ, the dump is incomplete or the import errored, and that backup is not safe to rely on.
  </Step>
 </StepGroup>
 
@@ -122,7 +139,10 @@
  { symptom: "Lost data after a crash", fix: "Restore the latest dump. If you have none, this is the lesson; start daily backups now." },
  { symptom: "A migration wiped a column", fix: "Restore from the pre-migration dump you took in step 3. Always dump before ALTER/DROP." },
  { symptom: "Backups are on the same machine that died", fix: "Move dumps off-box (another disk or a private bucket) going forward." },
- { symptom: "Backup file imports with errors", fix: "Run the restore test regularly. A backup proven only when needed is too late." },
+ { symptom: "Backup file imports with errors, or is 0 bytes", fix: "Run the dump command manually and read the error. Common causes: wrong password, disk full, or MariaDB not running. Run the restore test regularly so you catch this early, not at the worst moment." },
+ { symptom: "Restore fails with 'table already exists'", fix: "The dump includes CREATE TABLE statements that clash with existing tables. Import into a fresh empty database, drop the existing tables first, or add --add-drop-table to your dump command." },
+ { symptom: "Dump takes too long and times out", fix: "The database is too large for a single dump. Back up individual tables: mariadb-dump fivem players > players.sql." },
+ { symptom: "Can't find the backup when you need it", fix: "Name every backup with the date, like fivem-2026-06-19.sql, and keep them all in ONE folder, like C:\\backups\\." },
  { symptom: "ERROR 1045 (28000): Access denied for user", fix: "Wrong username or password. Re-check the -u value and retype the password at the -p prompt; for cron, check the credentials in your .cnf file." },
  { symptom: "ERROR 1049 (42000): Unknown database", fix: "You tried to import into a database that does not exist yet. Run the CREATE DATABASE step first, then import." },
  ]}
@@ -138,15 +158,6 @@
  "Run a restore test and compare row counts so a backup is proven, not assumed."
  ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Backup file is 0 bytes or corrupted | mysqldump failed silently | Run the dump command manually and check for errors. Common causes: wrong password, disk full, or MySQL not running |
-| Restore fails with "table already exists" | The backup includes CREATE TABLE statements that conflict with existing tables | Drop the existing tables first, or use `--add-drop-table` in your mysqldump command |
-| Backup takes too long and times out | The database is too large for a single dump | Back up individual tables: `mysqldump database_name table_name > backup.sql` |
-| Can't find the backup when you need it | You didn't name it clearly or saved it somewhere random | Always name backups with the date: `backup-2026-06-19.sql`. Keep them in ONE folder: `C:ackups\` |
 
 ## Try it yourself
 

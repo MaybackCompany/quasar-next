@@ -1,0 +1,257 @@
+<LessonHero
+  crumbs="QBCore"
+  title="QBCore jobs: add and edit jobs"
+  meta={[
+    { label: "You'll do", value: "Open the jobs file, read the job and grade fields, add a new job, assign it to a player with /setjob, and restart qb-core so the change applies." },
+    { label: "Time", value: "~15 minutes." },
+    { label: "You need", value: "A running QBCore server you can edit and restart, and a text editor open on your server files." },
+    { label: "Result", value: "A new job that shows up in game, with ranks and paychecks you chose." },
+  ]}
+>
+  A **job** in QBCore is a role a player can hold, like `police` or `mechanic`. Every job has **grades**, which are the ranks inside that job, like Recruit or Chief. All jobs live in one file. You edit that file, restart one resource, and the new job is live. This lesson shows you the file, every field you can set, and the one restart that makes changes apply.
+</LessonHero>
+
+<Prereq
+  items={[
+    "I have a working QBCore server (qb-core is installed and starting cleanly).",
+    "I can open and save text files inside my server's resources folder.",
+    "I can run a server command or restart a single resource from the console or txAdmin.",
+    "I have admin permission in game to test the /setjob command.",
+  ]}
+/>
+
+<Callout variant="fivem" title="One file, one restart">
+  Every QBCore job lives in `qb-core/shared/jobs.lua`. When you change a job, you must **restart the `qb-core` resource**, not just the script that uses the job. Restarting a dependent script does not reload the jobs table. Only `qb-core` restarting (or a full server restart) reloads it.
+</Callout>
+
+## How the job system works
+
+Jobs live in `qb-core/shared/jobs.lua`. Inside that file is one Lua table named `QBCore.Shared.Jobs`. A **Lua table** is a list of values you can look up by a key. Here the key is the **job name** and the value is the job's settings.
+
+Each job is keyed by a unique **job name**. The job name is lowercase with no spaces, like `police` or `unemployed`. It is the internal id that scripts and commands use. It is not the pretty name players see. The pretty name is a separate field called `label`.
+
+Each job holds a `label`, some optional flags, and a list of **grades**. A grade is a rank inside the job, such as Recruit at the bottom or Chief at the top.
+
+**The whole job system is one table in one file: `QBCore.Shared.Jobs` in `qb-core/shared/jobs.lua`.**
+
+### One global setting
+
+Near the top of the file there is a single switch that controls duty state at login. **Duty** means whether a player is clocked in for work. On duty, off duty.
+
+```lua
+QBCore.Shared.ForceJobDefaultDutyAtLogin = true
+```
+
+| Value | Behaviour |
+|-------|-----------|
+| `true`  | Every time a player logs in, their duty state is forced to that job's `defaultDuty` value. |
+| `false` | The duty state is restored from the database, whatever it was when they last saved. |
+
+## The job structure
+
+Here is the shape of one job. Read it top to bottom, then the field tables below explain each line.
+
+```lua
+jobname = {
+    label = 'Display Name',   -- shown in UI / menus
+    type = 'leo',             -- OPTIONAL: groups jobs (leo, ems, mechanic, ...)
+    defaultDuty = true,       -- starting duty state for this job
+    offDutyPay = false,       -- true = player still gets paid while off duty
+    grades = {
+        ['0'] = { name = 'Rank Name', payment = 50 },
+        ['1'] = { name = 'Higher Rank', isboss = true, payment = 150 },
+    },
+},
+```
+
+### Job fields
+
+These are the settings on the job itself.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `label` | Yes | Human-readable name shown in menus, paychecks, and the like. This is what players see. |
+| `type` | No | Groups the job so other scripts can detect it. Common values are `leo` for police, `ems` for medical, and `mechanic`. Leave it off for normal civilian jobs. |
+| `defaultDuty` | Yes | Whether the player starts **on duty** (`true`) or **off duty** (`false`). |
+| `offDutyPay` | Yes | Whether the player still gets paid while off duty. `false` means no pay off duty. |
+| `grades` | Yes | The table of ranks for this job. See the grade fields below. |
+
+### Grade fields
+
+These are the settings inside each grade. A **grade** is one rank, like Officer or Sergeant.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| key `['0']`, `['1']`, ... | Yes | The grade **level** written as a string in quotes. Start at `'0'` and count up with no gaps. |
+| `name` | Yes | The display name of the rank, like `Recruit` or `Chief`. |
+| `payment` | Yes | The paycheck amount for that rank. |
+| `isboss` | No | `true` marks the rank as a boss. A boss gets the boss menu: hiring, firing, and society funds (the job's shared bank balance). |
+
+<Callout variant="fivem" title="Grade keys are strings, not numbers">
+  Grade keys must be **strings** in quotes: `['0']`, `['1']`, `['2']`. Not bare numbers like `[0]`. Always quote them, always start at `'0'`, and never skip a number. A gap or an unquoted key breaks grade lookups.
+</Callout>
+
+## Add a new job
+
+This is the full path from editing the file to seeing the job in game. Follow it in order.
+
+<StepGroup>
+  <Step num={1} title="Open the jobs file" outcome="qb-core/shared/jobs.lua is open in your editor.">
+    Find your server's resources, open the `qb-core` resource, then open `shared/jobs.lua`. The full path is:
+
+    ```text
+    qb-core/shared/jobs.lua
+    ```
+
+    Inside you will see `QBCore.Shared.Jobs = { ... }` with every job listed between the braces. You will add your new job inside those braces.
+  </Step>
+
+  <Step num={2} title="Add your job entry" outcome="A new job with grades sits inside the QBCore.Shared.Jobs table.">
+    Add a new entry inside `QBCore.Shared.Jobs = { ... }`. Here is a fishing job with three grades, from Deckhand up to a boss-level Captain:
+
+    ```lua
+    fisher = {
+        label = 'Fisherman',
+        defaultDuty = true,
+        offDutyPay = false,
+        grades = {
+            ['0'] = { name = 'Deckhand', payment = 50 },
+            ['1'] = { name = 'Fisher', payment = 75 },
+            ['2'] = { name = 'Captain', isboss = true, payment = 125 },
+        },
+    },
+    ```
+
+    The job name here is `fisher`. The `label` is `Fisherman`, which is what players see. The grades start at `'0'` and count up to `'2'` with no gaps. The top grade has `isboss = true`, so the Captain gets the boss menu.
+  </Step>
+
+  <Step num={3} title="Save and restart qb-core" outcome="The new job is loaded and ready to assign.">
+    Save the file. Then **restart the `qb-core` resource**. From the server console you can run:
+
+    ```text
+    restart qb-core
+    ```
+
+    Or use the **Restart Resource** action in txAdmin and pick `qb-core`. A full server restart also works.
+
+    Editing jobs while the server is live and only restarting a dependent script will **not** reload the table. The `qb-core` resource itself must restart.
+
+    <ExpectedOutput>
+    Stopping resource qb-core
+    Started resource qb-core
+    </ExpectedOutput>
+
+    Wording varies by build. The point is `qb-core` stops and starts again with no red errors.
+  </Step>
+
+  <Step num={4} title="Assign the job in game" outcome="A player is in your new job at the grade you chose.">
+    Join the server. As an admin, use the `/setjob` command in the chat box. The shape is:
+
+    ```text
+    /setjob [id] [jobname] [grade]
+    ```
+
+    `[id]` is the player's server id. `[jobname]` is the job name from the file. `[grade]` is the grade level as a number. For example, this puts player 1 into the police job at grade 4, which is Chief:
+
+    ```text
+    /setjob 1 police 4
+    ```
+
+    To assign your new fishing job at the top grade, you would run `/setjob 1 fisher 2`.
+  </Step>
+</StepGroup>
+
+### Assign a job from code
+
+You can also set a job inside your own script. First get the player, then call `SetJob` with the job name and grade number:
+
+```lua
+local Player = QBCore.Functions.GetPlayer(source)
+Player.Functions.SetJob('police', 4)
+```
+
+`QBCore.Functions.GetPlayer(source)` looks up the player by their server id. `Player.Functions.SetJob('police', 4)` sets that player to the `police` job at grade `4`.
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Grade lookups break or a rank is missing", fix: "Check the grade keys. They must be strings in quotes like ['0'], not numbers like [0], and they must start at '0' and increase with no gaps. Fix the keys and restart qb-core." },
+    { symptom: "A job's settings are ignored", fix: "You likely defined the same job name twice. The second definition silently overwrites the first. Search the file for the job name and keep only one entry." },
+    { symptom: "Police, EMS, or mechanic features do not work for a job", fix: "Those scripts often check the type field (leo, ems, mechanic), not the job name. Add the correct type to the job and restart qb-core." },
+    { symptom: "Changes do not show up in game", fix: "You edited the file but did not restart qb-core, or you restarted a different script. Restart the qb-core resource itself, or restart the whole server." },
+    { symptom: "Lua error on a label with an apostrophe", fix: "Escape the apostrophe with a backslash, like 'Benny\\'s Original Motor Works', or wrap the string in double quotes." },
+  ]}
+/>
+
+## Example job list
+
+This is an illustrative config so you can see how real jobs are shaped. Your own `jobs.lua` will look similar.
+
+### Civilian and starter jobs (single grade)
+
+| Job name | Label | Default Duty | Off-Duty Pay | Grade 0 | Pay |
+|----------|-------|:---:|:---:|---------|----:|
+| `unemployed` | Civilian | yes | no | Freelancer | 10 |
+| `bus` | Bus | yes | no | Driver | 50 |
+| `trucker` | Trucker | yes | no | Driver | 50 |
+| `tow` | Towing | yes | no | Driver | 50 |
+| `garbage` | Garbage | yes | no | Collector | 50 |
+
+### `police` Law Enforcement (type: `leo`)
+
+| Grade | Name | Boss | Pay |
+|:---:|------|:---:|----:|
+| 0 | Recruit | | 50 |
+| 1 | Officer | | 75 |
+| 2 | Sergeant | | 100 |
+| 3 | Lieutenant | | 125 |
+| 4 | Chief | yes | 150 |
+
+### `ambulance` EMS (type: `ems`)
+
+| Grade | Name | Boss | Pay |
+|:---:|------|:---:|----:|
+| 0 | Recruit | | 50 |
+| 1 | Paramedic | | 75 |
+| 2 | Doctor | | 100 |
+| 3 | Surgeon | | 125 |
+| 4 | Chief | yes | 150 |
+
+### `mechanic` LS Customs (type: `mechanic`)
+
+| Grade | Name | Boss | Pay |
+|:---:|------|:---:|----:|
+| 0 | Recruit | | 50 |
+| 1 | Novice | | 75 |
+| 2 | Experienced | | 100 |
+| 3 | Advanced | | 125 |
+| 4 | Manager | yes | 150 |
+
+Boss-enabled grades unlock the boss menu (hire and fire, society funds). Jobs with a `type` are detected by other scripts through that type, not the job name. Every example job here uses `defaultDuty = true` and `offDutyPay = false`.
+
+## What you can do now
+
+<Recap
+  items={[
+    "Find every job in qb-core/shared/jobs.lua inside the QBCore.Shared.Jobs table.",
+    "Set the job fields: label, optional type, defaultDuty, offDutyPay, and grades.",
+    "Write grade keys as strings starting at '0' with no gaps, each with name and payment, and isboss for management.",
+    "Add a new job entry, save, and restart the qb-core resource so the change applies.",
+    "Assign a job in game with /setjob [id] [jobname] [grade], or in code with Player.Functions.SetJob.",
+    "Avoid the common traps: numeric grade keys, duplicate names, missing type, and forgetting the qb-core restart.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Add a `fisher` job to `qb-core/shared/jobs.lua` with three grades: Deckhand at grade `'0'`, Fisher at grade `'1'`, and a boss-level Captain at grade `'2'`. Save, restart `qb-core`, join the server, and run `/setjob 1 fisher 2` to put yourself at Captain. Confirm the job label and rank name show up in game.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "QBCore documentation", href: "https://docs.qbcore.org/" },
+    { label: "Qbox documentation (modern QBCore-compatible fork)", href: "https://docs.qbox.re/" },
+  ]}
+/>

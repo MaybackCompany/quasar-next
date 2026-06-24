@@ -1,0 +1,457 @@
+<LessonHero
+  crumbs="Qbox"
+  title="Qbox: how the framework works"
+  meta={[
+    { label: "You'll learn", value: "What Qbox is, why it is the modern ox-based fork of QBCore, how to read a player, move money and items, write commands and callbacks, and ship a small /drinkwater script." },
+    { label: "Time", value: "~20 minutes to read, longer if you build the example." },
+    { label: "You need", value: "A running FiveM server with qbx_core, ox_lib and ox_inventory installed (the Qbox recipe sets all three up for you)." },
+    { label: "Result", value: "You can write your own Qbox server and client code using direct exports and the ox modules, the way modern Qbox scripts do it." },
+  ]}
+>
+  **Qbox** is a **framework** for FiveM roleplay servers. A framework is the engine underneath all of your roleplay scripts: it tracks who is logged in, their character, money, and job. Qbox is a modern fork of an older framework called QBCore, rebuilt on the **ox** resources (`ox_lib` and `ox_inventory`). This lesson shows you how the framework itself works, not inventory or other add-on scripts.
+</LessonHero>
+
+<Prereq
+  items={[
+    "qbx_core is installed and started. This is the Qbox core resource.",
+    "ox_lib is installed. This is the shared library Qbox uses for notifications, commands, and callbacks.",
+    "ox_inventory is installed. This is the inventory Qbox uses for items.",
+    "You can edit .lua files and restart a resource from the txAdmin or server console.",
+  ]}
+/>
+
+## What is Qbox?
+
+Qbox is a **framework** for FiveM (GTA V roleplay servers). Think of it as the "engine" or "foundation" underneath all of your roleplay scripts.
+
+The core resource is called `qbx_core`. It handles things like:
+
+- **Players** who is logged in, their character, money, job, gang.
+- **Jobs and gangs** police, mechanic, mafia, and so on.
+- **Money** cash, bank, and dirty money (crypto).
+- **Commands** the things you type in chat like `/job` or `/car`.
+- **Metadata** extra data about a player such as hunger, thirst, stress.
+
+Other scripts (an inventory, a gas-station job, a car dealership) **build on top** of Qbox and ask `qbx_core` for help: "Who is this player? How much money do they have? Take 500 from the bank."
+
+<Callout variant="fivem" title="Qbox is a modern ox-based fork of QBCore">
+  Qbox started as a fork of **QBCore**, an older and very popular framework. The Qbox team rebuilt it on the **ox** resources: `ox_lib` (a shared library) and `ox_inventory` (a modern inventory). The big practical difference is how you call the framework. **Old QBCore code grabs a `QBCore` object with `exports['qb-core']:GetCoreObject()`. Qbox deprecated that.** In Qbox you call functions **directly** as exports (`exports.qbx_core:GetPlayer(source)`), and you use the ox modules for notifications, commands, callbacks, and items. The player data still looks QB-like, so the ideas carry over, but the function calls are different.
+</Callout>
+
+> **Important:** The core resource is `qbx_core`. Everything else (`ox_inventory`, a job script, and so on) is a separate resource that **depends on** `qbx_core`.
+
+## Key concepts (read this first)
+
+In FiveM (and therefore Qbox) code runs in **two places**. This is the single most important thing to understand.
+
+| Side | Runs where? | Used for |
+|------|-------------|----------|
+| **Client** | On the player's own computer | What the player *sees*: notifications, menus, buttons, animations |
+| **Server** | On the server itself | Things that must be **secure**: money, items, jobs. Shared by all players. |
+
+**Why does this matter?** Client code can be **cheated** by players (hackers). Server code cannot. So anything involving money, items, and permissions **must happen on the server**.
+
+Other concepts to know:
+
+- **`source`** a numeric ID for the player an action came from. On the server you use `source` to figure out *who* did something.
+- **citizenid** a unique ID for a character (for example `ABC12345`). It stays in the database even when the player logs off, so it is used to store data permanently.
+- **export** a way for one resource to call another. In Qbox this is how you reach the core: `exports.qbx_core:GetPlayer(source)`.
+- **Event / Trigger** a message between client and server (for example "the player pressed E").
+
+## How you reach the framework
+
+In old QBCore you grabbed one big object first. **In Qbox you do not.** Qbox **deprecated** `exports['qb-core']:GetCoreObject()`. Instead you call each function **directly** as an export, and you use the ox modules for the rest.
+
+Here is the same idea, old versus new, side by side.
+
+| Task | Old QBCore | Qbox (modern) |
+|------|------------|---------------|
+| Get the core | `local QBCore = exports['qb-core']:GetCoreObject()` | Not needed. Call exports directly. |
+| Get a player (server) | `QBCore.Functions.GetPlayer(source)` | `exports.qbx_core:GetPlayer(source)` |
+| Add money | `Player.Functions.AddMoney('cash', 500)` | `exports.qbx_core:AddMoney(source, 'cash', 500, 'reason')` |
+| Add an item | `Player.Functions.AddItem('water', 1)` | `exports.ox_inventory:AddItem(source, 'water', 1)` |
+| Notify | `QBCore.Functions.Notify(...)` | `lib.notify({ ... })` |
+| Command | `QBCore.Commands.Add(...)` | `lib.addCommand(...)` |
+| Callback | `QBCore.Functions.CreateCallback(...)` | `lib.callback.register(...)` |
+
+To use the **`lib`** table (which is `ox_lib`), you load `ox_lib` in your `fxmanifest.lua` (shown later). After that, `lib.notify`, `lib.addCommand`, and `lib.callback` are available with no setup line at the top of your file.
+
+> Qbox keeps a **compatibility layer** so some old-style calls like `Player.Functions.AddMoney('cash', amount)` still work. Prefer the direct exports in new code. They are the documented Qbox way.
+
+## PlayerData: everything about a player
+
+When you fetch a player you get a `Player` object. Inside it is `Player.PlayerData`, a big "package" of information about that character. The shape is QB-like, so if you have seen QBCore it will look familiar.
+
+| Field | What it is | Example |
+|-------|------------|---------|
+| `PlayerData.citizenid` | Unique character ID | `"ABC12345"` |
+| `PlayerData.charinfo` | Name, birthdate, phone | `charinfo.firstname` |
+| `PlayerData.job` | The player's job | `job.name`, `job.grade` |
+| `PlayerData.gang` | The player's gang | `gang.name` |
+| `PlayerData.money` | Money | `money.cash`, `money.bank` |
+| `PlayerData.metadata` | Extra data | `metadata.hunger`, `metadata.thirst` |
+
+**On the server** (any player via their `source`):
+
+```lua
+local Player = exports.qbx_core:GetPlayer(source)
+if Player then
+    print(Player.PlayerData.citizenid)
+    print(Player.PlayerData.money.bank)
+    print(Player.PlayerData.job.name)   -- e.g. "police"
+    print(Player.PlayerData.job.grade)  -- a table; grade.level is the rank number
+end
+```
+
+**On the client** (your own data) you read the player data through `QBX` or an ox_lib state bag, but for beginners the secure pattern is to ask the server with a **callback** (shown later). **The rule is the same as in any framework: the server owns the real data.**
+
+## Server functions
+
+These run on the **server** and are where you make the "real" changes (money, items, jobs). Always fetch the player first.
+
+### Find a player
+
+```lua
+-- By their source (most common)
+local Player = exports.qbx_core:GetPlayer(source)
+
+-- By citizenid (must be online)
+local Player = exports.qbx_core:GetPlayerByCitizenId('ABC12345')
+```
+
+### Money
+
+Money in Qbox is moved with **direct core exports**. The first argument is the **identifier**: either the `source` (server ID) or a `citizenid`. The money type is `'cash'`, `'bank'`, or `'crypto'`. The last argument is a **reason** string that shows up in logs.
+
+```lua
+-- Give money: (identifier, moneyType, amount, reason)
+exports.qbx_core:AddMoney(source, 'cash', 500, 'sold-fish')
+
+-- Take money
+exports.qbx_core:RemoveMoney(source, 'bank', 200, 'bought-tools')
+```
+
+Both return a **boolean** telling you if it worked. `RemoveMoney` returns `false` if the player did not have enough, so check it:
+
+```lua
+local ok = exports.qbx_core:RemoveMoney(source, 'cash', 200, 'bought-water')
+if not ok then
+    -- they could not afford it, stop here
+    return
+end
+```
+
+> The QBCore compatibility call `Player.Functions.AddMoney('cash', amount)` still works in Qbox, but new code should use `exports.qbx_core:AddMoney(...)`.
+
+### Items
+
+In Qbox, items live in **`ox_inventory`**, not in the core. So you add and remove items through `ox_inventory` exports, using the player's `source`.
+
+```lua
+-- Add an item: (source, itemName, count)
+exports.ox_inventory:AddItem(source, 'water', 1)
+
+-- Remove an item: (source, itemName, count)
+exports.ox_inventory:RemoveItem(source, 'water', 1)
+
+-- Check how many of an item a player has
+local count = exports.ox_inventory:GetItemCount(source, 'radio')
+if count > 0 then
+    print('The player has a radio')
+end
+```
+
+### Make an item "usable"
+
+Want something to happen when a player uses an item (for example drinking water)? In Qbox you write a **server-side use handler** and point `ox_inventory` at it. The handler runs on the server, so it is secure. You expose it as an **export from your own resource** with `exports('name', ...)`, then reference it from the item's data in `ox_inventory` (the `server.export` field).
+
+```lua
+-- in your resource's server file
+exports('useWater', function(event, item, inventory, slot, data)
+    if event == 'usingItem' then
+        -- runs when the player starts using the item; return false to block it
+        local source = inventory.id
+        -- here you could check or raise the player's thirst
+    end
+end)
+```
+
+Then in `ox_inventory`'s `data/items.lua`, the `water` item points at it:
+
+```lua
+['water'] = {
+    label = 'Water',
+    consume = 1,                       -- removes one on use
+    server = { export = 'myresource.useWater' },
+},
+```
+
+With `consume = 1`, `ox_inventory` removes the item and shows the use animation for you, then fires the `usedItem` event. The callback is fired by `ox_inventory` with `event` (`'usingItem'`, `'usedItem'`, or `'buying'`), the `item`, the `inventory` (its `inventory.id` is the player's `source`), the `slot`, and any `data`.
+
+## Client functions
+
+These run on the **player's** machine and are used for the visuals and experience. They come from **`ox_lib`** (the `lib` table), not from a core object.
+
+### Notification
+
+`lib.notify` takes one table. The common fields are `title`, `description`, and `type`.
+
+```lua
+lib.notify({
+    title = 'Done',
+    description = 'This is a test',
+    type = 'success',   -- 'success', 'error', 'inform', or 'warning'
+})
+
+lib.notify({
+    description = 'Something went wrong',
+    type = 'error',
+})
+```
+
+If you are on the server and want to notify a specific player, send it to them:
+
+```lua
+-- from the server, notify one player by their source
+TriggerClientEvent('ox_lib:notify', source, {
+    description = 'You have no water',
+    type = 'error',
+})
+```
+
+### Progress bar (loading bar)
+
+`lib.progressBar` takes one table and **blocks until it finishes**, returning `true` if it completed or `false` if the player cancelled.
+
+```lua
+if lib.progressBar({
+    duration = 3000,
+    label = 'Drinking water...',
+    useWhileDead = false,
+    canCancel = true,
+    disable = { move = true, car = true, combat = true },
+}) then
+    lib.notify({ description = 'Refreshing!', type = 'success' })
+else
+    lib.notify({ description = 'Cancelled', type = 'error' })
+end
+```
+
+## Commands: make your own
+
+You create commands with **`lib.addCommand`** (runs on the **server**). The shape is:
+
+```lua
+lib.addCommand(commandName, properties, handler)
+```
+
+**A simple example with no arguments:**
+
+```lua
+lib.addCommand('hi', {
+    help = 'Says hi',
+}, function(source, args, raw)
+    TriggerClientEvent('ox_lib:notify', source, {
+        description = 'Hi there!',
+        type = 'inform',
+    })
+end)
+```
+
+**An example with arguments** (for example `/givecash [id] [amount]`):
+
+```lua
+lib.addCommand('givecash', {
+    help = 'Give a player cash',
+    params = {
+        { name = 'id',     type = 'playerId', help = "The player's ID" },
+        { name = 'amount', type = 'number',   help = 'How much money' },
+    },
+    restricted = 'group.admin',   -- only admins may use it
+}, function(source, args, raw)
+    local targetId = args.id        -- already a number, keyed by param name
+    local amount   = args.amount
+    local Target   = exports.qbx_core:GetPlayer(targetId)
+    if Target then
+        exports.qbx_core:AddMoney(targetId, 'cash', amount, 'admin-givecash')
+    end
+end)
+```
+
+**Explanation of the parts:**
+
+| Part | Meaning |
+|------|---------|
+| `commandName` | What you type in chat (without the `/`) |
+| `properties.help` | Shown as a description in chat suggestions |
+| `properties.params` | List of expected arguments. Each has a `name`, a `type`, and `help`. ox_lib parses and validates them for you. |
+| `properties.restricted` | An ACE permission group, for example `'group.admin'`. Leave it out to let everyone use the command. |
+| `handler` | The function that runs. It gets `source`, `args` (a table keyed by param name), and `raw` (the unparsed text). |
+
+> The `type` on a param (like `'number'` or `'playerId'`) tells ox_lib to convert and check the value before your handler runs. If the player types something wrong, the command is rejected for you. **This is safer than QBCore, where you parsed the raw text yourself.**
+
+## Callbacks: secure communication
+
+A **callback** is how the client asks the server a question and waits for an answer. It is safer than a regular event because the server controls the response. In Qbox, callbacks come from **`ox_lib`** (`lib.callback`).
+
+Example: the client asks "how much money do I have in the bank?"
+
+**On the server** register the callback. Whatever you `return` is sent back:
+
+```lua
+lib.callback.register('myresource:getBank', function(source)
+    local Player = exports.qbx_core:GetPlayer(source)
+    if not Player then return 0 end
+    return Player.PlayerData.money.bank   -- this value is sent back
+end)
+```
+
+**On the client** call it and use the answer. `lib.callback.await` waits for the result:
+
+```lua
+local bank = lib.callback.await('myresource:getBank', false)
+lib.notify({ description = 'You have ' .. bank .. ' in the bank', type = 'inform' })
+```
+
+> **Rule:** never trust the client with money or items. Always let the server decide and verify. Callbacks are a good way to do this safely.
+
+## Jobs: where they live
+
+Jobs in Qbox are defined in **`qbx_core/shared/jobs.lua`**, a plain Lua table, just like QBCore. The **shape is different** from QBCore, so do not copy a QBCore jobs table in directly.
+
+A job has a `label`, an optional `type`, and a `grades` table. **Grades are keyed by a number starting at `0`.** Each grade has a `name`, a `payment` (the salary), and optional `isboss` and `bankAuth` flags.
+
+```lua
+['police'] = {
+    label = 'LSPD',
+    type = 'leo',           -- optional category, e.g. 'leo', 'ems'
+    defaultDuty = true,     -- start on duty
+    offDutyPay = false,     -- no pay while off duty
+    grades = {
+        [0] = { name = 'Recruit',  payment = 50 },
+        [1] = { name = 'Officer',  payment = 75 },
+        [2] = { name = 'Sergeant', payment = 100 },
+        [3] = { name = 'Lieutenant', payment = 125 },
+        [4] = { name = 'Chief', isboss = true, bankAuth = true, payment = 150 },
+    },
+},
+```
+
+| Field | What it is |
+|-------|------------|
+| `label` | The display name shown in-game |
+| `type` | Optional category like `'leo'` (law enforcement) or `'ems'` |
+| `defaultDuty` | `true` if players start on duty |
+| `offDutyPay` | `true` if off-duty players still get paid |
+| `grades[n].name` | The rank name at grade `n` |
+| `grades[n].payment` | The salary for that grade |
+| `grades[n].isboss` | `true` if this grade can manage the job (hire, fire) |
+| `grades[n].bankAuth` | `true` if this grade can use the society bank |
+
+**After editing `shared/jobs.lua`, restart `qbx_core` to apply the change.**
+
+## A complete mini example
+
+Let's build a tiny script: a `/drinkwater` command that removes a `water` item from `ox_inventory`, plays a progress bar, and shows a notification. It uses Qbox for the player, `ox_inventory` for the item, and `ox_lib` for the command, progress bar, and notify.
+
+**`server/main.lua`**
+
+```lua
+lib.addCommand('drinkwater', {
+    help = 'Drink a water',
+}, function(source, args, raw)
+    local Player = exports.qbx_core:GetPlayer(source)
+    if not Player then return end
+
+    -- Check the item on the server (secure)
+    local count = exports.ox_inventory:GetItemCount(source, 'water')
+    if count > 0 then
+        exports.ox_inventory:RemoveItem(source, 'water', 1)
+        TriggerClientEvent('myresource:drank', source)   -- tell the client
+    else
+        TriggerClientEvent('ox_lib:notify', source, {
+            description = 'You have no water',
+            type = 'error',
+        })
+    end
+end)
+```
+
+**`client/main.lua`**
+
+```lua
+RegisterNetEvent('myresource:drank', function()
+    if lib.progressBar({
+        duration = 3000,
+        label = 'Drinking...',
+        useWhileDead = false,
+        canCancel = true,
+        disable = { move = true, car = true, combat = true },
+    }) then
+        lib.notify({ description = 'Refreshing!', type = 'success' })
+    end
+end)
+```
+
+**`fxmanifest.lua`** (ties it all together)
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+shared_script '@ox_lib/init.lua'   -- gives access to the lib table
+
+client_script 'client/main.lua'
+server_script 'server/main.lua'
+
+dependency 'qbx_core'
+dependency 'ox_lib'
+dependency 'ox_inventory'
+```
+
+<ExpectedOutput>
+[    script:myresource] Started resource myresource
+# in chat, after running /drinkwater with a water item:
+# progress bar "Drinking..." appears for 3 seconds, then
+# notification "Refreshing!" pops up
+</ExpectedOutput>
+
+## Common mistakes and pitfalls
+
+<FailureList
+  items={[
+    { symptom: "Trying to call exports['qb-core']:GetCoreObject()", fix: "Qbox deprecated GetCoreObject. Call functions directly, e.g. exports.qbx_core:GetPlayer(source), and use the lib table from ox_lib." },
+    { symptom: "lib is nil / attempt to index a nil value (lib)", fix: "Add shared_script '@ox_lib/init.lua' to your fxmanifest.lua. Without it, the lib table from ox_lib is never loaded." },
+    { symptom: "Items not changing when you use Player.Functions.AddItem", fix: "Items live in ox_inventory, not the core. Use exports.ox_inventory:AddItem(source, name, count) and RemoveItem." },
+    { symptom: "Changing money or items on the client", fix: "Always do it on the server with exports.qbx_core or exports.ox_inventory. Client-side changes can be cheated." },
+    { symptom: "Player is nil", fix: "The player is not loaded or the source is wrong. Always check if Player then before using it." },
+    { symptom: "Using source on the client", fix: "source only exists on the server. On the client, ask the server with a lib.callback instead." },
+    { symptom: "A QBCore jobs table pasted into qbx_core/shared/jobs.lua breaks jobs", fix: "The Qbox jobs shape differs. Grades are keyed from 0 with name, payment, and optional isboss/bankAuth. Match the Qbox shape, then restart qbx_core." },
+    { symptom: "Command runs for everyone when it should be admin-only", fix: "Set restricted to an ACE group like 'group.admin' in the lib.addCommand properties. Test with no restriction first, then lock it down." },
+    { symptom: "Resource loads before qbx_core or ox_lib", fix: "Add dependency 'qbx_core', dependency 'ox_lib', and dependency 'ox_inventory' in fxmanifest.lua." },
+  ]}
+/>
+
+<Recap
+  items={[
+    "Qbox is a modern fork of QBCore built on the ox resources (ox_lib and ox_inventory); the core resource is qbx_core.",
+    "Qbox deprecated GetCoreObject. Call functions directly as exports, e.g. exports.qbx_core:GetPlayer(source).",
+    "Money moves with exports.qbx_core:AddMoney(source, 'cash', amount, 'reason') and RemoveMoney; both return a boolean.",
+    "Items live in ox_inventory: exports.ox_inventory:AddItem / RemoveItem / GetItemCount, and useItem for usable items.",
+    "Notifications, commands, callbacks, and progress bars come from ox_lib: lib.notify, lib.addCommand, lib.callback, lib.progressBar.",
+    "Jobs live in qbx_core/shared/jobs.lua with grades keyed from 0 (name, payment, optional isboss/bankAuth); restart qbx_core to apply.",
+    "Money, items, and permissions must always happen on the server. The client can be cheated.",
+  ]}
+/>
+
+<Exercise>
+  Add a `coffee` item in `ox_inventory`, then copy the `/drinkwater` script to make a `/drinkcoffee` command that removes one `coffee`, plays a 2-second progress bar labelled `Sipping coffee...`, and shows a `success` notification. Confirm in-game that running the command with no coffee shows the "You have no" error instead.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Qbox documentation", href: "https://docs.qbox.re/" },
+    { label: "Overextended docs (ox_lib and ox_inventory)", href: "https://overextended.dev/" },
+    { label: "FiveM natives (built-in GTA functions)", href: "https://docs.fivem.net/natives/" },
+  ]}
+/>

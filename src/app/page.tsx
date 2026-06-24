@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PATHS } from "@/lib/curriculum";
+import { PATHS, STATS } from "@/lib/curriculum";
 import { CtaCursor } from "@/components/fqs/cta-cursor";
 import { SiteNav } from "@/components/fqs/site-nav";
 import { FreshBadge } from "@/components/fqs/fresh-badge";
@@ -64,38 +64,76 @@ export default function HomePage() {
       <SiteNav active="tracks" />
       <main>
         {/* Hero */}
-        <section className="wrap" style={{ padding: "84px 28px 64px" }}>
-          <div style={{ maxWidth: 780 }}>
-            <div
-              className="eyebrow"
-              style={{ marginBottom: 18, display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}
-            >
-              FOR FIVEMCOACH MEMBERS <span className="sep">·</span> BEGINNER-FIRST <span className="sep">·</span> <FreshBadge compact />
+        <section className="wrap" style={{ padding: "76px 28px 60px" }}>
+          <div className="hero-grid">
+            <div>
+              <div
+                className="eyebrow"
+                style={{ marginBottom: 18, display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}
+              >
+                FOR FIVEMCOACH MEMBERS <span className="sep">·</span> BEGINNER-FIRST <span className="sep">·</span> <FreshBadge compact />
+              </div>
+              <h1 className="fqs-h" style={{ fontSize: "clamp(40px, 6.4vw, 74px)", fontWeight: 700 }}>
+                Learn FiveM by shipping, not by watching.
+              </h1>
+              <p style={{ fontSize: 19, color: "var(--fg-2)", margin: "22px 0 8px", maxWidth: 560 }}>
+                Run a server, write Lua resources, and build the game world. Every lesson ends with something that
+                actually boots, runs, or works.
+              </p>
+              <p style={{ fontSize: 15.5, color: "var(--muted)", margin: "0 0 30px", maxWidth: 540 }}>
+                Never written Lua? You only need to have seen a variable and a function before. Start at Track B, Step 1.
+              </p>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+                <Link className="btn btn-primary btn-big" href="/lessons/first-line-of-lua">
+                  New here? Start Track B, Step 1 <CtaCursor />
+                </Link>
+                <a className="btn btn-ghost btn-big" href="#tracks">
+                  I know my goal - pick a track
+                </a>
+              </div>
+              <div className="hero-proof">
+                <span className="pseg">Built by the team behind</span>
+                <span className="pseg"><b>60,000+</b> scripts sold</span>
+                <span className="pdot" aria-hidden />
+                <span className="pseg"><b>6</b> Tebex Legends Awards</span>
+              </div>
             </div>
-            <h1 className="fqs-h" style={{ fontSize: "clamp(40px, 6vw, 68px)", fontWeight: 700 }}>
-              Learn FiveM by shipping, not by watching.
-            </h1>
-            <p style={{ fontSize: 19, color: "var(--fg-2)", margin: "22px 0 8px", maxWidth: 640 }}>
-              Run a server, write Lua resources, and build the game world. Every lesson ends with something that
-              actually boots, runs, or works.
-            </p>
-            <p style={{ fontSize: 15.5, color: "var(--muted)", margin: "0 0 30px", maxWidth: 620 }}>
-              Never written Lua? You only need to have seen a variable and a function before. Start at Track B, Step 1.
-            </p>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-              <Link className="btn btn-primary btn-big" href="/lessons/first-line-of-lua">
-                New here? Start Track B, Step 1 <CtaCursor />
-              </Link>
-              <a className="btn btn-ghost btn-big" href="#tracks">
-                I know my goal - pick a track
-              </a>
+            <div className="boot-wrap" aria-hidden>
+              <div className="boot-card">
+                <div className="boot-head">
+                  <span className="boot-dot r" /><span className="boot-dot y" /><span className="boot-dot g" />
+                  <span className="boot-title">FXServer console</span>
+                </div>
+                <div className="boot-body">
+                  <span className="ln mut"># this is how your first lesson ends</span>
+                  <span className="ln"><span className="mut">&gt;</span> ensure qbx_core</span>
+                  <span className="ln"><span className="mut">&gt;</span> ensure ox_inventory</span>
+                  <span className="ln ok">Server license key authentication succeeded.</span>
+                  <span className="ln">Server is now listening on 0.0.0.0:30120</span>
+                  <span className="ln ok">[OK] 1 player connected<span className="boot-cursor" /></span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
-        <hr className="hairline" />
 
-        <section className="wrap" style={{ padding: "48px 28px" }} aria-labelledby="featured-guides-heading">
-          <div className="eyebrow" style={{ marginBottom: 8 }}>START WITH A COMPLETE GUIDE</div>
+        {/* Proof: real scale, stated plainly. Not metric cards. */}
+        <section className="wrap" style={{ padding: "0 28px 8px" }} aria-label="What the school covers">
+          <div className="stat-row">
+            {STATS.map((s) => (
+              <div key={s.label} className="stat">
+                <span className="sv">{s.value}</span>
+                <span className="sl">{s.label}</span>
+              </div>
+            ))}
+            <div className="stat">
+              <span className="sv">2026</span>
+              <span className="sl">re-verified ecosystem</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="wrap" style={{ padding: "52px 28px" }} aria-labelledby="featured-guides-heading">
           <h2 id="featured-guides-heading" className="fqs-h" style={{ fontSize: 30, marginBottom: 10 }}>
             Two guided starting points.
           </h2>
@@ -106,7 +144,7 @@ export default function HomePage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
             {FEATURED_GUIDES.map((guide) => (
               <Link key={guide.href} className="track-card" href={guide.href}>
-                <span className="eyebrow">{guide.eyebrow}</span>
+                <span className="eyebrow" style={{ color: "var(--accent-strong)" }}>{guide.eyebrow}</span>
                 <h3 className="fqs-h">{guide.title}</h3>
                 <p style={{ fontSize: 14, color: "var(--muted)", margin: "2px 0 0" }}>{guide.description}</p>
                 <div className="tc-foot">
@@ -122,7 +160,7 @@ export default function HomePage() {
         <hr className="hairline" />
 
         {/* Tracks */}
-        <section id="tracks" className="wrap" style={{ padding: "56px 28px" }}>
+        <section id="tracks" className="wrap" style={{ padding: "64px 28px" }}>
           <div className="eyebrow" style={{ marginBottom: 8 }}>CHOOSE YOUR GOAL</div>
           <h2 className="fqs-h" style={{ fontSize: 30, marginBottom: 26 }}>
             Three tracks. Pick one outcome.
@@ -143,7 +181,7 @@ export default function HomePage() {
         <hr className="hairline" />
 
         {/* Method + stack */}
-        <section className="wrap" style={{ padding: "56px 28px" }}>
+        <section className="wrap" style={{ padding: "72px 28px" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 48 }}>
             <div>
               <div className="eyebrow" style={{ marginBottom: 8 }}>WHY IT WORKS</div>
@@ -190,11 +228,11 @@ export default function HomePage() {
           {/* Done-with-you upsell: lessons come with membership, the audit is the fast path. */}
           <div
             style={{
-              marginTop: 56,
-              padding: 28,
-              border: "1px solid var(--accent-strong)",
-              borderRadius: 14,
-              background: "var(--surface)",
+              marginTop: 64,
+              padding: 34,
+              border: "1px solid var(--accent-line)",
+              borderRadius: 16,
+              background: "var(--accent-soft)",
             }}
           >
             <div className="eyebrow" style={{ color: "var(--accent-strong)", marginBottom: 8 }}>

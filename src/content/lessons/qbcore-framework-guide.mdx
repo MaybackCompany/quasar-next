@@ -1,0 +1,414 @@
+<LessonHero
+  crumbs="QBCore"
+  title="QBCore: how the framework works"
+  meta={[
+    { label: "You'll learn", value: "What QBCore is, the client/server split, the Core object, PlayerData, the server and client functions you call every day, built-in and custom commands, callbacks, and a full mini script that ties it together." },
+    { label: "Time", value: "~20 minutes to read. Longer if you type the examples." },
+    { label: "You need", value: "A running FiveM server with the qb-core resource installed, and a code editor." },
+    { label: "Result", value: "You can read and write basic QBCore scripts and know which side each line belongs on." },
+  ]}
+>
+  A **framework** is the foundation your roleplay scripts sit on. **QBCore** is one of the most popular FiveM frameworks. It tracks who is logged in, their money, their job, their items, and more. The resource that does this is called `qb-core`. Everything else (`qb-inventory`, `qb-policejob`) is a separate script that **depends on** qb-core and asks it for help. This lesson is about `qb-core` itself, not the scripts built on top of it.
+</LessonHero>
+
+<Prereq
+  items={[
+    "A FiveM server you can start and stop, with qb-core in your resources folder.",
+    "A code editor (VS Code or similar) to write Lua files.",
+    "You know how to add a resource line to server.cfg and restart the server.",
+  ]}
+/>
+
+## What is QBCore?
+
+QBCore is a **framework** for FiveM, which means GTA V roleplay servers. Think of it as the engine underneath all of your roleplay scripts.
+
+QBCore itself handles these things:
+
+- **Players.** Who is logged in, their character, money, job, and gang.
+- **Jobs and gangs.** Police, mechanic, mafia, and so on.
+- **Money.** Cash, bank, and dirty money (crypto).
+- **Commands.** The lines you type in chat, like `/job` or `/car`.
+- **Metadata.** Extra data about a player, like hunger, thirst, and stress.
+
+Other scripts build on top of QBCore. A gas-station script or a car dealership asks qb-core questions like "Who is this player? How much money do they have? Take 500 from the bank." The framework answers and does the work.
+
+**The resource is named `qb-core`. Every other `qb-` script is separate and depends on it.**
+
+## The client and server split
+
+In FiveM, and therefore in QBCore, your code runs in **two places**. This is the single most important idea in the whole lesson.
+
+| Side | Runs where | Used for |
+|------|-------------|----------|
+| **Client** | On the player's own computer | What the player sees: notifications, menus, buttons, animations |
+| **Server** | On the server itself | Things that must be secure: money, items, jobs. Shared by all players. |
+
+Why does this matter? Client code runs on the player's machine, so a cheater can change it. Server code runs on your machine, so they cannot. **Anything involving money, items, or permissions must happen on the server.**
+
+A few more terms you will see constantly:
+
+- **`source`** is a number that identifies the player an action came from. On the server you use `source` to figure out who did something.
+- **citizenid** is a unique ID for a character, for example `ABC12345`. It stays in the database even when the player logs off, so it is how you store data permanently.
+- **export** is how one script calls another. It is how you reach qb-core: `exports['qb-core']:GetCoreObject()`.
+- **event** is a message sent between client and server, for example "the player pressed E".
+
+## The Core object
+
+Before you can use QBCore at all, you first grab the **Core object**. It is the toolbox that gives you access to every QBCore function. You put this one line at the top of your script. It works on both client and server.
+
+```lua
+local QBCore = exports['qb-core']:GetCoreObject()
+```
+
+After this line you can use `QBCore.Functions.xxx`, `QBCore.Commands.xxx`, and the rest.
+
+**Think of `QBCore` as a big toolbox, and `GetCoreObject()` as opening the lid. No line above this works.**
+
+## PlayerData
+
+`PlayerData` is a big package of information about one player. These are the fields you will use most.
+
+| Field | What it is | Example |
+|-------|------------|---------|
+| `PlayerData.citizenid` | Unique character ID | `"ABC12345"` |
+| `PlayerData.charinfo` | Name, birthdate, phone | `charinfo.firstname` |
+| `PlayerData.job` | The player's job | `job.name`, `job.grade` |
+| `PlayerData.gang` | The player's gang | `gang.name` |
+| `PlayerData.money` | Money | `money.cash`, `money.bank` |
+| `PlayerData.metadata` | Extra data | `metadata.hunger`, `metadata.thirst` |
+
+A **grade** is the player's rank inside a job. A police officer at grade 2 outranks one at grade 0.
+
+On the **client**, you get the local player's own data:
+
+```lua
+local PlayerData = QBCore.Functions.GetPlayerData()
+print(PlayerData.job.name)    -- e.g. "police"
+print(PlayerData.job.grade)   -- e.g. 2 (rank)
+print(PlayerData.charinfo.firstname)
+```
+
+On the **server**, you get any player by their `source`:
+
+```lua
+local Player = QBCore.Functions.GetPlayer(source)
+print(Player.PlayerData.money.bank)
+```
+
+**Notice the difference: the client reads its own data with `GetPlayerData()`, but the server reads a player's data with `GetPlayer(source)` and then `.PlayerData`.**
+
+## Server functions
+
+These run on the **server**. This is where you make the real changes to money, items, and jobs. Always fetch the player first.
+
+### Find a player
+
+```lua
+-- By their source (most common)
+local Player = QBCore.Functions.GetPlayer(source)
+
+-- By citizenid (must be online)
+local Player = QBCore.Functions.GetPlayerByCitizenId('ABC12345')
+
+-- By phone number (must be online)
+local Player = QBCore.Functions.GetPlayerByPhone(6422738491)
+```
+
+Once you have `Player`, you act on it with `Player.Functions.xxx`.
+
+### Money
+
+```lua
+-- Give money: ('cash' or 'bank' or 'crypto', amount)
+Player.Functions.AddMoney('cash', 500)
+
+-- Take money
+Player.Functions.RemoveMoney('bank', 200)
+```
+
+### Job and gang
+
+```lua
+-- Set job: (job name, rank/grade)
+Player.Functions.SetJob('police', 2)
+
+-- Set gang
+Player.Functions.SetGang('ballas', 1)
+```
+
+### Items
+
+```lua
+-- Add an item: (item name, amount)
+Player.Functions.AddItem('water', 1)
+
+-- Remove an item
+Player.Functions.RemoveItem('water', 1)
+
+-- Check if a player has an item (server function)
+if QBCore.Functions.HasItem(source, 'radio') then
+    print('The player has a radio')
+end
+```
+
+### Make an item usable
+
+Want something to happen when a player uses an item, like drinking water? Register it with `CreateUseableItem`.
+
+```lua
+QBCore.Functions.CreateUseableItem('water', function(source, item)
+    local Player = QBCore.Functions.GetPlayer(source)
+    Player.Functions.RemoveItem('water', 1)
+    -- here you could e.g. raise the player's thirst
+end)
+```
+
+**Every money or item change here is server-side, so it is safe. `Player.Functions.xxx` acts on one player; `QBCore.Functions.xxx` is a general tool you pass a `source` to.**
+
+## Client functions
+
+These run on the **player's** machine and handle what the player sees and feels.
+
+### Notification
+
+A **notification** is a small message that pops up on the player's screen.
+
+```lua
+-- (message, type, duration in ms)
+QBCore.Functions.Notify('This is a test', 'success', 5000)
+
+-- Types can be e.g.: 'success', 'error', 'primary', 'police'
+QBCore.Functions.Notify('Something went wrong', 'error', 5000)
+```
+
+### Get your own data
+
+```lua
+local PlayerData = QBCore.Functions.GetPlayerData()
+print(PlayerData.job.name)
+```
+
+### Progress bar
+
+A **progress bar** is a loading bar that runs for a set time. You give it a function to run when it finishes and another for when the player cancels.
+
+```lua
+QBCore.Functions.Progressbar('drink_water', 'Drinking water...', 3000, false, true, {
+    disableMovement = true,
+    disableCarMovement = true,
+    disableCombat = true,
+}, {}, {}, {}, function()
+    -- runs when the bar FINISHES
+    QBCore.Functions.Notify('You drank the water', 'success')
+end, function()
+    -- runs if the player CANCELS
+    QBCore.Functions.Notify('Cancelled', 'error')
+end)
+```
+
+**Client functions are for the experience only. Never decide money or items here, because the player can cheat their own machine.**
+
+## Built-in commands
+
+QBCore ships with many commands out of the box. You type them in chat with a `/`. Most need a certain **permission level**, which decides who is allowed to run the command.
+
+### General
+
+Admin only unless the row says everyone.
+
+| Command | What it does |
+|---------|--------------|
+| `/tp [id or x] [y] [z]` | Teleport to a player or coordinates |
+| `/tpm` | Teleport to a marked point on the map |
+| `/car [model]` | Spawn a vehicle |
+| `/dv` | Delete the vehicle you're in |
+| `/job` | Show your current job *(everyone)* |
+| `/setjob [id] [job] [grade]` | Give a player a job |
+| `/gang` | Show your gang *(everyone)* |
+| `/setgang [id] [gang] [grade]` | Give a player a gang |
+| `/ooc [message]` | Out-of-character chat *(everyone)* |
+| `/me [message]` | Roleplay action as text *(everyone)* |
+
+### Admin menu
+
+| Command | What it does |
+|---------|--------------|
+| `/admin` | Open the admin menu |
+| `/coords` | Show your current coordinates |
+| `/noclip` | Toggle noclip (fly through walls) |
+| `/announce [message]` | Server-wide announcement |
+| `/warn [id] [reason]` | Give a player a warning |
+| `/checkwarns [id]` | View a player's warnings |
+| `/delwarn [id] [number]` | Remove a warning |
+
+## Make your own commands
+
+You create your own commands with `QBCore.Commands.Add`, which runs on the **server**.
+
+```lua
+QBCore.Commands.Add(name, helpText, arguments, argsRequired, callback, permission)
+```
+
+A simple command with no arguments:
+
+```lua
+QBCore.Commands.Add('hi', 'Says hi', {}, false, function(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    TriggerClientEvent('QBCore:Notify', source, 'Hi there!')
+end, 'user')
+```
+
+A command **with** arguments, for example `/givecash [id] [amount]`:
+
+```lua
+local arguments = {
+    { name = 'id',     help = "The player's ID" },
+    { name = 'amount', help = 'How much money' },
+}
+
+QBCore.Commands.Add('givecash', 'Give a player cash', arguments, true,
+    function(source, args)
+        local targetId = tonumber(args[1])      -- first argument
+        local amount   = tonumber(args[2])      -- second argument
+        local Target   = QBCore.Functions.GetPlayer(targetId)
+        if Target then
+            Target.Functions.AddMoney('cash', amount)
+        end
+    end, 'admin')   -- only admins may use it
+```
+
+Here is what each parameter means.
+
+| Parameter | Meaning |
+|-----------|---------|
+| `name` | What you type in chat (without the `/`) |
+| `helpText` | Shown as a description in chat suggestions |
+| `arguments` | List of expected arguments (name + help) |
+| `argsRequired` | `true` = arguments are mandatory |
+| `callback` | The function that runs. Receives `source` and `args` |
+| `permission` | Who may use it: `'user'`, `'admin'`, or `'god'` |
+
+The three permission levels:
+
+- `'user'` means every player may use it.
+- `'admin'` means admins only.
+- `'god'` means super admins and owners only, the highest level.
+
+**Tip: `QBCore.Commands.Refresh(source)` refreshes the chat suggestions for one player, for example after you grant them new permissions.**
+
+## Callbacks
+
+A **callback** is how the client asks the server a question and waits for the answer. It is safer than a plain event because the server controls the response. The client cannot fake the result.
+
+Example: the client asks "how much money do I have in the bank?"
+
+On the **server**, you create the callback:
+
+```lua
+QBCore.Functions.CreateCallback('myresource:getBank', function(source, cb)
+    local Player = QBCore.Functions.GetPlayer(source)
+    cb(Player.PlayerData.money.bank)   -- send the answer back
+end)
+```
+
+On the **client**, you call it and use the answer:
+
+```lua
+QBCore.Functions.TriggerCallback('myresource:getBank', function(bank)
+    QBCore.Functions.Notify('You have '..bank..' in the bank', 'primary')
+end)
+```
+
+**Never trust the client with money or items. Let the server decide and verify. A callback is the safe way to ask.**
+
+## A complete mini example
+
+Let us build a tiny script: a `/drinkwater` command that removes a water item and shows a notification. It uses the client and server working together.
+
+`server/main.lua`:
+
+```lua
+local QBCore = exports['qb-core']:GetCoreObject()
+
+QBCore.Commands.Add('drinkwater', 'Drink a water', {}, false, function(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    -- Check if they have water (server-side = secure)
+    if QBCore.Functions.HasItem(source, 'water') then
+        Player.Functions.RemoveItem('water', 1)
+        TriggerClientEvent('myresource:drank', source)   -- tell the client
+    else
+        TriggerClientEvent('QBCore:Notify', source, 'You have no water', 'error')
+    end
+end, 'user')
+```
+
+`client/main.lua`:
+
+```lua
+local QBCore = exports['qb-core']:GetCoreObject()
+
+RegisterNetEvent('myresource:drank', function()
+    QBCore.Functions.Progressbar('drink', 'Drinking...', 3000, false, true, {
+        disableMovement = true,
+    }, {}, {}, {}, function()
+        QBCore.Functions.Notify('Refreshing!', 'success')
+    end)
+end)
+```
+
+`fxmanifest.lua`, which ties it all together:
+
+```lua
+fx_version 'cerulean'
+game 'gta5'
+
+client_script 'client/main.lua'
+server_script 'server/main.lua'
+
+dependency 'qb-core'   -- ensures qb-core loads before this script
+```
+
+**Read the flow once: the server checks the item and removes it, then tells the client to play the animation. The secure work stays on the server, and the client only handles the visual.**
+
+## Common mistakes
+
+<FailureList
+  items={[
+    { symptom: "Forgetting local QBCore = exports['qb-core']:GetCoreObject()", fix: "That line must be at the top of both the client and the server file. Nothing below it works without it." },
+    { symptom: "Changing money or items on the client", fix: "Always do it on the server. Client changes can be cheated by the player." },
+    { symptom: "Player is nil", fix: "The player does not exist or is not loaded yet. Always check with if Player then before using it." },
+    { symptom: "Using source on the client", fix: "source only works on the server. On the client, use QBCore.Functions.GetPlayerData() instead." },
+    { symptom: "Wrong permission on a command", fix: "Test with 'user' first so you can run it yourself, then set it to 'admin' or 'god' once it works." },
+    { symptom: "Forgetting dependency 'qb-core'", fix: "Add it in fxmanifest.lua, otherwise your script may load before qb-core and fail." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Grab the Core object with local QBCore = exports['qb-core']:GetCoreObject() at the top of every script.",
+    "Decide which side each line belongs on: money and items go on the server, visuals go on the client.",
+    "Read a player with GetPlayerData() on the client, or GetPlayer(source) on the server.",
+    "Change money, jobs, and items with Player.Functions.AddMoney, SetJob, and AddItem on the server.",
+    "Show feedback with QBCore.Functions.Notify and QBCore.Functions.Progressbar on the client.",
+    "Add your own commands with QBCore.Commands.Add and set the right permission level.",
+    "Use a callback to let the client ask the server a question safely.",
+  ]}
+/>
+
+## Try it yourself
+
+<Exercise>
+  Write a `/mybank` command that runs on the server, fetches the player with `GetPlayer(source)`, and sends their bank balance to the client with `TriggerClientEvent('QBCore:Notify', source, ...)`. Set the permission to `'user'`, restart the resource, and run it in chat. Confirm the notification shows the same number you see in your wallet UI.
+</Exercise>
+
+<Refs
+  items={[
+    { label: "Official QBCore documentation", href: "https://docs.qbcore.org/" },
+    { label: "FiveM natives (built-in GTA functions)", href: "https://docs.fivem.net/natives/" },
+  ]}
+/>

@@ -5,10 +5,10 @@
     { label: "You'll do", value: "Get proximity voice working and fix the handful of issues that block it on launch day." },
     { label: "Time", value: "~20 minutes." },
     { label: "You need", value: "A running framework server and a voice resource (pma-voice is the common modern choice)." },
-    { label: "You'll learn", value: "How FiveM voice works -> install and config -> the common blockers -> a fast troubleshooting order" },
+    { label: "You'll learn", value: "How FiveM voice works, how to install and configure pma-voice, the common blockers, and a fast troubleshooting order." },
   ]}
 >
-  Voice is the feature players notice instantly and the one that quietly breaks launches. The fix is rarely mysterious: a missing dependency, a mic permission, or a config that fights the framework. This is the get-it-working-and-keep-it-working guide.
+  Voice is the feature players notice first. It is also the one that quietly breaks launches. The cause is rarely a mystery. It is usually a missing dependency, a mic permission, or a config that fights your framework. This lesson gets voice working and keeps it working.
 </LessonHero>
 
 <Prereq
@@ -20,24 +20,24 @@
 />
 
 <Callout variant="fivem" title="How FiveM voice works">
-  FiveM includes an internal Mumble voice system. The community resource `pma-voice`, maintained in the `AvarianKnight/pma-voice` repository, configures proximity, radio, and call channels on top of it. A normal setup does not require a separate TeamSpeak or Mumble server, though pma-voice also supports an explicitly configured external Mumble address. Network loss can hurt voice, but so can the wrong input device, conflicting voice resources, or incorrect convars, so diagnose in order rather than assuming one cause.
+  FiveM has a voice system built in. It is based on Mumble, and it runs **inside FXServer**. You do not install or run a separate voice server, and there is no separate voice port to open. `pma-voice` is a community resource, maintained in the `AvarianKnight/pma-voice` repository, that sits on top of the built-in system and adds proximity, radio, and call channels. It can be pointed at an external Mumble address with documented convars, but a normal setup never needs that. A **convar** is a server setting you write in `server.cfg`. When voice breaks, the cause is usually the input device, a second voice resource fighting pma-voice, or a wrong convar, so check those in order before you blame the network.
 </Callout>
 
 ## Get it working
 
 <StepGroup>
   <Step num={1} title="Install pma-voice by itself" outcome="One voice resource starts with no errors.">
-    Download the release from the official `AvarianKnight/pma-voice` repository and place it in `resources` with the folder name `pma-voice`. It uses FiveM's internal Mumble support; **do not install or run `mumble-voip` beside it**. The pma-voice README says it is incompatible with other voice systems, including vMenu voice unless that feature is disabled.
+    Download the release from the official `AvarianKnight/pma-voice` repository. Put it in `resources` with the folder name `pma-voice`. It uses FiveM's built-in Mumble support, so **do not install or run `mumble-voip` next to it**. The pma-voice README says it does not work alongside other voice systems, including vMenu voice unless you turn that feature off.
 
     ```cfg
     ensure pma-voice
     ```
 
-    Restart and watch the console. If another voice resource is running, stop it and remove its `ensure` line before troubleshooting pma-voice.
+    `ensure` is the server.cfg command that starts a resource (and restarts it if it is already running). Restart the server and watch the console. If another voice resource is running, stop it and remove its `ensure` line before you troubleshoot pma-voice. **Only one voice resource may control the voice natives at a time.**
   </Step>
 
-  <Step num={2} title="Set proximity and mode in config" outcome="Talk, whisper, and shout ranges behave as intended.">
-    pma-voice's supported configuration is through convars in `server.cfg`. Start with the defaults and override only values you intentionally want to change:
+  <Step num={2} title="Set the voice mode and audio path in config" outcome="The starting voice mode and audio behavior are what you want.">
+    pma-voice is configured with convars in `server.cfg`. Start with the defaults and override only the values you mean to change.
 
     ```cfg
     # 1 = Whisper, 2 = Normal, 3 = Shouting
@@ -46,59 +46,51 @@
     setr voice_enableRadioAnim false
     ```
 
-    These lines do not set three distance values. `voice_defaultVoiceMode` chooses the initial mode. `voice_useNativeAudio` changes the audio path and is required for submixes. `voice_enableRadioAnim` only controls the radio animation. The project's current ranges live in its shared code; changing them is a maintained fork, not a normal convar tweak. Follow the README for the release you installed.
+    These lines do not set three distance numbers. `voice_defaultVoiceMode` picks the mode a player starts in. `voice_useNativeAudio` changes the audio path and is required for submixes. `voice_enableRadioAnim` only controls the radio animation. The talk, whisper, and shout ranges live in the resource's shared code. **Changing those ranges means maintaining your own fork, not flipping a convar.** Follow the README for the exact release you installed.
   </Step>
 
-  <Step num={3} title="Confirm mic permission and device" outcome="Your voice is captured and transmitted.">
-    In FiveM settings, set the correct input device and push-to-talk key, and allow microphone access at the OS level. A muted OS mic looks exactly like a broken server.
+  <Step num={3} title="Confirm mic permission and device" outcome="Your voice is captured and sent.">
+    In FiveM settings, set the correct input device and your push-to-talk key. Then allow microphone access at the operating-system level. **A muted OS mic looks exactly like a broken server.** Check this first.
   </Step>
 
   <Step num={4} title="Test with a second player" outcome="Two players hear each other by proximity.">
-    Voice is hard to test alone. Bring a second client (or a friend), stand close, and confirm proximity falloff as you walk apart.
-  </Step>
+    Voice is hard to test alone. Bring a second client, or a friend, stand close, and confirm the audio fades out as you walk apart.
+
     <ExpectedOutput>
-      Players hear each other in-game with clear audio. The voice server runs on its own port. You know which ConVars control range, channels, and audio quality — and which log files to check when voice breaks.
+    Players hear each other in-game with clear audio. As they walk apart, the audio fades. You know which convars control the voice mode and audio path, and you know the order to check things in when voice breaks.
     </ExpectedOutput>
+  </Step>
 </StepGroup>
 
 ## How it works
 
-Two facts explain almost every voice problem you will hit, and both are worth holding in your head before you start tuning anything.
+Two facts explain almost every voice problem you will hit. Hold both in your head before you tune anything.
 
-**Voice uses FiveM's Mumble integration.** In the default setup, pma-voice uses the internal voice server. It can also be pointed at an external address and port with documented convars, so it is inaccurate to assume every installation uses one identical network path. If audio cuts out, check the client device and push-to-talk, confirm only one voice resource controls the natives, inspect pma-voice's debug output, and then check latency, packet loss, and server health.
+**Voice runs inside FXServer.** pma-voice uses the built-in Mumble system. There is no separate voice server and no separate voice port. So if audio cuts out, do not start by hunting for a missing voice server. Check the client device and push-to-talk, confirm only one voice resource controls the natives, read pma-voice's debug output, and only then check latency, packet loss, and server health.
 
-**Proximity has three modes.** The default mode is selected by `voice_defaultVoiceMode`, and players cycle modes with the configured key (F11 by default for new players). First confirm the player's current Whisper/Normal/Shouting mode. Do not tell operators to edit a nonexistent `config.lua`; use the README's convars, and treat changes to the resource's shared code as a fork you must maintain.
+**Proximity has three modes.** The starting mode comes from `voice_defaultVoiceMode`. Players cycle Whisper, Normal, and Shouting with a key set in pma-voice (the README for your release tells you the exact key). So when someone says the range feels wrong, **first confirm which mode that player is in.** Do not tell operators to edit a `config.lua`; pma-voice has none. Use the README's convars, and treat any change to the resource's shared code as a fork you have to keep up.
 
 ## Troubleshooting order
 
 <FailureList
   items={[
-    { symptom: "Nobody can hear anyone", fix: "Confirm pma-voice started, disable every other voice system, then check OS microphone permission and the FiveM input/output devices." },
-    { symptom: "I hear others but they cannot hear me", fix: "Your mic input or push-to-talk is wrong. Set the correct device and key in FiveM settings and unmute the OS mic." },
-    { symptom: "My range feels wrong, people are too quiet or too loud", fix: "Cycle Whisper/Normal/Shouting and verify voice_defaultVoiceMode. If you customized pma-voice code, compare it with the official release before changing more settings." },
-    { symptom: "Voice cuts out or is robotic", fix: "Check the device, conflicting voice scripts, pma-voice debug output, latency/packet loss, and server health. Do not assume it is only network or only config." },
-    { symptom: "Radio or phone channels do not work", fix: "Those are framework integration. Confirm the framework bridge (ESX Legacy, QBCore, or Qbox) and the radio/phone channel settings in the voice resource config." },
+    { symptom: "Nobody can hear anyone", fix: "Confirm pma-voice started with no error, disable every other voice system, then check OS microphone permission and the FiveM input and output devices." },
+    { symptom: "I hear others but they cannot hear me", fix: "Your mic input or push-to-talk is wrong. Set the correct device and key in FiveM settings (Voice Chat must be ON) and unmute the OS mic." },
+    { symptom: "My range feels wrong, people are too quiet or too loud", fix: "Cycle Whisper, Normal, and Shouting, then check voice_defaultVoiceMode. If you edited pma-voice's shared code, compare it with the official release before changing more." },
+    { symptom: "Voice cuts out or sounds robotic", fix: "Check the input device, conflicting voice scripts, pma-voice debug output, then latency, packet loss, and server health. It is not always the network and not always the config." },
+    { symptom: "Echo or feedback when talking", fix: "Your mic is picking up your speakers. Use headphones, or lower mic sensitivity in FiveM settings." },
+    { symptom: "Radio or phone channels do not work", fix: "Those come from framework integration. Confirm the framework bridge (ESX Legacy, QBCore, or Qbox) and the radio and phone channel settings in the voice resource." },
   ]}
 />
-
-## Common failures
-
-| What you see | What it means | How to fix it |
-|---|---|---|
-| Voice chat doesn't work at all | pma-voice or mumble not installed, or wrong ConVars | Check `ensure pma-voice` is in server.cfg. Verify `voice_useNativeAudio` and `voice_useSendingRangeOnly` are set |
-| Players can hear each other but it's choppy | Network issues or voice server overloaded | Check the voice server (mumble) is on a separate port. Lower `voice_maxPlayersPerChannel` |
-| Voice works for some players but not others | Individual player settings or mute | Ask them to check FiveM settings → Voice. "Voice Chat" must be ON and "Output Device" set correctly |
-| "Mumble connection failed" in console | The voice server isn't running or port is blocked | Check `voice_externalAddress` and `voice_externalPort` match. Open the voice port in firewall |
-| Echo or feedback when talking | Microphone picking up speaker output | Lower mic sensitivity in FiveM settings. Use headphones instead of speakers |
 
 ## What you can do now
 
 <Recap
   items={[
-    "Install pma-voice as the only voice resource; it does not depend on a separate mumble-voip resource.",
-    "Use the documented convars for mode and audio behavior, and verify the installed release's README before changing defaults.",
+    "Install pma-voice as the only voice resource. It uses FiveM's built-in Mumble, so there is no separate voice server or port.",
+    "Use the documented convars for the voice mode and audio path, and read the installed release's README before changing defaults.",
     "Confirm OS mic permission and the FiveM input device before blaming the server.",
-    "Diagnose cutting voice across device, resource conflict, pma-voice config/debug output, network, and server health.",
+    "Diagnose cutting voice across device, resource conflict, pma-voice debug output, network, then server health.",
     "Troubleshoot in order: resource started, then mic, then voice mode, then network, then channel config.",
   ]}
 />
@@ -106,7 +98,7 @@ Two facts explain almost every voice problem you will hit, and both are worth ho
 <Refs
   items={[
     { label: "Cfx.re docs · Voice (mumble) natives", href: "https://docs.fivem.net/natives/#voicechat" },
-    { label: "pma-voice (Overextended)", href: "https://github.com/AvarianKnight/pma-voice" },
+    { label: "pma-voice (AvarianKnight)", href: "https://github.com/AvarianKnight/pma-voice" },
     { label: "Cfx.re docs · Setting up a server", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" }
   ]}
 />
