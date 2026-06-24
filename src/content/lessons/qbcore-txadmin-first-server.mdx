@@ -1,13 +1,13 @@
 <LessonHero
   title="QBCore and txAdmin — your first server"
   meta={[
-    { label: "You'll build", value: "A working FiveM server with QBCore framework, txAdmin panel, XAMPP MySQL, and HeidiSQL — everything a beginner needs to host." },
+    { label: "You'll build", value: "A working FiveM server with QBCore framework, txAdmin panel, MariaDB, and HeidiSQL — everything a beginner needs to host." },
     { label: "Time", value: "~45 minutes" },
     { label: "You need", value: "A Windows PC, internet connection, and a Cfx.re account for the license key." },
-    { label: "You'll learn", value: "Installing XAMPP for MySQL, downloading FiveM artifacts, setting up txAdmin, deploying QBCore via recipe, connecting HeidiSQL, and verifying the server is joinable." },
+    { label: "You'll learn", value: "Installing MariaDB as a Windows service, downloading FiveM artifacts, setting up txAdmin, deploying QBCore via recipe, connecting HeidiSQL, and verifying the server is joinable." },
   ]}
 >
-  This is the complete beginner path to a running FiveM server — no skipped steps, no assumptions. By the end you have XAMPP running MySQL, txAdmin deployed with a QBCore recipe, HeidiSQL connected to your database, and players able to join. This is the lesson most beginners wish they had on day one.
+  This is the complete beginner path to a running FiveM server — no skipped steps, no assumptions. By the end you have MariaDB running as a Windows service, txAdmin deployed with a QBCore recipe, HeidiSQL connected to your database, and players able to join. This is the lesson most beginners wish they had on day one.
 </LessonHero>
 
 <Prereq
@@ -22,13 +22,19 @@
 ## Build it
 
 <StepGroup>
-  <Step num={1} title="Install XAMPP for MySQL" outcome="MySQL is running on localhost:3306.">
-    Download XAMPP from https://www.apachefriends.org — use the version with PHP 8.x and MariaDB. Run the installer, accept defaults. Open the XAMPP Control Panel and click **Start** next to MySQL.
+  <Step num={1} title="Install MariaDB" outcome="MariaDB runs as a Windows service on 127.0.0.1:3306.">
+    Download the latest Windows x86_64 MSI from https://mariadb.org/download/ and run the installer. Accept the defaults, but set a strong **root password** during install and store it in a password manager. Keep port **3306** and install it as a **Windows service**.
 
-    After it starts (green indicator), click **Admin** next to MySQL to open phpMyAdmin. This confirms MySQL is working.
+    After it finishes, confirm the service is running. Open PowerShell and run:
+
+    ```powershell
+Get-Service MariaDB*
+    ```
+
+    You want a row whose Status reads **Running**.
 
     <ExpectedOutput>
-      phpMyAdmin opens at http://localhost/phpmyadmin. MySQL is listening on port 3306.
+      Get-Service MariaDB* shows a MariaDB row with Status Running. MariaDB is listening on port 3306.
     </ExpectedOutput>
   </Step>
 
@@ -69,7 +75,7 @@ C:\FXServer\
 
     - Host: `127.0.0.1`
     - User: `root`
-    - Password: (leave blank unless you set one in XAMPP)
+    - Password: the root password you set when installing MariaDB
     - Port: `3306`
 
     Click Open. You should see the QBCore database with tables like `players`, `vehicles`, `items`.
@@ -84,7 +90,7 @@ C:\FXServer\
 
 | Exact error | Cause | Fix |
 |---|---|---|
-| MySQL won't start in XAMPP | Port 3306 already in use | Click Config → my.ini → change port, or stop the other MySQL instance |
+| MariaDB service won't start | Port 3306 already in use | Stop the other MySQL instance, or change MariaDB's port in `my.ini` and update HeidiSQL to match |
 | `FXServer.exe` crashes immediately | Missing Visual C++ Redistributable | Install VC_redist.x64.exe from Microsoft |
 | txAdmin recipe fails to download | Firewall blocking or GitHub rate limit | Wait a few minutes and retry. If persistent, download QBCore manually |
 | `ensure` command not found in HeidiSQL console | HeidiSQL doesn't run FiveM commands | Use txAdmin Live Console for FiveM commands, HeidiSQL for SQL only |
