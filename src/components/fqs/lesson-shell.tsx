@@ -188,7 +188,7 @@ export function LessonShell(props: LessonShellProps) {
 
           <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 40, flexWrap: "wrap" }}>
             <button className="btn btn-primary btn-big" onClick={markAndNext}>
-              {isDone ? "Completed ✓ — go to next" : "Mark complete & next →"}
+              {isDone ? "Completed ✓ - go to next" : "Mark complete & next →"}
             </button>
             {isDone ? (
               <button

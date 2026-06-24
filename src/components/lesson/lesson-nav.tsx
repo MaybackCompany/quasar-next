@@ -10,7 +10,7 @@ interface LessonNavProps {
   next: Lesson | null;
 }
 
-/** Shared lesson navigation body — used by the desktop sidebar and the mobile drawer. */
+/** Shared lesson navigation body - used by the desktop sidebar and the mobile drawer. */
 export function LessonNav({ activeSlug, module, path, prev, next }: LessonNavProps) {
   const total = module.lessons.length;
   const index = module.lessons.findIndex((l) => l.slug === activeSlug);

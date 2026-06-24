@@ -14,7 +14,7 @@ export interface AuthSession {
   authorized?: boolean;
   isAdmin?: boolean;
   matchedRole?: AccessTier | null;
-  /** Role id behind matchedRole — the role the trial system pulls on expiry. */
+  /** Role id behind matchedRole - the role the trial system pulls on expiry. */
   matchedRoleId?: string | null;
   inGuild?: boolean;
   oauthState?: string;
@@ -60,7 +60,7 @@ export function getMissingAuthEnv(): string[] {
   // Login + role gating run on OAuth (guilds.members.read scope), so these four
   // are the hard requirement. DISCORD_BOT_TOKEN is only needed for the Director
   // admin panel's grant/revoke and the role-read fallback, so it is intentionally
-  // NOT required here — the login wall works without it.
+  // NOT required here - the login wall works without it.
   const required = [
     "SESSION_SECRET",
     "DISCORD_CLIENT_ID",

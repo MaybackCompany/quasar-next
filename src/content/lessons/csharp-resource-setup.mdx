@@ -7,7 +7,7 @@
     { label: "You'll learn", value: "When C# makes sense over Lua, how to set up a C# resource project, the BaseScript lifecycle, and accessing FiveM natives from C#." },
   ]}
 >
-  FiveM supports C# resources alongside Lua. C# gives you type safety, better IDE support, and access to the full .NET ecosystem — useful for complex logic, external API calls, or when your team already knows C#. This lesson sets up a C# resource from scratch, covering the project structure, the BaseScript class, and how FiveM natives work in C#.
+  FiveM runs C# resources, not just Lua. Here's the deal: C# catches your mistakes before the server ever starts, your editor autocompletes everything, and you get the whole .NET toolbox for hard stuff like external API calls. This lesson builds a C# resource from nothing - the project files, the BaseScript class (the base class FiveM looks for to run your code), and how you call FiveM's built-in functions from C#.
 </LessonHero>
 
 <Prereq
@@ -19,7 +19,7 @@
 />
 
 <Callout variant="warn" title="When to use C# vs Lua">
-  Use **C#** for: complex business logic, type-safe APIs, heavy computation, or when your team is C#-first. Use **Lua** for: rapid prototyping, simple resources, or when you need maximum FiveM community compatibility. Most servers run 90% Lua. C# is a power tool — reach for it when Lua's dynamic typing becomes a liability.
+  Pick the tool, not the trend. Reach for **C#** when the logic gets gnarly, the math is heavy, or your team already lives in C#. Reach for **Lua** when you want to move fast, the resource is simple, or you need to match the rest of the FiveM community. Most servers are 90% Lua. C# is the power tool you grab when Lua's loose typing starts biting you.
 </Callout>
 
 ## Build it
@@ -39,7 +39,7 @@ dotnet add package CitizenFX.Core --version 1.0.*
   </Step>
 
   <Step num={2} title="Write the server script" outcome="The server assembly prints to console and responds to a command.">
-    Server logic (commands, database, player events) lives in the server assembly. `Game.*` and input natives do NOT exist here - they are client-only, so the key-press loop goes in a separate client assembly in the next step.
+    Server-side code runs on the machine hosting the game. Put your commands, database calls, and player events here. What you can't do here is read the keyboard or anything from `Game.*` - those only exist on each player's computer, so the key-press loop waits for the client file in the next step.
 
     ```csharp ServerMain.cs
 using CitizenFX.Core;
@@ -64,7 +64,7 @@ namespace QuCsharpDemo
   </Step>
 
   <Step num={3} title="Write the client script" outcome="The client assembly reads the E key every frame.">
-    Input and per-frame Tick logic must run client-side, because `Game.*` and `Control.*` natives only exist on the client.
+    Anything that watches the keyboard belongs on the client. A `Tick` is code FiveM runs once every frame, on each player's computer, and that's the only place `Game.*` and `Control.*` (the keypress functions) actually exist.
 
     ```csharp ClientMain.cs
 using CitizenFX.Core;
@@ -89,7 +89,7 @@ namespace QuCsharpDemo
   </Step>
 
   <Step num={4} title="Create the fxmanifest" outcome="FiveM loads your C# resource.">
-    Build produces two assemblies. Load the server one with `server_script` and the client one with `client_script` so each runs on the correct side.
+    The manifest is the file FiveM reads to know what to load. Building gives you two `.dll` files (an assembly is just your compiled code in one file). Hand the server one to `server_script` and the client one to `client_script` so each lands on the right side.
 
     ```lua fxmanifest.lua
 fx_version 'cerulean'
@@ -99,7 +99,7 @@ server_script 'qu_csharp_demo.Server.net.dll'
 client_script 'qu_csharp_demo.Client.net.dll'
     ```
 
-    Each `.net.dll` is a compiled assembly. FiveM loads it as a script and discovers all `BaseScript` subclasses inside it automatically. The server assembly runs `ServerMain`; the client assembly runs `ClientMain`.
+    You don't register your classes anywhere. FiveM cracks open each `.net.dll`, finds every class that inherits from `BaseScript`, and runs it. The server file runs `ServerMain`, the client file runs `ClientMain`.
 
     <ExpectedOutput>
       After `ensure qu_csharp_demo`, the server console prints: `C# resource started!`
@@ -121,4 +121,4 @@ client_script 'qu_csharp_demo.Client.net.dll'
 |---|---|---|
 | `Could not load file or assembly` | Wrong .NET version or missing package | Target `netstandard2.1`, install `CitizenFX.Core` nuget |
 | Resource loads but nothing happens | No `BaseScript` subclass found | Your class MUST inherit from `BaseScript` |
-| `API.RegisterCommand` not found | Missing `using static CitizenFX.Core.Native.API` or full namespace | Use `API.RegisterCommand` from `CitizenFX.Core` |
+| `API.RegisterCommand` not found | Missing `using static CitizenFX.Core.Native.API` or full namespace | Natives live in `CitizenFX.Core.Native.API` - add `using static CitizenFX.Core.Native.API;` or call `CitizenFX.Core.Native.API.RegisterCommand` |

@@ -12,7 +12,7 @@ interface BookAuditProps {
  * "Book your free FiveM audit" button. The Cal.com embed script intercepts the
  * click and opens the booking popup (namespace fivemaudit -> kishi/fivemaudit).
  * It is a real <a> so that if the script is blocked or fails, the click still
- * navigates to the booking page — progressive enhancement, never a dead button.
+ * navigates to the booking page - progressive enhancement, never a dead button.
  */
 export function BookAudit({ className, children }: BookAuditProps) {
   useEffect(() => {

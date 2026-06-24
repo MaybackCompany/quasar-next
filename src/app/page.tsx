@@ -87,7 +87,7 @@ export default function HomePage() {
                 New here? Start Track B, Step 1 <CtaCursor />
               </Link>
               <a className="btn btn-ghost btn-big" href="#tracks">
-                I know my goal — pick a track
+                I know my goal - pick a track
               </a>
             </div>
           </div>
@@ -153,7 +153,7 @@ export default function HomePage() {
               <dl className="meta-list" style={{ margin: 0 }}>
                 <div className="meta-row">
                   <dt>SHIP EVERY LESSON</dt>
-                  <dd>Each lesson states what you&apos;ll build, how long it takes, and what you need — before you start.</dd>
+                  <dd>Each lesson states what you&apos;ll build, how long it takes, and what you need - before you start.</dd>
                 </div>
                 <div className="meta-row">
                   <dt>EXACT ERRORS</dt>

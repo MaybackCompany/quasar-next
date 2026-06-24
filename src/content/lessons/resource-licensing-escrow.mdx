@@ -6,7 +6,7 @@
     { label: "You need", value: "An interest in selling or buying scripts the right way." },
   ]}
 >
-  Before you sell or buy a script, you need to understand how FiveM protects code. Some scripts ship open and editable; others ship escrowed, where the core is protected and only a config is exposed. Getting this wrong means buyers cannot make the edits they expected, or sellers ship code they did not mean to give away.
+  Here's the deal: every FiveM script ships one of two ways, and knowing which is on you before money changes hands. Open means the code is readable and you can edit all of it. Escrowed means the core is locked and only a config file is exposed for you to change. Get this wrong and a buyer can't make the edit they paid for, or a seller hands away code they meant to protect.
 </LessonHero>
 
 <Prereq
@@ -18,14 +18,14 @@
 />
 
 <Callout variant="fivem" title="Escrow in one sentence">
-  FiveM's asset escrow lets a seller protect the core code of a resource while still exposing a config (and sometimes open files) for the buyer to edit. The buyer runs it, configures it, but cannot read or copy the protected core.
+  Escrow is a lock on a script's core code. FiveM's asset escrow lets a seller encrypt the core of a resource while leaving a config (and sometimes a few open files) for the buyer to change. You run it and you configure it, but you can't read or copy the locked core.
 </Callout>
 
 ## What to understand before you transact
 
 <StepGroup>
   <Step num={1} title="Know open vs escrowed" outcome="You can tell what a buyer will and will not be able to edit.">
-    **Open** resources ship as readable Lua: fully editable, fully copyable. **Escrowed** resources protect the core; the buyer edits the exposed config and any files the author left open, but not the protected logic. Neither is "better"; they fit different products.
+    Open means readable Lua you can edit and copy in full. Escrowed means the core is locked: the buyer edits the exposed config and whatever files the author left open, but not the protected logic. Neither one is "better." They fit different products.
   </Step>
 
   <Step num={2} title="As a buyer, check editing rights before you buy" outcome="No surprise that you cannot make the change you needed.">
@@ -47,9 +47,9 @@ You will not always be told a script is escrowed. You have to read the signs, bo
 
 ### What an escrowed resource looks like on disk
 
-When you unzip an escrowed resource, most of it is unreadable. The core Lua files are encrypted, and opening one in a text editor shows a protected blob, not code you can follow or edit. What stays readable is whatever the author deliberately left out of protection: usually a `config.lua` (or a `locales` folder) so you can change settings without touching the core.
+Unzip an escrowed resource and most of it is gibberish. The core Lua files are encrypted, so opening one in a text editor shows a scrambled blob, not code you can read or edit. The only readable parts are the files the author chose to leave out: usually a `config.lua` (or a `locales` folder) so you can change settings without touching the core.
 
-The author controls that line with one manifest directive. In `fxmanifest.lua` the seller lists the files to keep open with `escrow_ignore`:
+The author draws that open-vs-locked line with one manifest directive. In `fxmanifest.lua` (the file that tells the server what a resource is and what it loads) the seller lists the files to keep open with `escrow_ignore`:
 
 ```lua
 fx_version 'cerulean'
@@ -70,19 +70,19 @@ dependencies {
 }
 ```
 
-When that resource is packaged for sale, FiveM's Asset Escrow system encrypts the protectable files *except* the ones named in `escrow_ignore`. You may also notice a small `.fxap` file inside an escrowed resource: that is the escrow manifest file the system writes in, and the resource needs it (plus a valid grant) to load. At runtime the protected core executes normally on the server, so the script works as intended, but the buyer never sees that code on disk in readable form. If you open `config.lua` and it reads like plain settings, while `server/main.lua` is an unreadable blob, that is escrow doing exactly its job.
+When the resource is packaged for sale, FiveM's Asset Escrow system encrypts every protectable file *except* the ones named in `escrow_ignore`. You may also spot a small `.fxap` file inside: that is the escrow manifest the system adds, and the resource needs it (plus a valid grant) to load. At runtime the locked core runs normally on the server, so the script works exactly as intended, but you never see that code on disk in readable form. So if `config.lua` reads like plain settings while `server/main.lua` is a scrambled blob, that is escrow doing its job, not a broken download.
 
 <Callout variant="fivem" title="What escrow does not do">
-  Escrow protects the source from being read and copied; it does not give the seller remote control of your server. But it is not purely offline: an escrowed resource only runs when your server's Cfx.re license key holds a valid grant for that asset, and the runtime checks that entitlement when the resource loads. If the key has no grant you get a "You lack the required entitlement" error and the resource will not start. So it is code protection plus an ownership check, not a remote kill switch the seller can flip at will.
+  Escrow is not a remote kill switch. It hides the source from being read and copied; it does not hand the seller control of your server. But it isn't fully offline either: an escrowed resource only runs when your server's Cfx.re license key holds a valid grant (proof you own the asset), and the runtime checks that grant every time the resource loads. No grant means a "You lack the required entitlement" error and the resource won't start. So think of it as code protection plus an ownership check, not a switch the seller can flip whenever they like.
 </Callout>
 
 <Callout variant="warning" title="Escrow protects the seller, not you">
-  Escrow hides the core code from YOU as much as from anyone else. Because you cannot read an escrowed server file, you cannot verify what it does — a malicious author could hide a backdoor or an external HTTP call inside the protected core. Escrow is not a safety guarantee for the buyer. Only buy escrowed scripts from reputable authors through a legitimate marketplace (Tebex), and watch your server console and outbound connections after installing anything new.
+  Escrow hides the core from YOU just as much as from everyone else. You can't read an escrowed server file, so you can't verify what it does. A shady author could bury a backdoor or a secret HTTP call in the locked core and you'd never see it. Escrow is not a safety guarantee for the buyer. Only buy escrowed scripts from reputable authors through a legitimate marketplace (Tebex), and watch your server console and outbound connections after you install anything new.
 </Callout>
 
 ### How to read a listing before you buy
 
-A good Tebex listing tells you where the author drew the escrow line before you pay. Look for the section that splits the resource three ways:
+A good Tebex listing tells you where the escrow line sits before you pay a cent. Look for the section that splits the resource three ways:
 
 - **Configurable** means exposed in the open `config.lua`: prices, coordinates, labels, item names. You can change these freely.
 - **Open** means a full file left out of escrow that you can read and edit, sometimes a client UI file or a hook the author wants you to extend.

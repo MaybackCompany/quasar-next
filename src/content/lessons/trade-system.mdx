@@ -7,7 +7,7 @@
     { label: "Stack", value: "ox_inventory + ox_lib" },
   ]}
 >
-A trade lets two players hand items to each other in the world: you offer 5 bandages, they accept, the items move. The hard part is not the menu — it is making the swap impossible to cheat. This lesson builds a trade where the **server** owns every decision, both players must confirm, and a lock stops the classic "accept twice and duplicate the item" exploit.
+A trade lets two players hand items to each other in the world: you offer 5 bandages, they accept, the items move. The hard part is not the menu - it is making the swap impossible to cheat. This lesson builds a trade where the **server** owns every decision, both players must confirm, and a lock stops the classic "accept twice and duplicate the item" exploit.
 </LessonHero>
 
 <LessonVideo src="/lesson-videos/clase-6.mp4" caption="Quasar School: building the trade system end to end." />
@@ -26,11 +26,11 @@ A trade lets two players hand items to each other in the world: you offer 5 band
 
 Before any code, get this picture straight, because it is the whole lesson.
 
-In FiveM there are two worlds. The **client** is each player's own game — it runs on their PC, and a cheater can rewrite anything it sends. The **server** is the one machine you control. The rule that keeps every economy script safe is one sentence:
+In FiveM there are two worlds. The **client** is each player's own game - it runs on their PC, and a cheater can rewrite anything it sends. The **server** is the one machine you control. The rule that keeps every economy script safe is one sentence:
 
 > The client may *ask*. Only the server may *decide* and *act*.
 
-A trade has two people. Call them the **initiator** (the one who runs the command) and the **target** (the one who receives the request). The dangerous version — the one the old guide taught — let the client say "give me 50 gold from player 12." The server believed it. That is a free money printer.
+A trade has two people. Call them the **initiator** (the one who runs the command) and the **target** (the one who receives the request). The dangerous version - the one the old guide taught - let the client say "give me 50 gold from player 12." The server believed it. That is a free money printer.
 
 Here is what the server must verify itself, never trusting the client's word:
 
@@ -39,7 +39,7 @@ Here is what the server must verify itself, never trusting the client's word:
 - **Did *both* players confirm?** A trade is an agreement, not a one-sided grab.
 - **Is this trade already being processed?** Lock it so a double-click cannot run the swap twice (that is how duplication bugs happen).
 
-Everything below is built around those four checks. The NUI menu is just a polite way to collect a "yes" — it never moves an item.
+Everything below is built around those four checks. The NUI menu is just a polite way to collect a "yes" - it never moves an item.
 
 <Callout variant="fivem" title="ox_inventory is the item authority">
 This lesson uses **ox_inventory** for item operations because it is the modern standard and its functions run server-side, which is exactly the trust boundary we want. The three calls you need:
@@ -48,7 +48,7 @@ This lesson uses **ox_inventory** for item operations because it is the modern s
 - `exports.ox_inventory:RemoveItem(source, item, count)` removes items and returns `true`/`false`.
 - `exports.ox_inventory:AddItem(source, item, count)` adds items and returns `true`/`false`.
 
-If your server uses qb-inventory or a framework's built-in inventory, the *shape* of the lesson is identical — only those three export names change. The security logic does not.
+If your server uses qb-inventory or a framework's built-in inventory, the *shape* of the lesson is identical - only those three export names change. The security logic does not.
 </Callout>
 
 ## Build it
@@ -117,7 +117,7 @@ Config.MaxItemCount = 100
 
 </Step>
 
-<Step num={3} title="Server logic — the only place a trade actually happens" outcome="A request can be created, accepted, validated, and executed safely. The client cannot move items on its own.">
+<Step num={3} title="Server logic - the only place a trade actually happens" outcome="A request can be created, accepted, validated, and executed safely. The client cannot move items on its own.">
 
 Create `server/main.lua`. This is the heart of the system. Read it once top to bottom, then we explain every block.
 
@@ -276,7 +276,7 @@ end)
 
 </Step>
 
-<Step num={4} title="Client logic — collect a yes/no and show notifications" outcome="The target sees a menu, clicks a button, and the server hears about it. The client moves zero items.">
+<Step num={4} title="Client logic - collect a yes/no and show notifications" outcome="The target sees a menu, clicks a button, and the server hears about it. The client moves zero items.">
 
 Create `client/main.lua`. The client's whole job is UI plumbing.
 
@@ -313,7 +313,7 @@ end)
 
 </Step>
 
-<Step num={5} title="The NUI menu — three files" outcome="A clean accept/decline card appears, populated by the server's data, and the buttons report back.">
+<Step num={5} title="The NUI menu - three files" outcome="A clean accept/decline card appears, populated by the server's data, and the buttons report back.">
 
 Create `html/index.html`:
 
@@ -364,7 +364,7 @@ button {
 #decline { background: #b23b3b; }
 ```
 
-Create `html/app.js`. The fetch URL is built with `GetParentResourceName()` so it works no matter what you name the folder — never hardcode the resource name here.
+Create `html/app.js`. The fetch URL is built with `GetParentResourceName()` so it works no matter what you name the folder - never hardcode the resource name here.
 
 ```text
 const resource = GetParentResourceName();
@@ -431,12 +431,12 @@ Two players stand next to each other. `/trade` is a **chat** command, not an F8 
 /trade 2 water 3
 ```
 
-Player A sees a notification "request sent to player 2". Player B's screen shows the trade card: "Player 1 offers you: 3x water" with Accept / Decline buttons. B clicks **Accept**. Both see green notifications — A: "you gave 3x water", B: "you received 3x water". Open both inventories: 3 water moved from A to B. If A only had 2 water, the command is rejected up front with "you do not have that item" and no menu ever appears for B.
+Player A sees a notification "request sent to player 2". Player B's screen shows the trade card: "Player 1 offers you: 3x water" with Accept / Decline buttons. B clicks **Accept**. Both see green notifications - A: "you gave 3x water", B: "you received 3x water". Open both inventories: 3 water moved from A to B. If A only had 2 water, the command is rejected up front with "you do not have that item" and no menu ever appears for B.
 </ExpectedOutput>
 
-## How it works — every decision, and why
+## How it works - every decision, and why
 
-**Why the command lives on the server, not the client.** `RegisterCommand('trade', fn, false)` registers a chat command on the **server** realm (this file is a `server_script`). The `false` is the `restricted` flag — `false` means any player may run it, which is correct for a trade since both sides are ordinary players. State-changing *admin* commands should pass `true` and gate behind ACE, but a normal trade is not an admin action. The key point: because the handler runs server-side, the `source` argument is the real player id set by the engine, not something the client typed.
+**Why the command lives on the server, not the client.** `RegisterCommand('trade', fn, false)` registers a chat command on the **server** realm (this file is a `server_script`). The `false` is the `restricted` flag - `false` means any player may run it, which is correct for a trade since both sides are ordinary players. State-changing *admin* commands should pass `true` and gate behind ACE, but a normal trade is not an admin action. The key point: because the handler runs server-side, the `source` argument is the real player id set by the engine, not something the client typed.
 
 **Why we validate shape before anything else.** The first `if` block rejects missing or non-numeric arguments and zero/negative counts. A negative count is a classic exploit attempt ("give -5 means take 5"). Catching it here means the rest of the function can assume clean input.
 
@@ -448,9 +448,9 @@ Player A sees a notification "request sent to player 2". Player B's screen shows
 
 **Why `source` is trustworthy inside the net event.** In `RegisterNetEvent('trade:accept', ...)`, `source` is set by the FiveM engine to the id of the player who fired the event. The client cannot overwrite it. That is why `local targetId = source` is safe and why we never accept an id from the event arguments.
 
-**Why the lock exists.** `locking[initiator]` is the anti-duplication guard. Picture the target spamming Accept, or a laggy client firing the event twice. Without the lock, two executions could both pass validation before either removes the items, and the target receives the items twice while the initiator loses them once — a dupe. Setting `locking[initiator] = true` before any inventory change and clearing it on every exit path means a second event finds the lock set and returns immediately.
+**Why the lock exists.** `locking[initiator]` is the anti-duplication guard. Picture the target spamming Accept, or a laggy client firing the event twice. Without the lock, two executions could both pass validation before either removes the items, and the target receives the items twice while the initiator loses them once - a dupe. Setting `locking[initiator] = true` before any inventory change and clearing it on every exit path means a second event finds the lock set and returns immediately.
 
-**Why remove happens before add.** `RemoveItem` returns `true`/`false`. We remove from the initiator first and only add to the target if the removal succeeded. If we added first and the remove failed, the item would exist in two inventories — a dupe. Remove-then-add can only ever destroy or move items, never multiply them. And if the target's inventory is full so `AddItem` returns `false`, we **refund** by adding the items back to the initiator, so no one loses anything.
+**Why remove happens before add.** `RemoveItem` returns `true`/`false`. We remove from the initiator first and only add to the target if the removal succeeded. If we added first and the remove failed, the item would exist in two inventories - a dupe. Remove-then-add can only ever destroy or move items, never multiply them. And if the target's inventory is full so `AddItem` returns `false`, we **refund** by adding the items back to the initiator, so no one loses anything.
 
 **Why we re-validate at execution time.** Between the request and the click, players move, disconnect, and drop items. So before the swap we re-check both players are online, still close, and the initiator still owns the goods. A request is a snapshot; execution must trust the present, not the past.
 
@@ -459,13 +459,13 @@ Player A sees a notification "request sent to player 2". Player B's screen shows
 **Why `GetParentResourceName()` builds the fetch URL.** In `app.js`, NUI callbacks must POST to `https://<resource>/<callback>`. Hardcoding the folder name breaks the moment someone renames it. `GetParentResourceName()` returns the real name at runtime, so the URL is always right.
 
 <Callout variant="info" title="Framework swap cheat-sheet">
-The logic above never calls a framework for items — ox_inventory handles that and works under QBCore, ESX, and Qbox alike. You only touch the framework if you want to gate trades by job, or read a character name for a fancier notification. The accessors, for reference:
+The logic above never calls a framework for items - ox_inventory handles that and works under QBCore, ESX, and Qbox alike. You only touch the framework if you want to gate trades by job, or read a character name for a fancier notification. The accessors, for reference:
 
-- **QBCore**: `local QBCore = exports['qb-core']:GetCoreObject()` then `QBCore.Functions.GetPlayer(src)`. Character first name is `Player.PlayerData.charinfo.firstname`; the account name is `Player.PlayerData.name` (both exist — do not confuse them).
+- **QBCore**: `local QBCore = exports['qb-core']:GetCoreObject()` then `QBCore.Functions.GetPlayer(src)`. Character first name is `Player.PlayerData.charinfo.firstname`; the account name is `Player.PlayerData.name` (both exist - do not confuse them).
 - **Qbox**: `exports.qbx_core:GetPlayer(src)`, same `PlayerData` shape.
 - **ESX Legacy**: `local xPlayer = ESX.GetPlayerFromId(src)`.
 
-If you wanted to trade *money* instead of items, that is where the framework matters — QBCore uses `Player.Functions.RemoveMoney('cash', amount, 'trade')` / `AddMoney`, and ESX uses `xPlayer.removeAccountMoney('money', amount)` / `addAccountMoney`. Same server-authority rules apply: validate the balance server-side, lock, remove-then-add.
+If you wanted to trade *money* instead of items, that is where the framework matters - QBCore uses `Player.Functions.RemoveMoney('cash', amount, 'trade')` / `AddMoney`, and ESX uses `xPlayer.removeAccountMoney('money', amount)` / `addAccountMoney`. Same server-authority rules apply: validate the balance server-side, lock, remove-then-add.
 </Callout>
 
 ## Failure modes and recovery
@@ -474,8 +474,8 @@ If you wanted to trade *money* instead of items, that is where the framework mat
   items={[
     { symptom: "Command does nothing, server console prints `attempt to index a nil value (field 'ox_inventory')` or `No such export`.", fix: "ox_inventory is not started, or `trade` starts before it. In server.cfg put `ensure ox_lib` and `ensure ox_inventory` ABOVE `ensure trade`, then run `ensure trade` again in the server console." },
     { symptom: "`/trade` says nothing at all and no notification appears.", fix: "`lib.notify` is undefined because ox_lib is not loaded for the client. Confirm ox_lib is ensured, and that you did not accidentally put the notify code in the server file. client_script prints to F8; check the F8 console for a red Lua error." },
-    { symptom: "Menu opens but Accept does nothing.", fix: "Open the F8 console with NUI dev tools (`nui_devTools` in F8 while the server is in dev mode) and watch the Network tab. A 404 on the POST means the fetch URL is wrong — confirm `app.js` uses `GetParentResourceName()` and that `RegisterNUICallback('accept', ...)` matches the string you POST to." },
-    { symptom: "Items disappear from the initiator but never reach the target.", fix: "The target's inventory was full so AddItem returned false. The refund branch should have returned them — if it did not, you removed the refund block. Restore the `if not added then ... AddItem(initiator ...) end` branch." },
+    { symptom: "Menu opens but Accept does nothing.", fix: "Open the F8 console with NUI dev tools (`nui_devTools` in F8 while the server is in dev mode) and watch the Network tab. A 404 on the POST means the fetch URL is wrong - confirm `app.js` uses `GetParentResourceName()` and that `RegisterNUICallback('accept', ...)` matches the string you POST to." },
+    { symptom: "Items disappear from the initiator but never reach the target.", fix: "The target's inventory was full so AddItem returned false. The refund branch should have returned them - if it did not, you removed the refund block. Restore the `if not added then ... AddItem(initiator ...) end` branch." },
     { symptom: "A player reports duplicated items after spamming Accept.", fix: "Your lock is missing or cleared too early. `locking[initiator] = true` must be set BEFORE the first inventory call and cleared on EVERY return path, including the failure branches." },
     { symptom: "`you do not have that item` even though you do.", fix: "Item name mismatch. ox_inventory item names are the database key (e.g. `water`, not `Water` or `bottle_of_water`). Check the exact name in your ox_inventory items list and type it lowercase." },
     { symptom: "Trade works across the whole map.", fix: "You are not measuring distance, or you compared client-reported positions. Confirm `playersAreClose` uses server-side `GetEntityCoords` on both peds and that you call it both at request and execution." },
@@ -485,7 +485,7 @@ If you wanted to trade *money* instead of items, that is where the framework mat
 ## Checkpoint
 
 <Checkpoint question="The target clicks Accept. What data does the client send to the server, and why is that the most important security choice in the whole system?">
-The client sends **nothing** — `TriggerServerEvent('trade:accept')` carries no item, no count, no player id. The server already stored the real offer in `pending[targetId]` when the request was made, and it reads the firing player from the engine-set `source`. This matters because anything the client sends, a cheater can forge. If acceptance carried the item and amount, a modder would simply fire `trade:accept` with `gold, 999999`. By making the acceptance an empty "yes" and keeping the offer server-side, there is nothing to tamper with. The client asks; the server decides and acts.
+The client sends **nothing** - `TriggerServerEvent('trade:accept')` carries no item, no count, no player id. The server already stored the real offer in `pending[targetId]` when the request was made, and it reads the firing player from the engine-set `source`. This matters because anything the client sends, a cheater can forge. If acceptance carried the item and amount, a modder would simply fire `trade:accept` with `gold, 999999`. By making the acceptance an empty "yes" and keeping the offer server-side, there is nothing to tamper with. The client asks; the server decides and acts.
 </Checkpoint>
 
 ## Exercise
@@ -495,7 +495,7 @@ Right now a trade is one-directional: the initiator gives, the target receives, 
 
 Concretely, modify the code so that:
 
-1. The `/trade` command no longer executes anything — it only opens a "trade window" between the two players and records the initiator's offered item/count in server state (e.g. `session[pairId] = { a = {...}, b = {...}, aReady = false, bReady = false }`).
+1. The `/trade` command no longer executes anything - it only opens a "trade window" between the two players and records the initiator's offered item/count in server state (e.g. `session[pairId] = { a = {...}, b = {...}, aReady = false, bReady = false }`).
 2. The target gets a command or NUI input to set *their* offered item/count, which the server validates with `GetItemCount` exactly like the initiator's.
 3. Each player has a **Ready** button. The swap only runs when `aReady` and `bReady` are both true.
 4. The swap moves items in **both** directions, still remove-then-add, still behind a single lock, and if either `AddItem` fails the **entire** trade rolls back (refund both sides).
@@ -506,21 +506,21 @@ The point of the exercise: notice that every new piece of data the target suppli
 <Recap
   items={[
     "The client asks; only the server decides and acts. Every economy script lives or dies by this line.",
-    "Store the offer server-side and make acceptance an empty 'yes' — there is nothing to forge if the client carries no data.",
+    "Store the offer server-side and make acceptance an empty 'yes' - there is nothing to forge if the client carries no data.",
     "Validate ownership, distance, and online status with server-side reads, both when the request is made and again at execution.",
     "A per-trade lock plus remove-before-add makes duplication impossible; refund on a failed add so nobody loses items.",
     "ox_inventory's GetItemCount/RemoveItem/AddItem run server-side and work under QBCore, ESX, and Qbox; the framework only matters if you trade money instead.",
-    "NUI is just a way to collect a click — build fetch URLs with GetParentResourceName() and never let the menu's numbers reach the swap.",
+    "NUI is just a way to collect a click - build fetch URLs with GetParentResourceName() and never let the menu's numbers reach the swap.",
   ]}
 />
 
 <Refs
   items={[
-    { label: "ox_inventory — exports (GetItemCount / AddItem / RemoveItem)", href: "https://overextended.dev/ox_inventory" },
-    { label: "ox_lib — lib.notify", href: "https://overextended.dev/ox_lib/Modules/Notify/Client" },
-    { label: "FiveM — NUI callbacks & GetParentResourceName", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/" },
-    { label: "FiveM — RegisterCommand & server events", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" },
-    { label: "QBCore — player & money functions", href: "https://docs.qbcore.org/qbcore-documentation/qbcore-resources/qb-core" },
-    { label: "ESX — xPlayer accounts", href: "https://documentation.esx-framework.org/" },
+    { label: "ox_inventory - exports (GetItemCount / AddItem / RemoveItem)", href: "https://overextended.dev/ox_inventory" },
+    { label: "ox_lib - lib.notify", href: "https://overextended.dev/ox_lib/Modules/Notify/Client" },
+    { label: "FiveM - NUI callbacks & GetParentResourceName", href: "https://docs.fivem.net/docs/scripting-manual/nui-development/" },
+    { label: "FiveM - RegisterCommand & server events", href: "https://docs.fivem.net/docs/scripting-reference/runtimes/lua/" },
+    { label: "QBCore - player & money functions", href: "https://docs.qbcore.org/qbcore-documentation/qbcore-resources/qb-core" },
+    { label: "ESX - xPlayer accounts", href: "https://documentation.esx-framework.org/" },
   ]}
 />

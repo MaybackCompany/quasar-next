@@ -31,7 +31,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (!SNOWFLAKE_RE.test(userId)) return NextResponse.json({ error: "invalid_user_id" }, { status: 400 });
   if (!action) return NextResponse.json({ error: "invalid_action" }, { status: 400 });
-  // Only roles explicitly marked grantable can be touched here — never Director.
+  // Only roles explicitly marked grantable can be touched here - never Director.
   if (!isGrantableRoleId(roleId)) return NextResponse.json({ error: "role_not_grantable" }, { status: 400 });
 
   const result = await setGuildMemberRole(userId, roleId, action === "grant");

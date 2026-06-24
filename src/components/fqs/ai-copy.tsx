@@ -25,7 +25,7 @@ function fallbackCopy(text: string) {
   document.body.removeChild(ta);
 }
 
-// Compact "copy module for AI" button — used per-module on track pages.
+// Compact "copy module for AI" button - used per-module on track pages.
 export function ModuleAiCopy({ trackId, moduleNum }: { trackId: string; moduleNum: string }) {
   const [copied, setCopied] = useState(false);
   const onCopy = () => {
@@ -44,7 +44,7 @@ export function ModuleAiCopy({ trackId, moduleNum }: { trackId: string; moduleNu
   );
 }
 
-// Full "copy lesson for AI" card — used on the lesson page. `body` is this
+// Full "copy lesson for AI" card - used on the lesson page. `body` is this
 // lesson's content distilled to markdown (from the manifest), so the copied
 // prompt teaches THIS specific lesson, not a generic shell.
 export function LessonAiCopy({ slug, body }: { slug: string; body?: string }) {

@@ -8,7 +8,7 @@ interface LinkCardProps {
   eyebrow?: string;
 }
 
-/** A card linking to a guide/lesson — Quasar School design. */
+/** A card linking to a guide/lesson - Quasar School design. */
 export function LinkCard({ href, title, desc, eyebrow }: LinkCardProps) {
   return (
     <Link className="track-card" style={{ padding: 22 }} href={href}>

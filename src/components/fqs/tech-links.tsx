@@ -10,7 +10,7 @@ export function faviconUrl(href: string, size = 64): string {
   }
 }
 
-// Registry of FiveM / dev tools — brand-colored logo tile + name + blurb + official link.
+// Registry of FiveM / dev tools - brand-colored logo tile + name + blurb + official link.
 // Add to this map to expose a new `id` to <TechLinks ids={[...]} /> in any lesson.
 interface Tech {
   name: string;

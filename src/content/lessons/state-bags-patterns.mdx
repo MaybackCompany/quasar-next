@@ -1,13 +1,13 @@
 <LessonHero
   title="How to use State Bags"
   meta={[
-    { label: "You'll build", value: "A resource that sets, gets, and reacts to State Bag changes — sharing data between resources without events." },
+    { label: "You'll build", value: "A resource that sets, gets, and reacts to State Bag changes - sharing data between resources without events." },
     { label: "Time", value: "~20 minutes" },
     { label: "You need", value: "A local FiveM server, one resource you can edit." },
     { label: "You'll learn", value: "Player vs entity State Bags, setting and getting values, reacting to changes with handlers, and when to use State Bags vs events." },
   ]}
 >
-  State Bags are FiveM's built-in key-value store attached to players and entities. They sync automatically, let any resource read values without triggering events, and fire callbacks when values change. In 2026 they are the standard way to share non-critical state (hunger, thirst, job name, radio channel) between resources.
+  A State Bag is a sticky note attached to a player or entity that every resource can read. You write a value once, and FiveM copies it everywhere automatically. No events, no asking around. Need to know a player's job, hunger, or radio channel? Just read their note. In 2026 this is the standard way to share data that lots of resources need but nothing breaks if it's a beat late.
 </LessonHero>
 
 <Prereq
@@ -18,8 +18,8 @@
   ]}
 />
 
-<Callout variant="fivem" title="State Bags vs events — when to use which">
-  Use **State Bags** for non-critical, frequently-read data: player job, hunger level, radio channel. Any resource can read it at any time. Use **events** for actions: "give this player money," "spawn this vehicle." State Bags are read-heavy; events are action-heavy.
+<Callout variant="fivem" title="State Bags vs events - when to use which">
+  Here's the deal: State Bags answer "what is true right now?" and events say "go do this." Use a State Bag for facts other resources keep checking - job, hunger level, radio channel. Use an event for one-off actions - give this player money, spawn this vehicle. State Bags get read a lot; events get fired to make something happen.
 </Callout>
 
 ## Build it
@@ -43,7 +43,7 @@ client_script 'client.lua'
   </Step>
 
   <Step num={2} title="Set a State Bag value (server)" outcome="The player's State Bag has a 'job' key.">
-    On the server, set a State Bag value for a player:
+    Write a value to a player's note. We do this on the server because the server is the boss of player state:
 
     ```lua server.lua
 -- Set a State Bag value for a player
@@ -54,7 +54,7 @@ playerState:set('job', 'police', true)  -- true = replicate to all clients
 print(('Set player %s job to police'):format(playerId))
     ```
 
-    The third argument (`true`) controls replication. Set it `true` so other clients can read this value. Set it `false` for server-only state.
+    That third argument (`true`) decides who gets to see the value. Replication just means "copy it out to every client." Pass `true` and all players can read it. Pass `false` and it stays server-only, like a private note.
 
     <ExpectedOutput>
       The server console prints "Set player 1 job to police."
@@ -62,7 +62,7 @@ print(('Set player %s job to police'):format(playerId))
   </Step>
 
   <Step num={3} title="Read a State Bag value (client)" outcome="Any client can read the player's job.">
-    On the client, read another player's State Bag:
+    Now read the note back. Any client can read another player's State Bag - first turn the server ID into a client ID, then grab the value:
 
     ```lua client.lua
 -- Read another player's State Bag
@@ -75,7 +75,7 @@ local myJob = LocalPlayer.state.job
 print(('My job: %s'):format(myJob or 'not set'))
     ```
 
-    `LocalPlayer.state` reads your own State Bag without needing a server ID lookup.
+    Reading your own note is even easier: `LocalPlayer.state` is always you, so there's no ID lookup to do.
 
     <ExpectedOutput>
       F8 console prints the job value for both players.
@@ -83,7 +83,7 @@ print(('My job: %s'):format(myJob or 'not set'))
   </Step>
 
   <Step num={4} title="React to State Bag changes" outcome="Your code fires automatically when a value changes.">
-    Add a change handler so your code runs whenever the job changes:
+    Best part: you don't have to keep checking the note. A change handler is code that FiveM runs for you the moment a value changes. Set one up for `job`:
 
     ```lua client.lua
 -- Handler fires every time 'job' changes on any player
@@ -94,7 +94,7 @@ AddStateBagChangeHandler('job', nil, function(bagName, key, value)
 end)
     ```
 
-    The handler runs on every change — you don't need to poll or trigger events.
+    It fires on every change, all on its own. No loop checking the value over and over, no event to trigger.
 
     <ExpectedOutput>
       When the server changes a player's job, the handler prints the update instantly.
@@ -107,5 +107,5 @@ end)
 | Exact error | Cause | Fix |
 |---|---|---|
 | `attempt to index a nil value (local 'playerState')` | Player ID is invalid or player is not connected | Check the player exists before accessing state |
-| Handler fires for non-player State Bags | Entities and vehicles also have State Bags | Filter with `GetPlayerFromStateBagName()` — returns 0 for non-players |
+| Handler fires for non-player State Bags | Entities and vehicles also have State Bags | Filter with `GetPlayerFromStateBagName()` - returns 0 for non-players |
 | Other clients can't read the value | `replicate` was set to `false` | Pass `true` as third argument to `:set()` |

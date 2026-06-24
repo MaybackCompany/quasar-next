@@ -7,7 +7,7 @@
  { label: "You'll learn", value: "Ports -> why connections fail -> what DDoS protection does -> when to use a proxy/filter -> what hosting handles for you" },
  ]}
 >
- Owners ask the same three questions: why can nobody join, why does it lag under load, and why am I getting attacked. This lesson gives you the mental model and a tiny resource that prints your live networking config so the numbers stop being abstract. You will not become a network engineer, but you will stop guessing and know what to check and what to ask your host.
+ Here is the deal: most server owners ask the same three questions. Why can nobody join? Why does it lag when it fills up? Why am I getting attacked? This lesson gives you the mental model, plus a tiny resource that prints your live networking settings so the numbers stop being abstract. You will not become a network engineer. You will stop guessing and know exactly what to check and what to ask your host.
 </LessonHero>
 
 <Prereq
@@ -19,12 +19,12 @@
 />
 
 <Callout variant="fivem" title="Two ports, two jobs">
- A standard FiveM config binds both TCP and UDP on the same game port (default `30120`), and both protocols must be allowed by the host firewall. Do not reduce the whole connection flow to "TCP is the handshake, UDP is gameplay": FXServer exposes multiple HTTP/TCP and UDP services, and the public-list ingress behavior has changed over time. Separately, txAdmin uses its own web port, `40120` by default, and that port is configurable.
+ Your game runs on one port number, but two protocols. The default FiveM config binds both TCP and UDP on the same game port (`30120`), and your host firewall has to allow both. Resist the tempting shortcut that "TCP is just the handshake, UDP is just gameplay": FXServer (the FiveM server program) runs several TCP and UDP services on that port, and how it gets listed publicly has changed over the years. One more port to know: txAdmin (the web dashboard you manage the server from) runs on its own port, `40120` by default, and you can change it.
 </Callout>
 
 ## Build it
 
-We are going to make the networking config concrete. This is a server-only resource that reads your live network settings and prints them to the console, so the ports, the OneSync mode, and the player cap stop being words in a guide and become numbers you can see. Follow the names exactly. Once it prints, the next section takes it apart and explains what each number controls.
+We are going to turn your networking settings into numbers you can see. This is a server-only resource that reads your live config and prints it to the console, so the ports, the OneSync mode, and the player cap stop being words in a guide. Follow the names exactly. Once it prints, the next section takes it apart line by line.
 
 <StepGroup>
  <Step num={1} title="Make the resource folder" outcome="The server has one folder for this lesson.">
@@ -54,7 +54,7 @@ resources/qu_networking_basics/
  set qu_game_port 30120
  ```
 
- `0.0.0.0` means "listen on every network interface on this machine", and `30120` is the port players connect to. The extra `qu_game_port` line is a lesson-owned convar so the probe below can report the number; keep it equal to the endpoint port. Cfx.re's default config binds both protocols, so allow both through the firewall.
+ Plain version: `0.0.0.0` means "listen on every network connection this machine has," and `30120` is the port players connect to. The extra `qu_game_port` line is just a label we own so the probe below can print the number back to you; keep it equal to the endpoint port. The default config binds both protocols, so allow both through the firewall.
  </Step>
 
  <Step num={4} title="Write fxmanifest.lua" outcome="FiveM knows which file to load.">
@@ -119,7 +119,7 @@ resources/qu_networking_basics/
 
 ## How it works
 
-You printed the four numbers that decide whether players can reach you, how many fit, and how much bandwidth each one costs. Take the code apart so each line maps to a real decision instead of a magic value.
+You just printed the four numbers that decide whether players can reach you, how many fit, and how much bandwidth each one costs. Now take the code apart so every line maps to a real decision instead of a magic value.
 
 ### Reading your live config
 
@@ -129,19 +129,19 @@ local maxClients = GetConvarInt('sv_maxClients', 48)
 local oneSync = GetConvar('onesync', 'off')
 ```
 
-`GetConvar` and `GetConvarInt` are the server-side way to read a configuration variable that was set in `server.cfg`. The first argument is the convar name. The second argument is a fallback default: if the convar was never set, you get that value instead of `nil`. `GetConvarInt` returns a number; `GetConvar` returns a string, which is why `onesync` (whose values are the words `off`, `on`, and `legacy`) is read as a string while the port and player cap are read as integers.
+These two functions let a script read a setting from `server.cfg`. A convar is just that: a setting that lives outside your code, which a script can look up. The first argument is the convar name. The second is a fallback used if the convar was never set, so you get that value instead of `nil`. `GetConvarInt` hands you a number; `GetConvar` hands you a string. That is why `onesync` (whose values are the words `off`, `on`, and `legacy`) is read as a string, while the port and player cap come back as integers.
 
-The mental model: a convar is a setting outside your code that a script can read. The bound port still comes from `endpoint_add_udp` and `endpoint_add_tcp`; `qu_game_port` is only a lesson-owned label that you keep in sync. It does not introspect the socket and is not proof that a firewall rule works. The real proof is the endpoint lines, the host firewall/provider rules, and an external connection test.
+One thing to be clear on: this only reports the label. The port the server actually binds still comes from `endpoint_add_udp` and `endpoint_add_tcp`; `qu_game_port` is just a label you keep in sync. Printing it does not prove a firewall rule works. The real proof is the endpoint lines, your host or provider firewall rules, and a connection test from outside your network.
 
 ### Why the port needs both TCP and UDP
 
 This is the single most common reason a fresh server is unreachable. The connection happens in two phases on the same port number.
 
-TCP and UDP are separate protocols, so firewalls treat `30120/TCP` and `30120/UDP` as separate rules even though the number matches. Cfx.re's default config binds both. If one is blocked, connection, file-service, discovery, or live-session behavior can fail in ways that vary by path and proxy. Open both on the same game port, then verify from outside the host network.
+TCP and UDP are separate protocols, so a firewall treats `30120/TCP` and `30120/UDP` as two different rules even though the number is the same. The default config binds both. Block one and things break in confusing ways: connecting, downloading files, getting listed, or staying in the session can each fail depending on which path is cut. So open both on the same game port, then verify from outside the host network.
 
 ### Game port 30120 versus txAdmin port 40120
 
-These get confused constantly. `30120` is the conventional **game port** in the default config. `40120` is txAdmin's **default** web-panel port, but hosts can change it. The panel is for administrators, not players: restrict it with the provider firewall, VPN, or trusted source IPs where your hosting setup supports that.
+People mix these two up all the time. `30120` is the **game port** in the default config, the one players connect through. `40120` is txAdmin's **default** web-panel port, though hosts can change it. The panel is for you, the admin, not for players. Lock it down: restrict it to a VPN or trusted IPs with your provider firewall wherever your setup allows.
 
 <Checkpoint question="A player says your server shows up in the list and starts connecting, but freezes at the loading screen and times out. The server console shows no errors. What is the most likely cause?">
  First confirm that both `30120/TCP` and `30120/UDP` are allowed at the OS firewall, provider firewall, and any router/NAT, then test externally. A listing entry alone does not prove either inbound path is healthy. If both are open, continue with server console errors, proxy configuration, resource downloads, and client-specific issues.
@@ -149,11 +149,11 @@ These get confused constantly. `30120` is the conventional **game port** in the 
 
 ### Telling a server problem from a network problem
 
-When players complain about lag, there are two completely different homes for the cause, and they need opposite fixes.
+"Lag" has two completely different causes, and they need opposite fixes. Figure out which one you have before you change anything.
 
-**Server-side lag** is your scripts being slow. You read this with **resmon**. Heads up: `resmon` and `netgraph` are *developer* commands. On a normal FiveM client the F8 console answers `Access denied for command resmon`. Enable developer mode first by launching FiveM with the extra argument `+set moo 31337` (add it to your FiveM shortcut, then reopen F8) -- only then will `resmon` open. As a no-dev-mode alternative, watch the server thread time in txAdmin instead. Each resource shows a per-frame millisecond cost. If one resource is over budget, the whole server hitches for everyone at once, and no amount of network tuning helps. Fix the script.
+**Server-side lag** is your scripts being slow. You read it with **resmon**, which shows each resource's per-frame cost in milliseconds. If one resource blows its budget, the whole server hitches for everyone at the same instant, and no amount of network tuning saves you. You fix the script. Heads up: `resmon` and `netgraph` are *developer* commands. On a normal FiveM client the F8 console just says `Access denied for command resmon`. Turn on developer mode first by launching FiveM with the extra argument `+set moo 31337` (add it to your FiveM shortcut, then reopen F8), and only then does `resmon` open. No dev mode? Watch the server thread time in txAdmin instead.
 
-**Network-side lag** is the connection between players and your machine: high ping, packet loss, jitter. You read this in-game with the **netgraph**. These are CLIENT commands: join the server, press F8 to open the FiveM client console (not the server or txAdmin console), and type `netgraph true` (`netgraph 1` also works) to watch the ping and packet-loss numbers. For an FPS/ping/packet-loss overlay in the screen corner, type `cl_drawperf true` in the same F8 console. If the server thread time is healthy in txAdmin but the netgraph shows high ping or dropped packets, the problem is the network, not your code, and that is when distance, bandwidth, and attacks come into play.
+**Network-side lag** is the connection between players and your machine: high ping, packet loss, jitter. You read it in-game with the **netgraph**. These are CLIENT commands: join the server, press F8 to open the FiveM client console (not the server or txAdmin console), and type `netgraph true` (`netgraph 1` also works) to watch ping and packet loss. Want an FPS/ping/packet-loss overlay in the screen corner too? Type `cl_drawperf true` in the same F8 console. If txAdmin shows a healthy server thread time but the netgraph shows high ping or dropped packets, the problem is the network, not your code. That is when distance, bandwidth, and attacks come into play.
 
 The diagnostic order is always the same: check resmon and the server thread first, because that is the cause you can fix yourself. Only when the server side is healthy do you look at the network.
 
@@ -164,21 +164,21 @@ local maxClients = GetConvarInt('sv_maxClients', 48)
 local oneSync = GetConvar('onesync', 'off')
 ```
 
-These two are not settings; they are your bandwidth budget. `sv_maxClients` is how many players the server allows at once. **OneSync** is the modern state-synchronization mode that lets a server go past the old 32-slot ceiling and have the server, not the clients, own the authoritative game state.
+Think of these two as your bandwidth budget, not just settings. `sv_maxClients` is how many players you allow at once. **OneSync** is the modern sync mode that lets a server blow past the old 32-slot ceiling and makes the server, not the players' games, the source of truth for the game world.
 
-The link to bandwidth is direct: every additional player is more entity and event traffic the server must replicate to everyone else. OneSync `on` is required once you cross the old limits (32-plus slots need OneSync, and above 64 you must run `onesync on`), and a higher `sv_maxClients` with OneSync on is a heavier, steadier outbound load on your connection. This matters because a server that is comfortable at 24 players can saturate its uplink at 100, and the symptom looks exactly like network lag even though nobody is attacking you. Knowing your cap and your sync mode tells you how much bandwidth you are signing up for.
+The link to bandwidth is direct: every extra player is more entity and event traffic the server has to copy out to everyone else. You need `onesync on` once you cross the old limits (over 32 slots needs OneSync, and above 64 you must run `onesync on`), and a higher player cap with OneSync on means a heavier, steadier outbound load on your connection. Here is why that bites: a server that feels great at 24 players can max out its upload at 100, and the symptom looks exactly like network lag even though nobody is attacking you. Knowing your cap and your sync mode tells you how much bandwidth you just signed up for.
 
-Routing buckets, instancing, and other advanced OneSync features all require OneSync to be enabled in the first place, so this single setting is the gate to most modern multiplayer behavior.
+Routing buckets, instancing, and the other advanced OneSync features all need OneSync turned on first, so this one setting is the gate to most modern multiplayer behavior.
 
 ### What DDoS protection and a proxy actually do
 
-A DDoS attack floods your connection with junk traffic so that real players' packets cannot get through. The defense is not on your server at all; it is upstream, in the network.
+A DDoS attack floods your connection with junk traffic so real players' packets can't get through. Here is the key insight: the defense does not live on your server at all. It lives upstream, out in the network.
 
-A **scrubbing center** or **filtered IP** is a machine that sits in front of your server and absorbs the flood. Concretely, at the packet level: all traffic for your advertised address arrives at the scrubbing center first, which drops the malicious packets and forwards only the clean UDP gameplay traffic on to your real machine, the **origin**. Players connect to the protected front; the attack hits the front and dies there.
+A **scrubbing center** (also called a **filtered IP**) is a machine that sits in front of your server and soaks up the flood. At the packet level: all traffic for your advertised address hits the scrubbing center first, it throws away the malicious packets, and it forwards only the clean UDP gameplay traffic on to your real machine, the **origin**. Players connect to the protected front, the attack slams into that front, and it dies there.
 
-A **proxy** adds the second half: it keeps your origin IP private. If attackers know the raw IP of your actual machine, they can route the flood straight at it and bypass the protection entirely. A proxy means the only address the public ever sees is the protected front, and your origin stays hidden behind it. The combination is "filtered IP plus hidden origin", and it is why a leaked origin IP undoes everything.
+A **proxy** adds the second half: it keeps your origin IP private. If attackers learn the raw IP of your actual machine, they aim the flood straight at it and skip the protection entirely. A proxy means the only address the public ever sees is the protected front, with your origin hidden behind it. The combo is "filtered IP plus hidden origin," and it is why one leaked origin IP undoes all of it.
 
-This is almost entirely a **hosting feature**. A beginner does not hand-build a scrubbing center. The practical move is to choose a host whose plan includes filtered or anti-DDoS networking, and to never let your raw origin IP leak. Note that the FiveM convar `sv_endpointPrivacy` hides player IP addresses from the server's public reports; it does not hide your server's own origin IP, so do not mistake it for DDoS protection.
+This is almost entirely a **hosting feature**. You do not hand-build a scrubbing center as a beginner. The move is to pick a host whose plan includes filtered or anti-DDoS networking, and to never leak your raw origin IP. Two gotchas to keep straight. First, the FiveM convar `sv_endpointPrivacy` hides *player* IP addresses from the server's public reports; it does not hide your server's own origin IP, so do not mistake it for DDoS protection. Second, a strict firewall or DDoS filter can knock you off the server browser: Cfx.re polls your server for player counts and listing data from a fixed set of IPs published at `https://static.cfx.re/ips.txt`, and if your firewall blocks those, your server stops showing up. Allow every IP in that list, and check it now and then since new ones get added.
 
 ## If something went wrong
 

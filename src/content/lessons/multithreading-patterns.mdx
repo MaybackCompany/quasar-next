@@ -7,7 +7,7 @@
     { label: "You'll learn", value: "When extra threads help, how to use SetTimeout for deferred work, and why yielding with Wait inside a heavy loop keeps the tick responsive." },
   ]}
 >
-  Some work is too heavy to run all at once inside the main game tick - database queries, HTTP calls, complex math, large table processing. FiveM lets you spread this work across separate cooperative threads. This is an advanced technique. Use it only when you have already applied distance checks, Wait tuning, and throttling and still need more headroom.
+  Some jobs are too big to finish in one tick, so you split them up and do a little each tick. A tick is one frame of the game loop - the server processes everything, then moves on. If your script tries to chomp through a giant job (a database query, an HTTP call, heavy math, a huge table) all in one tick, the whole game freezes until it's done. The fix is to break the work into bites and hand control back between bites. This is an advanced move. Reach for it only after you've already tried distance checks, longer Wait intervals, and throttling, and you still need more room.
 </LessonHero>
 
 <Prereq
@@ -19,7 +19,7 @@
 />
 
 <Callout variant="warn" title="There is no parallelism here">
-  FiveM Lua is single-threaded and cooperative. `CreateThread` does NOT start an OS thread or run code in parallel - it starts a coroutine that the scheduler runs one at a time on the same tick. A heavy synchronous pass still blocks everything until it yields. The real fix is to break the work into chunks and call `Wait(0)` inside the loop so the scheduler can run rendering, the game loop, and other resources between chunks. Before reaching for extra threads, try distance checks, increasing Wait intervals, throttling with timers, and caching results.
+  Extra threads do NOT give you extra CPUs. Here's the deal: FiveM runs everything on one lane, taking turns. `CreateThread` does not spin up a second processor - it just adds another coroutine (a function that can pause itself and resume later) that the scheduler runs one at a time. So a heavy chunk of work still freezes the game until it pauses. The real fix is to chop the work into pieces and call `Wait(0)` inside the loop. `Wait(0)` means "I'm done for now, let everyone else go, wake me next frame" - which lets rendering, the game loop, and other resources get a turn between pieces. Before adding threads at all, try distance checks, longer Wait intervals, throttling with timers, and caching results.
 </Callout>
 
 ## Build it
@@ -67,12 +67,12 @@ end)
   </Step>
 
   <Step num={2} title="Understand thread scheduling" outcome="You know why yielding inside the loop is what keeps the game smooth.">
-    FiveM runs all threads cooperatively on a single thread. Nothing runs in parallel. Each `Wait()` yields control back to the scheduler, which then resumes the next ready coroutine. A loop that does heavy work without yielding blocks EVERYTHING until it finally hits a `Wait()`. Splitting work across two `CreateThread` loops does not give you two CPUs - it only helps if each loop yields often. So:
+    Yielding often is the whole trick - smoothness comes from giving everyone else a turn, not from running "in parallel." All your threads take turns on one lane. Every `Wait()` is you stepping aside so the scheduler can run the next ready coroutine. A loop that grinds through heavy work without a single `Wait()` blocks EVERYTHING until it finally hits one. Two `CreateThread` loops still share that one lane - splitting the work only helps if each loop yields often. So:
 
     - **Light loop**: yields every frame (Wait(0)), stays responsive
     - **Heavy loop**: yields mid-pass (Wait(0) every chunk), then waits a second before the next bulk pass
 
-    The game loop, rendering, and other resources all share the same single thread with your code. The smoothness comes from yielding frequently, not from running anywhere "in parallel".
+    The game loop, rendering, and every other resource ride that same single lane with your code. Step aside often and the frame stays smooth.
 
     <ExpectedOutput>
       The game stays smooth because the heavy pass yields between chunks instead of hogging the tick.
@@ -80,7 +80,7 @@ end)
   </Step>
 
   <Step num={3} title="Use SetTimeout for deferred one-shot work" outcome="Heavy work runs once, not in a loop.">
-    Sometimes you don't need a loop - you need to defer a single heavy operation:
+    Sometimes you don't need a loop at all. You just want to run one heavy job, but not right now - get out of this tick's way first:
 
     ```lua client.lua
 -- Defer heavy work without blocking the current tick
@@ -91,7 +91,7 @@ SetTimeout(0, function()
 end)
     ```
 
-    `SetTimeout(0, fn)` is the FiveM equivalent of `setTimeout(fn, 0)` in JavaScript. It defers execution to the next available tick without blocking the current one.
+    `SetTimeout(ms, fn)` runs your function after `ms` milliseconds and lets the code around it keep going in the meantime. Pass `0` and it's the FiveM version of `setTimeout(fn, 0)` in JavaScript: "run this the moment you can, just not inside this tick." The current tick finishes clean, then the function fires on the next available one.
 
     <ExpectedOutput>
       The current tick finishes instantly. The heavy work runs on the next tick without users noticing a stutter.
@@ -103,6 +103,6 @@ end)
 
 | Exact error | Cause | Fix |
 |---|---|---|
-| Two loops read/write the same data and interleave unexpectedly | A yield (Wait) lets the other loop run mid-update, so shared state is seen half-finished | Update shared state in one loop, or use a queue pattern - do not split a single update across a Wait |
+| Two loops read/write the same data and interleave unexpectedly | A `Wait` mid-update lets the other loop run while your change is half-done, so it sees garbage | Update shared state in one loop, or use a queue pattern - never split a single update across a `Wait` |
 | Thread never yields (no Wait call) | Infinite loop with no Wait() | Every loop MUST call Wait() - even Wait(0) is enough |
 | resmon shows high tick time despite two loops | A loop does heavy work without yielding, so it blocks the tick before its Wait | Chunk the work and call Wait(0) inside the loop; stagger bulk passes so they do not run on the same tick |

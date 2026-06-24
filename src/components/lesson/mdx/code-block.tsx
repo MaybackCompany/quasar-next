@@ -30,7 +30,7 @@ function CopyButton({ targetRef }: { targetRef: React.RefObject<HTMLPreElement |
 }
 
 /**
- * Code block — Quasar School design. Always a dark panel; the head shows a
+ * Code block - Quasar School design. Always a dark panel; the head shows a
  * meaningful label, an optional CLIENT/SERVER/SHARED badge, and a copy button.
  * Every block renders light-on-dark (the .codeblock pre rule), tokenized or not.
  */

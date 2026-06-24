@@ -20,7 +20,7 @@ interface VariantStyle {
 }
 
 /**
- * Restrained, intentional palette — four colour families (teal / amber / red /
+ * Restrained, intentional palette - four colour families (teal / amber / red /
  * neutral) so callouts read as a calm system, not a rainbow. Each variant keeps
  * a distinct icon + label for meaning without relying on colour alone.
  */

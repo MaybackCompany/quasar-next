@@ -7,7 +7,7 @@
     { label: "Outcome", value: "You can split client work across coroutines and keep polling from consuming unnecessary client frame time" },
   ]}
 >
-  `CreateThread` starts a scheduled Lua coroutine; `Wait(ms)` yields it back to the runtime. An infinite loop that never yields can freeze the client. A polling interval that is shorter than the feature needs wastes client frame time, while one that is too long misses input or feels delayed.
+  Here's the deal: a loop that never pauses freezes the whole game. `CreateThread` starts a background loop, and `Wait(ms)` is the line inside it that pauses and hands the game back control. No `Wait`, total freeze. The other half of the skill is picking the pause length: too short and you burn frame time for nothing, too long and you miss the keypress or the feature feels laggy.
 </LessonHero>
 <LessonVideo src="/lesson-videos/clase-8.mp4" caption="Quasar School: loops, threads, and client/server comms." />
 
@@ -123,15 +123,15 @@ end)
 
 ## How it works
 
-You have two `while true` loops running side by side and neither one freezes the game. That is the whole trick of this lesson, and it rests on three ideas: what `CreateThread` actually creates, why `Wait` is not optional, and how to pick the Wait value on purpose instead of copying it.
+Two `while true` loops running side by side, and neither one freezes the game. That is the whole trick. It rests on three ideas: what `CreateThread` really makes, why `Wait` is not optional, and how to pick the Wait value on purpose instead of copying it.
 
 ### What CreateThread actually creates
 
-The name lies a little. `CreateThread` does not start an operating-system thread. It starts a **Lua coroutine**, and every resource on your server gets exactly one Lua VM to run all of its coroutines in. A coroutine is a function that can pause itself partway through, hand control back, and then be resumed later from the exact line where it paused.
+The name oversells it. `CreateThread` does not start a real operating-system thread. It starts a **coroutine** - a function that can pause itself halfway, hand control back, and later pick up from the exact line where it paused. Think of a worker who can hit a "pause" button mid-task, step aside, and resume right where they stopped. Every resource on your server gets one Lua VM (one engine) to run all of its coroutines in.
 
-FiveM runs a **scheduler**. Once per frame the engine walks the list of coroutines that are due to run, resumes each one, lets it work until it yields, then moves to the next. When your resource has two `CreateThread` blocks, you have handed the scheduler two coroutines. It resumes them one after another inside that single VM. They are not truly parallel. They take turns, fast enough that to a player they look simultaneous.
+FiveM runs a **scheduler** - a turn-taker. Once per frame it walks the coroutines that are due, resumes each one, lets it work until it pauses, then moves to the next. Two `CreateThread` blocks means two coroutines, and the scheduler runs them one after the other inside that single engine. They are not actually parallel. They take turns, fast enough that to a player they look simultaneous.
 
-This is why a heavy client loop can delay other client script work and the game frame: the scheduler cannot move on until the current coroutine yields. Server-side loops use the same cooperative idea but affect the server runtime instead of a player's renderer.
+That is why one heavy client loop can drag down everything else and the game frame: the scheduler cannot move on until the current coroutine pauses. Server-side loops work the same way, except they tax the server runtime instead of a player's screen.
 
 ### Why Wait is mandatory
 
@@ -146,9 +146,9 @@ CreateThread(function()
 end)
 ```
 
-`while true` never ends on its own. There is no condition that turns false. Without a `Wait` inside it, this coroutine spins forever and never yields. The scheduler resumed it, and it never gave control back. The engine cannot draw the next frame, cannot resume any other coroutine, cannot read input. The game **hard freezes**. Not slows down, freezes, until the runtime kills the resource with a script timeout.
+`while true` never ends on its own - there is no condition that ever turns false. With no `Wait` inside, the coroutine spins forever and never pauses. The scheduler handed it the turn and never got it back. So the engine cannot draw the next frame, cannot run any other coroutine, cannot read input. The game **hard freezes**. Not slows down - freezes solid, until the runtime kills the resource with a script timeout.
 
-`Wait(ms)` is the yield. When your coroutine calls `Wait`, it pauses itself, tells the scheduler "do not resume me for at least this many milliseconds," and hands control back. The engine is free to draw frames and run everything else. After the time is up, the scheduler resumes your coroutine on the next available frame, right after the `Wait` call, and the loop goes around again. So the real job of `Wait` is not "pause for a bit." Its job is to give the frame back. The pause is just how long you give it back for.
+`Wait(ms)` is the pause. When your coroutine calls it, it stops itself, tells the scheduler "leave me alone for at least this many milliseconds," and hands the turn back. Now the engine is free to draw frames and run everything else. When the time is up, the scheduler resumes your coroutine on the next frame, right after the `Wait` line, and the loop goes around again. Here's the key: the real job of `Wait` is not "pause for a bit." Its job is to give the frame back. The number is just how long you give it back for.
 
 <Checkpoint question="Why does a while-true loop with no Wait freeze the entire game and not just the one resource?">
   Because all of a resource's coroutines share one Lua VM, and the engine resumes coroutines one at a time on the main thread. A `while true` loop with no `Wait` never yields, so the scheduler that resumed it never gets control back. It cannot advance to the next coroutine, cannot draw the next frame, and cannot read input. The single stuck loop blocks the whole main thread, so the symptom is a total freeze, not a slow resource. The `Wait` is what hands the frame back and lets everything else run.
@@ -156,34 +156,34 @@ end)
 
 ### What the Wait value actually means
 
-`Wait(0)` and `Wait(5000)` both yield. The number is just how long until the scheduler is allowed to resume you.
+Both numbers pause you. The number just sets how soon the scheduler is allowed to wake you up.
 
-- `Wait(0)` means "resume me on the very next frame." At 60 fps that loop runs about 60 times every second. It is the most expensive thing you can do, because the body runs every single frame.
-- `Wait(5000)` means "do not resume me for 5000 milliseconds." That loop runs once every five seconds. Between runs it costs nothing. The coroutine is asleep and the scheduler skips right over it.
+- `Wait(0)` means "wake me on the very next frame." At 60 fps that loop runs about 60 times a second. It is the most expensive thing you can do, because the body fires on every single frame.
+- `Wait(5000)` means "leave me alone for 5000 milliseconds." That loop runs once every five seconds. Between runs it costs nothing - the coroutine is asleep and the scheduler skips right past it.
 
-That is the contrast the two loops in this lesson are built to show. The slow tick uses `Wait(5000)` because a heartbeat that prints "slow tick" has no reason to run more than once every few seconds. Running it every frame would do the same job and burn 300 times the work. The keypress poll uses `Wait(0)` because it has no choice, which is the next idea.
+That is the contrast the two loops in this lesson are built to show. The slow tick uses `Wait(5000)` because a heartbeat that prints "slow tick" has no reason to fire more than once every few seconds. Running it every frame would do the exact same job for 300 times the work. The keypress poll uses `Wait(0)` because it has no choice - and that is the next idea.
 
 ### Why the keypress poll needs Wait(0)
 
-`IsControlJustPressed` returns `true` on exactly one frame: the frame the button goes down. On the very next frame, even if you are still holding E, it returns `false`. "Just pressed" means the transition, not the held state.
+`IsControlJustPressed` is `true` for exactly one frame: the frame the button goes down. The very next frame, even with E still held, it flips back to `false`. "Just pressed" means the moment of the press, not "is being held."
 
-That single-frame window is why this check has to live in a `Wait(0)` loop. If you polled it inside `Wait(5000)`, you would only look at the control once every five seconds. The odds that your single glance lands on the exact frame the key went down are almost zero, so nearly every press would be missed. To catch a one-frame event reliably, you have to look every frame, which means `Wait(0)`. The cost of `Wait(0)` is the price of never missing the press.
+That one-frame window is why this check has to live in a `Wait(0)` loop. Poll it inside `Wait(5000)` and you only glance at the control once every five seconds. The odds your single glance lands on the one frame the key went down are almost zero, so you would miss nearly every press. To reliably catch a one-frame event, you have to look every frame - which means `Wait(0)`. The cost of `Wait(0)` is simply the price of never missing the press.
 
 ### The tick budget and resmon
 
-Every `Wait(0)` loop you add has a cost, and the tool that shows it is **resmon**. Open the in-game console with F8 and run:
+Every `Wait(0)` loop you add costs something, and **resmon** is the tool that shows you exactly how much. Open the in-game console with F8 and run:
 
 ```text
 resmon
 ```
 
-You get a live client-side table of resources and their script time. At 60 fps the whole client frame is about 16.6 ms, shared by the game and client resources. A resource consistently spending multiple milliseconds is consuming a visible part of that local player's frame budget. `resmon` does not measure server tick time; use the server profiler for server-side performance.
+You get a live table of client resources and how much script time each one eats. At 60 fps the whole client frame is about 16.6 ms, shared between the game and every client resource. A resource that consistently burns several milliseconds is eating a visible chunk of that player's frame budget. Note: `resmon` only measures client time - for server-side performance you use the server profiler instead.
 
-Your two-loop resource here will sit near zero, because the only thing the `Wait(0)` loop does each frame is one cheap boolean check. The cost problem shows up when people put expensive work, native calls, drawing, distance math, inside a `Wait(0)` loop that did not need to run every frame. Which is exactly what the next pattern fixes.
+Your two-loop resource will sit near zero, because all the `Wait(0)` loop does each frame is one cheap true/false check. The cost problem shows up when people stuff expensive work - native calls, drawing, distance math - inside a `Wait(0)` loop that never needed to run every frame. Which is exactly what the next pattern fixes.
 
 ### The pattern you are building toward: adaptive Wait
 
-Most real polling loops do not need a fixed Wait at all. They need a long Wait most of the time and a short Wait only in the moment that matters. The standard FiveM shape for this is the **adaptive wait** (the distance-check optimization):
+Most real polling loops do not need one fixed Wait. They need a long Wait almost all the time and a short Wait only in the rare moment that matters. The standard FiveM shape for this is the **adaptive wait** - sleep long by default, speed up only when you get close:
 
 ```lua
 CreateThread(function()
@@ -200,11 +200,11 @@ CreateThread(function()
 end)
 ```
 
-The loop starts each pass assuming it can sleep a full second. Only when the player is within 20 metres does it drop `wait` to `0` and do the expensive per-frame work. Standing across the map, the loop costs almost nothing because it runs once a second. Standing on the marker, it runs every frame, exactly when that is worth paying for. One loop, two speeds, chosen by a cheap distance check. This is the takeaway the whole lesson points at: `Wait(0)` is not the default, it is a tool you reach for only on the frames that need it.
+Each pass starts by assuming it can sleep a full second. Only when the player gets within 20 metres does it drop `wait` to `0` and do the expensive per-frame work. Standing across the map, the loop costs almost nothing - it runs once a second. Standing on the marker, it runs every frame, exactly when that is worth paying for. One loop, two speeds, picked by a cheap distance check. This is the whole point of the lesson: `Wait(0)` is not your default. It is a tool you reach for only on the frames that actually need it.
 
 ### A loop that ends: bounded loops vs while true
 
-Every loop so far has been `while true` — it never stops on its own, so it needs a `Wait` to stay alive without freezing. But a loop does not have to be infinite. When the work has a clear finish line, you give the loop a real exit condition, and when that condition turns false the loop ends, the function returns, and the coroutine is simply gone. The scheduler never resumes it again because there is nothing left to resume.
+Every loop so far has been `while true` - it never stops on its own, so it needs a `Wait` to stay alive without freezing. But a loop does not have to run forever. When the work has a clear finish line, you give the loop a real exit condition. The moment that condition turns false, the loop ends, the function returns, and the coroutine is just gone. The scheduler never wakes it again because there is nothing left to wake.
 
 A countdown is the cleanest example. Add this third thread to `client.lua`, restart `qu_createthread_and_wait`, and run `/threadtoggle`:
 
@@ -221,13 +221,13 @@ CreateThread(function()
 end)
 ```
 
-The condition is `remaining > 0`, not `true`. Each pass prints the number, yields for one second with `Wait(1000)`, then subtracts one. After five passes `remaining` reaches `0`, the `while` condition is false, the loop exits, the final `print` runs once, and the function returns. That return ends the coroutine for good.
+The condition is `remaining > 0`, not `true`. Each pass prints the number, pauses one second with `Wait(1000)`, then subtracts one. After five passes `remaining` hits `0`, the `while` condition is false, the loop exits, the final `print` runs once, and the function returns. That return ends the coroutine for good.
 
-Two things are worth saying out loud. First, this loop still needs its `Wait(1000)` — a bounded loop with no `Wait` would still spin to its end with no yield in between and could still hitch the frame, so the rule "every loop yields" holds even when the loop is finite. Second, this thread runs once and is done; if you want the countdown to happen again you have to start a fresh `CreateThread`, because the old coroutine is gone, not paused. That is the difference from the slow-tick and keypress loops above, which use `while true` precisely because they must keep watching forever. Pick `while true` when the job never ends, and a real condition when it does.
+Two things worth saying out loud. First, this loop still needs its `Wait(1000)`. A bounded loop with no `Wait` would still race to its end with no pause in between and could still hitch the frame, so "every loop pauses" holds even when the loop is finite. Second, this thread runs once and it's done. Want the countdown again? Start a fresh `CreateThread`, because the old coroutine is gone, not paused. That is the real difference from the slow-tick and keypress loops above: they use `while true` because they must keep watching forever. Pick `while true` when the job never ends, and a real condition when it does.
 
 ### When a loop talks to the server: do not spam the wall
 
-Loops and client-server events meet at one dangerous spot. A network event like `TriggerServerEvent('myresource:server:doThing')` sends a packet from this client up to the server, where server code handles it. That is cheap to call once. It is a disaster to call sixty times a second. Dropping a `TriggerServerEvent` straight into a `Wait(0)` loop floods the server with packets every frame, from every player running your resource at once, and a busy server feels it immediately.
+Loops and network events meet at one dangerous spot. A network event - a message this client fires up to the server, like `TriggerServerEvent('myresource:server:doThing')` - is cheap to send once. It is a disaster to send sixty times a second. Drop a `TriggerServerEvent` straight into a `Wait(0)` loop and you flood the server with packets every frame, from every player running your resource at once. A busy server feels it instantly.
 
 The fix is the same Wait discipline from this whole lesson, plus a guard so each press fires the event exactly once:
 
@@ -243,13 +243,13 @@ CreateThread(function()
 end)
 ```
 
-The loop still polls every frame because it has to catch the one-frame press, but the network call sits behind `IsControlJustPressed`, so it sends once per tap instead of once per frame. The loop is for watching; the event is for the moment something actually changed. Never put a raw, unconditional `TriggerServerEvent` inside `Wait(0)`.
+The loop still polls every frame because it has to catch the one-frame press, but the network call sits behind `IsControlJustPressed`, so it fires once per tap, not once per frame. The loop's job is watching; the event's job is the moment something actually changed. Never put a raw, unguarded `TriggerServerEvent` inside `Wait(0)`.
 
 <Callout variant="warning" title="The loop runs on the client, so the server must not trust it">
-  Anything inside a client `CreateThread` runs on the player's own machine, and a player can edit or fake what their client sends. A loop that decides "the player earned $500, tell the server to pay them" and fires that as a network event is an open door: a cheater triggers the same event by hand and pays themselves forever. The loop may *notice* the event (the keypress, the proximity), but the server must *re-check the facts and own the outcome* — does this player exist, are they actually where they claim, should this be allowed. Treat every value a loop sends across the wall as a request, never as a result.
+  Anything inside a client `CreateThread` runs on the player's own machine, and a player can edit or fake what their client sends. A loop that decides "the player earned $500, tell the server to pay them" and fires that as a network event is an open door: a cheater triggers the same event by hand and pays themselves forever. The loop may *notice* the event (the keypress, the proximity), but the server must *re-check the facts and own the outcome* - does this player exist, are they actually where they claim, should this be allowed. Treat every value a loop sends across the wall as a request, never as a result.
 </Callout>
 
-This lesson stops at "a loop can fire a network event safely." The full round trip — how the server receives it with `RegisterNetEvent`, who `source` is, and how the server answers the one player who asked versus everyone — is its own build. See the [TriggerServerEvent and TriggerClientEvent lesson](/lessons/trigger-server-client-event) for that.
+This lesson stops at "a loop can fire a network event safely." The full round trip - how the server receives it with `RegisterNetEvent`, who `source` is, and how the server answers the one player who asked versus everyone - is its own build. See the [TriggerServerEvent and TriggerClientEvent lesson](/lessons/trigger-server-client-event) for that.
 
 ## If something went wrong
 
@@ -306,7 +306,7 @@ This lesson stops at "a loop can fire a network event safely." The full round tr
 </Exercise>
 
 <Exercise>
-  Make the countdown announce itself across the wall — once, not sixty times.
+  Make the countdown announce itself across the wall - once, not sixty times.
 
   This resource is client-only. To send a network event you need a server file, so first add `server_script 'server.lua'` to `fxmanifest.lua` (below the existing `client_script` line) and create `server.lua` next to `client.lua`. In `server.lua`, register the event and print which player fired it:
 
@@ -323,7 +323,7 @@ This lesson stops at "a loop can fire a network event safely." The full round tr
   TriggerServerEvent('qu_createthread_and_wait:server:countdownDone')
   ```
 
-  Restart `qu_createthread_and_wait` and run `/threadtoggle`. Watch the countdown tick down in F8 (the client console), then watch the single `player N finished the countdown` line appear in the txAdmin Live Console (the server console). The lesson here is in the placement: because the event sits after the loop ends — not inside the `Wait(1000)` body — it fires once per countdown, not once per second. Move the `TriggerServerEvent` up into the loop body and restart, and you will see the server console fill with one line every second instead. That is exactly the mistake the warning above tells you never to ship.
+  Restart `qu_createthread_and_wait` and run `/threadtoggle`. Watch the countdown tick down in F8 (the client console), then watch the single `player N finished the countdown` line appear in the txAdmin Live Console (the server console). The lesson here is in the placement: because the event sits after the loop ends, not inside the `Wait(1000)` body, it fires once per countdown, not once per second. Move the `TriggerServerEvent` up into the loop body and restart, and you will see the server console fill with one line every second instead. That is exactly the mistake the warning above tells you never to ship.
 </Exercise>
 
 <Refs

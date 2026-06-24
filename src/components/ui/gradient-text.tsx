@@ -7,7 +7,7 @@ interface GradientTextProps {
 
 /**
  * Static teal brand gradient text (replaces Magic UI AuroraText). No animation
- * — calmer, reduced-motion-safe, and on the clean docs aesthetic.
+ * - calmer, reduced-motion-safe, and on the clean docs aesthetic.
  */
 export function GradientText({ children, className }: GradientTextProps) {
   return (

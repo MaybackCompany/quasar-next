@@ -7,7 +7,7 @@
     { label: "Outcome", value: "You can replace ad-hoc broadcast events with state bags and pick the right scope (entity vs player vs global)" },
   ]}
 >
-  Half the time you reach for `TriggerClientEvent`, what you actually want is a **state bag**: a key/value blob attached to an entity, a player, or the whole server, automatically replicated across the network. Set the value once on the server; every client sees it. Hook a handler; you get notified when it changes.
+  A **state bag** is a shared sticky note the network keeps in sync for you. Half the time you reach for `TriggerClientEvent` (an event that pushes data to clients), what you really want is one of these. It is a key/value blob stuck to an entity, a player, or the whole server. Set the value once on the server and every client sees it. Hook a handler and you get told the moment it changes.
 </LessonHero>
 
 <Prereq
@@ -122,13 +122,15 @@ F8: [qu_state_bags] my mood is now focused
 
 ## How it works
 
-You set one value on the server and a different machine, the client, printed it back without you sending a single event. That is the whole promise of a state bag, and it is worth understanding exactly how the value crossed the network, because the same three lines unlock entity state and global state too.
+You set one value on the server, and a totally different machine, the client, printed it back. You sent zero events to make that happen. That is the whole promise of a state bag. Here is the deal: understand how that value crossed the network once, and the exact same three lines unlock entity state and global state too.
 
 ### What a state bag actually is
 
-A state bag is a **key/value store bolted onto something the engine already networks**: a player, an entity, or the server itself. You write `Player(src).state:set('mood', 'focused', true)` and FiveM stores `mood = "focused"` against that player and replicates it according to network scope. It is the opposite of an event in one important way. An event is fire-and-forget; a state bag holds the current value for as long as its owner exists. This is network state, not disk persistence: player/entity state disappears with that owner, and state bags do not replace MariaDB or the KVS for surviving a server restart.
+A state bag is a **key/value store bolted onto something the engine already syncs across the network**: a player, an entity, or the server itself. You write `Player(src).state:set('mood', 'focused', true)`, FiveM stores `mood = "focused"` against that player, and it copies the value out to whoever can see it.
 
-Three scopes exist, and picking the right one is the skill the lesson title promises:
+The big difference from an event: an event fires once and is gone. A state bag holds the current value for as long as its owner exists. But this is live network state, not saved-to-disk memory. When the owner leaves, the state goes with it. So it does not replace MariaDB or the KVS for anything that must survive a restart.
+
+There are three scopes, and picking the right one is the real skill here. Scope just means where the bag lives and who gets the copy:
 
 - **`Entity(handle).state`** belongs to a specific entity: a vehicle, a ped, a prop. The value travels with that entity. A common use is an engine-on flag or a locked flag on a car. When the entity is deleted, its bag goes with it.
 - **`Player(serverId).state`** belongs to a player slot. Use it for player-level facts that should follow the person rather than their current body: a job, a stress level, an admin duty flag. This is what you built.
@@ -142,11 +144,11 @@ The rule of thumb: scope the data to the thing it describes. A car door does not
 Player(src).state:set('mood', mood, true)
 ```
 
-`Player(src)` looks up the player by their **server id**, the slot number you saw printed as `1`. The `src` comes from the command handler, exactly as it did in the events lessons: it is the player who typed the command. `.state` is that player's state bag, the key/value store. `:set(...)` writes one key. Read its three arguments left to right:
+`Player(src)` finds the player by their **server id**, the slot number you saw printed as `1`. `src` comes from the command handler, just like in the events lessons: it is the player who typed the command. `.state` is that player's bag. `:set(...)` writes one key into it. Read the three arguments left to right:
 
-- `'mood'` is the **key**, the name of the slot you are writing. You read it back later by this same name.
-- `mood` is the **value**, here whatever word the player typed after the command. State bag values can be strings, numbers, booleans, or tables, so you could store `{ level = 3, color = 'red' }` just as easily. Note that `args[1]` is raw client input: a player controls exactly what they type, so for any state that grants power (a job, an admin flag) you must validate or restrict who can set it on the server rather than trusting the argument as-is.
-- `true` is the **replicated flag**. State set by the server replicates by default, so omitting the third argument would also replicate; passing `true` here makes the lesson's intent explicit. Pass `false` to keep that write server-only.
+- `'mood'` is the **key**, the name of the slot you are writing. You read it back later by this exact name.
+- `mood` is the **value**, here whatever word the player typed. Values can be strings, numbers, booleans, or whole tables, so `{ level = 3, color = 'red' }` works just as well. One catch: `args[1]` is raw player input, and players type whatever they want. So for any state that hands out power (a job, an admin flag) you validate it or lock down who can set it on the server. Never trust the argument as-is.
+- `true` is the **replicate flag**. Server-set state already replicates by default, so leaving the third argument off would still send it to clients. Passing `true` just makes the intent obvious. Pass `false` to keep that write server-only.
 
 ### The client handler, argument by argument
 
@@ -158,13 +160,13 @@ AddStateBagChangeHandler('mood', myBagName, function(bagName, key, value)
 end)
 ```
 
-`AddStateBagChangeHandler` registers a function that fires whenever a matching bag changes. It takes three arguments:
+`AddStateBagChangeHandler` says "run this function whenever a matching bag changes." It takes three arguments:
 
-- The first, `'mood'`, is the **key filter**: only changes to a key named `mood` wake this handler. Pass `nil` here and you would hear about every key on every matching bag.
-- The second, `myBagName`, is the **bag filter**: which bag to watch. Player bag names use `player:<serverId>`, so building the name from your local player's server ID narrows this handler to your own bag. Pass `nil` only when you intentionally want to observe every matching bag.
-- The third is the **callback**, and FiveM hands it `bagName`, `key`, and `value` when a change fires. `bagName` is a string like `player:1`, where `1` is the server id whose bag changed. `value` is the new value.
+- First, `'mood'`, is the **key filter**: only changes to a key named `mood` wake this handler up. Pass `nil` and you would hear about every key on every matching bag instead.
+- Second, `myBagName`, is the **bag filter**: which bag to watch. Player bags are named `player:<serverId>`, so building that name from your own server ID points the handler at your bag and nobody else's. Only pass `nil` when you actually want to watch every matching bag.
+- Third is the **callback**, the function FiveM runs when a change fires. It hands you `bagName`, `key`, and `value`. `bagName` is a string like `player:1`, where `1` is the server id whose bag changed. `value` is the new value.
 
-The bag name format is worth recognizing because the same shape shows up for other scopes. A player bag is `player:<serverId>`, an entity bag is `entity:<netId>`, and global state uses `global`. When you truly need all player bags, pass `nil` as the bag filter and resolve each bag deliberately; for an own-player handler, an exact bag filter is simpler and avoids mixing up server IDs, local player indexes, and not-found sentinel values.
+Learn the bag name shape, because it repeats across scopes: a player bag is `player:<serverId>`, an entity bag is `entity:<netId>`, and global state is just `global`. Want every player bag? Pass `nil` and sort out each bag yourself inside the callback. Want only your own? Build the exact name like we did here. It is simpler and it never mixes up server IDs, local player indexes, and not-found values.
 
 <Checkpoint question="Why does this handler build `player:<serverId>` instead of comparing a resolved player value with `PlayerId()`?">
   A server ID, a client-local player index, and a state-bag name are three different identifiers. Building the exact bag name from `GetPlayerServerId(PlayerId())` lets FiveM filter before the callback runs and avoids ambiguous conversions. The result is one handler for exactly this client's player bag.
@@ -172,7 +174,7 @@ The bag name format is worth recognizing because the same shape shows up for oth
 
 ### When you reach for a state bag instead of an event
 
-Reach for a state bag when the answer to "what is the value right now?" needs to be true for anyone who asks, including late joiners. Three concrete cases:
+Use a state bag when "what is the value right now?" has to be answerable by anyone who asks, including the player who joined ten seconds ago. Three concrete cases:
 
 - **A flag that must survive.** A player goes on admin duty. With an event you would have to re-broadcast the flag every time someone new connects. With `Player(src).state:set('onDuty', true, true)` you set it once and every present and future client can read it.
 - **A property of a thing, synced for free.** A vehicle's locked status. Put it on `Entity(veh).state` and every client that can see the car knows whether it is locked, without you tracking which clients to message.

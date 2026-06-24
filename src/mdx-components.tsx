@@ -13,7 +13,7 @@ import { LessonCrumb } from "@/components/lesson/lesson-crumb";
 import { EventFlow, FxmanifestToggle, ConsoleSteps, QueryRunner, StateSync, Lottie } from "@/components/lesson/visuals";
 
 /**
- * Global MDX map — Quasar School design system.
+ * Global MDX map - Quasar School design system.
  * Base elements + lesson components render with the design's CSS classes
  * (.codeblock, .step, .callout, .meta-list, .failures, .chip ...).
  * Lesson bodies are authored in MDX; styling lives here and in design-system.css.

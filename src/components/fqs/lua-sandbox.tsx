@@ -62,7 +62,7 @@ export function LuaSandbox({ initial = 'print("Hello, Los Santos")' }: { initial
       if (mocks) await engine.doString(mocks);
       await engine.doString(code);
       const printed = String(engine.doStringSync('return table.concat(_sandbox.prints or {}, "\\n")') ?? "");
-      setOut({ label: "OUTPUT", text: printed || "(no output — did you call print?)" });
+      setOut({ label: "OUTPUT", text: printed || "(no output - did you call print?)" });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setOut({ label: "ERROR", text: "lua: " + msg });

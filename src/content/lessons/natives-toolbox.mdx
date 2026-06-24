@@ -7,7 +7,7 @@
     { label: "You'll learn", value: "What a native is -> how to find one -> how to read the CLIENT/SERVER badge -> how to turn the docs into one small working script, line by line" },
   ]}
 >
-  You already know some Lua. You already know there is a client side and a server side. Now you need the *toolbox*. FiveM gives you thousands of built-in functions called natives. They let you do real game things like move a ped, draw text, spawn a vehicle, or read health. Nobody memorizes them all. Good developers look them up. This lesson teaches you how to read a native in the docs, then proves it by building a script that reads your position and health and teleports you cleanly onto the ground.
+  Natives are the buttons that make the game do things, and your real skill is knowing how to look one up. A native is just a built-in game function. FiveM ships thousands of them, and they do the real stuff: move a ped (a character), draw text, spawn a car, read someone's health. Nobody memorizes the list. Good developers look them up. You already know some Lua and you know there's a client side and a server side. This lesson teaches you to read a native straight from the docs, then proves you can by building a script that reads your position and health and teleports you cleanly onto the ground.
 </LessonHero>
 
 <LessonVideo loomId="d8ce78503fcc4fbcaf36d6ff15cbe7b6" title="FiveM scripting fundamentals" caption="Scripting fundamentals: natives, vectors, and debugging." />
@@ -26,18 +26,18 @@
 
 ## Find a native
 
-A **native** is a built-in game or Cfx function exposed to your script. There are thousands. Nobody memorizes them; look them up in the official reference, then use the Lua manual for the surrounding language behavior.
+Here's the deal: you don't remember natives, you find them. A **native** is a built-in function the game (or Cfx) hands to your script, and there are thousands. Look the one you need up in the official native reference, then use the Lua manual for the plain language stuff around it.
 
 <TechLinks ids={["natives", "fivem-docs", "lua"]} />
 
 When you open a native, read three things before you use it:
 
-- **The side badge.** Each native is marked **CLIENT** or **SERVER**. A client native like `GetEntityCoords` will not run in a `server_script`, and the reverse is also true. Match the native's side to the file it lives in.
+- **The side badge.** The docs call this the **API set**: a native is marked **client**, **server**, or **shared** (runs on both). A client-only native like `GetEntityCoords` will not run in a `server_script`, and a server-only one will not run in a `client_script`. Match the native's side to the file it lives in.
 - **The arguments.** The signature shows what to pass in and in what order, for example `GetEntityCoords(entity)`. Pass the wrong type and you get `nil` or a crash.
 - **The return value.** Some natives hand you something back (coords, health, a handle); some just do a thing and return nothing.
 
 <Checkpoint question="A native is marked CLIENT. Can you call it from your server.lua?">
-  No. Client natives only run in client scripts (loaded with `client_script`), and server natives only run in server scripts. The side badge in the docs tells you which file the call belongs in. Calling across the line is the single most common beginner native error. Every native you use in this lesson is a CLIENT native, which is exactly why the file you build is a `client_script` and not a `server_script`.
+  No. A `client` native only runs in client scripts (loaded with `client_script`), and a `server` native only runs in server scripts. (A `shared` native runs in both.) The API-set badge in the docs tells you which file the call belongs in. Calling across the line is the single most common beginner native error. Every native you use in this lesson is a client native, which is exactly why the file you build is a `client_script` and not a `server_script`.
 </Checkpoint>
 
 ## Build it
@@ -71,7 +71,7 @@ game 'gta5'
 client_script 'client.lua'
     ```
 
-    Every native this lesson uses is documented for the client API and acts on the local ped, so the code lives in one `client_script`. Under OneSync the server can also resolve a server-side ped handle, but it uses server-supported natives and a different handle namespace.
+    One file, client side, that's it. Every native this lesson uses is a client native that acts on your local ped, so all the code lives in a single `client_script`. (The server can reach a player's ped too under OneSync, but that uses different server-side natives and a different set of handle numbers - not what we're doing here.)
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -116,7 +116,7 @@ end, false)
   </Step>
 
   <Step num={5} title="Start and test it" outcome="The expected proof appears in the correct console.">
-    Where each step happens: you edit `server.cfg` in your text editor; you type `restart qu_natives_toolbox` in the server console (the txAdmin Live Console or the FXServer window); and you run `/whereami` and `/tpsafe` in-game, either in the chat box (with `/`) or the F8 client console (without `/`). The script's `print` output appears in the F8 console because this is a `client_script`.
+    Three places, three jobs. You edit `server.cfg` in your text editor. You type `restart qu_natives_toolbox` in the server console (the txAdmin Live Console or the FXServer window). You run `/whereami` and `/tpsafe` in-game, either in the chat box (with `/`) or the F8 client console (without `/`). Because this is a `client_script`, the `print` output shows up in the F8 console, not the server one.
 
     Open `server.cfg` in your text editor and add this line:
 
@@ -158,9 +158,9 @@ local coords = GetEntityCoords(ped)
 local health = GetEntityHealth(ped)
 ```
 
-`PlayerPedId()` is a CLIENT native that returns a **handle** to your own character, the ped you are currently controlling. A handle is just a number the game uses internally to point at one entity. You almost never read the number itself; you pass it to other natives that need to know which entity you mean. That is why the very first line of nearly every client script that touches your character starts with this call. It takes no arguments and hands you back one value.
+`PlayerPedId()` hands you a ticket that points at your own character. That ticket is called a **handle**: just a number the game uses to mean "this one entity." You almost never read the number; you hand it to other natives so they know which entity you mean. That's why nearly every client script that touches your character opens with this call. It's a client native, takes no arguments, and gives you back one value.
 
-`GetEntityCoords(ped)` takes that handle and returns the entity's position. Look at the docs and the return type is a **vector3**: a single value bundling three numbers, an x, a y, and a z. You pull each one out with `coords.x`, `coords.y`, and `coords.z`. In GTA V, x and y are the flat map position and z is height above sea level. So `coords.z` going up means you are climbing a hill or standing on a roof.
+`GetEntityCoords(ped)` takes that handle and gives you where the entity is standing. The docs say it returns a **vector3**: one value that packs three numbers together, an x, a y, and a z. You grab each with `coords.x`, `coords.y`, and `coords.z`. In GTA V, x and y are your spot on the flat map and z is your height. So `coords.z` climbing means you're going up a hill or onto a roof.
 
 `GetEntityHealth(ped)` returns a plain number, not a vector. The exact maximum depends on the ped and server setup; do not hard-code `200` as a universal full-health rule. Notice the shape of the pattern: one native produces a handle and other natives consume it.
 
@@ -176,7 +176,7 @@ Why bother rounding? `GetEntityCoords` returns coordinates with many decimal pla
 
 ### A real safe teleport, not a nudge
 
-This is the part most beginner tutorials get wrong. Moving a ped is not as simple as setting its coordinates, because the world around those coordinates may not be loaded yet. Set the position blindly and you fall through an unloaded map into the water, or land inside a hill. A *safe* teleport loads the ground first, then places you on it.
+A safe teleport loads the ground first, then drops you onto it. This is the part most beginner tutorials get wrong. Moving a ped is not just setting its coordinates, because the world at those coordinates may not have loaded yet. Set the position blind and you fall through the unloaded map into the water, or get stuck inside a hill.
 
 ```lua
 local x, y = 215.0, -810.0
@@ -184,7 +184,7 @@ RequestCollisionAtCoord(x, y, 100.0)
 SetEntityCoords(ped, x, y, 100.0, false, false, false, false)
 ```
 
-`RequestCollisionAtCoord(x, y, z)` is a CLIENT native that tells the game to stream in the physical collision mesh at that map position. Without collision there is literally no floor at the destination. Then `SetEntityCoords` drops you in at a deliberately high z of `100.0`, well above any building, so you are hanging in the air over the spot while the world below finishes loading.
+`RequestCollisionAtCoord(x, y, z)` tells the game to load the solid floor at that spot. Collision is the physical mesh you actually stand on; without it loaded, there's literally no floor at the destination. Then `SetEntityCoords` drops you in at a high z of `100.0`, above any building, so you hang in the air over the spot while the world underneath finishes loading.
 
 Now look at `SetEntityCoords`' arguments. The first is the ped handle and the next three are the x, y, z you are moving it to. The four `false` values at the end are boolean flags the docs spell out:
 
@@ -204,7 +204,7 @@ while not found and tries < 20 do
 end
 ```
 
-`GetGroundZFor_3dCoord(x, y, z, includeWater)` returns **two values**: a boolean saying whether the ground was found, and the z height of that ground. Passing `false` for `includeWater` means the water surface is NOT treated as ground, so the ped lands on solid terrain. Right after a teleport the answer is often `false` for a frame or two, because the collision you requested has not finished streaming. (`GetGroundZFor_3dCoord` also only returns a real height when the target x,y is within your streaming distance, which is why this pattern works for moving yourself but not for probing the ground far across the map.) So you loop: `Wait(50)` yields for fifty milliseconds, you ask again, and you stop the moment `found` becomes `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
+`GetGroundZFor_3dCoord(x, y, z, includeWater)` answers one question: "how high is the ground here?" It returns **two values**: a true/false for whether it found ground, and the z height of that ground. Passing `false` for `includeWater` means water does not count as ground, so you land on solid terrain. Right after a teleport the answer is often `false` for a frame or two, because the collision you asked for has not finished loading. (It also only gives a real height when the target x,y is close enough to be loaded around you, which is why this works for moving yourself but not for checking ground far across the map.) So you loop: `Wait(50)` pauses fifty milliseconds, you ask again, and you stop the instant `found` turns `true`. The `tries < 20` guard caps the wait at one second so a bad coordinate never hangs the loop forever.
 
 ```lua
 if found then

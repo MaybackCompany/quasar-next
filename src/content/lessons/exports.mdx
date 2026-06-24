@@ -7,7 +7,7 @@
     { label: "Outcome", value: "You can build a money resource a second resource reads from with exports.qu_money:GetBalance(src), and explain why it is a real function call and not an event" },
   ]}
 >
-  Events fire and forget. Exports are *function calls*: synchronous, they return a value, and they run on the same side that registered them. They are how every framework you have ever used wires resources together, `exports.ox_inventory:GetItemCount`, `exports.es_extended:getSharedObject`. This lesson teaches you to expose a function safely and, more importantly, to consume it from a second resource so you see the cross-resource call the topic is named for.
+  An export lets one resource borrow a function from another and get an answer back. That is the whole idea. Events fire and forget; exports are real function calls, so they run instantly and hand you a return value. This is how every framework wires its pieces together: `exports.ox_inventory:GetItemCount`, `exports.es_extended:getSharedObject`. Here is the deal: you will publish a function in one resource and then call it from a second one, so you actually see the cross-resource call this lesson is named for.
 </LessonHero>
 
 <Prereq
@@ -139,7 +139,7 @@ end, true)
 
 ## How it works
 
-You called a function that lives in `qu_money` from a completely separate resource, `qu_money_consumer`, and it returned a number you printed. That is the whole point of an export: one resource publishes a function, another resource calls it like a normal method and gets a value back. Take the two files apart so you understand each half.
+You just called a function that lives in `qu_money` from a totally separate resource and got a number back. That is an export in one sentence: one resource publishes a function, another calls it like a normal method and gets a value back. Now take the two files apart, one half at a time.
 
 ### Registering the export: `exports('name', fn)`
 
@@ -150,7 +150,7 @@ exports('GetBalance', getBalance)
 exports('AddBalance', addBalance)
 ```
 
-`exports` here is being *called as a function*. The first argument is the public name other resources will use, a string. The second argument is the actual Lua function to run when that name is called. So `exports('GetBalance', getBalance)` says: when any resource asks me for `GetBalance`, run my local `getBalance` function and hand back whatever it returns. The public name and the local function name do not have to match, which is why you can keep your internal functions `local` and still expose a clean public surface.
+`exports('GetBalance', getBalance)` means: when any resource asks me for `GetBalance`, run my `getBalance` function and hand back whatever it returns. Here `exports` is being *called as a function*. First argument is the public name, a string, that other resources will type. Second argument is the actual Lua function to run. The public name and the local function name do not have to match. That is the trick that lets you keep your real functions `local` and still expose one clean, deliberate name to the outside.
 
 There is an older way to do the same thing, declared in the manifest instead of in code:
 
@@ -163,7 +163,7 @@ That form requires `GetBalance` to be a *global* function (no `local`), because 
 
 ### Why the functions are `local`, and the trap if they are not
 
-Notice `getBalance` and `addBalance` are declared with `local function`. In the older manifest-export style you were forced to make them global, and global functions in FiveM share one namespace inside a resource's Lua VM. If two of your scripts both define a global `getBalance`, the second one silently overwrites the first, and you get a bug that is miserable to track down. Keeping them `local` and registering them through `exports('name', fn)` means the only thing the outside world can touch is the name you deliberately published. Everything else stays private. That is the safe default.
+Keep your functions `local` so nothing can accidentally clobber them. Notice `getBalance` and `addBalance` use `local function`. The old manifest-export style forced you to make them global instead, and globals all live in one shared namespace inside a resource's Lua VM (the sandbox your scripts run in). So if two of your scripts both define a global `getBalance`, the second one silently overwrites the first, and you get a bug that is miserable to track down. Going `local` plus `exports('name', fn)` means the only thing the outside world can touch is the name you chose to publish. Everything else stays private. That is the safe default.
 
 ### Calling the export: `exports.qu_money:GetBalance(src)`
 
@@ -173,13 +173,13 @@ This is the line the whole lesson is named for, from `qu_money_consumer/server.l
 local balance = exports.qu_money:GetBalance(src)
 ```
 
-Read it left to right. `exports.qu_money` selects the resource you want to call, by its folder name. The colon then calls the published function `GetBalance` on it, passing `src`. The colon matters: `exports.qu_money:GetBalance(src)` is the method-call form FiveM expects. If the resource name has a character that is not a valid Lua identifier, you use the bracket form instead, `exports['qu_money']:GetBalance(src)`. Both mean the same thing.
+Read it left to right. `exports.qu_money` picks the resource you want, by its folder name. The colon then calls its published `GetBalance` function, passing `src`. Do not drop the colon: `exports.qu_money:GetBalance(src)` is the method-call form FiveM expects. If a resource name has a character Lua does not allow in a plain identifier (a dash, say), switch to the bracket form, `exports['qu_money']:GetBalance(src)`. Same thing, just spelled differently.
 
-The critical word is **synchronous**. `GetBalance` runs immediately, on the server, in the same tick, and its return value lands in `balance` right away. There is no waiting, no callback, no event round trip. This is exactly like calling a normal function, except the function happens to live in another resource's folder. Contrast that with `TriggerServerEvent`, which fires a message and returns nothing; you would have to register a second event to hear an answer back.
+The key word is **synchronous**, which just means it happens right now, in order, with no waiting. `GetBalance` runs immediately, on the server, in the same tick, and its answer lands in `balance` on that very line. No callback, no event round trip. It is exactly like calling a normal function, except the function happens to live in another resource's folder. Compare that to `TriggerServerEvent`, which throws a message over the wall and returns nothing; to hear an answer you would have to register a whole second event going back.
 
 ### Same-side only, and why your dependency line matters
 
-An export is callable only from the same side it was registered on. `qu_money` registered its exports inside a `server_script`, so they are server exports, callable only from server code. A client script cannot call `exports.qu_money:GetBalance` directly, because the function does not exist in the client Lua VM. If you need data to reach a client, the server calls the export and then sends the result down with `TriggerClientEvent`.
+An export only works on the side it was registered on. `qu_money` registered its exports inside a `server_script`, so they are server exports, reachable only from server code. A client script calling `exports.qu_money:GetBalance` gets nothing, because that function simply does not exist in the client's Lua VM. To get the data to a client, the server calls the export and then ships the result down with `TriggerClientEvent`.
 
 The `dependencies` block in the consumer manifest is what guarantees correctness here:
 
@@ -189,7 +189,7 @@ dependencies {
 }
 ```
 
-This tells FiveM to start `qu_money` before `qu_money_consumer`. If `qu_money` were not running when the consumer called `exports.qu_money:GetBalance`, the call would error because the export would not be registered yet. The canonical key is the plural `dependencies { '...' }`. You will see the singular `dependency 'x'` in some resources and FiveM tolerates it, but write the plural form. Declaring the dependency is the difference between a resource that starts reliably and one that works only when the load order happens to be lucky.
+This tells FiveM to start `qu_money` first, every time. If `qu_money` were not running yet when the consumer called `exports.qu_money:GetBalance`, the call would error, because the export would not exist yet. Use the plural key, `dependencies { '...' }`. You will see the singular `dependency 'x'` around and FiveM tolerates it, but write the plural form. Declaring the dependency is the difference between a resource that starts reliably and one that only works when the load order happens to get lucky.
 
 <Checkpoint question="Why is exports.qu_money:GetBalance(src) able to return a value, while TriggerServerEvent cannot?">
   Because an export is a real, synchronous function call, not a fire-and-forget message. When you write `exports.qu_money:GetBalance(src)`, FiveM runs `qu_money`'s registered function right then, in the same tick, on the same side, and the function's `return` value comes straight back into your variable. `TriggerServerEvent` only delivers a message to a handler and immediately moves on; the handler has no way to hand a value back to the caller, so to get an answer you would need a second event going the other direction. That is the core trade: exports give you a return value but only work same-side; events cross the client/server boundary but give you nothing back.
@@ -203,7 +203,7 @@ Use this decision rule.
 - **Reach for an event when you are crossing the client/server boundary, broadcasting to many listeners, or you genuinely do not need a reply.** Telling every client the server is restarting, telling the server a player pressed a key. That is `TriggerClientEvent` or `TriggerServerEvent`.
 - **Reach for a server callback (covered in the callbacks lesson) when you need a return value but the caller and the function are on opposite sides.** That is the only case an export cannot serve, because exports are same-side only.
 
-Frameworks lean on exports constantly for exactly the first reason: `exports.ox_inventory:GetItemCount(src, 'water')` reads a number and you use it immediately. Once you internalize "exports return values, events do not," most of FiveM's resource wiring stops being mysterious.
+Frameworks live on the first reason: `exports.ox_inventory:GetItemCount(src, 'water')` reads a number and you use it on the next line. Lock in one rule, "exports return values, events do not," and most of FiveM's resource wiring stops being a mystery.
 
 <Callout variant="warning" title="Security note">
   Two things here are security-relevant. The final `true` on `RegisterCommand` makes the command **restricted**: it only runs for a caller that holds the matching ACE permission (the server console always does, which is why the test works from the Live Console). Second, an export like `AddBalance`/`RemoveBalance` mutates a balance and can be called by **any** server-side resource with no check. In a real money system, keep mutation exports private to a trusted set of resources and validate the caller/arguments; do not expose an unguarded "add money" function.

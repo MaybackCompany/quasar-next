@@ -7,7 +7,7 @@
     { label: "Outcome", value: "You know the rule of thumb (small = regular, big = latent), you can size bps for any payload, and you can send latent events in both directions safely" },
   ]}
 >
-  A regular `TriggerServerEvent` hands the whole payload to the network layer in one shot. For small messages that is fine. For big tables, image buffers, or character export blobs, that single burst can stall a player's connection long enough to time them out. Latent events stream the same payload at a controlled rate, in bytes per second, so the connection keeps breathing while the data trickles across.
+  Big data should trickle, not slam. A regular `TriggerServerEvent` hands the whole payload (the data you are sending) to the network in one shot. For small messages that is fine. For big tables, image buffers, or character export blobs, that single burst can clog a player's connection long enough to time them out. A latent event sends the exact same data, but metered at a speed you set, in bytes per second, so the connection keeps breathing while the data flows across.
 </LessonHero>
 
 <Prereq
@@ -132,9 +132,9 @@ The proof worked, but the point of this lesson is one number: `25000`. Everythin
 
 ### Why a regular event can time a player out
 
-When you call `TriggerServerEvent('x', bigTable)`, FiveM serializes the whole payload and pushes it onto the player's reliable network channel as one unit. The channel will not move on to anything else until that whole unit is delivered. For a 200-byte table you never notice. For a multi-megabyte blob, that one event hogs the channel, every other packet for that player queues up behind it, and on a slow or lossy connection the client can stall past its timeout window and get dropped. The player did nothing wrong. Your event ate their connection.
+A regular event is one fat envelope that blocks the mailbox until it is delivered. When you call `TriggerServerEvent('x', bigTable)`, FiveM packs the whole payload and pushes it onto the player's network channel (their single delivery lane to the server) as one unit. That lane will not carry anything else until the unit lands. For a 200-byte table you never notice. For a multi-megabyte blob, that one event hogs the lane, every other packet for that player queues up behind it, and on a slow or lossy connection the client can stall past its timeout window and get dropped. The player did nothing wrong. Your event ate their connection.
 
-Latent events fix this by chunking. Instead of one big push, FiveM breaks the payload into pieces and feeds them onto the channel at a rate you choose, leaving gaps for everything else. The payload still arrives whole, in order, and triggers the same handler. It just arrives as a polite trickle instead of a flood.
+Latent events fix this by chunking: they cut the data into small pieces. Instead of one big push, FiveM breaks the payload into pieces and feeds them onto the channel at a rate you choose, leaving gaps for everything else. The payload still arrives whole, in order, and triggers the same handler. It just arrives as a polite trickle instead of a flood.
 
 ### The bps argument, the one number that matters
 
@@ -150,18 +150,18 @@ The latent version inserts one extra argument between them:
 TriggerLatentServerEvent('qu_latent_events:upload', 25000, payload)
 ```
 
-That `25000` is the **bytes-per-second stream rate**. It is not a size, not a timeout, not a chunk count. It is a speed limit. It tells FiveM: never push this payload onto the channel faster than 25,000 bytes every second. The data is metered out at that ceiling until it is all delivered.
+That `25000` is the **bytes-per-second stream rate**, and it is just a speed limit. Not a size, not a timeout, not a chunk count. It tells FiveM: never push this payload onto the channel faster than 25,000 bytes every second. The data is metered out at that ceiling until it is all delivered.
 
 Every latent native takes the rate in the same slot, right after the target arguments:
 
-- `TriggerLatentServerEvent(eventName, bps, ...)` — client to server.
-- `TriggerLatentClientEvent(eventName, target, bps, ...)` — server to client, where `target` is the player server id.
+- `TriggerLatentServerEvent(eventName, bps, ...)` - client to server.
+- `TriggerLatentClientEvent(eventName, target, bps, ...)` - server to client, where `target` is the player server id.
 
 In our code the client streams up at `25000` and the server streams the ack back down at `25000`. Same number, same meaning, opposite directions.
 
 ### How to size bps for a payload
 
-Once you know the rate is a speed limit, sizing it is just division. Transfer time is payload size divided by rate:
+Sizing the rate is just one division. Transfer time is payload size divided by rate:
 
 ```text
 transfer time (seconds) = payload size (bytes) / bps
@@ -169,7 +169,9 @@ transfer time (seconds) = payload size (bytes) / bps
 
 Our 20,000-byte payload at 25,000 bps takes 20000 / 25000 = 0.8 seconds. That is why the server line lands about a second after the client line, not instantly.
 
-Now you can reason about real numbers. A 5 MB character export (roughly 5,000,000 bytes) at 25,000 bps would take 200 seconds. That is almost certainly too slow, so you raise the rate. At 500,000 bps the same export finishes in 10 seconds. The trade is simple: a higher rate finishes faster but uses more of the channel, which is the exact congestion you were trying to avoid. A lower rate is gentler but slower. Pick the largest rate that still leaves headroom for normal gameplay traffic, and bias lower when the payload is huge or the players are far away. There is no single correct value. The number depends on your payload size and how much delay your feature can tolerate.
+Now you can reason about real numbers. A 5 MB character export (roughly 5,000,000 bytes) at 25,000 bps would take 200 seconds. That is almost certainly too slow, so you raise the rate. At 500,000 bps the same export finishes in 10 seconds. The trade is simple: a higher rate finishes faster but uses more of the channel, which is the exact congestion you were trying to avoid. A lower rate is gentler but slower. Pick the largest rate that still leaves headroom for normal gameplay traffic, and bias lower when the payload is huge or the players are far away.
+
+There is one ceiling, though. Do not crank the rate sky-high to "just send it fast." Set bps to roughly 10,000,000 or above and FiveM stops metering and tries to shove the whole payload at once, which brings back the exact stall you used latent events to dodge. Stay well under that. And if you ever pass 0 or -1 as the rate, FiveM falls back to its default of 25,000. There is no single correct value. The number depends on your payload size and how much delay your feature can tolerate.
 
 <Checkpoint question="A teammate sets bps to 20000 and expects a 20,000-byte payload to arrive instantly. Why does it take a full second, and what single change makes it arrive in a tenth of a second?">
   The bps argument is a speed limit, not a size, so a 20,000-byte payload at 20,000 bps is metered out over 20000 / 20000 = 1 second by design. The data is correct, it is just deliberately slow. To finish in roughly a tenth of a second, raise the rate to 200000 bps (20000 / 200000 = 0.1 seconds). Nothing else changes. The payload is identical and the handler is identical. The only knob is the rate, and a higher rate trades channel headroom for speed.
@@ -190,13 +192,13 @@ TriggerClientEvent('announcement', -1, 'Server restarting')
 TriggerLatentClientEvent('qu_latent_events:ack', -1, 25000, hugePayload)
 ```
 
-But latent broadcasting does not share one 25,000 bps stream across the server. It opens a separate metered stream to every connected player, each at the full rate you named. On a 64-slot server that is 64 simultaneous streams at 25,000 bps, which is 1.6 MB per second leaving your server's uplink the moment you fire it. Send a large payload to `-1` and you can saturate the very channel latent events exist to protect, hitting every player at once.
+Here is the deal: bps is per player, not shared. A latent broadcast does not split one 25,000 bps stream across the server. It opens a separate stream to every connected player, each at the full rate you named. On a 64-slot server that is 64 streams at 25,000 bps, which is 1.6 MB per second leaving your server's uplink the moment you fire it. Send a large payload to `-1` and you can saturate the very channel latent events exist to protect, hitting every player at once.
 
 The rule: latent broadcasts are for one target, or a small known list of targets. If you genuinely must push a big payload to everyone, stream it to one player at a time in a loop with a delay between sends, or rethink whether every player actually needs the data. Most of the time they do not. That is why our ack streams back to a single `src`, never to `-1`.
 
 ### When you reach for this pattern
 
-Reach for a latent event the moment a payload is big enough that a single burst could stall a connection. Three honest cases:
+Go latent the moment a payload is big enough that one burst could stall a connection. Three honest cases:
 
 - **Character or inventory exports.** A full character blob with appearance, inventory, and metadata can be hundreds of kilobytes. Stream it instead of bursting it.
 - **Image or buffer uploads from NUI.** Screenshots, signatures, or generated images are large binary strings. Latent keeps the upload from freezing the player mid-send.

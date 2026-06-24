@@ -7,7 +7,7 @@
     { label: "Outcome", value: "You can wrap any callback API as a promise and read three async calls top to bottom instead of nesting them" },
   ]}
 >
-  FiveM is full of callback APIs: `PerformHttpRequest`, the older async MySQL libraries, NUI callbacks. Stack three of them and your code turns into a pyramid, each result trapped one level deeper than the last. Promises flatten the pyramid. Combined with `Citizen.Await`, you get top-to-bottom code that *feels* synchronous while the server stays free to do other work. This lesson builds the real thing: you wrap `PerformHttpRequest` in a promise, await it, handle failure with `:reject()`, and chain three calls in a straight line.
+  Promises turn nested callback spaghetti into code you read top to bottom. Here's the deal: a callback API is one that doesn't return the answer right away, it hands you a function to run later when the answer lands. FiveM is full of them, like `PerformHttpRequest`, the older async MySQL libraries, and NUI callbacks. Stack three callbacks and your code becomes a pyramid, each result trapped one level deeper than the last. Promises flatten that pyramid. Pair them with `Citizen.Await` and the code *feels* synchronous while the server stays free to do other work. This lesson builds the real thing: you wrap `PerformHttpRequest` in a promise, await it, handle failure with `:reject()`, and chain three calls in a straight line.
 </LessonHero>
 
 <Prereq
@@ -109,7 +109,7 @@ end, true)
     ensure qu_promises
     ```
 
-    Save, then — in the txAdmin Live Console (or the FXServer server console window), not the in-game chat — run:
+    Save, then, in the txAdmin Live Console (or the FXServer server console window), not the in-game chat, run:
 
     ```text
     restart qu_promises
@@ -128,23 +128,23 @@ end, true)
 [qu_promises] done
     </ExpectedOutput>
 
-    The byte count comes from the response bodies: each `httpbin.org/uuid` reply is a pretty-printed JSON object of 60 bytes (`{` newline, two spaces + `"uuid": "<36-char value>"`, newline `}`), so three total 180 bytes. You may see 183 if the endpoint adds a trailing newline to each body. What matters is that one number near 180 prints after all three awaits finished, and that the reject line reports `ok=false` — the exact figure is not the point, the single combined print is.
+    The byte count comes from the response bodies: each `httpbin.org/uuid` reply is a pretty-printed JSON object of 60 bytes (`{` newline, two spaces + `"uuid": "<36-char value>"`, newline `}`), so three total 180 bytes. You may see 183 if the endpoint adds a trailing newline to each body. What matters is that one number near 180 prints after all three awaits finished, and that the reject line reports `ok=false`. The exact figure is not the point, the single combined print is.
   </Step>
 </StepGroup>
 
 ## How it works
 
-You ran it and four lines appeared in order, even though every HTTP call took real network time. Between `start` and the byte count, the server did not freeze. That is the whole point of this lesson, and now you will see exactly how three pieces make it happen: `promise.new()`, `:resolve()` / `:reject()`, and `Citizen.Await`.
+Four lines printed in order, even though every HTTP call took real network time, and the server never froze in between. That is the whole point. Three pieces make it happen: `promise.new()`, `:resolve()` / `:reject()`, and `Citizen.Await`. Here is each one.
 
 ### What a promise actually is
 
-A promise is a small object that stands in for a value you do not have yet. Think of it as a claim ticket. When you call an async API like `PerformHttpRequest`, the answer is not ready: the request has to leave your server, travel the network, and come back. You cannot return the answer, because it does not exist. So instead you hand back a ticket that says "the answer will land here later." That ticket is the promise.
+A promise is a claim ticket for a value you do not have yet. When you call an async API like `PerformHttpRequest`, the answer is not ready: the request has to leave your server, cross the network, and come back. You cannot return the answer, because it does not exist yet. So you hand back a ticket that says "the answer will land here later." That ticket is the promise.
 
 ```lua
 local p = promise.new()
 ```
 
-`promise.new()` creates one fresh, unsettled promise. Right now it holds nothing. It is in the pending state. A promise has exactly three states and it only ever moves once: pending to **resolved** (it got a value), or pending to **rejected** (it got an error). After it settles, it is frozen. You cannot resolve a rejected promise or change a resolved one.
+`promise.new()` creates one fresh promise that holds nothing yet. That empty state is called **pending**. A promise has exactly three states and only ever moves once: pending to **resolved** (it got a value) or pending to **rejected** (it got an error). Once it settles, it is frozen. You cannot resolve a rejected promise or change a resolved one.
 
 ### `:resolve()` and `:reject()` fill the ticket
 
@@ -158,12 +158,12 @@ PerformHttpRequest(url, function(status, body, headers)
 end, 'GET')
 ```
 
-`PerformHttpRequest` is the classic callback API. You hand it a function, and FiveM calls that function later, when the response arrives. Inside that callback you make a decision and settle the promise:
+`PerformHttpRequest` is the classic callback API: you hand it a function, and FiveM runs that function later, when the response arrives. Inside that function you make one decision and settle the promise:
 
 - `p:resolve(body)` means the answer arrived and here it is. Whatever value you pass becomes the resolved value of the promise.
 - `p:reject(message)` means it failed. The value you pass becomes the error.
 
-This callback runs at some unknown future moment, not when `httpGet` returns. That is the gap a promise bridges. The function `httpGet` returns the pending promise *immediately*, on the same line. The `resolve` or `reject` happens seconds later, inside the callback, when the network replies.
+Here is the gap a promise bridges. `httpGet` returns the pending promise *immediately*, on the same line you call it. The callback, where `resolve` or `reject` happens, runs seconds later, when the network replies. Two different moments in time, and the promise is the thing that connects them.
 
 <Checkpoint question="The httpGet function has a return p at the bottom and a p:resolve inside the callback. Which one runs first, and why does that order matter?">
   `return p` runs first, the instant you call `httpGet`. The promise is still pending at that moment because the HTTP request has not come back yet. `p:resolve(body)` runs later, when FiveM fires the callback. This is the heart of the pattern: you can hand back the ticket before the answer exists, and someone fills it in later. If you tried to return `body` directly instead of a promise, you could not, because `body` does not exist yet when `httpGet` returns.
@@ -175,9 +175,9 @@ This callback runs at some unknown future moment, not when `httpGet` returns. Th
 local a = Citizen.Await(httpGet('https://httpbin.org/uuid'))
 ```
 
-`Citizen.Await(p)` does one job: it pauses the current thread until the promise `p` settles, then it gives you the result. If the promise resolves, `Await` returns the resolved value, so `a` becomes the response body. If the promise rejects, `Await` raises a Lua error carrying the reject message.
+`Citizen.Await(p)` does one job: it pauses the current thread until the promise `p` settles, then hands you the result. If `p` resolves, `Await` returns the resolved value, so `a` becomes the response body. If `p` rejects, `Await` raises a Lua error carrying the reject message.
 
-The word that matters is **pauses**, not **blocks**. A blocking call would freeze the entire server: no other resource could run, no player could move, until the network replied. `Await` does not do that. It yields the current coroutine back to the FiveM scheduler. The scheduler is then free to run every other thread on the server while your thread sits parked, waiting for its promise. When the promise settles, the scheduler wakes your thread back up exactly where it left off and hands you the value. That is why the line "feels synchronous while staying non-blocking": you read it top to bottom like normal code, but under the hood your thread stepped aside and let the server keep working.
+The key word is **pauses**, not **blocks**. A blocking call freezes the whole server: nothing else runs, no player moves, until the network replies. `Await` does not do that. It steps your thread aside and hands control back to the FiveM scheduler, the part of FiveM that decides which thread runs next. The scheduler is now free to run every other thread on the server while yours sits parked. When the promise settles, the scheduler wakes your thread up right where it left off and gives you the value. That is why the line "feels synchronous while staying non-blocking": you read it top to bottom like normal code, but underneath, your thread quietly stepped out of the way and let the server keep working.
 
 ### Why Await needs a scheduler context
 
@@ -192,7 +192,7 @@ RegisterCommand('promisetest', function()
 end, true)
 ```
 
-`Citizen.Await` yields the current coroutine, so the code must run in a context owned by the Cfx scheduler. `CreateThread`, `SetTimeout`, and registered event/command callbacks are scheduler contexts in the current Lua runtime. This example creates an explicit thread because it is easy to recognize and keeps the command callback small. The actual runtime assertion is about being outside the scheduler, not about command handlers specifically.
+`Await` can only step a thread aside if the scheduler owns that thread in the first place. So your await has to run inside a scheduler-owned context. In the current Lua runtime that means `CreateThread`, `SetTimeout`, or a registered event/command callback. This example wraps the work in an explicit `CreateThread` because it is easy to spot and keeps the command callback small. The runtime only checks that you are inside the scheduler at all, not that you used a command handler specifically.
 
 ### Flattening the pyramid
 
@@ -229,13 +229,13 @@ local ok, err = pcall(function()
 end)
 ```
 
-`httpbin.org/status/500` always returns HTTP 500, so the callback hits the `else` branch and calls `p:reject(...)`. When you `Await` that rejected promise, it raises. `pcall` runs the function in protected mode: it returns `false` plus the error message instead of crashing your thread. That is why the output shows `ok=false` and the reject message. If you await a promise that can reject and you do not wrap it in `pcall`, the raised error stops the rest of your thread, which is one of the ways a promise-based script "dies silently" mid-task.
+`httpbin.org/status/500` always returns HTTP 500, so the callback takes the `else` branch and calls `p:reject(...)`. Awaiting that rejected promise raises an error. `pcall` runs the function in protected mode, meaning it catches the error and returns `false` plus the message instead of crashing your thread. That is why the output shows `ok=false` and the reject message. Skip the `pcall` on a promise that can reject and the raised error kills the rest of your thread right there. That is one of the classic ways a promise-based script "dies silently" mid-task.
 
 ### When you reach for this pattern
 
-You wrap a callback API in a promise whenever you have async work whose result you need before the next step can run. The three you will hit constantly in FiveM:
+Reach for this pattern whenever you have async work whose result you need before the next step can run. Three cases come up constantly in FiveM:
 
-- **HTTP requests.** `PerformHttpRequest`, exactly as built here. Calling an external API, a webhook, a license check. Security: this runs on the server, so never build the URL from player-supplied input without validating it (an attacker who controls the URL can make your server hit internal/private addresses — SSRF). Treat the response body as untrusted: validate or json-decode it before using it, and never concatenate it into a SQL query. Keep webhook URLs and API keys in convars (GetConvar), never hardcoded in the resource.
+- **HTTP requests.** `PerformHttpRequest`, exactly as built here: calling an external API, firing a webhook, checking a license. One security rule, because this runs on your server. Never build the URL out of player-supplied input without validating it first. If a player controls the URL, they can point your server at private internal addresses it should never touch (this attack is called SSRF, server-side request forgery). And treat every response body as untrusted: validate or json-decode it before you use it, and never glue it straight into a SQL query. Keep webhook URLs and API keys in convars (`GetConvar`), never hardcoded in the resource.
 - **Database queries.** Modern libraries like oxmysql already return promises, so you can `Await` them directly. Older callback-style MySQL wrappers you wrap yourself, the same way you wrapped `PerformHttpRequest`.
 - **NUI callbacks and any "do this, get a result later" native.** If it hands you a callback instead of a return value, it is a candidate for promise-wrapping.
 

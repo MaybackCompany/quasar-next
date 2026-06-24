@@ -70,7 +70,7 @@ export const proxy: NextProxy = async (request: NextRequest): Promise<NextRespon
     return NextResponse.redirect(loginUrl);
   }
 
-  // Directors are never part of the trial system — never tracked, never locked out.
+  // Directors are never part of the trial system - never tracked, never locked out.
   if (session.isAdmin) {
     return NextResponse.next();
   }
