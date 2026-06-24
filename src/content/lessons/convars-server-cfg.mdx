@@ -1,13 +1,13 @@
 <LessonHero
  title="Convars: server.cfg config you can read from Lua"
  meta={[
- { label: "You'll learn", value: "The three convar prefixes (set, setr, sets), exactly who can read each, the four read functions, and why a client can only see a setr value." },
+ { label: "You'll learn", value: "The three convar prefixes (set, setr, sets), who can read each, the read functions, and why a client can only see a setr value." },
  { label: "You'll ship", value: "A debug toggle and a configurable starting balance for the banking script: both flippable from server.cfg with no code redeploy." },
  { label: "Time", value: "~15 minutes" },
  { label: "Why now", value: "You finished the banking lesson with a hard-coded starting balance. Convars let you tune that per server." },
  ]}
 >
- A **convar** (configuration variable) is a key/value pair you set in `server.cfg` or at runtime, then read from Lua. Convars are how you externalize the things that *change per server*: a debug flag, a database name, a starting balance, an owner ID. You tune them without editing Lua and without rebuilding the resource. The catch that trips up everyone is replication: the prefix you use to declare a convar decides whether a client can ever read it. Get that wrong and your client silently reads the default forever. This lesson makes the difference visible.
+ A **convar** (configuration variable) is a key/value pair you set in `server.cfg`, then read from Lua. Convars hold the things that change per server: a debug flag, a database name, a starting balance, an owner ID. You tune them without editing Lua and without rebuilding the resource. One thing trips up everyone: the prefix you declare a convar with decides whether a client can read it. Get it wrong and your client silently reads the default forever. This lesson makes the difference visible.
 </LessonHero>
 
 <Prereq
@@ -98,7 +98,7 @@ end, false)
  ensure qu_convars_server_cfg
  ```
 
- Save, then restart the whole server so FXServer re-reads `server.cfg`. txAdmin is the web control panel that manages your server; open it in a browser at `http://<your-server-ip>:40120` (use `http://localhost:40120` if you are on the machine running the server) and log in. In the left sidebar open the txAdmin dashboard and click **Restart** (the server restart action, not a single-resource restart). A resource restart alone does NOT re-execute changed `server.cfg` lines, so the new convar values would not load.
+ Save, then restart the whole server so FXServer re-reads `server.cfg`. In txAdmin (the web control panel at `http://<your-server-ip>:40120`, or `http://localhost:40120` on the server machine), open the dashboard and click **Restart** (the server restart, not a single-resource restart). A resource restart alone does NOT re-execute changed `server.cfg` lines, so the new values would not load.
 
  Run the first test in the txAdmin Live Console:
 
@@ -121,32 +121,32 @@ F8: [qu_convars_server_cfg] client reads debug true
 
 ## How it works
 
-It worked, so now make it make sense. Two convars, two read functions, two consoles. The reason the lesson is split that way, and not dumped into one file, is the single most important fact about convars: the prefix you declared each one with decided whether the client could ever see it.
+It worked, so now make it make sense. Two convars, two read functions, two consoles. The split is the whole point: the prefix you declared each convar with decided whether the client could ever see it.
 
 ### The three prefixes, and who can read each
 
-When you write a convar in `server.cfg` you choose one of three commands. They look almost identical and they behave completely differently.
+When you write a convar in `server.cfg` you pick one of three commands. They look almost identical and behave completely differently.
 
-- `set name value` declares a **server-only** convar. The server can read it. Clients cannot. If a client tries, it gets the fallback default you passed, not the real value. This is the right choice for anything a player should never see: database strings, API keys, owner IDs.
-- `setr name value` declares a **replicated** convar. The `r` is for replicated. The server reads it, and the value is also pushed to every connected client, so client Lua can read the real value too. Use this only for config that is safe for players to know and that the client genuinely needs, like a debug flag that turns on extra on-screen logging.
-- `sets name value` declares a **server-info convar** exposed in the server's public info, such as `sets tags "roleplay, economy"`. Treat every `sets` value as public and never place a secret in it. Use `set`/`setr` for application configuration so the intended visibility is obvious.
+- `set name value` is a **server-only** convar. The server reads it. Clients cannot: a client read returns the fallback default, not the real value. Use it for anything a player should never see: database strings, API keys, owner IDs.
+- `setr name value` is a **replicated** convar (the `r`). The server reads it, and the value is also pushed to every client, so client Lua reads the real value too. Use it only for config that is safe for players to know and that the client needs, like a debug flag.
+- `sets name value` is a **server-info** convar. Its name and value appear on the server list and in the public `info.json`. Treat every `sets` value as public; never put a secret in one.
 
-That is the whole rule. `set` stays on the server, `setr` rides along to clients, `sets` is for the browser. In this lesson `qu_convars_cash` is a `set` because the starting balance is a server decision a player has no business reading, and `qu_convars_debug` is a `setr` because the client console needs to know whether debug logging is on.
+That is the whole rule. `set` stays on the server, `setr` rides along to clients, `sets` is for the browser. In this lesson `qu_convars_cash` is a `set` (a player has no business reading the starting balance) and `qu_convars_debug` is a `setr` (the client console needs to know whether debug logging is on).
 
 <Checkpoint question="If you change qu_convars_debug from setr to set and restart, what does the F8 line print, and why?">
  It prints `client reads debug false`. With plain `set`, the convar is server-only and never replicates to clients, so on the client side `GetConvar('qu_convars_debug', 'false')` cannot find a value and returns the fallback you supplied, the string `'false'`. The server console would still read the real value, but the client is permanently blind to a non-replicated convar. This is the number one convar bug: a value that "works on the server" but silently reads the default on every client because it was declared with `set` instead of `setr`.
 </Checkpoint>
 
-### The four read functions
+### The read functions
 
-You read a convar with one of four natives. They differ only in the type they return, and every one of them takes the same two arguments: the convar name, and a fallback default to use when the convar is missing or unreadable.
+You read a convar with a `GetConvar*` native. They all take the same two arguments, the convar name and a fallback default, and differ only in the type they return.
 
-- `GetConvar(name, default)` returns a **string**. Everything is a string at heart in `server.cfg`, so this is the most general reader.
-- `GetConvarInt(name, default)` returns an **integer**. It parses the stored text into a whole number for you, which is why the server side of this lesson uses it on `qu_convars_cash`: a balance is a number, not text.
-- `GetConvarFloat(name, default)` returns a **floating-point number**, for decimals like a price multiplier.
-- `GetConvarBool(name, default)` returns a **boolean** `true` or `false`.
+- `GetConvar(name, default)` returns a **string**. Convar values are strings at heart, so this is the general reader.
+- `GetConvarInt(name, default)` returns an **integer**, parsed from the stored text. The server side of this lesson uses it on `qu_convars_cash` because a balance is a number, not text.
+- `GetConvarFloat(name, default)` returns a **float**, for decimals like a price multiplier.
+- `GetConvarBool(name, default)` returns a **boolean**.
 
-The default argument is not optional decoration. It is your safety net. If the convar line is missing from `server.cfg`, misspelled, or (the case you met) declared with the wrong prefix so the client cannot see it, the read returns the default instead of crashing. That is exactly why the F8 line prints `false` when the convar does not reach the client: `'false'` is the default you handed `GetConvar`.
+The default is your safety net. If the convar is missing, misspelled, or (the case you met) declared with the wrong prefix so the client cannot see it, the read returns the default instead of crashing. That is why the F8 line prints `false` when the convar does not reach the client: `'false'` is the default you handed `GetConvar`.
 
 ### The restricted flag on the command
 
@@ -158,11 +158,11 @@ RegisterCommand('cashcfg', function()
 end, false)
 ```
 
-That last argument is the **restricted flag**. With `false`, anyone can run the command, including the server console and any connected player. With `true`, the command requires an ace permission, so only the server console (which holds all aces) and explicitly authorized admins can run it. The original version of this lesson used `true` on the server command, which is why a beginner typing it from anywhere but the console got silence. For a teaching command you want to fire freely while learning, `false` is correct. When you later wrap a real admin action like granting cash, you would switch to `true` and grant the ace, so players cannot run it on themselves.
+That last argument is the **restricted flag**. With `false`, anyone can run the command, including the server console and any player. With `true`, the command needs the `command.<name>` ace, so only the console (which holds all aces) and authorized admins can run it. For a teaching command you want to fire freely, `false` is correct. When you later wrap a real admin action like granting cash, switch to `true` and grant the ace so players cannot run it on themselves.
 
 ### Runtime versus server.cfg
 
-One more model to lock in. Editing the `server.cfg` **file** does not execute the changed line on a running server. Perform a full server restart, or deliberately re-run the relevant cfg with `exec`, before testing the new value. Restarting only the resource does not re-read `server.cfg`. The Lua `GetConvar*` calls read the current convar value each time they execute. You can also set a convar live from the server console:
+One more model to lock in. Editing the `server.cfg` **file** does not run the changed line on a live server. Restarting only the resource does not re-read it either. To load the new value, fully restart the server or re-run the file with `exec server.cfg`. The `GetConvar*` calls read the current value each time they run, so you can also set a convar live from the server console:
 
 ```text
 setr qu_convars_debug false
@@ -176,7 +176,7 @@ Convars are how you stop hard-coding the things that differ between your test se
 
 - **A debug switch.** Wrap your noisy `print` calls in `if GetConvarBool('myresource_debug', false) then`. Flip `setr myresource_debug true` while you investigate, flip it off in production, and you never ship a build to change logging.
 - **Per-server tuning.** Starting balance, max stack size, payout rates. One resource, many servers, each with its own numbers in its own `server.cfg`.
-- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`. A `setr` convar is copied to every connected client, where the value lives in client memory and can be read or extracted by any player, so declaring a secret with `setr` is a real credential leak, not a cosmetic one. Keep secrets as `set` so they never leave the server.
+- **Secrets that must stay server-side.** A Tebex secret, a Discord webhook, a database connection string. Always a plain `set`, never `setr`. A `setr` convar is copied to every client, where any player can read it out of memory, so a secret declared with `setr` is a real credential leak. Keep secrets as `set` so they never leave the server.
 
 ## If something went wrong
 

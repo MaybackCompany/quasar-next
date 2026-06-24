@@ -26,7 +26,13 @@
 
 ## The frameworks at a glance
 
-Each framework has its own docs and its own way of spelling the same ideas. Bookmark the one your server actually runs. Qbox describes itself as a QBCore successor and keeps a QB compatibility bridge; ESX Legacy and QBCore remain separate ecosystems. `ox_lib` is optional utility code, not a requirement of ESX or QBCore. The maintained 2026 `ox_lib`, `oxmysql`, `ox_target`, and `ox_inventory` repositories live under **Community Ox**. They are community resources, not Cfx.re platform features.
+A framework gives your scripts a basic structure so you do not build everything from scratch. Each one has its own docs and its own way of spelling the same ideas. Bookmark the one your server actually runs.
+
+A few facts to keep straight:
+
+- Qbox calls itself a QBCore successor and keeps a QB compatibility bridge. ESX Legacy and QBCore stay separate ecosystems.
+- `ox_lib` is optional utility code, not a requirement of ESX or QBCore.
+- The maintained 2026 `ox_lib`, `oxmysql`, `ox_target`, and `ox_inventory` repos live under **Community Ox**. They are community resources, not Cfx.re platform features.
 
 <TechLinks ids={["esx", "qbox", "qbcore", "ox_lib"]} />
 
@@ -116,7 +122,7 @@ end, true)
 
 ## How it works
 
-You ran it and a line appeared. The detection is the easy half. The valuable half is what the framework name unlocks: once you know which one is running, you know how to ask it who the player is, how much money they have, and what job they are on. That is the translation guide this whole lesson exists for. Take the code apart first, then learn the three idioms you will read every day.
+You ran it and a line appeared. Detection is the easy half. The framework name is what matters: once you know which one is running, you know how to ask it who the player is, how much money they have, and what job they are on. Take the code apart first, then learn the three idioms you read every day.
 
 ### What GetResourceState actually returns
 
@@ -124,7 +130,9 @@ You ran it and a line appeared. The detection is the easy half. The valuable hal
 if GetResourceState('es_extended') == 'started' then return 'esx' end
 ```
 
-`GetResourceState` is a FiveM *native* — a built-in function the game server itself provides (as opposed to a framework export or an ox_lib call), so it works the same on every server regardless of which framework is installed. You hand it a resource name as a string and it tells you the lifecycle state of that resource. The documented states are `missing`, `started`, `starting`, `stopped`, `stopping`, `uninitialized`, and `unknown`. The only state that means *this framework is live and its exports are callable* is `started`. So the probe is really asking, in order, is `qbx_core` started, then `qb-core`, then `es_extended`, and it returns the first match. The order matters: it checks Qbox first, then QBCore, then ESX, and returns the moment it finds one. On a server with none of them, every check fails and the function falls through to `return 'none'`. That is why a bare practice server prints `none`. Nothing is wrong; there is simply no framework resource in the `started` state to find.
+`GetResourceState` is a FiveM *native* - a built-in function the game server itself provides (not a framework export or an ox_lib call), so it works the same on every server. You hand it a resource name as a string and it returns that resource's lifecycle state. The documented states are `missing`, `started`, `starting`, `stopped`, `stopping`, `uninitialized`, and `unknown`. Only `started` means the framework is live and its exports are callable.
+
+The probe checks in order: `qbx_core` (Qbox), then `qb-core` (QBCore), then `es_extended` (ESX). It returns the first one that is `started`. On a server with none of them, every check fails and the function returns `none`. That is why a bare practice server prints `none`. Nothing is wrong; there is simply no framework in the `started` state to find.
 
 The resource names are the real folder names each framework ships under, and they are easy to mix up:
 
@@ -148,11 +156,11 @@ That single call is your first real `ox_lib` usage. The library also gives you t
 
 ### The translation guide: player, money, job
 
-This is the part the title promised. The framework name you just detected tells you which dialect to speak. Every other line in this section depends on one move first: turning a server id into a player object. Get that one call right and the rest is just reading fields.
+The framework name you detected tells you which dialect to speak. Everything here depends on one move first: turning a server id into a player object. Get that call right and the rest is just reading fields.
 
 #### First, get the player object
 
-You cannot read money or a job until you hold the player object. Each framework hands it to you a little differently, but the shape is identical: feed it the player's server id, get back a table you then read from. Here are the three calls side by side, nothing else.
+You cannot read money or a job until you hold the player object. Each framework gives it to you a little differently, but the shape is the same: feed it the player's server id, get back a table you read from. Here are the three calls side by side.
 
 <MockTable
   head={["Framework", "Get the object", "What you get back"]}
@@ -193,7 +201,7 @@ That getter is the spine of the next lesson, [How a script talks to a framework]
 Once you hold the object, reading money and job is the same job in each one. Here is the full pattern.
 
 <Callout variant="warn" title="Security: never ship an unvalidated giveCash event">
-  Any client can trigger a `RegisterNetEvent` handler. These giveCash snippets are illustrative of the money API only — never ship a net event that hands out money without server-side checks (who is allowed, how much, how often). An unvalidated giveCash event is a classic money-duplication exploit.
+  Any client can trigger a `RegisterNetEvent` handler. These giveCash snippets are illustrative of the money API only - never ship a net event that hands out money without server-side checks (who is allowed, how much, how often). An unvalidated giveCash event is a classic money-duplication exploit.
 </Callout>
 
 **ESX Legacy.** You grab the shared object, then ask it for a player by server id. The player object is usually called `xPlayer`.
@@ -328,7 +336,7 @@ Framework detection plus the translation idioms is the foundation under almost e
 
 <Refs
   items={[
-    { label: "ESX Legacy documentation", href: "https://docs.esx-framework.org/" },
+    { label: "ESX Legacy documentation", href: "https://documentation.esx-framework.org/" },
     { label: "Qbox documentation", href: "https://docs.qbox.re/" },
     { label: "Community Ox ox_lib documentation", href: "https://coxdocs.dev/ox_lib" },
     { label: "Community Ox ox_lib repository", href: "https://github.com/communityox/ox_lib" },

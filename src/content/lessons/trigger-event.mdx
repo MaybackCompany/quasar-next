@@ -53,7 +53,7 @@ game 'gta5'
 client_script 'client.lua'
     ```
 
-    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and you no longer need to enable it: Lua 5.3 was removed and every Lua script now runs on Lua 5.4 automatically, so you leave it out.
+    No `lua54 'yes'` line. As of June 2025 that directive is deprecated and you no longer need to enable it: Lua 5.3 has been deprecated and every Lua script now runs on Lua 5.4 automatically, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the lesson code" outcome="The topic is now represented by runnable code.">
@@ -125,7 +125,7 @@ AddEventHandler('qu_trigger_event:shout', function(message)
 end)
 ```
 
-`AddEventHandler` says: when the event named in the first argument fires, run this function. Both calls use the same name, so both handlers run. Do not build logic that depends on listener order: the official event documentation promises matching handlers, not a stable ordering contract between independent resources.
+`AddEventHandler` says: when the event named in the first argument fires, run this function. Both calls use the same name, so both handlers run. Do not write code that depends on which handler runs first.
 
 This is the part the old version of this lesson never said out loud, and it is the entire reason the demo prints twice. One event can have many listeners. That is not a bug to design around, it is the feature. A `playerDied` event in a real server might be heard by the medical resource, the scoreboard resource, and the anticheat resource all at once, none of them aware of the others.
 
@@ -139,13 +139,13 @@ end, false)
 
 `TriggerEvent` is the line that fires the message. It takes the event name, then any values you want to pass to the handlers. Here you pass one value, the reconstructed message string, and both handlers receive it as their `message` parameter.
 
-The documented property to keep is that `TriggerEvent` is **same-side only**. This code is a `client_script`, so only client-side handlers for that name hear it; it never crosses the network to the server. Handlers may yield or schedule other work, so do not use undocumented timing or listener-order assumptions as a coordination mechanism.
+The rule to keep is that `TriggerEvent` is **same-side only**. The docs put it plainly: you can only trigger an event in the same section you are in, client or server. This code is a `client_script`, so only client-side handlers for that name hear it. It never crosses the network to the server. To reach the server you use a different function, which is the next lesson.
 
 ### Why args is a table, and what table.concat does
 
-The command handler signature is `function(_, args)`. FiveM hands a command handler three values: the source (who ran it), an `args` table, and the raw text. The first underscore is a throwaway name for the source, which we do not use here. The second, `args`, is the interesting one.
+The command handler signature is `function(_, args)`. FiveM hands a command handler three values: the source (who ran it), an `args` array, and the raw text. The first underscore is a throwaway name for the source, which we do not use here. The second, `args`, is the interesting one.
 
-FiveM splits whatever you typed after the command on spaces and gives you the pieces as a **table** (a list). Type `/shout hello world` and `args` is not the string `"hello world"`, it is a two-element list: `args[1]` is `"hello"` and `args[2]` is `"world"`. FiveM cannot know whether you meant one phrase or two separate arguments, so it always hands you the split pieces and lets you decide.
+FiveM splits whatever you typed after the command on spaces and gives you the pieces as a **table** (a list). The docs show this directly: `/car zentorno unused` makes `args` end up as `{ 'zentorno', 'unused' }`. So `/shout hello world` gives `args[1]` as `"hello"` and `args[2]` as `"world"`, not the single string `"hello world"`. FiveM hands you the split pieces and lets you decide what to do with them.
 
 That is why `table.concat(args, ' ')` is there. `table.concat` glues the elements of a table back into one string, putting the separator you pass (here a single space) between each piece. So the list `{ "hello", "world" }` becomes the string `"hello world"`. Without it, you would only ever pass `args[1]` and `/shout hello world` would shout just `hello`. Concatenating with a space rebuilds the full sentence the player typed.
 

@@ -1,31 +1,36 @@
 <LessonHero
-  title="QBCore and txAdmin — your first server"
+  title="QBCore and txAdmin - your first server"
   meta={[
-    { label: "You'll build", value: "A working FiveM server with QBCore framework, txAdmin panel, MariaDB, and HeidiSQL — everything a beginner needs to host." },
+    { label: "You'll build", value: "A working FiveM server: MariaDB, the txAdmin panel, a QBCore recipe, and HeidiSQL connected to the database." },
     { label: "Time", value: "~45 minutes" },
-    { label: "You need", value: "A Windows PC, internet connection, and a Cfx.re account for the license key." },
-    { label: "You'll learn", value: "Installing MariaDB as a Windows service, downloading FiveM artifacts, setting up txAdmin, deploying QBCore via recipe, connecting HeidiSQL, and verifying the server is joinable." },
+    { label: "You need", value: "A Windows PC, internet, and a Cfx.re account at forum.cfx.re." },
+    { label: "You'll learn", value: "Install MariaDB as a service, download FXServer, link txAdmin to your Cfx.re account, deploy QBCore with a recipe, connect HeidiSQL, and join the server." },
   ]}
 >
-  This is the complete beginner path to a running FiveM server — no skipped steps, no assumptions. By the end you have MariaDB running as a Windows service, txAdmin deployed with a QBCore recipe, HeidiSQL connected to your database, and players able to join. This is the lesson most beginners wish they had on day one.
+  This is the complete beginner path to a running FiveM server. No skipped steps, no assumptions. By the end you have MariaDB running, txAdmin linked to your account, a QBCore recipe deployed, HeidiSQL browsing the database, and your own client joined. This is the lesson most beginners wish they had on day one.
 </LessonHero>
 
 <Prereq
   items={[
     "I am on Windows 10 or 11.",
-    "I have a Cfx.re account at portal.cfx.re.",
+    "I have a Cfx.re account at forum.cfx.re.",
     "I have at least 20GB free disk space.",
+    "I can extract a .7z archive (7-Zip or WinRAR is installed).",
     "I have read the FiveM orientation lesson (fivem-2026-orientation).",
   ]}
 />
+
+<Callout variant="fivem" title="txAdmin is already in the box">
+  You do not download or install txAdmin separately. It ships inside FXServer. The first time you run `FXServer.exe`, it starts txAdmin and opens `http://localhost:40120` in your browser. Your license key is free and is created later, inside the recipe step.
+</Callout>
 
 ## Build it
 
 <StepGroup>
   <Step num={1} title="Install MariaDB" outcome="MariaDB runs as a Windows service on 127.0.0.1:3306.">
-    Download the latest Windows x86_64 MSI from https://mariadb.org/download/ and run the installer. Accept the defaults, but set a strong **root password** during install and store it in a password manager. Keep port **3306** and install it as a **Windows service**.
+    Download the Windows x86_64 MSI from https://mariadb.org/download/ and run it. Accept the defaults, but set a strong **root password** during install and save it in a password manager. Keep port **3306** and install it as a **Windows service**.
 
-    After it finishes, confirm the service is running. Open PowerShell and run:
+    Confirm the service is running. Open PowerShell and run:
 
     ```powershell
 Get-Service MariaDB*
@@ -38,59 +43,140 @@ Get-Service MariaDB*
     </ExpectedOutput>
   </Step>
 
-  <Step num={2} title="Download FiveM server artifacts" outcome="The FXServer files are in your server folder.">
-    Go to https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/
+  <Step num={2} title="Download and extract FXServer" outcome="FXServer.exe is in your server folder.">
+    Go to the official Windows artifacts page:
 
-    Download the **latest recommended** build (green label, not the top "Latest" which may be unstable). Extract the zip to:
+    ```text
+https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/
+    ```
+
+    Download the **latest** build (the newest one at the top), not the green "Recommended" row. Grab `server.7z`, open it with 7-Zip or WinRAR, and extract everything to:
 
     ```text
 C:\FXServer\
     ```
 
-    Inside you should see `FXServer.exe`, `citizen/` folder, and other files.
+    Inside you should see `FXServer.exe`, the `citizen/` folder, and other files. Only download from this Cfx.re page. Do not use Discord mirrors or random upload sites.
 
     <ExpectedOutput>
-      C:\FXServer\FXServer.exe exists. Running it starts a bare server.
+      C:\FXServer\FXServer.exe exists.
     </ExpectedOutput>
   </Step>
 
-  <Step num={3} title="Get your license key" outcome="You have a Cfx.re license key.">
-    Go to https://portal.cfx.re/ → Servers → Create Server. Give it a name. Copy the license key — it starts with `cfxk_`. Save it somewhere you can paste from. You'll need it when txAdmin asks for it.
+  <Step num={3} title="Start FXServer and link your account" outcome="txAdmin opens, is linked to Cfx.re, and has a backup password.">
+    Double-click `FXServer.exe`. A black console window opens and prints a **4-digit PIN**. Keep this window open. Your browser opens txAdmin at `http://localhost:40120`. If it does not, go there manually.
 
-    Don't create a server.cfg yet — the txAdmin recipe will write one for you with all the right settings for QBCore.
-  </Step>
+    Do these in order:
 
-  <Step num={4} title="Start the server and pick the QBCore recipe" outcome="txAdmin loads, QBCore is deployed, and the server is online.">
-    Run `FXServer.exe`. On first boot, txAdmin opens at `http://localhost:40120`. Set a username and password. When it asks for a recipe, search for **QBCore** and select the official QBCore Framework recipe.
+    1. Enter the 4-digit PIN from the console.
+    2. Click **Link account**, sign in to Cfx.re, and click **Continue** to authorize.
+    3. Set a **backup password** for the dashboard.
+    4. Agree to the license, then click **Register**.
 
-    txAdmin downloads QBCore, creates the `server.cfg`, sets up the database, and starts all resources. Paste your license key when prompted.
+    The PIN is generated fresh each first boot and the example digits in any guide are not yours. If you restarted before finishing, close and reopen `FXServer.exe` for a new PIN.
 
     <ExpectedOutput>
-      txAdmin dashboard shows green status. The server is joinable at `127.0.0.1:30120`.
+      [txAdmin] Webserver is now available at http://localhost:40120/
+      [txAdmin] Use the PIN below to register the master account: 0427
     </ExpectedOutput>
   </Step>
 
-  <Step num={5} title="Connect HeidiSQL to your database" outcome="You can browse the QBCore database.">
-    Download HeidiSQL from https://www.heidisql.com. Open it, click New Session:
+  <Step num={4} title="Deploy the QBCore recipe" outcome="QBCore is downloaded, server.cfg is written, and the server starts.">
+    On the setup page, name your server and click **Next**. For **Deployment Type** choose **Popular Recipes**, then pick the **QBCore** recipe. Leave the data location as-is, click **Save**, then **Go to Recipe Deployer**.
+
+    In the deployer:
+
+    1. **Review Recipe**: click **Next**.
+    2. **Input Parameters**: click the **Portal** link, sign in to Cfx.re, click **Create a key**, **GENERATE**, then **copy** the key.
+    3. Back in txAdmin, paste the key and click **Run Recipe**.
+
+    The recipe downloads QBCore, creates the database tables, and writes `server.cfg`. When it finishes, click **Save and Run Server**. You do not edit any file by hand here.
+
+    <ExpectedOutput>
+      [txAdmin] Running recipe... Resources downloaded. Writing server.cfg...
+      [txAdmin] Server started. Status: ONLINE
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={5} title="Connect HeidiSQL to your database" outcome="You can browse the QBCore tables.">
+    Download HeidiSQL from https://www.heidisql.com. Open it, click **New** session, and fill in:
 
     - Host: `127.0.0.1`
     - User: `root`
     - Password: the root password you set when installing MariaDB
     - Port: `3306`
 
-    Click Open. You should see the QBCore database with tables like `players`, `vehicles`, `items`.
+    Click **Open**. You should see the QBCore database with tables like `players`.
 
     <ExpectedOutput>
-      HeidiSQL shows the QBCore database. You can browse player data, items, and server configuration tables.
+      HeidiSQL shows the QBCore database. You can browse the players table and other QBCore tables.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={6} title="Join your own server" outcome="Your client connects and txAdmin shows one player online.">
+    Open the FiveM client (the game launcher, not the black FXServer window). With FiveM in focus, press **F8** to open the in-game console, then run:
+
+    ```bash
+    connect 127.0.0.1:30120
+    ```
+
+    Once you spawn in, go back to txAdmin. The Players panel shows 1 online and the Live Console logs your connection.
+
+    <ExpectedOutput>
+      You spawn into the server. txAdmin Players panel shows 1 player online.
     </ExpectedOutput>
   </Step>
 </StepGroup>
 
+## How it works
+
+The pieces fit together in one line: FXServer is the server software, txAdmin is the dashboard bundled inside it, the recipe is a one-click installer that downloads QBCore and writes `server.cfg`, MariaDB stores player data, and HeidiSQL is just a window into that database.
+
+Two things are easy to confuse. The **port 40120** is the txAdmin dashboard in your browser. The **port 30120** is the game server your FiveM client connects to. They are different ports for different jobs.
+
+Your **license key** is created during the recipe step, not before, and txAdmin pastes it into `server.cfg` for you as `sv_licenseKey`. You never hand-edit that file to get started.
+
+## If something went wrong
+
+<FailureList
+  items={[
+    { symptom: "The browser never opens or localhost:40120 is refused", fix: "FXServer.exe is not running or its console was closed. Reopen FXServer.exe, keep the black window open, then visit http://localhost:40120 manually." },
+    { symptom: "FXServer.exe opens then closes immediately", fix: "Missing Visual C++ Redistributable. Install VC_redist.x64.exe from Microsoft, then run FXServer.exe again." },
+    { symptom: "Recipe download stuck or failed", fix: "GitHub rate limit or slow internet. Wait a few minutes and retry. If it keeps failing, download QBCore manually." },
+    { symptom: "MariaDB connection failed after the recipe", fix: "Start the MariaDB service (services.msc), and confirm the database password matches what the recipe used." },
+    { symptom: "HeidiSQL service won't connect on port 3306", fix: "Another MySQL is using port 3306, or MariaDB is stopped. Start MariaDB, or change its port in my.ini and match it in HeidiSQL." },
+    { symptom: "The txAdmin setup screen does not match these steps", fix: "Labels move between builds. Follow the order: enter PIN, link account, pick recipe, create and paste key, Run Recipe, Save and Run Server." },
+  ]}
+/>
+
+## What you can do now
+
+<Recap
+  items={[
+    "Install MariaDB as a Windows service and confirm it runs on 127.0.0.1:3306.",
+    "Download and extract the latest FXServer artifact (server.7z).",
+    "Run FXServer.exe, link txAdmin to your Cfx.re account with the console PIN, and set a backup password.",
+    "Deploy the QBCore recipe, create a license key in the deployer, and Save and Run the server.",
+    "Connect HeidiSQL to MariaDB and browse the QBCore tables.",
+    "Join your own server with connect 127.0.0.1:30120 and see one player in txAdmin.",
+  ]}
+/>
+
 ## Common failures
 
-| Exact error | Cause | Fix |
+| What you see | What it means | How to fix it |
 |---|---|---|
 | MariaDB service won't start | Port 3306 already in use | Stop the other MySQL instance, or change MariaDB's port in `my.ini` and update HeidiSQL to match |
 | `FXServer.exe` crashes immediately | Missing Visual C++ Redistributable | Install VC_redist.x64.exe from Microsoft |
 | txAdmin recipe fails to download | Firewall blocking or GitHub rate limit | Wait a few minutes and retry. If persistent, download QBCore manually |
-| `ensure` command not found in HeidiSQL console | HeidiSQL doesn't run FiveM commands | Use txAdmin Live Console for FiveM commands, HeidiSQL for SQL only |
+| `ensure` not found in HeidiSQL | HeidiSQL only runs SQL, not FiveM commands | Use the txAdmin Live Console for FiveM commands, HeidiSQL for SQL only |
+
+<Refs
+  items={[
+    { label: "Cfx.re docs · Setting up a server using txAdmin", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server-txadmin/" },
+    { label: "Cfx.re docs · Setting up a FiveM Server", href: "https://docs.fivem.net/docs/getting-started/setup-fivem-server/" },
+    { label: "Cfx.re docs · Frameworks", href: "https://docs.fivem.net/docs/server-manual/frameworks/" },
+    { label: "FiveM Windows server artifacts (latest)", href: "https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/" },
+    { label: "QBCore documentation", href: "https://docs.qbcore.org/qbcore-documentation/" },
+  ]}
+/>

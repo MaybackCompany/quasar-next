@@ -132,11 +132,11 @@ F8 notice (every player): [qu_trigger_server_client_event] notice: yourName ping
 
 ## How it works
 
-You typed `/pingserver hello` on the client and three lines appeared in two different places. A value crossed the wall to the server, the server checked it, and the server sent two replies back across the wall: one private, one public. That round trip is the single most reused pattern in FiveM. Take it apart once, slowly, and you will recognize it inside almost every script you ever open.
+You typed `/pingserver hello` and three lines appeared in two places. A value crossed the wall to the server, the server checked it, and the server sent two replies back: one private, one public. That round trip is the most reused pattern in FiveM. Take it apart once and you will recognize it in almost every script you open.
 
 ### The round trip, in order
 
-Here is the full path the word `hello` travels. Read it top to bottom, because every later subsection is just a zoom-in on one of these arrows.
+Here is the full path the word `hello` travels. Every later subsection zooms in on one of these arrows.
 
 1. Client: `/pingserver hello` runs the command handler, which calls `TriggerServerEvent('...:ping', 'hello')`. The value leaves the player's machine and goes to the server.
 2. Server: `RegisterNetEvent('...:ping', ...)` is listening for that name. Its handler runs, with `source` set to the player who sent it and `message` set to `'hello'`.
@@ -151,9 +151,9 @@ Two machines, four registrations, one value making a there-and-back journey. Not
 TriggerServerEvent('qu_trigger_server_client_event:ping', table.concat(args, ' '))
 ```
 
-`TriggerServerEvent` is the client saying: fire an event named `...:ping` over there, on the server, and hand it this value. The first argument is the event name. Everything after it is payload, copied across the network to the server. This is fire-and-forget. The client does not wait for an answer and gets no return value. If you want an answer, the server has to send one back as its own event, which is exactly what the pong and notice lines do. When you need a true request-then-response in one call, you reach for a callback instead, which is the next lesson.
+`TriggerServerEvent` is the client saying: fire the event named `...:ping` over there on the server, and hand it this value. The first argument is the event name. Everything after it is payload, copied across the network to the server. It is fire-and-forget. The client does not wait and gets no return value. If you want an answer, the server has to send one back as its own event, which is what the pong and notice lines do. For a real request-then-response in one call you reach for a callback, the next lesson.
 
-`table.concat(args, ' ')` is just glue. FiveM hands the command handler the typed arguments as a table, so `/pingserver hello there` arrives as `{ 'hello', 'there' }`. Joining them with a space rebuilds the sentence `hello there` before sending it. That detail is not the lesson; it is here so the payload is a single readable string.
+`table.concat(args, ' ')` is just glue. FiveM hands the command handler its arguments as a table, so `/pingserver hello there` arrives as `{ 'hello', 'there' }`. Joining with a space rebuilds the sentence into one readable string before sending it.
 
 ### RegisterNetEvent: the listener that allows network traffic
 
@@ -161,9 +161,9 @@ TriggerServerEvent('qu_trigger_server_client_event:ping', table.concat(args, ' '
 RegisterNetEvent('qu_trigger_server_client_event:ping', function(message)
 ```
 
-This is the line that makes the wall passable. `RegisterNetEvent` declares that an event with this name is allowed to be triggered across the network, and attaches a handler to run when it arrives. You must declare it on the side that receives. The server registers `...:ping` because the server receives the ping. Each client registers `...:pong` and `...:notice` because clients receive those.
+`RegisterNetEvent` marks the event name safe for network use. It says this name is allowed to arrive from the other side, and it attaches the handler that runs when it does. You register it on the side that receives. The server registers `...:ping` because the server receives the ping. Each client registers `...:pong` and `...:notice` because clients receive those.
 
-Here is the distinction that trips people up. `AddEventHandler` also attaches a handler to an event name, but it does not open the network gate. An event handled only with `AddEventHandler` can be fired locally with `TriggerEvent`, but a remote `TriggerServerEvent` or `TriggerClientEvent` aimed at it is rejected for safety. `RegisterNetEvent` is the one that says: this name is allowed to arrive from the other side. In current FiveM, `RegisterNetEvent` both opens the gate and registers the handler in one call, which is why you do not see a separate `AddEventHandler` line here. The rule to keep: if a value has to cross the wall to reach a handler, that handler's name was registered with `RegisterNetEvent` on the receiving side. Forget it on one side and that side simply never hears the event, with no error to point at it.
+The distinction that trips people up: `AddEventHandler` also attaches a handler, but it does not open the network gate. A name handled only with `AddEventHandler` still fires locally with `TriggerEvent`, but a remote trigger aimed at it is rejected for safety. Passing the callback straight to `RegisterNetEvent`, as we do here, opens the gate and registers the handler in one call, so you do not need a separate `AddEventHandler` line. The rule to keep: if a value crosses the wall to reach a handler, that handler's name was registered with `RegisterNetEvent` on the receiving side. Forget it on one side and that side never hears the event, with no error to point at.
 
 ### local src = source, captured before anything else
 
@@ -171,9 +171,9 @@ Here is the distinction that trips people up. `AddEventHandler` also attaches a 
 local src = source
 ```
 
-This is the most important line in the file and the easiest to write wrong. On the server, `source` is a special value that holds the server id of the player who triggered the current net event. It tells you who sent the ping, which is how the server knows who to answer privately.
+On the server, `source` holds the server id of the player who triggered the current net event. That is how the server knows who to answer privately.
 
-The catch: `source` is only reliable on the very first line of the handler, before the code yields. Anything that pauses the handler, a `Citizen.Wait`, a database query you await, a callback, can let another event run in between and overwrite `source` with a different player. By the time your paused code resumes, `source` may now point at someone else, and you reply to the wrong player or write to the wrong account. Capturing it into a plain local the instant the handler starts freezes the correct id in a variable that nothing else can touch. From then on you use `src`, never the raw `source`. Even when a handler has no yield today, you capture `src` first out of habit, because the day you add a database call is the day the bug appears, and it is a brutal one to find.
+The catch: `source` only stays correct until the handler yields. A `Citizen.Wait`, a database query, or a callback lets another event run during the pause, and that event overwrites `source`. When your code resumes, it can point at a different player, so you reply to the wrong one. Capturing `local src = source` on line one freezes the right id in a variable nothing else can touch. Use `src` from then on. Do it even when the handler has no yield today, so the bug never appears the day you add a database call.
 
 <Checkpoint question="The handler runs print, which does not yield. So why bother capturing local src = source instead of just using source everywhere?">
   Because the habit has to survive the next edit, not just today's code. Right now the handler is synchronous, so `source` would still be correct on every line. But the moment you add a yield, a `Citizen.Wait`, an `oxmysql` query you await, a callback, another player's net event can run during the pause and overwrite `source`. Code that read `source` after the pause would then act on the wrong player. Writing `local src = source` on line one freezes the right id immediately, so when you later add the database call you do not have to remember to fix it, and you never ship the silent wrong-player bug.
@@ -186,12 +186,12 @@ TriggerClientEvent('qu_trigger_server_client_event:pong', src, 'server received 
 TriggerClientEvent('qu_trigger_server_client_event:notice', -1, GetPlayerName(src) .. ' pinged the server')
 ```
 
-`TriggerClientEvent` is the server sending an event back across the wall to clients. Its shape is the mirror of `TriggerServerEvent`, with one extra argument wedged in second: the target. That target argument is the entire reason there are two lines here instead of one.
+`TriggerClientEvent` is the server sending an event back across the wall to clients. It mirrors `TriggerServerEvent`, with one extra argument in second place: the target. That target is the whole reason there are two lines here instead of one.
 
-- A real server id, like `src`, sends the event to exactly that one client. The pong reply uses `src`, so only the player who pinged sees `pong:`. This is how you answer a request privately, or send a player their own inventory, their own money, their own menu.
-- The number `-1` is the broadcast target. It sends the event to every connected client at once. The notice line uses `-1`, so every player on the server sees `notice:`. This is how you announce a restart, push a server-wide alert, or sync a shared world state change to the room.
+- A server id like `src` sends to exactly that one client. The pong line uses `src`, so only the player who pinged sees `pong:`. This is how you answer privately, or send a player their own inventory or money.
+- `-1` sends to every connected client at once. The notice line uses `-1`, so every player sees `notice:`. This is how you announce a restart or push a server-wide alert.
 
-Read it as: who is this for. One person, pass their id. Everyone, pass `-1`. The original version of this lesson only ever answered the one player and never showed the broadcast, which is why the second `TriggerClientEvent` line is here now. Seeing both in the same handler, side by side, is the clearest way to feel the difference.
+Read it as: who is this for. One person, pass their id. Everyone, pass `-1`. Seeing both targets in the same handler is the clearest way to feel the difference.
 
 ### Why the server checks the payload
 
@@ -199,9 +199,9 @@ Read it as: who is this for. One person, pass their id. Everyone, pass `-1`. The
 if type(message) ~= 'string' or #message > 40 then return end
 ```
 
-The client sent this value, and the client cannot be trusted. A normal player typing `/pingserver hello` sends a short string. A malicious or modified client can call `TriggerServerEvent('...:ping', ...)` directly with anything: a number, a table, a forty-thousand-character string built to bloat your logs or break the code that concatenates it. The handler runs on your server with your server's authority, so whatever it does with the payload, it does for real.
+The client sent this value, and the client cannot be trusted. A normal player sends a short string. A modified client can call `TriggerServerEvent('...:ping', ...)` directly with anything: a number, a table, a huge string built to bloat your logs or break the code that concatenates it. The handler runs with your server's authority, so whatever it does with the payload, it does for real.
 
-So before the server uses the value, it states what it requires and bails out otherwise. `type(message) ~= 'string'` rejects anything that is not text. `#message > 40` rejects text longer than a sane ping. If either is true, `return` ends the handler immediately, no print, no reply, no harm. This is the trust-and-authority idea from [Trust and authority](/lessons/trust-and-authority) made concrete: the boundary between client and server is exactly where you validate, because it is the last point you still control. Every net event handler you write on the server should open by checking that its inputs are the shape and size you expected.
+So before using the value, the server states what it requires and bails out otherwise. `type(message) ~= 'string'` rejects anything that is not text. `#message > 40` rejects text longer than a sane ping. If either is true, `return` ends the handler immediately: no print, no reply, no harm. This is the trust-and-authority idea from [Trust and authority](/lessons/trust-and-authority) made concrete. The boundary between client and server is where you validate, because it is the last point you control. Every server net event handler should open by checking its inputs are the shape and size you expected.
 
 ### When you reach for this pattern
 

@@ -1,10 +1,10 @@
 <LessonHero
   title="Endpoints, ports, and going public"
   meta={[
-    { label: "You'll build", value: "A server.cfg network block (endpoint_add_tcp, endpoint_add_udp, sv_endpointPrivacy, sv_maxclients) plus a friend-connects-by-IP test" },
+    { label: "You'll build", value: "A server.cfg network block (endpoint_add_udp, endpoint_add_tcp, sv_endpointPrivacy, sv_maxClients) plus a friend-connects-by-IP test" },
     { label: "Time", value: "~30 minutes" },
     { label: "You need", value: <>A running FXServer you can start, edit <a href="/lessons/server-cfg-basics">server.cfg</a> on, and restart.</> },
-    { label: "You'll learn", value: "endpoint_add_tcp/udp 0.0.0.0:30120 -> why 30120 is TCP and UDP -> sv_endpointPrivacy -> sv_maxclients -> port-forwarding on a home router -> firewall allow -> verifying with a real connection" },
+    { label: "You'll learn", value: "endpoint_add_udp/tcp 0.0.0.0:30120 -> why 30120 is TCP and UDP -> sv_endpointPrivacy -> sv_maxClients -> port-forwarding on a home router -> firewall allow -> verifying with a real connection" },
   ]}
 >
   Track A promised that players connect, but a fresh server only ever let you connect from your own machine. This lesson teaches the network path a stranger's game has to travel to reach you: the listening endpoint, the single port 30120 on both TCP and UDP, the router that forwards it, and the firewall that lets it through. You build the cfg block and then prove it works by having a friend connect to your public IP.
@@ -62,14 +62,17 @@ server_only 'yes'
     ```text
 # Listen for connections on every network interface, port 30120.
 # 0.0.0.0 means "all interfaces", not a single private address.
-endpoint_add_tcp "0.0.0.0:30120"
+# Keep UDP above TCP. The order matters if you ever change the port.
 endpoint_add_udp "0.0.0.0:30120"
+endpoint_add_tcp "0.0.0.0:30120"
 
-# Show the server's real IP in the server list. Set to true to hide it.
-sv_endpointPrivacy false
+# Hide other players' IPs from the server's public reports. false shows them.
+sv_endpointPrivacy true
 
-# Hard cap on connected players. 48 is a sane public default; max is 2048.
-sv_maxclients 48
+# Hard cap on connected players. Max is 2048.
+# 32 and up needs onesync, so add the line below too.
+set onesync on
+sv_maxClients 48
     ```
 
     The `#` lines are comments. The server ignores them; they are for you.
@@ -116,11 +119,11 @@ You added four convars and a friend connected by typing your public IP. Between 
 ### The endpoint: what 0.0.0.0:30120 actually means
 
 ```text
-endpoint_add_tcp "0.0.0.0:30120"
 endpoint_add_udp "0.0.0.0:30120"
+endpoint_add_tcp "0.0.0.0:30120"
 ```
 
-An endpoint is an address plus a port that the server promises to listen on. `endpoint_add_tcp` and `endpoint_add_udp` each open a listening socket. The string has two halves split by the colon.
+An endpoint is an address plus a port that the server promises to listen on. `endpoint_add_udp` and `endpoint_add_tcp` each open a listening socket. The string has two halves split by the colon.
 
 The `0.0.0.0` half is the network interface to bind to, and it is the part people get wrong. A PC can have several addresses at once: `127.0.0.1` (loopback, only reachable from the same machine), a private LAN address like `192.168.1.50` (reachable from other devices on your home network), and so on. `0.0.0.0` is a wildcard meaning "every interface this machine has". Bind to `0.0.0.0` and the server answers on all of them, which is exactly what you want for a public server. Bind to `127.0.0.1` by mistake and only your own machine could ever connect, no matter how perfect your router config is. When a server works locally but refuses every outside connection, a `127.0.0.1` endpoint is the first suspect.
 
@@ -139,18 +142,19 @@ This is the line beginners delete by accident, so it gets its own section. Port 
   UDP. The fact that the connection started and resources began downloading means the TCP path on port 30120 is working: the handshake completed and the reliable channel is open. The freeze happens at the moment the game switches to the live, real-time state stream, which rides UDP. If 30120/UDP is not forwarded on the router or not allowed through the firewall, the TCP side can look healthy while the player can never actually enter the world. Open 30120 on UDP as well as TCP and the join completes.
 </Checkpoint>
 
-### sv_endpointPrivacy and sv_maxclients: the two policy knobs
+### sv_endpointPrivacy and sv_maxClients: the two policy knobs
 
 ```text
-sv_endpointPrivacy false
-sv_maxclients 48
+sv_endpointPrivacy true
+set onesync on
+sv_maxClients 48
 ```
 
-These two do not open ports; they set policy on the door you already opened.
+These do not open ports; they set policy on the door you already opened.
 
-`sv_endpointPrivacy false` controls whether your server's real IP address is shown publicly in the server list and the info responses. `false` (the default) shows it, which is normal for a public server people connect to directly. Set it to `true` if you front your server with a proxy or DDoS-mitigation service and want players to reach you through that hostname instead of hitting your raw IP. For your first public server, leave it `false`.
+`sv_endpointPrivacy` controls whether other players' IP addresses show up in the server's public reports (the things `status` and the public `.json` endpoints print). `true` hides them. Leave it `true`. It does not hide your own server IP from the server list; that is a separate proxy setup with `sv_forceIndirectListing`, which is out of scope here.
 
-`sv_maxclients` is the hard ceiling on simultaneous players, from 1 up to 2048. It is not a target, it is a cap: set it to what your CPU, RAM, and bandwidth can actually serve smoothly. A fresh box on a home connection is happy around 32 to 48; pushing the number to 2048 on hardware that cannot feed it just means a laggy, miserable server. Pick a number you can deliver, then raise it as the box proves it can take the load.
+`sv_maxClients` is the hard ceiling on simultaneous players, from 1 up to 2048. One catch: 32 and up needs OneSync, so the `set onesync on` line goes with it (above 64 it is required, and `on` is the right mode for a modern server anyway). Past that, the cap is about hardware: set it to what your CPU, RAM, and upload bandwidth can serve smoothly. A fresh box on a home connection is happy around 32 to 48. Pick a number you can deliver, then raise it as the box proves it can take the load.
 
 ### The path from your friend's game to your server
 
@@ -183,11 +187,12 @@ A VPS (virtual private server) you rent from a host already has a public IP boun
 
 <FailureList
   items={[
-    { symptom: "You can join with connect 127.0.0.1 but no one outside can, even on the same LAN", fix: "Your endpoint is bound to localhost. Change endpoint_add_tcp/udp to 0.0.0.0:30120 (not 127.0.0.1:30120), restart, then confirm by joining from another machine on your LAN using the host's private IP." },
+    { symptom: "You can join with connect 127.0.0.1 but no one outside can, even on the same LAN", fix: "Your endpoint is bound to localhost. Change endpoint_add_udp/tcp to 0.0.0.0:30120 (not 127.0.0.1:30120), restart, then confirm by joining from another machine on your LAN using the host's private IP." },
     { symptom: "A friend on your LAN can join by your private IP, but no one on the internet can", fix: "This is a router problem, not a server one. The LAN works because it never touches the router's NAT. Add port-forwarding rules for 30120 TCP and 30120 UDP pointing at the FXServer PC's private IP." },
     { symptom: "The connection starts and resources download, then freezes at 'Joining server'", fix: "TCP is open but UDP is blocked. Add the 30120/UDP rule on both the router and the firewall. FiveM needs UDP for live game state, not just the TCP handshake and download." },
     { symptom: "Console shows 'address already in use' or the endpoint fails to bind", fix: "Another program (often a second FXServer instance) already holds port 30120. Stop the other process, or change this server to a different port like 30121 on both endpoint_add lines and forward that port instead." },
     { symptom: "Everything is configured but outside players still time out instantly", fix: "Check the Windows Firewall on the FXServer machine. Add an inbound allow rule for 30120 on both TCP and UDP. The router can forward perfectly and the OS firewall will still drop the packets." },
+    { symptom: "Console keeps logging 'Could not contact the server browser' and the server vanishes from the list", fix: "If you run DDoS protection or a strict firewall, it is blocking Cfx.re's polling IPs. Allow every address listed at https://static.cfx.re/ips.txt. For a purely local dev server, add sv_master1 \"\" to make it private so the browser shows no join button (it still posts a heartbeat on startup)." },
   ]}
 />
 
@@ -195,9 +200,9 @@ A VPS (virtual private server) you rent from a host already has a public IP boun
 
 <Recap
   items={[
-    "Read endpoint_add_tcp/udp \"0.0.0.0:30120\" and explain that 0.0.0.0 binds every interface while 127.0.0.1 would bind only the local machine.",
+    "Read endpoint_add_udp/tcp \"0.0.0.0:30120\" and explain that 0.0.0.0 binds every interface while 127.0.0.1 would bind only the local machine.",
     "Say why port 30120 is opened on both TCP (handshake and download) and UDP (live game state), and what breaks when only one is open.",
-    "Set sv_endpointPrivacy and sv_maxclients and explain that they set policy, not ports.",
+    "Set sv_endpointPrivacy and sv_maxClients (with onesync on for 32+) and explain that they set policy, not ports.",
     "Trace a connection from a friend's game through the router (port forwarding) and the OS firewall to the listening server.",
     "Port-forward 30120 TCP and UDP on a home router to the server PC's private IP, and explain why a rented VPS needs no forwarding at all.",
   ]}
@@ -206,11 +211,11 @@ A VPS (virtual private server) you rent from a host already has a public IP boun
 ## Try it yourself
 
 <Exercise>
-  Right now your server listens on the default port 30120. Prove you understand the endpoint and forwarding chain by moving the whole server to a second port, end to end. Change both endpoint lines to 30125:
+  Right now your server listens on the default port 30120. Prove you understand the endpoint and forwarding chain by moving the whole server to a second port, end to end. Change both endpoint lines to 30125, keeping UDP above TCP:
 
   ```text
-  endpoint_add_tcp "0.0.0.0:30125"
   endpoint_add_udp "0.0.0.0:30125"
+  endpoint_add_tcp "0.0.0.0:30125"
   ```
 
   Restart the server, then confirm the new port works with a local `connect 127.0.0.1:30125`. Then update your router to forward 30125 (TCP and UDP) to the same private IP, and add a firewall allow rule for 30125. Have your friend connect with `connect YOUR.PUBLIC.IP:30125`, including the new port after a colon. When they get in, you have driven the full path yourself: a listening endpoint, a forwarded port, an allowed firewall rule, and a real connection. Changing one number forced you to touch every gate in the chain, which is exactly the muscle memory that makes "my friend cannot join" a five-minute fix instead of an evening lost.
@@ -220,7 +225,7 @@ A VPS (virtual private server) you rent from a host already has a public IP boun
   items={[
     { label: "FiveM server.cfg and convars reference", href: "https://docs.fivem.net/docs/server-manual/setting-up-a-server/" },
     { label: "FiveM setting up a server (endpoints and ports)", href: "https://docs.fivem.net/docs/server-manual/server-commands/" },
-    { label: "FiveM proxy and endpoint privacy", href: "https://docs.fivem.net/docs/server-manual/proxy-setups/" },
+    { label: "FiveM proxy and endpoint privacy", href: "https://docs.fivem.net/docs/server-manual/proxy-setup/" },
     { label: "Cfx.re forum: port forwarding and connectivity", href: "https://forum.cfx.re/" }
   ]}
 />

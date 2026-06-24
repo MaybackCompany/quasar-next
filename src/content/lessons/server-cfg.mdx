@@ -38,10 +38,11 @@
  endpoint_add_udp "0.0.0.0:30120"
 
  sv_hostname "My ESX Server"
+ set onesync on
  sv_maxclients 48
 
- # Game build (optional — remove or update to match a current supported build)
- # sv_enforceGameBuild <latest-tested-build>   # pin a specific GTA content build, or omit to let FiveM auto-detect
+ # Game build (optional). Omit to use the latest build, or pin one:
+ # sv_enforceGameBuild 3570
 
  set mysql_connection_string "mysql://root:PASSWORD@127.0.0.1/fivem?charset=utf8mb4"
  set mysql_slow_query_warning 150
@@ -61,11 +62,12 @@
  </Step>
 
  <Step num={2} title="Know what the important lines do" outcome="No line in the config is a mystery to you.">
- Three of those lines hold the keys to the whole server:
+ A few lines hold the keys to the whole server:
 
- - `sv_licenseKey` is your **Cfx.re Portal** key. Get it free at `portal.cfx.re` (this is the current portal; older guides call it Cfx.re Portal). It is required even for a local test server.
- - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn you about any query slower than 150 ms.
- - `sv_enforceGameBuild` pins which GTA content build players load. The FXServer artifacts page lists **server software** builds, not GTA content builds. Keep the official recipe's value unless your assets require another build, then use the supported list in the Cfx.re server-command reference.
+ - `sv_licenseKey` is your free key from `portal.cfx.re`. Required even for a local test server. Paste the key from the portal exactly; quotes around it are optional.
+ - `set onesync on` turns on server-side state awareness. Any `sv_maxclients` of 32 or more needs it, so keep it on.
+ - `mysql_connection_string` is how `oxmysql` reaches your database. `mysql_slow_query_warning 150` makes the console warn about any query slower than 150 ms.
+ - `sv_enforceGameBuild` pins which GTA content build players load. Omit it to use the latest, or set a value from the build list in the Cfx.re server-commands reference.
 
  <Callout variant="fivem" title="Two of these lines are secrets">
  `sv_licenseKey` and `mysql_connection_string` contain secrets. Never paste their real values into Discord, public GitHub, screenshots, videos, or support tickets. Blur them first. If one leaks, revoke the key in the Cfx.re Portal and rotate the database password immediately.
@@ -73,52 +75,41 @@
  </Step>
 
  <Step num={3} title="Read the ensure block as a dependency map" outcome="You can say why each line sits where it does.">
- Order is not random. Read it as layers, each one depending on the layer above:
+ One word first: an **export** is a function one resource publishes so others can call it. A resource can only answer an export call after it has started. That single fact decides the whole order.
+
+ So put each thing below the thing it calls. Read the block as layers:
 
  ```text
- # 1. Database bridge first, anything that saves data needs it
+ # database bridge first, anything that saves data needs it
  ensure oxmysql
 
- # 2. Shared helper library second
+ # shared helper library, defines the global lib the rest use
  ensure ox_lib
 
- # 3. Framework core third
+ # framework core, it calls oxmysql on start
  ensure es_extended
 
- # 4. Core gameplay systems after the framework
+ # core gameplay systems, after the framework
  ensure ox_inventory
  ensure ox_target
 
- # 5. Your scripts last, after everything they depend on
+ # your scripts last, after everything they depend on
  ensure qs-smartphone-pro
  ```
 
- A script that calls `lib.` functions needs `ox_lib` above it, because `lib` does not exist until `ox_lib` loads and the script pulls it in (Step 6 shows exactly how). A script that saves to the database needs `oxmysql` above it. A job script needs its framework above it. Get one wrong and the script errors at startup, not when you expect it.
-
- First, one word you need: an **export** is a function one resource publishes so other resources can call it (the FiveM way resources talk to each other). A resource can only answer an export call after it has started.
-
- Here is the same idea reduced to its smallest form, so you can see exactly what flips. `es_extended` calls `oxmysql` exports the moment it starts. Put the database layer first and those exports already exist. Put the framework first and it reaches for exports that have not been registered yet:
+ Put `oxmysql` first and its exports already exist when `es_extended` starts. Put the framework first and it reaches for exports that do not exist yet:
 
  ```cfg
  # CORRECT: dependency first, dependent second
  ensure oxmysql # registers the MySQL exports
- ensure es_extended # calls exports.oxmysql:* on start -> they exist, boots clean
+ ensure es_extended # calls them on start -> they exist, boots clean
 
- # WRONG: dependent before dependency -> startup error
- ensure es_extended # tries to use oxmysql exports that do not exist yet -> errors
+ # WRONG: dependent before dependency
+ ensure es_extended # calls oxmysql exports that do not exist yet -> errors
  ensure oxmysql # too late, the framework already failed above
  ```
 
- The fix is never "restart it again" or "ensure it twice." The fix is to move the dependency line **above** the line that needs it, save, and reload. Order is the whole mechanism.
-
- Here is an **example** chain for a script whose own README and manifest name all three dependencies. Do not assume every framework needs every ox resource; install only what the official recipe and the resource manifest require.
-
- ```cfg
- ensure oxmysql # database bridge, registers MySQL exports first
- ensure ox_lib # shared library, defines the global lib used by the rest
- ensure es_extended # framework; its recipe requires oxmysql
- ensure qs-smartphone-pro # example only: place it after every dependency its docs name
- ```
+ The fix is never to restart it again or ensure it twice. Move the dependency line above the line that needs it, save, reload. That is the whole mechanism. Only ensure what a script's own recipe and manifest name; do not assume every framework needs every ox resource.
 
  <Callout variant="fivem" title="Organize it into sections">
  A real `server.cfg` grows fast, so group it with comment headers instead of one long wall of lines: an endpoints section, an identity section, a secrets section, then the `ensure` block as its own marked region. Comments start with `#` and FXServer ignores them. The order of your `ensure` lines is the only thing that controls load order, but a tidy file is what lets you find the one line that is in the wrong place. The companion lesson [server.cfg, annotated line by line](/lessons/server-cfg-annotated) shows the full sectioned layout.
@@ -296,7 +287,7 @@
 | Resource loads but says "dependency missing" | The dependency is below it in server.cfg, or not installed | Move `ensure your_script` BELOW `ensure the_dependency` in server.cfg |
 | "Could not find resource X" | The resource folder name doesn't match | Folder names are case-sensitive. `my_resource` ≠ `My_Resource`. Match exactly |
 | Server starts but no resources load | server.cfg has a typo or missing line | Check every `ensure` line matches an actual resource folder name |
-| `sv_licenseKey` not recognized | Wrong format or missing quotes | Must be: `sv_licenseKey "cfxk_..."` with quotes |
+| `sv_licenseKey` not recognized | The key is wrong or the line is malformed | Use `sv_licenseKey YOUR_KEY` and paste the key from `portal.cfx.re` exactly (quotes optional) |
 | Two resources both need each other (circular dependency) | One must start first, or they need restructuring | Move shared code to a third resource that both depend on |
 
 ## Try it yourself

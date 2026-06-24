@@ -7,7 +7,7 @@
     { label: "Outcome", value: "You build a 4-player heist instance that is invisible to other players on the server, and you prove the invisibility with two test players" },
   ]}
 >
-  OneSync extends server-side entity and player management. Routing buckets partition replicated game state so two groups can reuse the same coordinates without seeing each other's networked entities. They are designed for sessions and game modes, not as a generic interior system. This lesson builds a small instance and verifies the partition with two players.
+  A routing bucket is a separate world on the same server. Assign a player or entity to a bucket and they only see players and entities in that same bucket. Use them for sessions and game modes, not for interiors. This lesson builds a small instance and proves the partition with two players.
 </LessonHero>
 
 <Prereq
@@ -24,7 +24,7 @@
 </Callout>
 
 <Callout variant="fivem" title="OneSync must be on or none of this works">
-  Routing buckets are a OneSync feature. On a server without OneSync, every native below is inert: the calls return nothing and players are never partitioned. Before you start, open `server.cfg` and confirm you have `set onesync on` (the standard syntax used by Cfx.re and every framework recipe). If you used a txAdmin recipe, this is almost always already set. No OneSync, no buckets.
+  Routing buckets are a OneSync feature. Without OneSync, every native below does nothing and players are never partitioned. Before you start, open `server.cfg` and confirm you have `set onesync on`. A txAdmin recipe almost always sets this for you already. No OneSync, no buckets.
 </Callout>
 
 ## Build it
@@ -104,7 +104,7 @@ end, false)
     ensure qu_network_onesync
     ```
 
-    Save `server.cfg`. Then type this into the server console (the txAdmin Live Console, or the black FXServer console window if you run it directly) — not PowerShell and not the in-game chat:
+    Save `server.cfg`. Then type this into the server console (the txAdmin Live Console, or the black FXServer console window if you run it directly), not PowerShell and not the in-game chat:
 
     ```text
     restart qu_network_onesync
@@ -165,7 +165,7 @@ On its own, this native is enough to hide players from each other. But an empty 
 SetRoutingBucketPopulationEnabled(bucket, false)
 ```
 
-By default a fresh bucket still grows GTA's ambient population: pedestrians on the sidewalk, traffic on the roads, parked cars. For a heist room or a clean minigame arena that is noise you do not want. Passing `false` tells the engine to stop spawning ambient peds and vehicles inside that bucket. Now the instance is empty except for the players and entities you deliberately put there. Leave it `true` (the default) when you want an instance that still feels like a living city, for example a parallel free-roam lobby.
+By default a fresh bucket still grows GTA's ambient population: pedestrians, traffic, parked cars. For a heist room or a clean arena that is noise you do not want. Passing `false` stops the engine spawning ambient peds and vehicles inside that bucket, so the instance holds only the players and entities you put there. Leave it `true` (the default) when you want an instance that still feels like a living city, such as a parallel free-roam lobby.
 
 ### `SetRoutingBucketEntityLockdownMode`: decide who may spawn things
 
@@ -175,11 +175,11 @@ SetRoutingBucketEntityLockdownMode(bucket, 'strict')
 
 This native controls who is allowed to create networked entities inside the bucket. It takes one of three string modes:
 
-- `'inactive'` is the default. Any client may spawn networked entities, which is normal free-roam behavior.
-- `'relaxed'` blocks client-created entities whose script owner is not the client, while allowing client-script-owned creation.
-- `'strict'` blocks all client-side entity creation. Only the server may spawn entities into the bucket.
+- `'inactive'` is the default. Clients can create any entity they want, which is normal free-roam behavior.
+- `'relaxed'` blocks only script-owned entities created by clients.
+- `'strict'` blocks all client-created entities. Only the server may spawn entities into the bucket.
 
-For a controlled mission instance, `'strict'` prevents client-side creation of networked entities in that bucket. The server must create the entities the mission needs. Creation authority and simulation ownership are different: a server-created entity can still migrate to a client for simulation, so strict mode does not mean every entity permanently reports the server as its network owner.
+For a controlled mission instance, `'strict'` is the one you want: the server creates the entities the mission needs, and clients create none. Creation authority and simulation ownership are different: a server-created entity can still migrate to a client for simulation, so strict mode does not mean every entity permanently reports the server as its network owner.
 
 ### Where OneSync and entity ownership tie in
 

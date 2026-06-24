@@ -1,19 +1,20 @@
 <LessonHero
   title="How to make your first FiveM server"
   meta={[
-    { label: "You'll build", value: "A working FiveM server you can join from the same PC — the absolute minimum path from zero to seeing the 'ready' message." },
+    { label: "You'll build", value: "A working FiveM server you can join from the same PC - the absolute minimum path from zero to standing in Los Santos." },
     { label: "Time", value: "~20 minutes" },
     { label: "You need", value: "A Windows PC with GTA V installed, a Cfx.re account, and 10GB free disk space." },
-    { label: "You'll learn", value: "Download artifacts, get a license key, write a minimal server.cfg, start the server, and join it — the five steps that turn a blank folder into a joinable server." },
+    { label: "You'll learn", value: "Download artifacts, get the base resources, get a license key, write a minimal server.cfg, start the server, and join it - the steps that turn empty folders into a joinable server." },
   ]}
 >
-  You don't need XAMPP, a framework, or a database for your first server. Five steps: download, license, config, start, join. This is the fastest path to seeing your own server in the FiveM browser list. Everything else (QBCore, ESX, resources, SQL) comes after you confirm the base works.
+  You don't need XAMPP, a framework, or a database for your first server. You need two things on disk: the server binaries (FXServer) and the base server data (the default resources). Then a license key, a short server.cfg, and one command to start it. Everything else (QBCore, ESX, more resources, SQL) comes after you confirm the base works.
 </LessonHero>
 
 <Prereq
   items={[
     "I own GTA V on Steam, Epic, or Rockstar Launcher (updated and launched at least once).",
     "I have a Cfx.re account at portal.cfx.re.",
+    "I have Git installed (used to download the base server data).",
     "I am on Windows 10 or 11.",
   ]}
 />
@@ -21,70 +22,92 @@
 ## Build it
 
 <StepGroup>
-  <Step num={1} title="Download FiveM server artifacts" outcome="FXServer.exe is on your computer.">
+  <Step num={1} title="Download the server binaries" outcome="FXServer.exe is on your computer.">
     Go to https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/
 
-    Download the **Recommended** build (green label, NOT the top "Latest"). Extract the zip to:
+    Download the **latest** build (not the green "recommended" one). Open the `.7z` with 7-Zip or WinRAR and extract it to:
 
     ```text
-C:\FXServer\
+C:\FXServer\server\
     ```
 
     Expected contents: `FXServer.exe`, `citizen/` folder, `.dll` files.
 
     <ExpectedOutput>
-      Double-clicking `FXServer.exe` opens a console window, then txAdmin starts.
+      `C:\FXServer\server\FXServer.exe` exists.
     </ExpectedOutput>
   </Step>
 
-  <Step num={2} title="Get your license key" outcome="You have the one mandatory key.">
-    Go to https://portal.cfx.re/ → **Servers** → **Create Server**. Enter a name. Copy the generated key.
+  <Step num={2} title="Download the base server data" outcome="The default resources are on your computer.">
+    FXServer is just the engine. The default resources (spawn, chat, base gamemode) live in a separate repo. Open a command prompt (Win + R, type `cmd`, Enter) and run:
+
+    ```bash
+cd /d C:\FXServer
+git clone https://github.com/citizenfx/cfx-server-data.git server-data
+    ```
+
+    This creates `C:\FXServer\server-data\`, a sibling of `server\`. Your `server.cfg` and resources live here.
+
+    <ExpectedOutput>
+      `C:\FXServer\server-data\resources\` exists and contains folders like `[gamemodes]` and `[system]`.
+    </ExpectedOutput>
+  </Step>
+
+  <Step num={3} title="Get your license key" outcome="You have the one mandatory key.">
+    Go to https://portal.cfx.re/ and register a free license key. Copy it.
 
     The key looks like: `cfxk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 
-    This is required even for local/single-player servers. Without it, the server won't start.
+    This is required even for a local server. Without it, the server won't start.
   </Step>
 
-  <Step num={3} title="Write a minimal server.cfg" outcome="The server has a name, endpoints, and a license.">
-    Create `server.cfg` in `C:\FXServer\`:
+  <Step num={4} title="Write a minimal server.cfg" outcome="The server has endpoints, base resources, and a license.">
+    Create `server.cfg` inside `C:\FXServer\server-data\`:
 
     ```bash server.cfg
 # How players reach your server
 endpoint_add_tcp "0.0.0.0:30120"
 endpoint_add_udp "0.0.0.0:30120"
 
-# Your license key from portal.cfx.re
-sv_licenseKey "your_license_key_here"
-
-# What players see in the browser list
-sv_hostname "My First FiveM Server"
+# Start the base resources (these came with server-data)
+ensure mapmanager
+ensure chat
+ensure spawnmanager
+ensure sessionmanager
+ensure basic-gamemode
+ensure hardcap
 
 # Enable OneSync (required for modern servers)
-onesync on
+set onesync on
 
-# Maximum players
+# What players see
+sv_hostname "My First FiveM Server"
 sv_maxclients 32
+
+# Your license key from portal.cfx.re
+sv_licenseKey "cfxk_your_key_here"
     ```
 
-    Six lines. That's it. You don't need tags, Discord links, or resource lists yet.
+    The `ensure` lines start the default resources that ship in `server-data`. Without them, a player who connects loads into nothing. You don't need tags, Discord links, or extra resources yet.
   </Step>
 
-  <Step num={4} title="Start the server" outcome="The server console shows it's running.">
-    Double-click `FXServer.exe`. The console window opens. You'll see:
+  <Step num={5} title="Start the server" outcome="The server console shows it's running.">
+    Open a command prompt, go to your `server-data` folder, and point FXServer at your config:
 
-    - "Validating license key" → "License key OK"
-    - txAdmin starting at `localhost:40120`
-    - "Server ready" message after ~30 seconds
+    ```bash
+cd /d C:\FXServer\server-data
+C:\FXServer\server\FXServer.exe +exec server.cfg
+    ```
 
-    Don't worry about txAdmin right now. Just watch the console until it says the server is ready.
+    Run it from `server-data` (that is where your resources are), and the `+exec server.cfg` part is what loads your config. Skip either one and the server starts with no resources, or won't accept connections.
 
     <ExpectedOutput>
-      Console prints: `[txAdmin] Server is ready.`
+      The console prints resource start lines and then `Server started`. No `no license key was specified` or `Failed to start resource` errors.
     </ExpectedOutput>
   </Step>
 
-  <Step num={5} title="Join your server" outcome="You're standing in Los Santos on your own server.">
-    Open FiveM. Press F8 to open console. Type:
+  <Step num={6} title="Join your server" outcome="You're standing in Los Santos on your own server.">
+    Open FiveM. Press F8 to open the console. Type:
 
     ```text
 connect 127.0.0.1:30120
@@ -93,10 +116,10 @@ connect 127.0.0.1:30120
     Or if you want friends on your local network to join:
 
     ```text
-connect 192.168.x.x
+connect 192.168.x.x:30120
     ```
 
-    (Replace with your PC's local IP — find it with `ipconfig` in Command Prompt.)
+    (Replace with your PC's local IP - find it with `ipconfig` in a command prompt.)
 
     <ExpectedOutput>
       You load into Los Santos. The server name appears in the bottom-right corner. You did it.
@@ -106,7 +129,7 @@ connect 192.168.x.x
 
 ## Next steps
 
-Your server is running but empty — no resources, no scripts, no framework. From here:
+Your server runs the default resources, but it has no framework and nothing custom yet. From here:
 
 - **Understand your server.cfg** → see [server.cfg, annotated line by line](/lessons/server-cfg-annotated)
 - **Organize your folders** → see [Organize your server folders](/lessons/organize-server-folders)
@@ -120,6 +143,6 @@ Your server is running but empty — no resources, no scripts, no framework. Fro
 | Exact error | Cause | Fix |
 |---|---|---|
 | `FXServer.exe` window opens then closes instantly | Missing VC++ Redistributable | Download and install VC_redist.x64.exe from Microsoft |
-| `Invalid license key` | Key copied wrong or not activated | Re-copy from portal.cfx.re, make sure there are no extra spaces |
-| `connect localhost` does nothing | FiveM client not running or server not ready | Wait for "Server is ready" in the console, then try again |
-| `Failed to start resource 'txAdmin'` | Port 40120 in use | Close other programs using that port, or restart your PC |
+| `no license key was specified` | You ran without `+exec server.cfg`, or `sv_licenseKey` is missing/wrong | Start with `+exec server.cfg`, and check the key in your config |
+| `Failed to start resource` / no resources found | You started FXServer from the wrong folder | `cd /d C:\FXServer\server-data` first, then run FXServer with `+exec server.cfg` |
+| `connect` times out or says connection refused | Server not started with `+exec`, or still loading | Add `+exec server.cfg`, wait for `Server started`, then try again |

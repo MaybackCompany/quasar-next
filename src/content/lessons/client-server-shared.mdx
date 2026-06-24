@@ -69,7 +69,7 @@ client_scripts {
 }
     ```
 
-    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and ignored: Lua 5.4 is the only Lua runtime now, so you leave it out.
+    Older tutorials add a `lua54 'yes'` line here. As of June 2025 that setting is deprecated and you do not need it: Lua 5.4 is the only Lua runtime now, so you leave it out.
   </Step>
 
   <Step num={4} title="Write the shared config" outcome="One config table that both sides will read.">
@@ -114,14 +114,14 @@ end)
     ensure qu_client_server_shared
     ```
 
-    Save. Because this resource is brand new and has never started, do NOT use `restart` yet — `restart` only works on a resource the server is already running. In the server console (the txAdmin Live Console you opened in the prerequisites), first make the server notice the new files, then start the resource:
+    Save. In the server console (the txAdmin Live Console you opened in the prerequisites), run these two commands:
 
     ```text
     refresh
     ensure qu_client_server_shared
     ```
 
-    `refresh` rescans the `resources` folder so FiveM sees the files you just created; `ensure` then starts the resource (and from now on, after you edit a file, `restart qu_client_server_shared` is the command you reuse because the resource is already running).
+    `refresh` rereads every `fxmanifest.lua` so FiveM sees the files you just created. `ensure` starts the resource. After this, when you edit a file, run `restart qu_client_server_shared` to reload it.
 
     Join the server, open the in-game chat box with T, and run:
 
@@ -129,11 +129,11 @@ end)
     /splitproof
     ```
 
-    The command uses `false` because this proof action only prints and sends a number back to the player who ran it. Running it as a connected player gives the handler a real player source such as `1`. The server console has source `0`, which is not a connected client and therefore cannot receive `TriggerClientEvent`.
+    The `false` at the end of `RegisterCommand` means the command is not restricted, so any player can run it. When a connected player runs it, the handler's `src` is that player's id, such as `1`. Run it from the server console instead and `src` is `0`, which is not a connected client, so `TriggerClientEvent` has nobody to send to.
 
     <ExpectedOutput>
       Server: [qu_client_server_shared] server read Config.Greeting: three folders, one resource
-Server: [qu_client_server_shared] server fired splitproof for src 1   (your number may differ — it is your player id, not always 1)
+Server: [qu_client_server_shared] server fired splitproof for src 1   (your number may differ - it is your player id, not always 1)
 F8: [qu_client_server_shared] client read Config.Greeting: three folders, one resource
 F8: [qu_client_server_shared] client received event, Config.MaxDistance = 25.0
     </ExpectedOutput>
@@ -144,7 +144,7 @@ F8: [qu_client_server_shared] client received event, Config.MaxDistance = 25.0
 
 ## How it works
 
-It worked, so now take it apart. The whole point of this lesson is one idea that beginners get wrong constantly: a FiveM resource is not one program. It is two programs that happen to ship in the same folder, plus a shared layer that gets copied into both. Once you see it that way, the folder split stops being a style choice and becomes the map of where your code actually runs.
+It worked, so now take it apart. One idea explains everything you just saw: a FiveM resource is not one program. It is two programs in one folder - a server side and a client side - plus a shared layer that runs on both. Once you see that, the folder split is no longer a style choice. It is the map of where your code runs.
 
 ### Two runtimes, not one
 
@@ -180,11 +180,11 @@ The second is side-specific natives. Natives like `GetPlayerIdentifiers` or `Dro
 
 ### Why the glob import works and why load order matters
 
-Look back at the manifest. You wrote `shared_scripts { 'shared/*.lua' }`, not a single filename. The `*` is a glob: FiveM expands it to every matching `.lua` file in that folder. Add `shared/jobs.lua` tomorrow and the manifest already includes it. The official manifest reference does not promise an alphabetical order for glob matches, so list files explicitly whenever one shared file depends on another.
+Look back at the manifest. You wrote `shared_scripts { 'shared/*.lua' }`, not a single filename. The `*` is a glob: FiveM expands it to every `.lua` file in that folder. Add `shared/jobs.lua` tomorrow and the manifest already includes it, no edit needed. The order glob matches load in is not guaranteed, so if one shared file needs another, list them by name instead of relying on `*`.
 
-The curly-brace list also matters for a second reason: order. FiveM loads `shared_scripts` before `client_scripts` and `server_scripts`. That ordering is the reason your prints worked. By the time `server/main.lua` and `client/main.lua` run, `shared/config.lua` has already run on that side, so `Config` exists. Flip the order, load a script before the shared file that defines `Config`, and you get `attempt to index a nil value (global 'Config')`. Shared first is not a suggestion; it is what makes the config available when the rest of your code reads it.
+Order matters for a second reason too. `shared_scripts` loads before `server_scripts` and `client_scripts`. That is why your prints worked: by the time `server/main.lua` and `client/main.lua` run, `shared/config.lua` has already run on that side, so `Config` exists. Load `Config` after a file that reads it and you get `attempt to index a nil value (global 'Config')`. Shared first is what makes the config ready before the rest of your code reads it.
 
-One more detail on the manifest key for the future. When this resource depends on another (say `oxmysql` or `ox_lib`, the community Overextended libraries you will meet later), the canonical key is the plural `dependencies { 'oxmysql' }`. The singular `dependency 'oxmysql'` is tolerated but the plural braced form is the one to learn.
+One more detail on the manifest key for the future. When this resource depends on another (say `oxmysql` or `ox_lib`, the community Overextended libraries you will meet later), you declare it so that resource loads first. Use `dependency 'oxmysql'` for one, or the braced `dependencies { 'oxmysql', 'ox_lib' }` for several.
 
 <Checkpoint question="You set Config.MaxDistance = 25.0 in shared. On the server you later write Config.MaxDistance = 99.0. What does the client print when the event fires, and why?">
   The client still prints `25.0`. The server and the client each loaded their own copy of `shared/config.lua`, so they hold two independent `Config` tables. Editing the server's copy does nothing to the client's copy. Shared means the same starting code ran on both sides, not that the live value is synced. If you genuinely needed the new value on the client, you would have to send it, which is exactly what the `TriggerClientEvent` line does: it pushes `Config.MaxDistance` across the network as the event payload, and the client reads what arrived in its handler, not its own table.
@@ -244,8 +244,8 @@ You reach for it on the very first file of every resource, not as cleanup later.
 
 <Refs
   items={[
-    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/resource-manifest/" },
-    { label: "FiveM scripting: understanding scopes", href: "https://docs.fivem.net/docs/scripting-manual/introduction/" },
+    { label: "FiveM resource manifest reference", href: "https://docs.fivem.net/docs/scripting-reference/resource-manifest/" },
+    { label: "FiveM introduction to resources", href: "https://docs.fivem.net/docs/scripting-manual/introduction/introduction-to-resources/" },
     { label: "FiveM native reference", href: "https://docs.fivem.net/natives/" },
     { label: "Lua 5.4 reference manual", href: "https://www.lua.org/manual/5.4/" }
   ]}
