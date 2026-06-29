@@ -24,6 +24,7 @@ const PUBLIC_PATHS = new Set([
   "/toolbox",
   "/paywall",
   "/expired",
+  "/mistakes",
   "/favicon.ico",
   "/headlogo.png",
   "/robots.txt",
